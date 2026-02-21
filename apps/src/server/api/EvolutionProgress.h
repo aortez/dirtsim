@@ -21,7 +21,8 @@ struct EvolutionProgress {
     int populationSize = 0;
     int totalGenomeCount = 0;
     int genomeArchiveMaxSize = 0; // Per organismType+brainKind cap for managed genomes.
-    // Latest robust fitness evaluation median from a completed robust pass.
+    // Latest robust median for genome brains, or latest evaluated-generation best for non-genome
+    // brains.
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     uint64_t robustEvaluationCount = 0;

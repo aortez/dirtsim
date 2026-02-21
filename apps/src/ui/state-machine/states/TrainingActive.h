@@ -53,6 +53,7 @@ struct TrainingActive {
     bool trainingPaused_ = false;
     std::vector<float> plotBestSeries_;
     uint64_t lastPlottedRobustEvaluationCount_ = 0;
+    int lastPlottedCompletedGeneration_ = -1;
     uint64_t progressEventCount_ = 0;
     uint64_t renderMessageCount_ = 0;
     std::chrono::steady_clock::time_point lastRenderRateLog_;

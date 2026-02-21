@@ -231,7 +231,7 @@ void TrainRunner::displayProgress(
     int currentEval,
     int populationSize,
     uint64_t robustEvaluationCount,
-    double latestRobustFitness,
+    double latestFitness,
     double bestAllTime,
     double avgFitness)
 {
@@ -257,7 +257,12 @@ void TrainRunner::displayProgress(
     std::cerr << "] ";
     std::cerr << std::setw(3) << currentEval << "/" << populationSize << " ";
     std::cerr << "pop=" << populationSize << " ";
-    std::cerr << "robust=" << std::fixed << std::setprecision(2) << latestRobustFitness << " ";
+    if (robustEvaluationCount > 0) {
+        std::cerr << "robust=" << std::fixed << std::setprecision(2) << latestFitness << " ";
+    }
+    else {
+        std::cerr << "last_eval=" << std::fixed << std::setprecision(2) << latestFitness << " ";
+    }
     std::cerr << "best=" << std::setprecision(2) << bestAllTime << " ";
     std::cerr << "avg=" << std::setprecision(2) << avgFitness;
     std::cerr << std::flush;

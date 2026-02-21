@@ -1256,8 +1256,16 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         aggregate.calls += totalSimulation->second.calls;
     }
 
+    const Individual& individual = population[result.index];
+    if (!individual.genome.has_value()) {
+        const bool firstEvaluationThisGeneration = currentEval == 1;
+        if (firstEvaluationThisGeneration || result.fitness > bestFitnessThisGen) {
+            bestFitnessThisGen = result.fitness;
+            bestThisGenOrigin_ = origin;
+        }
+    }
+
     if (result.fitness > bestFitnessAllTime) {
-        const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
             const bool replacePendingCandidate = !pendingBestRobustness_
                 || pendingBestRobustnessGeneration_ != generation
@@ -2023,7 +2031,10 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     }
 
     auto& repo = dsm.getGenomeRepository();
-    const double bestAllTime = bestGenomeId.isNil() ? 0.0 : bestFitnessAllTime;
+    const bool hasAllTimeFitness = completedEvaluations_ > 0 && std::isfinite(bestFitnessAllTime)
+        && bestFitnessAllTime > std::numeric_limits<double>::lowest();
+    const double bestAllTime =
+        (!bestGenomeId.isNil() || hasAllTimeFitness) ? bestFitnessAllTime : 0.0;
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;

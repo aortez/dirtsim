@@ -75,6 +75,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.plotBestSeries_.push_back(0.0f);
 
     state.lastPlottedRobustEvaluationCount_ = 0;
+    state.lastPlottedCompletedGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
     state.renderMessageCount_ = 0;
@@ -251,8 +252,21 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->updateProgress(progress);
 
-    if (progress.robustEvaluationCount > lastPlottedRobustEvaluationCount_) {
+    const bool robustSampleAppended =
+        progress.robustEvaluationCount > lastPlottedRobustEvaluationCount_;
+    const bool nonRobustGenerationCompleted = progress.robustEvaluationCount == 0
+        && progress.lastCompletedGeneration >= 0
+        && progress.lastCompletedGeneration > lastPlottedCompletedGeneration_
+        && progress.bestThisGenSource != "none";
+
+    if (robustSampleAppended) {
         lastPlottedRobustEvaluationCount_ = progress.robustEvaluationCount;
+    }
+    if (nonRobustGenerationCompleted) {
+        lastPlottedCompletedGeneration_ = progress.lastCompletedGeneration;
+    }
+
+    if (robustSampleAppended || nonRobustGenerationCompleted) {
         plotBestSeries_.push_back(static_cast<float>(progress.bestFitnessThisGen));
         if (plotBestSeries_.size() > plotRefreshPointCount) {
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;

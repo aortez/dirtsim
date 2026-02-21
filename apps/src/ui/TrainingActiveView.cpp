@@ -348,7 +348,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(fitnessRow, LV_OBJ_FLAG_SCROLLABLE);
 
     bestThisGenLabel_ = lv_label_create(fitnessRow);
-    lv_label_set_text(bestThisGenLabel_, "Last Robust: --");
+    lv_label_set_text(bestThisGenLabel_, "Last Fitness: --");
     lv_obj_set_style_text_color(bestThisGenLabel_, lv_color_hex(0xAAAACC), 0);
     lv_obj_set_style_text_font(bestThisGenLabel_, &lv_font_montserrat_12, 0);
 
@@ -857,8 +857,12 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             snprintf(buf, sizeof(buf), "Last Robust: %.2f", progress.bestFitnessThisGen);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
+        else if (progress.bestThisGenSource != "none") {
+            snprintf(buf, sizeof(buf), "Last Eval: %.2f", progress.bestFitnessThisGen);
+            lv_label_set_text(bestThisGenLabel_, buf);
+        }
         else {
-            lv_label_set_text(bestThisGenLabel_, "Last Robust: --");
+            lv_label_set_text(bestThisGenLabel_, "Last Fitness: --");
         }
     }
 

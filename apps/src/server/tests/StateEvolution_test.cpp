@@ -649,6 +649,48 @@ TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
     }
 }
 
+TEST(StateEvolutionTest, NonNeuralBrainsUpdateBestFitnessWithoutRobustPass)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::RuleBased;
+    population.count = 2;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population.push_back(population);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Unknown);
+
+    auto first = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(first.has_value());
+
+    const double firstFitness = evolutionState.fitnessScores[0];
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, firstFitness);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessAllTime, firstFitness);
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    evolutionState.tick(*fixture.stateMachine);
+
+    const double expectedBest =
+        std::max(evolutionState.fitnessScores[0], evolutionState.fitnessScores[1]);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, expectedBest);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessAllTime, expectedBest);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+}
+
 TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
 {
     TestStateMachineFixture fixture;

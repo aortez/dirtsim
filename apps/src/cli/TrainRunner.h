@@ -76,7 +76,7 @@ private:
         int currentEval,
         int populationSize,
         uint64_t robustEvaluationCount,
-        double latestRobustFitness,
+        double latestFitness,
         double bestAllTime,
         double avgFitness);
 };
