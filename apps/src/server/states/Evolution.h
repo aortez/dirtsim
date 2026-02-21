@@ -181,13 +181,23 @@ struct Evolution {
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
     int streamIntervalMs_ = 16;
+    bool bestPlaybackEnabled_ = false;
+    int bestPlaybackIntervalMs_ = 16;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
+    std::chrono::steady_clock::time_point lastBestPlaybackBroadcastTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
     std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;
 
     TrainingBrainRegistry brainRegistry_;
+    std::optional<Individual> bestPlaybackIndividual_;
+    std::unique_ptr<TrainingRunner> bestPlaybackRunner_;
+    double bestPlaybackFitness_ = 0.0;
+    int bestPlaybackGeneration_ = 0;
+    bool bestPlaybackDuckSecondPassActive_ = false;
+    bool bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
+    bool bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
 
     // CPU auto-tuning.
     std::unique_ptr<SystemMetrics> cpuMetrics_;
@@ -310,6 +320,9 @@ private:
     void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
+    void clearBestPlaybackRunner();
+    void setBestPlaybackSource(const Individual& individual, double fitness, int generation);
+    void stepBestPlayback(StateMachine& dsm);
     std::optional<Any> broadcastTrainingResult(StateMachine& dsm);
     void storeBestGenome(StateMachine& dsm);
     UnsavedTrainingResult buildUnsavedTrainingResult();

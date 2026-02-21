@@ -19,6 +19,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include <algorithm>
@@ -643,6 +644,23 @@ void broadcastTrainingBestSnapshot(
         Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
 }
 
+void broadcastTrainingBestPlaybackFrame(
+    StateMachine& dsm,
+    WorldData worldData,
+    std::vector<OrganismId> organismIds,
+    double fitness,
+    int generation)
+{
+    Api::TrainingBestPlaybackFrame frame;
+    frame.worldData = std::move(worldData);
+    frame.organismIds = std::move(organismIds);
+    frame.fitness = fitness;
+    frame.generation = generation;
+
+    dsm.broadcastEventData(
+        Api::TrainingBestPlaybackFrame::name(), Network::serialize_payload(frame));
+}
+
 GenomeRepository::StoreByHashResult storeManagedGenome(
     StateMachine& dsm,
     const Genome& genome,
@@ -698,7 +716,10 @@ void Evolution::onEnter(StateMachine& dsm)
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
     streamIntervalMs_ = 16;
+    bestPlaybackEnabled_ = false;
+    bestPlaybackIntervalMs_ = 16;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
     pendingTrainingResult_.reset();
@@ -736,6 +757,11 @@ void Evolution::onEnter(StateMachine& dsm)
     visibleDuckSecondPassActive_ = false;
     visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
+    bestPlaybackIndividual_.reset();
+    clearBestPlaybackRunner();
+    bestPlaybackFitness_ = 0.0;
+    bestPlaybackGeneration_ = 0;
+    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
     workerState_ = std::make_unique<WorkerState>();
 
     // Seed RNG.
@@ -765,6 +791,8 @@ void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
     stopWorkers();
+    clearBestPlaybackRunner();
+    bestPlaybackIndividual_.reset();
     cpuMetrics_.reset();
     cpuSamples_.clear();
     lastCpuPercent_ = 0.0;
@@ -802,6 +830,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (!trainingComplete_) {
         startNextVisibleEvaluation(dsm);
         stepVisibleEvaluation(dsm);
+        stepBestPlayback(dsm);
     }
 
     if (trainingComplete_) {
@@ -848,15 +877,35 @@ Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachin
                 ApiError("TrainingStreamConfigSet intervalMs must be >= 0")));
         return std::move(*this);
     }
+    if (cwc.command.bestPlaybackIntervalMs < 1) {
+        cwc.sendResponse(
+            Api::TrainingStreamConfigSet::Response::error(
+                ApiError("TrainingStreamConfigSet bestPlaybackIntervalMs must be >= 1")));
+        return std::move(*this);
+    }
 
     streamIntervalMs_ = cwc.command.intervalMs;
+    bestPlaybackEnabled_ = cwc.command.bestPlaybackEnabled;
+    bestPlaybackIntervalMs_ = cwc.command.bestPlaybackIntervalMs;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    if (!bestPlaybackEnabled_) {
+        clearBestPlaybackRunner();
+    }
 
-    LOG_INFO(State, "Evolution: Training stream interval set to {}ms", streamIntervalMs_);
+    LOG_INFO(
+        State,
+        "Evolution: Training stream config updated (interval={}ms, best_playback={}, "
+        "best_playback_interval={}ms)",
+        streamIntervalMs_,
+        bestPlaybackEnabled_,
+        bestPlaybackIntervalMs_);
 
     Api::TrainingStreamConfigSet::Okay response{
         .intervalMs = streamIntervalMs_,
-        .message = "Training stream interval updated",
+        .bestPlaybackEnabled = bestPlaybackEnabled_,
+        .bestPlaybackIntervalMs = bestPlaybackIntervalMs_,
+        .message = "Training stream config updated",
     };
     cwc.sendResponse(Api::TrainingStreamConfigSet::Response::okay(std::move(response)));
     return std::move(*this);
@@ -988,6 +1037,11 @@ void Evolution::initializePopulation(StateMachine& dsm)
     visibleRobustSampleOrdinal_ = 0;
     visibleScenarioConfig_ = Config::Empty{};
     visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
+    bestPlaybackIndividual_.reset();
+    clearBestPlaybackRunner();
+    bestPlaybackFitness_ = 0.0;
+    bestPlaybackGeneration_ = 0;
+    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
 }
 
 void Evolution::startWorkers(StateMachine& dsm)
@@ -1081,6 +1135,7 @@ void Evolution::stopWorkers()
     visibleDuckSecondPassActive_ = false;
     visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
+    clearBestPlaybackRunner();
 }
 
 void Evolution::queueGenerationTasks()
@@ -1508,6 +1563,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
                 result.fitness,
                 generation,
                 result.index);
+            setBestPlaybackSource(individual, result.fitness, generation);
         }
     }
 
@@ -1749,6 +1805,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         repo.markAsBest(storeResult.id);
         bestGenomeId = storeResult.id;
         bestFitnessAllTime = robustFitness;
+        setBestPlaybackSource(individual, robustFitness, robustnessPassGeneration_);
         LOG_INFO(
             State,
             "Evolution: Promoted genome {} as current-session best (robust {:.4f})",
@@ -2174,6 +2231,89 @@ void Evolution::adjustConcurrency()
         workerState_->allowedConcurrency.store(adjusted);
         workerState_->taskCv.notify_all(); // Wake workers to re-evaluate concurrency predicate.
     }
+}
+
+void Evolution::clearBestPlaybackRunner()
+{
+    bestPlaybackRunner_.reset();
+    bestPlaybackDuckSecondPassActive_ = false;
+    bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
+}
+
+void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
+{
+    bestPlaybackIndividual_ = individual;
+    bestPlaybackIndividual_->parentFitness.reset();
+    bestPlaybackFitness_ = fitness;
+    bestPlaybackGeneration_ = generation;
+    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
+    lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    clearBestPlaybackRunner();
+}
+
+void Evolution::stepBestPlayback(StateMachine& dsm)
+{
+    if (!bestPlaybackEnabled_ || !bestPlaybackIndividual_.has_value()) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto interval = std::chrono::milliseconds(bestPlaybackIntervalMs_);
+    if (lastBestPlaybackBroadcastTime_ != std::chrono::steady_clock::time_point{}
+        && now - lastBestPlaybackBroadcastTime_ < interval) {
+        return;
+    }
+    lastBestPlaybackBroadcastTime_ = now;
+
+    const auto startRunner = [&](std::optional<bool> spawnSideOverride) {
+        const TrainingRunner::Config runnerConfig{
+            .brainRegistry = brainRegistry_,
+            .duckClockSpawnLeftFirst = spawnSideOverride,
+            .duckClockSpawnRngSeed = std::nullopt,
+        };
+        bestPlaybackRunner_ = std::make_unique<TrainingRunner>(
+            trainingSpec,
+            makeRunnerIndividual(bestPlaybackIndividual_.value()),
+            evolutionConfig,
+            dsm.getGenomeRepository(),
+            runnerConfig);
+    };
+
+    const bool duckClockScenario =
+        isDuckClockScenario(trainingSpec.organismType, bestPlaybackIndividual_->scenarioId);
+    if (!bestPlaybackRunner_) {
+        const std::optional<bool> primarySpawnSide = duckClockScenario
+            ? std::optional<bool>(bestPlaybackDuckNextPrimarySpawnLeftFirst_)
+            : std::nullopt;
+        bestPlaybackDuckPrimarySpawnLeftFirst_ = primarySpawnSide.value_or(true);
+        bestPlaybackDuckSecondPassActive_ = false;
+        startRunner(primarySpawnSide);
+    }
+
+    const TrainingRunner::Status status = bestPlaybackRunner_->step(1);
+    World* world = bestPlaybackRunner_->getWorld();
+    DIRTSIM_ASSERT(world != nullptr, "Evolution: Best playback runner missing World");
+    broadcastTrainingBestPlaybackFrame(
+        dsm,
+        world->getData(),
+        world->getOrganismManager().getGrid(),
+        bestPlaybackFitness_,
+        bestPlaybackGeneration_);
+
+    if (status.state == TrainingRunner::State::Running) {
+        return;
+    }
+
+    if (duckClockScenario && !bestPlaybackDuckSecondPassActive_) {
+        bestPlaybackDuckSecondPassActive_ = true;
+        startRunner(std::optional<bool>(!bestPlaybackDuckPrimarySpawnLeftFirst_));
+        return;
+    }
+
+    if (duckClockScenario) {
+        bestPlaybackDuckNextPrimarySpawnLeftFirst_ = !bestPlaybackDuckNextPrimarySpawnLeftFirst_;
+    }
+    clearBestPlaybackRunner();
 }
 
 void Evolution::broadcastProgress(StateMachine& dsm)
