@@ -612,6 +612,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canResetUserSettings\n";
     examples += "  cli functional-test canPersistUserSettingsAcrossRestart\n";
     examples += "  cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario\n";
+    examples += "  cli functional-test canControlNesScenario\n";
     examples += "  cli functional-test canApplyClockTimezoneFromUserSettings\n";
     examples += "  cli functional-test canPlaySynthKeys\n";
     examples += "  cli functional-test verifyTraining\n";
@@ -1135,6 +1136,7 @@ int main(int argc, char** argv)
             && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
             && testName != "canPersistUserSettingsAcrossRestart"
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
+            && testName != "canControlNesScenario"
             && testName != "canApplyClockTimezoneFromUserSettings" && testName != "canPlaySynthKeys"
             && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
@@ -1143,6 +1145,7 @@ int main(int argc, char** argv)
                          "canOpenTrainingConfigPanel, canUpdateUserSettings, "
                          "canResetUserSettings, canPersistUserSettingsAcrossRestart, "
                          "canUseDefaultScenarioWhenSimRunHasNoScenario, "
+                         "canControlNesScenario, "
                          "canApplyClockTimezoneFromUserSettings, canPlaySynthKeys, "
                          "verifyTraining\n";
             return 1;
@@ -1203,6 +1206,10 @@ int main(int argc, char** argv)
         }
         else if (testName == "canUseDefaultScenarioWhenSimRunHasNoScenario") {
             summary = runner.runCanUseDefaultScenarioWhenSimRunHasNoScenario(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canControlNesScenario") {
+            summary = runner.runCanControlNesScenario(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "canApplyClockTimezoneFromUserSettings") {

@@ -89,6 +89,11 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanControlNesScenario(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanApplyClockTimezoneFromUserSettings(
         const std::string& uiAddress,
         const std::string& serverAddress,

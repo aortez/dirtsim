@@ -31,6 +31,7 @@
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
+#include "server/api/NesInputSet.h"
 #include "server/api/ScenarioSwitch.h"
 #include "server/api/SimStop.h"
 #include <chrono>
@@ -309,15 +310,19 @@ void SimRunning::tick(StateMachine& dsm)
         : nullptr;
 
     if (nesScenario != nullptr) {
-        uint8_t controller1Buttons = 0;
-        for (size_t i = 0; i < gm.getDeviceCount(); ++i) {
-            const auto* state = gm.getGamepadState(i);
-            if (!state || !state->connected) {
-                continue;
+        uint8_t controller1Buttons = nes_controller1_override_.value_or(0);
+
+        if (!nes_controller1_override_.has_value()) {
+            for (size_t i = 0; i < gm.getDeviceCount(); ++i) {
+                const auto* state = gm.getGamepadState(i);
+                if (!state || !state->connected) {
+                    continue;
+                }
+                controller1Buttons = mapGamepadStateToNesButtons(*state);
+                break; // Use first connected gamepad for player one.
             }
-            controller1Buttons = mapGamepadStateToNesButtons(*state);
-            break; // Use first connected gamepad for player one.
         }
+
         nesScenario->setController1State(controller1Buttons);
     }
     else {
@@ -774,6 +779,28 @@ State::Any SimRunning::onEvent(const Api::GravitySet::Cwc& cwc, StateMachine& /*
 
     world->getPhysicsSettings().gravity = cwc.command.gravity;
     spdlog::info("SimRunning: API set gravity to {}", cwc.command.gravity);
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::NesInputSet::Response;
+
+    if (scenario_id != Scenario::EnumType::Nes || !scenario) {
+        cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
+        return std::move(*this);
+    }
+
+    auto* nesScenario = dynamic_cast<NesScenario*>(scenario.get());
+    if (!nesScenario) {
+        cwc.sendResponse(Response::error(ApiError("NesInputSet could not resolve NES scenario")));
+        return std::move(*this);
+    }
+
+    nes_controller1_override_ = cwc.command.controller1_mask;
+    nesScenario->setController1State(cwc.command.controller1_mask);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);

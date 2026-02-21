@@ -83,6 +83,8 @@ const DEPLOY_ASSETS = [
     remote: '/usr/share/fonts/fontawesome/fa-solid-900.ttf',
   },
 ];
+const NES_ROM_FIXTURE_DIR = join(APPS_DIR, 'testdata/roms');
+const NES_ROM_REMOTE_DIR = '/data/dirtsim/testdata/roms';
 
 // Systemd service files to install/update on x86 targets during fast deploy.
 // x86 targets do not get their rootfs replaced, so service file changes need to be copied explicitly.
@@ -891,6 +893,46 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     }
   }
 
+  // Deploy NES ROM fixtures used by runtime tests.
+  banner('Deploying NES ROM fixtures...', consola);
+
+  const romInstallCmds = [];
+  const romFixtures = existsSync(NES_ROM_FIXTURE_DIR)
+    ? readdirSync(NES_ROM_FIXTURE_DIR, { withFileTypes: true })
+        .filter(entry => entry.isFile() && entry.name.endsWith('.nes'))
+        .map(entry => ({
+          name: entry.name,
+          local: join(NES_ROM_FIXTURE_DIR, entry.name),
+          remote: `${NES_ROM_REMOTE_DIR}/${entry.name}`,
+        }))
+    : [];
+
+  if (romFixtures.length === 0) {
+    info('No NES ROM fixtures found');
+  } else {
+    romInstallCmds.push(`sudo mkdir -p ${NES_ROM_REMOTE_DIR}`);
+    for (const rom of romFixtures) {
+      info(`${rom.name} → ${rom.remote}`);
+      if (!dryRun) {
+        try {
+          execSync(
+            `scp ${buildScpOptions()} "${rom.local}" "${remoteTarget}:${remoteStageDir}/${rom.name}"`,
+            { stdio: 'pipe' },
+          );
+          romInstallCmds.push(`sudo cp ${remoteStageDir}/${rom.name} ${rom.remote}`);
+          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${rom.remote}`);
+          success(`${rom.name} transferred`);
+        } catch (err) {
+          error(`Failed to transfer ${rom.name}`);
+          error(err.message);
+          process.exit(1);
+        }
+      } else {
+        info(`Would scp ${rom.local} to ${remoteTarget}:${remoteStageDir}/${rom.name}`);
+      }
+    }
+  }
+
   // Stop services, copy binaries, start services.
   banner('Restarting services...', consola);
 
@@ -916,6 +958,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       if (assetInstallCmds.length > 0) {
         info('Installing assets...');
         execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${assetInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
+      }
+
+      if (romInstallCmds.length > 0) {
+        info('Installing NES ROM fixtures...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${romInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
       }
 
       if (systemdInstallCmds.length > 0) {

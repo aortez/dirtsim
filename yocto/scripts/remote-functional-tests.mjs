@@ -26,6 +26,7 @@ const ALL_TESTS = [
   'canTrain',
   'canSetGenerationsAndTrain',
   'canPlantTreeSeed',
+  'canControlNesScenario',
   'canLoadGenomeFromBrowser',
   'canOpenTrainingConfigPanel',
   'verifyTraining',

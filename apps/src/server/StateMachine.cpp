@@ -656,6 +656,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
+        DISPATCH_JSON_CMD_EMPTY(Api::NesInputSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PerfStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PhysicsSettingsGet);
         DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
@@ -904,6 +905,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GenomeSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::NesInputSet::Cwc>(
+        [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
         [this](Api::PerfStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PhysicsSettingsGet::Cwc>(
