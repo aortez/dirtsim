@@ -592,11 +592,23 @@ void NesFlappyParatroopaScenario::updateRuntimeProfilingTimers(Timers& timers)
         current.runtimeThreadIdleWaitCalls,
         previous.runtimeThreadIdleWaitCalls);
     addDelta(
+        "nes_runtime_thread_cpu_step",
+        current.runtimeThreadCpuStepMs,
+        previous.runtimeThreadCpuStepMs,
+        current.runtimeThreadCpuStepCalls,
+        previous.runtimeThreadCpuStepCalls);
+    addDelta(
         "nes_runtime_thread_frame_execution",
         current.runtimeThreadFrameExecutionMs,
         previous.runtimeThreadFrameExecutionMs,
         current.runtimeThreadFrameExecutionCalls,
         previous.runtimeThreadFrameExecutionCalls);
+    addDelta(
+        "nes_runtime_thread_ppu_step",
+        current.runtimeThreadPpuStepMs,
+        previous.runtimeThreadPpuStepMs,
+        current.runtimeThreadPpuStepCalls,
+        previous.runtimeThreadPpuStepCalls);
     addDelta(
         "nes_runtime_thread_frame_submit",
         current.runtimeThreadFrameSubmitMs,

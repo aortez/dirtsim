@@ -36,8 +36,12 @@ struct SmolnesRuntimeHandle {
     uint64_t runFramesWaitCalls;
     double runtimeThreadIdleWaitMs;
     uint64_t runtimeThreadIdleWaitCalls;
+    double runtimeThreadCpuStepMs;
+    uint64_t runtimeThreadCpuStepCalls;
     double runtimeThreadFrameExecutionMs;
     uint64_t runtimeThreadFrameExecutionCalls;
+    double runtimeThreadPpuStepMs;
+    uint64_t runtimeThreadPpuStepCalls;
     double runtimeThreadFrameSubmitMs;
     uint64_t runtimeThreadFrameSubmitCalls;
     double runtimeThreadEventPollMs;
@@ -62,10 +66,14 @@ struct SmolnesRuntimeHandle {
 static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
 static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
 static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 0 };
+static SMOLNES_THREAD_LOCAL bool gCpuStepActive = false;
+static SMOLNES_THREAD_LOCAL double gCpuStepStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gEventPollActive = false;
 static SMOLNES_THREAD_LOCAL double gEventPollStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gFrameExecutionActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameExecutionStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL bool gPpuStepActive = false;
+static SMOLNES_THREAD_LOCAL double gPpuStepStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gFrameSubmitActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameSubmitStartMs = 0.0;
 
@@ -146,10 +154,14 @@ static void* runtimeThreadMain(void* arg)
     }
 
     gCurrentRuntime = runtime;
+    gCpuStepActive = false;
+    gCpuStepStartMs = 0.0;
     gEventPollActive = false;
     gEventPollStartMs = 0.0;
     gFrameExecutionActive = false;
     gFrameExecutionStartMs = 0.0;
+    gPpuStepActive = false;
+    gPpuStepStartMs = 0.0;
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     char* argv[] = { "smolnes", runtime->romPath };
@@ -164,10 +176,14 @@ static void* runtimeThreadMain(void* arg)
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gCurrentRuntime = NULL;
+    gCpuStepActive = false;
+    gCpuStepStartMs = 0.0;
     gEventPollActive = false;
     gEventPollStartMs = 0.0;
     gFrameExecutionActive = false;
     gFrameExecutionStartMs = 0.0;
+    gPpuStepActive = false;
+    gPpuStepStartMs = 0.0;
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     return NULL;
@@ -293,6 +309,37 @@ int smolnesRuntimeWrappedRenderCopy(
     return 0;
 }
 
+void smolnesRuntimeWrappedCpuStepBegin(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || gCpuStepActive) {
+        return;
+    }
+
+    gCpuStepStartMs = monotonicNowMs();
+    gCpuStepActive = true;
+}
+
+void smolnesRuntimeWrappedCpuStepEnd(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gCpuStepActive) {
+        return;
+    }
+
+    const double cpuStepMs = monotonicNowMs() - gCpuStepStartMs;
+    gCpuStepActive = false;
+    gCpuStepStartMs = 0.0;
+    if (cpuStepMs <= 0.0) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->runtimeThreadCpuStepMs += cpuStepMs;
+    runtime->runtimeThreadCpuStepCalls++;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
 void smolnesRuntimeWrappedFrameExecutionBegin(void)
 {
     SmolnesRuntimeHandle* runtime = getCurrentRuntime();
@@ -321,6 +368,37 @@ void smolnesRuntimeWrappedFrameExecutionEnd(void)
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->runtimeThreadFrameExecutionMs += frameExecutionMs;
     runtime->runtimeThreadFrameExecutionCalls++;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeWrappedPpuStepBegin(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || gPpuStepActive) {
+        return;
+    }
+
+    gPpuStepStartMs = monotonicNowMs();
+    gPpuStepActive = true;
+}
+
+void smolnesRuntimeWrappedPpuStepEnd(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gPpuStepActive) {
+        return;
+    }
+
+    const double ppuStepMs = monotonicNowMs() - gPpuStepStartMs;
+    gPpuStepActive = false;
+    gPpuStepStartMs = 0.0;
+    if (ppuStepMs <= 0.0) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->runtimeThreadPpuStepMs += ppuStepMs;
+    runtime->runtimeThreadPpuStepCalls++;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
@@ -445,8 +523,12 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SDL_RenderCopy smolnesRuntimeWrappedRenderCopy
 #define SDL_RenderPresent smolnesRuntimeWrappedRenderPresent
 #define SDL_UpdateTexture smolnesRuntimeWrappedUpdateTexture
+#define SMOLNES_CPU_STEP_BEGIN smolnesRuntimeWrappedCpuStepBegin
+#define SMOLNES_CPU_STEP_END smolnesRuntimeWrappedCpuStepEnd
 #define SMOLNES_FRAME_EXEC_BEGIN smolnesRuntimeWrappedFrameExecutionBegin
 #define SMOLNES_FRAME_EXEC_END smolnesRuntimeWrappedFrameExecutionEnd
+#define SMOLNES_PPU_STEP_BEGIN smolnesRuntimeWrappedPpuStepBegin
+#define SMOLNES_PPU_STEP_END smolnesRuntimeWrappedPpuStepEnd
 #define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
 #define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
@@ -465,8 +547,12 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #undef SDL_RenderCopy
 #undef SDL_RenderPresent
 #undef SDL_UpdateTexture
+#undef SMOLNES_CPU_STEP_BEGIN
+#undef SMOLNES_CPU_STEP_END
 #undef SMOLNES_FRAME_EXEC_BEGIN
 #undef SMOLNES_FRAME_EXEC_END
+#undef SMOLNES_PPU_STEP_BEGIN
+#undef SMOLNES_PPU_STEP_END
 #undef SMOLNES_FRAME_SUBMIT_BEGIN
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
@@ -560,8 +646,12 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runFramesWaitCalls = 0;
     runtime->runtimeThreadIdleWaitMs = 0.0;
     runtime->runtimeThreadIdleWaitCalls = 0;
+    runtime->runtimeThreadCpuStepMs = 0.0;
+    runtime->runtimeThreadCpuStepCalls = 0;
     runtime->runtimeThreadFrameExecutionMs = 0.0;
     runtime->runtimeThreadFrameExecutionCalls = 0;
+    runtime->runtimeThreadPpuStepMs = 0.0;
+    runtime->runtimeThreadPpuStepCalls = 0;
     runtime->runtimeThreadFrameSubmitMs = 0.0;
     runtime->runtimeThreadFrameSubmitCalls = 0;
     runtime->runtimeThreadEventPollMs = 0.0;
@@ -789,8 +879,12 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->run_frames_wait_calls = mutableRuntime->runFramesWaitCalls;
     snapshotOut->runtime_thread_idle_wait_ms = mutableRuntime->runtimeThreadIdleWaitMs;
     snapshotOut->runtime_thread_idle_wait_calls = mutableRuntime->runtimeThreadIdleWaitCalls;
+    snapshotOut->runtime_thread_cpu_step_ms = mutableRuntime->runtimeThreadCpuStepMs;
+    snapshotOut->runtime_thread_cpu_step_calls = mutableRuntime->runtimeThreadCpuStepCalls;
     snapshotOut->runtime_thread_frame_execution_ms = mutableRuntime->runtimeThreadFrameExecutionMs;
     snapshotOut->runtime_thread_frame_execution_calls = mutableRuntime->runtimeThreadFrameExecutionCalls;
+    snapshotOut->runtime_thread_ppu_step_ms = mutableRuntime->runtimeThreadPpuStepMs;
+    snapshotOut->runtime_thread_ppu_step_calls = mutableRuntime->runtimeThreadPpuStepCalls;
     snapshotOut->runtime_thread_frame_submit_ms = mutableRuntime->runtimeThreadFrameSubmitMs;
     snapshotOut->runtime_thread_frame_submit_calls = mutableRuntime->runtimeThreadFrameSubmitCalls;
     snapshotOut->runtime_thread_event_poll_ms = mutableRuntime->runtimeThreadEventPollMs;

@@ -141,8 +141,12 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
     snapshot.runFramesWaitCalls = raw.run_frames_wait_calls;
     snapshot.runtimeThreadIdleWaitMs = raw.runtime_thread_idle_wait_ms;
     snapshot.runtimeThreadIdleWaitCalls = raw.runtime_thread_idle_wait_calls;
+    snapshot.runtimeThreadCpuStepMs = raw.runtime_thread_cpu_step_ms;
+    snapshot.runtimeThreadCpuStepCalls = raw.runtime_thread_cpu_step_calls;
     snapshot.runtimeThreadFrameExecutionMs = raw.runtime_thread_frame_execution_ms;
     snapshot.runtimeThreadFrameExecutionCalls = raw.runtime_thread_frame_execution_calls;
+    snapshot.runtimeThreadPpuStepMs = raw.runtime_thread_ppu_step_ms;
+    snapshot.runtimeThreadPpuStepCalls = raw.runtime_thread_ppu_step_calls;
     snapshot.runtimeThreadFrameSubmitMs = raw.runtime_thread_frame_submit_ms;
     snapshot.runtimeThreadFrameSubmitCalls = raw.runtime_thread_frame_submit_calls;
     snapshot.runtimeThreadEventPollMs = raw.runtime_thread_event_poll_ms;

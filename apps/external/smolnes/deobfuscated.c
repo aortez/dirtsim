@@ -29,6 +29,22 @@
 #define SMOLNES_EVENT_POLL_END()
 #endif
 
+#ifndef SMOLNES_CPU_STEP_BEGIN
+#define SMOLNES_CPU_STEP_BEGIN()
+#endif
+
+#ifndef SMOLNES_CPU_STEP_END
+#define SMOLNES_CPU_STEP_END()
+#endif
+
+#ifndef SMOLNES_PPU_STEP_BEGIN
+#define SMOLNES_PPU_STEP_BEGIN()
+#endif
+
+#ifndef SMOLNES_PPU_STEP_END
+#define SMOLNES_PPU_STEP_END()
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -313,6 +329,7 @@ int main(int argc, char **argv) {
   SMOLNES_FRAME_EXEC_BEGIN();
 
 loop:
+  SMOLNES_CPU_STEP_BEGIN();
   cycles = nomem = 0;
   if (nmi_irq)
     goto nmi_irq;
@@ -587,6 +604,8 @@ loop:
 
   // Update PPU, which runs 3 times faster than CPU. Each CPU instruction
   // takes at least 2 cycles.
+  SMOLNES_CPU_STEP_END();
+  SMOLNES_PPU_STEP_BEGIN();
   for (tmp = cycles * 3 + 6; tmp--;) {
     if (ppumask & 24) { // If background or sprites are enabled.
       if (scany < 240) {
@@ -712,6 +731,7 @@ loop:
         if (ppuctrl & 128)
           nmi_irq = 4;
         ppustatus |= 128;
+        SMOLNES_PPU_STEP_END();
         SMOLNES_FRAME_EXEC_END();
         SMOLNES_FRAME_SUBMIT_BEGIN();
         // Render frame, skipping the top and bottom 8 pixels (they're often
@@ -723,9 +743,12 @@ loop:
         // Handle SDL events.
         SMOLNES_EVENT_POLL_BEGIN();
         for (SDL_Event event; SDL_PollEvent(&event);)
-          if (event.type == SDL_QUIT)
+          if (event.type == SDL_QUIT) {
+            SMOLNES_EVENT_POLL_END();
             return 0;
+          }
         SMOLNES_EVENT_POLL_END();
+        SMOLNES_PPU_STEP_BEGIN();
         SMOLNES_FRAME_EXEC_BEGIN();
       }
 
@@ -742,5 +765,6 @@ loop:
       scany %= 262;
     }
   }
+  SMOLNES_PPU_STEP_END();
   goto loop;
 }

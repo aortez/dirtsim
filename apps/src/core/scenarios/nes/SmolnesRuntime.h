@@ -22,8 +22,12 @@ public:
         uint64_t runFramesWaitCalls = 0;
         double runtimeThreadIdleWaitMs = 0.0;
         uint64_t runtimeThreadIdleWaitCalls = 0;
+        double runtimeThreadCpuStepMs = 0.0;
+        uint64_t runtimeThreadCpuStepCalls = 0;
         double runtimeThreadFrameExecutionMs = 0.0;
         uint64_t runtimeThreadFrameExecutionCalls = 0;
+        double runtimeThreadPpuStepMs = 0.0;
+        uint64_t runtimeThreadPpuStepCalls = 0;
         double runtimeThreadFrameSubmitMs = 0.0;
         uint64_t runtimeThreadFrameSubmitCalls = 0;
         double runtimeThreadEventPollMs = 0.0;
