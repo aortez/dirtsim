@@ -46,7 +46,7 @@ public:
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
     void showView(View view);
-    void addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId);
+    void addSeedGenome(const GenomeId& genomeId);
 
 private:
     lv_obj_t* container_ = nullptr;

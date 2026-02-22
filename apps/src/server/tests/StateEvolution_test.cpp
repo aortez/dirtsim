@@ -117,7 +117,6 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     population.brainKind = TrainingBrainKind::NesFlappyBird;
     population.count = 4;
     population.randomCount = 4;
@@ -213,7 +212,6 @@ TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     population.brainKind = TrainingBrainKind::NesFlappyBird;
     population.count = 2;
     population.randomCount = 2;
@@ -692,7 +690,6 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -757,7 +754,6 @@ TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -796,7 +792,6 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForSecondPassBeforeAdvan
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;

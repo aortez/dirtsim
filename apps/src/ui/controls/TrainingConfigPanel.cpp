@@ -126,13 +126,13 @@ void TrainingConfigPanel::setBestPlaybackIntervalMs(int value)
     }
 }
 
-void TrainingConfigPanel::addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId)
+void TrainingConfigPanel::addSeedGenome(const GenomeId& genomeId)
 {
     if (!trainingPopulationPanel_) {
         return;
     }
 
-    trainingPopulationPanel_->addSeedGenome(genomeId, scenarioId);
+    trainingPopulationPanel_->addSeedGenome(genomeId);
 }
 
 void TrainingConfigPanel::showView(View view)

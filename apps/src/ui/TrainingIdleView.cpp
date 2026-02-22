@@ -336,28 +336,24 @@ Result<std::monostate, std::string> TrainingIdleView::loadGenomeDetail(const Gen
     return genomeBrowserPanel_->loadDetailForId(genomeId);
 }
 
-void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId)
+void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId)
 {
     if (genomeId.isNil()) {
         return;
     }
 
     if (trainingConfigPanel_) {
-        trainingConfigPanel_->addSeedGenome(genomeId, scenarioId);
+        trainingConfigPanel_->addSeedGenome(genomeId);
         return;
     }
 
     PopulationSpec* targetSpec = nullptr;
-    for (auto& spec : userSettings_.trainingSpec.population) {
-        if (spec.scenarioId == scenarioId) {
-            targetSpec = &spec;
-            break;
-        }
+    if (!userSettings_.trainingSpec.population.empty()) {
+        targetSpec = &userSettings_.trainingSpec.population.front();
     }
 
     if (!targetSpec) {
         PopulationSpec spec;
-        spec.scenarioId = scenarioId;
         switch (userSettings_.trainingSpec.organismType) {
             case OrganismType::TREE:
                 spec.brainKind = TrainingBrainKind::NeuralNet;
@@ -366,7 +362,6 @@ void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId, Scenario::E
                 spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
                 spec.brainKind = TrainingBrainKind::NesFlappyBird;
                 break;
             case OrganismType::GOOSE:
@@ -414,10 +409,6 @@ void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId, Scenario::E
         }
     }
     userSettings_.evolutionConfig.populationSize = totalPopulation;
-    if (!userSettings_.trainingSpec.population.empty()) {
-        userSettings_.trainingSpec.scenarioId =
-            userSettings_.trainingSpec.population.front().scenarioId;
-    }
 }
 
 bool TrainingIdleView::isTrainingResultModalVisible() const

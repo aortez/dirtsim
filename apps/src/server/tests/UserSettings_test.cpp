@@ -62,7 +62,6 @@ TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
     staleSettings.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::TreeGermination;
     population.brainKind = "NeuralNet";
     population.count = 2;
     population.randomCount = 1;
@@ -107,7 +106,6 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
     staleSettings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     population.count = 2;
     population.randomCount = 2;
@@ -130,7 +128,6 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
     EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(inMemory.trainingSpec.population.size(), 1u);
     const PopulationSpec& inMemoryPopulation = inMemory.trainingSpec.population.front();
-    EXPECT_EQ(inMemoryPopulation.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     EXPECT_EQ(inMemoryPopulation.brainKind, TrainingBrainKind::NesFlappyBird);
     EXPECT_EQ(inMemoryPopulation.count, 2);
     EXPECT_EQ(inMemoryPopulation.randomCount, 2);
@@ -140,7 +137,6 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
     EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(fromDisk.trainingSpec.population.size(), 1u);
     const PopulationSpec& diskPopulation = fromDisk.trainingSpec.population.front();
-    EXPECT_EQ(diskPopulation.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     EXPECT_EQ(diskPopulation.brainKind, TrainingBrainKind::NesFlappyBird);
     EXPECT_EQ(diskPopulation.count, 2);
     EXPECT_EQ(diskPopulation.randomCount, 2);

@@ -461,7 +461,7 @@ State::Any TrainingIdle::onEvent(const GenomeAddToTrainingClickedEvent& evt, Sta
 {
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
-    view_->addGenomeToTraining(evt.genomeId, evt.scenarioId);
+    view_->addGenomeToTraining(evt.genomeId);
     return std::move(*this);
 }
 
