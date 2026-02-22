@@ -863,8 +863,16 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
 {
     using Response = Api::TimerStatsGet::Response;
 
+    // Include in-flight visible runner timers so callers can profile active evaluations.
+    std::unordered_map<std::string, TimerAggregate> mergedStats = timerStatsAggregate_;
+    if (visibleRunner_) {
+        if (const World* world = visibleRunner_->getWorld()) {
+            mergeTimerStats(mergedStats, collectTimerStats(world->getTimers()));
+        }
+    }
+
     Api::TimerStatsGet::Okay okay;
-    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+    for (const auto& [name, aggregate] : mergedStats) {
         Api::TimerStatsGet::TimerEntry entry;
         entry.total_ms = aggregate.totalMs;
         entry.calls = aggregate.calls;

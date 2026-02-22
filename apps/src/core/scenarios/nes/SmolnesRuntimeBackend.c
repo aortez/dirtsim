@@ -32,6 +32,21 @@ struct SmolnesRuntimeHandle {
     uint64_t renderedFrames;
     uint64_t targetFrames;
 
+    double runFramesWaitMs;
+    uint64_t runFramesWaitCalls;
+    double runtimeThreadIdleWaitMs;
+    uint64_t runtimeThreadIdleWaitCalls;
+    double runtimeThreadFrameExecutionMs;
+    uint64_t runtimeThreadFrameExecutionCalls;
+    double runtimeThreadFrameSubmitMs;
+    uint64_t runtimeThreadFrameSubmitCalls;
+    double runtimeThreadEventPollMs;
+    uint64_t runtimeThreadEventPollCalls;
+    double runtimeThreadPresentMs;
+    uint64_t runtimeThreadPresentCalls;
+    double memorySnapshotCopyMs;
+    uint64_t memorySnapshotCopyCalls;
+
     uint8_t controller1State;
     uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
     uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
@@ -47,6 +62,12 @@ struct SmolnesRuntimeHandle {
 static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
 static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
 static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 0 };
+static SMOLNES_THREAD_LOCAL bool gEventPollActive = false;
+static SMOLNES_THREAD_LOCAL double gEventPollStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL bool gFrameExecutionActive = false;
+static SMOLNES_THREAD_LOCAL double gFrameExecutionStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL bool gFrameSubmitActive = false;
+static SMOLNES_THREAD_LOCAL double gFrameSubmitStartMs = 0.0;
 
 int smolnesRuntimeEntryPoint(int argc, char** argv);
 
@@ -103,6 +124,13 @@ static struct timespec buildDeadline(uint32_t timeoutMs)
     return deadline;
 }
 
+static double monotonicNowMs(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return ((double)now.tv_sec * 1000.0) + ((double)now.tv_nsec / 1000000.0);
+}
+
 static SmolnesRuntimeHandle* getCurrentRuntime(void)
 {
     return gCurrentRuntime;
@@ -118,6 +146,12 @@ static void* runtimeThreadMain(void* arg)
     }
 
     gCurrentRuntime = runtime;
+    gEventPollActive = false;
+    gEventPollStartMs = 0.0;
+    gFrameExecutionActive = false;
+    gFrameExecutionStartMs = 0.0;
+    gFrameSubmitActive = false;
+    gFrameSubmitStartMs = 0.0;
     char* argv[] = { "smolnes", runtime->romPath };
     const int exitCode = smolnesRuntimeEntryPoint(2, argv);
 
@@ -130,6 +164,12 @@ static void* runtimeThreadMain(void* arg)
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gCurrentRuntime = NULL;
+    gEventPollActive = false;
+    gEventPollStartMs = 0.0;
+    gFrameExecutionActive = false;
+    gFrameExecutionStartMs = 0.0;
+    gFrameSubmitActive = false;
+    gFrameSubmitStartMs = 0.0;
     return NULL;
 }
 
@@ -253,6 +293,99 @@ int smolnesRuntimeWrappedRenderCopy(
     return 0;
 }
 
+void smolnesRuntimeWrappedFrameExecutionBegin(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return;
+    }
+
+    gFrameExecutionStartMs = monotonicNowMs();
+    gFrameExecutionActive = true;
+}
+
+void smolnesRuntimeWrappedFrameExecutionEnd(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gFrameExecutionActive) {
+        return;
+    }
+
+    const double frameExecutionMs = monotonicNowMs() - gFrameExecutionStartMs;
+    gFrameExecutionActive = false;
+    gFrameExecutionStartMs = 0.0;
+    if (frameExecutionMs <= 0.0) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->runtimeThreadFrameExecutionMs += frameExecutionMs;
+    runtime->runtimeThreadFrameExecutionCalls++;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeWrappedFrameSubmitBegin(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return;
+    }
+
+    gFrameSubmitStartMs = monotonicNowMs();
+    gFrameSubmitActive = true;
+}
+
+void smolnesRuntimeWrappedFrameSubmitEnd(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gFrameSubmitActive) {
+        return;
+    }
+
+    const double frameSubmitMs = monotonicNowMs() - gFrameSubmitStartMs;
+    gFrameSubmitActive = false;
+    gFrameSubmitStartMs = 0.0;
+    if (frameSubmitMs <= 0.0) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->runtimeThreadFrameSubmitMs += frameSubmitMs;
+    runtime->runtimeThreadFrameSubmitCalls++;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeWrappedEventPollBegin(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return;
+    }
+
+    gEventPollStartMs = monotonicNowMs();
+    gEventPollActive = true;
+}
+
+void smolnesRuntimeWrappedEventPollEnd(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gEventPollActive) {
+        return;
+    }
+
+    const double eventPollMs = monotonicNowMs() - gEventPollStartMs;
+    gEventPollActive = false;
+    gEventPollStartMs = 0.0;
+    if (eventPollMs <= 0.0) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->runtimeThreadEventPollMs += eventPollMs;
+    runtime->runtimeThreadEventPollCalls++;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
 void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
 {
     (void)renderer;
@@ -264,12 +397,18 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
 
     pthread_mutex_lock(&runtime->runtimeMutex);
     while (!runtime->stopRequested && runtime->renderedFrames >= runtime->targetFrames) {
+        const double waitStartMs = monotonicNowMs();
         pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
+        runtime->runtimeThreadIdleWaitMs += monotonicNowMs() - waitStartMs;
+        runtime->runtimeThreadIdleWaitCalls++;
     }
     if (!runtime->stopRequested) {
+        const double presentStartMs = monotonicNowMs();
         refreshMemorySnapshotLocked(runtime);
         ++runtime->renderedFrames;
         runtime->latestFrameId = runtime->renderedFrames;
+        runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
+        runtime->runtimeThreadPresentCalls++;
         pthread_cond_broadcast(&runtime->runtimeCond);
     }
     pthread_mutex_unlock(&runtime->runtimeMutex);
@@ -306,6 +445,12 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SDL_RenderCopy smolnesRuntimeWrappedRenderCopy
 #define SDL_RenderPresent smolnesRuntimeWrappedRenderPresent
 #define SDL_UpdateTexture smolnesRuntimeWrappedUpdateTexture
+#define SMOLNES_FRAME_EXEC_BEGIN smolnesRuntimeWrappedFrameExecutionBegin
+#define SMOLNES_FRAME_EXEC_END smolnesRuntimeWrappedFrameExecutionEnd
+#define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
+#define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
+#define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
+#define SMOLNES_EVENT_POLL_END smolnesRuntimeWrappedEventPollEnd
 #define SMOLNES_TLS SMOLNES_THREAD_LOCAL
 #define main smolnesRuntimeEntryPoint
 
@@ -320,13 +465,22 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #undef SDL_RenderCopy
 #undef SDL_RenderPresent
 #undef SDL_UpdateTexture
+#undef SMOLNES_FRAME_EXEC_BEGIN
+#undef SMOLNES_FRAME_EXEC_END
+#undef SMOLNES_FRAME_SUBMIT_BEGIN
+#undef SMOLNES_FRAME_SUBMIT_END
+#undef SMOLNES_EVENT_POLL_BEGIN
+#undef SMOLNES_EVENT_POLL_END
 #undef SMOLNES_TLS
 #undef main
 
 static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
 {
+    const double snapshotStartMs = monotonicNowMs();
     memcpy(runtime->cpuRamSnapshot, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
     memcpy(runtime->prgRamSnapshot, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    runtime->memorySnapshotCopyMs += monotonicNowMs() - snapshotStartMs;
+    runtime->memorySnapshotCopyCalls++;
     runtime->hasMemorySnapshot = true;
 }
 
@@ -402,6 +556,20 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->latestFrameId = 0;
     runtime->hasLatestFrame = false;
     runtime->hasMemorySnapshot = false;
+    runtime->runFramesWaitMs = 0.0;
+    runtime->runFramesWaitCalls = 0;
+    runtime->runtimeThreadIdleWaitMs = 0.0;
+    runtime->runtimeThreadIdleWaitCalls = 0;
+    runtime->runtimeThreadFrameExecutionMs = 0.0;
+    runtime->runtimeThreadFrameExecutionCalls = 0;
+    runtime->runtimeThreadFrameSubmitMs = 0.0;
+    runtime->runtimeThreadFrameSubmitCalls = 0;
+    runtime->runtimeThreadEventPollMs = 0.0;
+    runtime->runtimeThreadEventPollCalls = 0;
+    runtime->runtimeThreadPresentMs = 0.0;
+    runtime->runtimeThreadPresentCalls = 0;
+    runtime->memorySnapshotCopyMs = 0.0;
+    runtime->memorySnapshotCopyCalls = 0;
     memset(runtime->latestFrame, 0, sizeof(runtime->latestFrame));
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
@@ -445,6 +613,7 @@ bool smolnesRuntimeRunFrames(SmolnesRuntimeHandle* runtime, uint32_t frameCount,
 
     const struct timespec deadline = buildDeadline(timeoutMs);
     while (runtime->renderedFrames < requestedFrames && runtime->threadRunning && runtime->healthy) {
+        const double waitStartMs = monotonicNowMs();
         int waitResult = 0;
         if (timeoutMs == 0) {
             waitResult = pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
@@ -452,6 +621,8 @@ bool smolnesRuntimeRunFrames(SmolnesRuntimeHandle* runtime, uint32_t frameCount,
         else {
             waitResult = pthread_cond_timedwait(&runtime->runtimeCond, &runtime->runtimeMutex, &deadline);
         }
+        runtime->runFramesWaitMs += monotonicNowMs() - waitStartMs;
+        runtime->runFramesWaitCalls++;
 
         if (waitResult == ETIMEDOUT) {
             runtime->healthy = false;
@@ -601,6 +772,33 @@ bool smolnesRuntimeCopyPrgRam(const SmolnesRuntimeHandle* runtime, uint8_t* buff
     }
 
     memcpy(buffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyProfilingSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut)
+{
+    if (runtime == NULL || snapshotOut == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    snapshotOut->run_frames_wait_ms = mutableRuntime->runFramesWaitMs;
+    snapshotOut->run_frames_wait_calls = mutableRuntime->runFramesWaitCalls;
+    snapshotOut->runtime_thread_idle_wait_ms = mutableRuntime->runtimeThreadIdleWaitMs;
+    snapshotOut->runtime_thread_idle_wait_calls = mutableRuntime->runtimeThreadIdleWaitCalls;
+    snapshotOut->runtime_thread_frame_execution_ms = mutableRuntime->runtimeThreadFrameExecutionMs;
+    snapshotOut->runtime_thread_frame_execution_calls = mutableRuntime->runtimeThreadFrameExecutionCalls;
+    snapshotOut->runtime_thread_frame_submit_ms = mutableRuntime->runtimeThreadFrameSubmitMs;
+    snapshotOut->runtime_thread_frame_submit_calls = mutableRuntime->runtimeThreadFrameSubmitCalls;
+    snapshotOut->runtime_thread_event_poll_ms = mutableRuntime->runtimeThreadEventPollMs;
+    snapshotOut->runtime_thread_event_poll_calls = mutableRuntime->runtimeThreadEventPollCalls;
+    snapshotOut->runtime_thread_present_ms = mutableRuntime->runtimeThreadPresentMs;
+    snapshotOut->runtime_thread_present_calls = mutableRuntime->runtimeThreadPresentCalls;
+    snapshotOut->memory_snapshot_copy_ms = mutableRuntime->memorySnapshotCopyMs;
+    snapshotOut->memory_snapshot_copy_calls = mutableRuntime->memorySnapshotCopyCalls;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }

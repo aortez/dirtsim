@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NesConfig.h"
+#include "core/Timers.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
@@ -77,12 +78,14 @@ public:
 
 private:
     void stopRuntime();
+    void updateRuntimeProfilingTimers(Timers& timers);
 
     ScenarioMetadata metadata_;
     Config::NesFlappyParatroopa config_;
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;
+    std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
     uint8_t controller1State_ = 0;
 };
 

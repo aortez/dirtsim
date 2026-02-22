@@ -9,6 +9,23 @@ extern "C" {
 
 typedef struct SmolnesRuntimeHandle SmolnesRuntimeHandle;
 
+typedef struct SmolnesRuntimeProfilingSnapshot {
+    double run_frames_wait_ms;
+    uint64_t run_frames_wait_calls;
+    double runtime_thread_idle_wait_ms;
+    uint64_t runtime_thread_idle_wait_calls;
+    double runtime_thread_frame_execution_ms;
+    uint64_t runtime_thread_frame_execution_calls;
+    double runtime_thread_frame_submit_ms;
+    uint64_t runtime_thread_frame_submit_calls;
+    double runtime_thread_event_poll_ms;
+    uint64_t runtime_thread_event_poll_calls;
+    double runtime_thread_present_ms;
+    uint64_t runtime_thread_present_calls;
+    double memory_snapshot_copy_ms;
+    uint64_t memory_snapshot_copy_calls;
+} SmolnesRuntimeProfilingSnapshot;
+
 #define SMOLNES_RUNTIME_FRAME_WIDTH 256u
 #define SMOLNES_RUNTIME_FRAME_HEIGHT 224u
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
@@ -44,6 +61,8 @@ bool smolnesRuntimeCopyCpuRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
+bool smolnesRuntimeCopyProfilingSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut);
 void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 

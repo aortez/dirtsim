@@ -5,6 +5,30 @@
 #define SMOLNES_TLS
 #endif
 
+#ifndef SMOLNES_FRAME_EXEC_BEGIN
+#define SMOLNES_FRAME_EXEC_BEGIN()
+#endif
+
+#ifndef SMOLNES_FRAME_EXEC_END
+#define SMOLNES_FRAME_EXEC_END()
+#endif
+
+#ifndef SMOLNES_FRAME_SUBMIT_BEGIN
+#define SMOLNES_FRAME_SUBMIT_BEGIN()
+#endif
+
+#ifndef SMOLNES_FRAME_SUBMIT_END
+#define SMOLNES_FRAME_SUBMIT_END()
+#endif
+
+#ifndef SMOLNES_EVENT_POLL_BEGIN
+#define SMOLNES_EVENT_POLL_BEGIN()
+#endif
+
+#ifndef SMOLNES_EVENT_POLL_END
+#define SMOLNES_EVENT_POLL_END()
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -286,6 +310,7 @@ int main(int argc, char **argv) {
       SDL_RENDERER_PRESENTVSYNC);
   void *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGR565,
                                     SDL_TEXTUREACCESS_STREAMING, 256, 224);
+  SMOLNES_FRAME_EXEC_BEGIN();
 
 loop:
   cycles = nomem = 0;
@@ -687,15 +712,21 @@ loop:
         if (ppuctrl & 128)
           nmi_irq = 4;
         ppustatus |= 128;
+        SMOLNES_FRAME_EXEC_END();
+        SMOLNES_FRAME_SUBMIT_BEGIN();
         // Render frame, skipping the top and bottom 8 pixels (they're often
         // garbage).
         SDL_UpdateTexture(texture, 0, frame_buffer + 2048, 512);
         SDL_RenderCopy(renderer, texture, 0, 0);
         SDL_RenderPresent(renderer);
+        SMOLNES_FRAME_SUBMIT_END();
         // Handle SDL events.
+        SMOLNES_EVENT_POLL_BEGIN();
         for (SDL_Event event; SDL_PollEvent(&event);)
           if (event.type == SDL_QUIT)
             return 0;
+        SMOLNES_EVENT_POLL_END();
+        SMOLNES_FRAME_EXEC_BEGIN();
       }
 
       // Clear ppustatus.

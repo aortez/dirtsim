@@ -17,6 +17,23 @@ public:
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
     };
 
+    struct ProfilingSnapshot {
+        double runFramesWaitMs = 0.0;
+        uint64_t runFramesWaitCalls = 0;
+        double runtimeThreadIdleWaitMs = 0.0;
+        uint64_t runtimeThreadIdleWaitCalls = 0;
+        double runtimeThreadFrameExecutionMs = 0.0;
+        uint64_t runtimeThreadFrameExecutionCalls = 0;
+        double runtimeThreadFrameSubmitMs = 0.0;
+        uint64_t runtimeThreadFrameSubmitCalls = 0;
+        double runtimeThreadEventPollMs = 0.0;
+        uint64_t runtimeThreadEventPollCalls = 0;
+        double runtimeThreadPresentMs = 0.0;
+        uint64_t runtimeThreadPresentCalls = 0;
+        double memorySnapshotCopyMs = 0.0;
+        uint64_t memorySnapshotCopyCalls = 0;
+    };
+
     SmolnesRuntime();
     ~SmolnesRuntime();
 
@@ -34,6 +51,7 @@ public:
     bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     std::optional<MemorySnapshot> copyMemorySnapshot() const;
+    std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
     std::string getLastError() const;
 
 private:

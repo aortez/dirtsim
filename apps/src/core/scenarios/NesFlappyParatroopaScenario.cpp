@@ -13,6 +13,7 @@
 #include <array>
 #include <cctype>
 #include <fstream>
+#include <limits>
 #include <system_error>
 #include <utility>
 
@@ -69,6 +70,14 @@ bool hasNesExtension(const std::filesystem::path& path)
         return static_cast<char>(std::tolower(c));
     });
     return extension == ".nes";
+}
+
+uint32_t saturateCallCount(uint64_t count)
+{
+    if (count > std::numeric_limits<uint32_t>::max()) {
+        return std::numeric_limits<uint32_t>::max();
+    }
+    return static_cast<uint32_t>(count);
 }
 
 std::filesystem::path resolveRomDirectory(const DirtSim::Config::NesFlappyParatroopa& config)
@@ -139,6 +148,7 @@ void NesFlappyParatroopaScenario::setup(World& world)
     world.getData().scenario_video_frame.reset();
     controller1State_ = 0;
     runtimeResolvedRomId_.clear();
+    lastRuntimeProfilingSnapshot_.reset();
 
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
@@ -195,6 +205,7 @@ void NesFlappyParatroopaScenario::setup(World& world)
     }
     else {
         runtime_->setController1State(controller1State_);
+        lastRuntimeProfilingSnapshot_ = runtime_->copyProfilingSnapshot();
     }
 }
 
@@ -249,6 +260,7 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
         runFramesOk = runtime_->runFrames(framesToRun, tickTimeoutMs);
     }
     if (!runFramesOk) {
+        updateRuntimeProfilingTimers(timers);
         uint64_t failureRenderedFrameCount = 0;
         {
             ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
@@ -277,6 +289,8 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     if (!copiedFrame && !hadScenarioFrame) {
         scenarioFrame.reset();
     }
+
+    updateRuntimeProfilingTimers(timers);
 }
 
 const NesRomCheckResult& NesFlappyParatroopaScenario::getLastRomCheck() const
@@ -525,6 +539,90 @@ void NesFlappyParatroopaScenario::stopRuntime()
         return;
     }
     runtime_->stop();
+    lastRuntimeProfilingSnapshot_.reset();
+}
+
+void NesFlappyParatroopaScenario::updateRuntimeProfilingTimers(Timers& timers)
+{
+    if (!runtime_) {
+        return;
+    }
+
+    const auto snapshot = runtime_->copyProfilingSnapshot();
+    if (!snapshot.has_value()) {
+        return;
+    }
+
+    if (!lastRuntimeProfilingSnapshot_.has_value()) {
+        lastRuntimeProfilingSnapshot_ = snapshot;
+        return;
+    }
+
+    const auto& previous = lastRuntimeProfilingSnapshot_.value();
+    const auto& current = snapshot.value();
+
+    const auto addDelta = [&](const char* name,
+                              double currentMs,
+                              double previousMs,
+                              uint64_t currentCalls,
+                              uint64_t previousCalls) {
+        if (currentMs < previousMs || currentCalls < previousCalls) {
+            return;
+        }
+
+        const double deltaMs = currentMs - previousMs;
+        const uint64_t deltaCalls = currentCalls - previousCalls;
+        if (deltaMs <= 0.0 || deltaCalls == 0) {
+            return;
+        }
+
+        timers.addSample(name, deltaMs, saturateCallCount(deltaCalls));
+    };
+
+    addDelta(
+        "nes_runtime_runframes_wait",
+        current.runFramesWaitMs,
+        previous.runFramesWaitMs,
+        current.runFramesWaitCalls,
+        previous.runFramesWaitCalls);
+    addDelta(
+        "nes_runtime_thread_idle_wait",
+        current.runtimeThreadIdleWaitMs,
+        previous.runtimeThreadIdleWaitMs,
+        current.runtimeThreadIdleWaitCalls,
+        previous.runtimeThreadIdleWaitCalls);
+    addDelta(
+        "nes_runtime_thread_frame_execution",
+        current.runtimeThreadFrameExecutionMs,
+        previous.runtimeThreadFrameExecutionMs,
+        current.runtimeThreadFrameExecutionCalls,
+        previous.runtimeThreadFrameExecutionCalls);
+    addDelta(
+        "nes_runtime_thread_frame_submit",
+        current.runtimeThreadFrameSubmitMs,
+        previous.runtimeThreadFrameSubmitMs,
+        current.runtimeThreadFrameSubmitCalls,
+        previous.runtimeThreadFrameSubmitCalls);
+    addDelta(
+        "nes_runtime_thread_event_poll",
+        current.runtimeThreadEventPollMs,
+        previous.runtimeThreadEventPollMs,
+        current.runtimeThreadEventPollCalls,
+        previous.runtimeThreadEventPollCalls);
+    addDelta(
+        "nes_runtime_thread_present",
+        current.runtimeThreadPresentMs,
+        previous.runtimeThreadPresentMs,
+        current.runtimeThreadPresentCalls,
+        previous.runtimeThreadPresentCalls);
+    addDelta(
+        "nes_runtime_memory_snapshot_copy",
+        current.memorySnapshotCopyMs,
+        previous.memorySnapshotCopyMs,
+        current.memorySnapshotCopyCalls,
+        previous.memorySnapshotCopyCalls);
+
+    lastRuntimeProfilingSnapshot_ = snapshot;
 }
 
 } // namespace DirtSim

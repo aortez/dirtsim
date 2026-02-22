@@ -125,6 +125,35 @@ std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot
     return snapshot;
 }
 
+std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    SmolnesRuntimeProfilingSnapshot raw{};
+    if (!smolnesRuntimeCopyProfilingSnapshot(runtimeHandle_, &raw)) {
+        return std::nullopt;
+    }
+
+    ProfilingSnapshot snapshot{};
+    snapshot.runFramesWaitMs = raw.run_frames_wait_ms;
+    snapshot.runFramesWaitCalls = raw.run_frames_wait_calls;
+    snapshot.runtimeThreadIdleWaitMs = raw.runtime_thread_idle_wait_ms;
+    snapshot.runtimeThreadIdleWaitCalls = raw.runtime_thread_idle_wait_calls;
+    snapshot.runtimeThreadFrameExecutionMs = raw.runtime_thread_frame_execution_ms;
+    snapshot.runtimeThreadFrameExecutionCalls = raw.runtime_thread_frame_execution_calls;
+    snapshot.runtimeThreadFrameSubmitMs = raw.runtime_thread_frame_submit_ms;
+    snapshot.runtimeThreadFrameSubmitCalls = raw.runtime_thread_frame_submit_calls;
+    snapshot.runtimeThreadEventPollMs = raw.runtime_thread_event_poll_ms;
+    snapshot.runtimeThreadEventPollCalls = raw.runtime_thread_event_poll_calls;
+    snapshot.runtimeThreadPresentMs = raw.runtime_thread_present_ms;
+    snapshot.runtimeThreadPresentCalls = raw.runtime_thread_present_calls;
+    snapshot.memorySnapshotCopyMs = raw.memory_snapshot_copy_ms;
+    snapshot.memorySnapshotCopyCalls = raw.memory_snapshot_copy_calls;
+    return snapshot;
+}
+
 std::string SmolnesRuntime::getLastError() const
 {
     if (runtimeHandle_ == nullptr) {
