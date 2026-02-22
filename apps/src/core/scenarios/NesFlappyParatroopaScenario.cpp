@@ -237,9 +237,13 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
         return;
     }
 
-    auto frame = runtime_->copyLatestFrame();
-    if (frame.has_value()) {
-        world.getData().scenario_video_frame = std::move(frame.value());
+    auto& scenarioFrame = world.getData().scenario_video_frame;
+    const bool hadScenarioFrame = scenarioFrame.has_value();
+    if (!hadScenarioFrame) {
+        scenarioFrame.emplace();
+    }
+    if (!runtime_->copyLatestFrameInto(scenarioFrame.value()) && !hadScenarioFrame) {
+        scenarioFrame.reset();
     }
 }
 

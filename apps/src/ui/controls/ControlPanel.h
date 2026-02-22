@@ -118,7 +118,7 @@ private:
      * @brief Send scenario config update to DSSM.
      * @param config Updated configuration.
      */
-    void sendConfigUpdate(const ScenarioConfig& config);
+    void sendConfigUpdate(const Config::Sandbox& config);
 
     /**
      * @brief Send debug toggle update to DSSM.

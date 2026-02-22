@@ -31,6 +31,7 @@ public:
     bool isHealthy() const;
     bool isRunning() const;
     uint64_t getRenderedFrameCount() const;
+    bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     std::optional<MemorySnapshot> copyMemorySnapshot() const;
     std::string getLastError() const;

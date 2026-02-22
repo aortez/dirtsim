@@ -79,25 +79,31 @@ uint64_t SmolnesRuntime::getRenderedFrameCount() const
     return smolnesRuntimeGetRenderedFrameCount(runtimeHandle_);
 }
 
-std::optional<ScenarioVideoFrame> SmolnesRuntime::copyLatestFrame() const
+bool SmolnesRuntime::copyLatestFrameInto(ScenarioVideoFrame& frame) const
 {
     if (runtimeHandle_ == nullptr) {
-        return std::nullopt;
+        return false;
     }
 
-    ScenarioVideoFrame frame;
     frame.width = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_WIDTH);
     frame.height = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_HEIGHT);
-    frame.pixels.resize(SMOLNES_RUNTIME_FRAME_BYTES);
-
-    if (!smolnesRuntimeCopyLatestFrame(
-            runtimeHandle_,
-            reinterpret_cast<uint8_t*>(frame.pixels.data()),
-            static_cast<uint32_t>(frame.pixels.size()),
-            &frame.frame_id)) {
-        return std::nullopt;
+    if (frame.pixels.size() != SMOLNES_RUNTIME_FRAME_BYTES) {
+        frame.pixels.resize(SMOLNES_RUNTIME_FRAME_BYTES);
     }
 
+    return smolnesRuntimeCopyLatestFrame(
+        runtimeHandle_,
+        reinterpret_cast<uint8_t*>(frame.pixels.data()),
+        static_cast<uint32_t>(frame.pixels.size()),
+        &frame.frame_id);
+}
+
+std::optional<ScenarioVideoFrame> SmolnesRuntime::copyLatestFrame() const
+{
+    ScenarioVideoFrame frame;
+    if (!copyLatestFrameInto(frame)) {
+        return std::nullopt;
+    }
     return frame;
 }
 
