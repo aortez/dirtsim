@@ -973,6 +973,12 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     for (int i = 0; i < 6; ++i) {
         scriptedInputs.push_back(DuckInput{ .move = { 0.0f, 0.0f }, .jump = false });
     }
+    for (int i = 0; i < 6; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { 0.2f, 0.0f }, .jump = false });
+    }
+    for (int i = 0; i < 6; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { -0.2f, 0.0f }, .jump = false });
+    }
     for (int i = 0; i < 8; ++i) {
         scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false });
     }
@@ -980,7 +986,10 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
         scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false });
     }
     for (int i = 0; i < 3; ++i) {
-        scriptedInputs.push_back(DuckInput{ .move = { 0.0f, 0.0f }, .jump = true });
+        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = true });
+    }
+    for (int i = 0; i < 3; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = true });
     }
 
     const std::string brainKind = "ScriptedDuckHistogram";
@@ -1023,8 +1032,12 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     ASSERT_FALSE(outcomes.empty());
 
     bool foundWait = false;
+    bool foundWalkLeft = false;
+    bool foundWalkRight = false;
     bool foundRunLeft = false;
     bool foundRunRight = false;
+    bool foundJumpLeft = false;
+    bool foundJumpRight = false;
     for (const auto& [signature, count] : commands) {
         if (signature == "Wait" && count > 0) {
             foundWait = true;
@@ -1035,11 +1048,27 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
         if (signature == "RunRight" && count > 0) {
             foundRunRight = true;
         }
+        if (signature == "WalkLeft" && count > 0) {
+            foundWalkLeft = true;
+        }
+        if (signature == "WalkRight" && count > 0) {
+            foundWalkRight = true;
+        }
+        if (signature == "JumpLeft" && count > 0) {
+            foundJumpLeft = true;
+        }
+        if (signature == "JumpRight" && count > 0) {
+            foundJumpRight = true;
+        }
     }
 
     EXPECT_TRUE(foundWait);
+    EXPECT_TRUE(foundWalkLeft);
+    EXPECT_TRUE(foundWalkRight);
     EXPECT_TRUE(foundRunLeft);
     EXPECT_TRUE(foundRunRight);
+    EXPECT_TRUE(foundJumpLeft);
+    EXPECT_TRUE(foundJumpRight);
 }
 
 TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)

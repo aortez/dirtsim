@@ -45,18 +45,37 @@ static constexpr float SPARKLE_IMPULSE = 3.0f;  // Max random impulse magnitude.
 static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f; // Chance per frame of impulse.
 static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (cells/sec^2).
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
+static constexpr float WALK_RUN_SPLIT_THRESHOLD =
+    0.4f; // Horizontal input magnitude at or below this is walk; above is run.
+static constexpr float MOVE_INPUT_DEADZONE = 0.01f; // Ignore tiny horizontal input as no movement.
 
 std::string duckCommandSignature(const DirtSim::DuckInput& input)
 {
     if (input.jump) {
+        if (input.move.x < -MOVE_INPUT_DEADZONE) {
+            return "JumpLeft";
+        }
+
+        if (input.move.x > MOVE_INPUT_DEADZONE) {
+            return "JumpRight";
+        }
+
         return "Jump";
     }
 
-    if (input.move.x < -0.01f) {
+    const float moveX = input.move.x;
+    const float absMoveX = std::fabs(moveX);
+    if (moveX < -MOVE_INPUT_DEADZONE) {
+        if (absMoveX <= WALK_RUN_SPLIT_THRESHOLD) {
+            return "WalkLeft";
+        }
         return "RunLeft";
     }
 
-    if (input.move.x > 0.01f) {
+    if (moveX > MOVE_INPUT_DEADZONE) {
+        if (absMoveX <= WALK_RUN_SPLIT_THRESHOLD) {
+            return "WalkRight";
+        }
         return "RunRight";
     }
 
