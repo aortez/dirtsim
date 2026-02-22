@@ -256,7 +256,7 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     }
 
     const auto elapsed = now - lastProgressRateLog_;
-    if (elapsed >= std::chrono::seconds(1)) {
+    if (elapsed >= std::chrono::seconds(10)) {
         const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
         const double rate = elapsedSeconds > 0.0 ? (progressEventCount_ / elapsedSeconds) : 0.0;
         LOG_INFO(State, "Training progress rate: {:.1f} msgs/s", rate);
