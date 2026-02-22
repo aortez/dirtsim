@@ -467,6 +467,56 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
+TEST_F(TrainingRunnerTest, TrainingBrainDefaultsExposeNesFlappyBirdMapping)
+{
+    const std::optional<TrainingBrainDefaults> defaults =
+        getTrainingBrainDefaults(TrainingBrainKind::NesFlappyBird);
+    ASSERT_TRUE(defaults.has_value());
+    EXPECT_EQ(defaults->defaultScenarioId, Scenario::EnumType::Nes);
+    ASSERT_TRUE(defaults->defaultNesRomId.has_value());
+    EXPECT_EQ(defaults->defaultNesRomId.value(), "flappy-paratroopa-world-unl");
+}
+
+TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenEntry)
+{
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+    ASSERT_NE(entry, nullptr);
+    EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
+    EXPECT_TRUE(entry->requiresGenome);
+    ASSERT_TRUE(entry->createRandomGenome);
+    ASSERT_TRUE(entry->isGenomeCompatible);
+
+    const Genome genome = entry->createRandomGenome(rng_);
+    EXPECT_TRUE(entry->isGenomeCompatible(genome));
+}
+
+TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Nes;
+    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
+    individual.scenarioId = Scenario::EnumType::Nes;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    const auto status = runner.step(0);
+
+    EXPECT_EQ(runner.getOrganism(), nullptr);
+    EXPECT_EQ(status.nesFramesSurvived, 0u);
+    EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
 // Proves we can finish and get results.
 TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 {

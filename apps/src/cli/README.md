@@ -245,6 +245,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canResetUserSettings
 ./build-debug/bin/cli functional-test canPersistUserSettingsAcrossRestart
 ./build-debug/bin/cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario
+./build-debug/bin/cli functional-test canControlNesScenario
 ./build-debug/bin/cli functional-test canApplyClockTimezoneFromUserSettings
 ./build-debug/bin/cli functional-test canPlaySynthKeys
 ./build-debug/bin/cli functional-test verifyTraining
@@ -277,6 +278,7 @@ Run a minimal UI/server workflow check against a running system:
 - For canResetUserSettings: changes settings, runs UserSettingsReset, and verifies defaults are restored.
 - For canPersistUserSettingsAcrossRestart: updates settings, restarts services, and verifies settings persisted.
 - For canUseDefaultScenarioWhenSimRunHasNoScenario: sets default scenario and verifies UI SimRun (without scenario_id) uses it.
+- For canControlNesScenario: starts NES scenario, verifies timestep advances, sets Start via server `NesInputSet`, then releases it.
 - For canApplyClockTimezoneFromUserSettings: sets timezone, runs Clock scenario, and verifies pushed Clock config uses the setting.
 - For canPlaySynthKeys: opens the Synth screen and sends programmatic key press/release events via UI API, verifying state details.
 

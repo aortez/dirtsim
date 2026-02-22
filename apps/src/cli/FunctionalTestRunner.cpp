@@ -10,6 +10,7 @@
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
 #include "server/api/GenomeDelete.h"
+#include "server/api/NesInputSet.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SimRun.h"
 #include "server/api/SimStop.h"
@@ -195,6 +196,41 @@ Result<Api::StatusGet::Okay, std::string> waitForServerState(
             }
             return Result<Api::StatusGet::Okay, std::string>::error(
                 "Timeout waiting for server state '" + expectedState + "'");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<Api::StatusGet::Okay, std::string> waitForServerTimestepAdvance(
+    Network::WebSocketService& client, int32_t previousTimestep, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 100;
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
+    std::string lastError;
+
+    while (true) {
+        auto result = requestServerStatus(client, requestTimeoutMs);
+        if (result.isError()) {
+            lastError = result.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<Api::StatusGet::Okay, std::string>::error(lastError);
+            }
+        }
+        else if (result.value().timestep > previousTimestep) {
+            return result;
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            if (!lastError.empty()) {
+                return Result<Api::StatusGet::Okay, std::string>::error(lastError);
+            }
+            return Result<Api::StatusGet::Okay, std::string>::error(
+                "Timeout waiting for server timestep to advance");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -635,7 +671,8 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     const std::string& uiAddress,
     const std::string& serverAddress,
     int timeoutMs,
-    int maxGenerations)
+    int maxGenerations,
+    const std::optional<UiApi::TrainingStart::Command>& trainingStartOverride = std::nullopt)
 {
     Network::WebSocketService uiClient;
     std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
@@ -753,16 +790,21 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     }
 
     UiApi::TrainingStart::Command trainCmd;
-    trainCmd.evolution.populationSize = 2;
-    trainCmd.evolution.maxGenerations = maxGenerations;
-    trainCmd.evolution.maxSimulationTime = 0.1;
-    trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
-    trainCmd.training.organismType = OrganismType::TREE;
-    PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
-    population.count = trainCmd.evolution.populationSize;
-    population.randomCount = trainCmd.evolution.populationSize;
-    trainCmd.training.population = { population };
+    if (trainingStartOverride.has_value()) {
+        trainCmd = trainingStartOverride.value();
+    }
+    else {
+        trainCmd.evolution.populationSize = 2;
+        trainCmd.evolution.maxGenerations = maxGenerations;
+        trainCmd.evolution.maxSimulationTime = 0.1;
+        trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
+        trainCmd.training.organismType = OrganismType::TREE;
+        PopulationSpec population;
+        population.brainKind = TrainingBrainKind::NeuralNet;
+        population.count = trainCmd.evolution.populationSize;
+        population.randomCount = trainCmd.evolution.populationSize;
+        trainCmd.training.population = { population };
+    }
 
     auto trainResult = unwrapResponse(
         uiClient.sendCommandAndGetResponse<UiApi::TrainingStart::Okay>(trainCmd, timeoutMs));
@@ -1189,6 +1231,83 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
 
     return FunctionalTestSummary{
         .name = "canTrain",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::move(trainingSummary),
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    std::optional<FunctionalTrainingSummary> trainingSummary;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        UiApi::TrainingStart::Command trainCmd;
+        trainCmd.evolution.populationSize = 2;
+        trainCmd.evolution.maxParallelEvaluations = 4;
+        trainCmd.evolution.maxGenerations = 1;
+        trainCmd.evolution.maxSimulationTime = 0.1;
+        trainCmd.training.scenarioId = Scenario::EnumType::Nes;
+        trainCmd.training.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+        PopulationSpec population;
+        population.scenarioId = Scenario::EnumType::Nes;
+        population.brainKind = TrainingBrainKind::NesFlappyBird;
+        population.count = trainCmd.evolution.populationSize;
+        population.randomCount = trainCmd.evolution.populationSize;
+        trainCmd.training.population = { population };
+
+        const auto trainingResult =
+            runTrainingSession(uiAddress, serverAddress, timeoutMs, 1, trainCmd);
+        if (trainingResult.isError()) {
+            return Result<std::monostate, std::string>::error(trainingResult.errorValue());
+        }
+
+        const auto& summary = trainingResult.value();
+        if (summary.scenario_id != Scenario::toString(Scenario::EnumType::Nes)) {
+            return Result<std::monostate, std::string>::error(
+                "Expected NES scenario summary, got " + summary.scenario_id);
+        }
+        if (summary.primary_brain_kind != TrainingBrainKind::NesFlappyBird) {
+            return Result<std::monostate, std::string>::error(
+                "Expected primary brain kind NesFlappyBird, got " + summary.primary_brain_kind);
+        }
+        if (summary.organism_type != static_cast<int>(OrganismType::NES_FLAPPY_BIRD)) {
+            return Result<std::monostate, std::string>::error(
+                "Expected organism type NES_FLAPPY_BIRD for NES training summary");
+        }
+
+        trainingSummary = summary;
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canTrainNesFlappy",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,
@@ -2348,6 +2467,197 @@ FunctionalTestSummary FunctionalTestRunner::runCanUseDefaultScenarioWhenSimRunHa
 
     return FunctionalTestSummary{
         .name = "canUseDefaultScenarioWhenSimRunHasNoScenario",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanControlNesScenario(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiReadyResult = ensureUiInStartMenu(uiClient, timeoutMs);
+        if (uiReadyResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiReadyResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (serverConnectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        UiApi::SimRun::Command simRunCmd{
+            .scenario_id = Scenario::EnumType::Nes,
+        };
+        auto simRunResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimRun::Okay>(simRunCmd, timeoutMs));
+        if (simRunResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SimRun failed: " + simRunResult.errorValue());
+        }
+
+        auto uiRunningResult = waitForUiState(uiClient, "SimRunning", timeoutMs);
+        if (uiRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiRunningResult.errorValue());
+        }
+
+        auto serverRunningResult = waitForServerState(serverClient, "SimRunning", timeoutMs);
+        if (serverRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverRunningResult.errorValue());
+        }
+
+        auto scenarioResult =
+            waitForServerScenario(serverClient, Scenario::EnumType::Nes, timeoutMs);
+        if (scenarioResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(scenarioResult.errorValue());
+        }
+
+        auto baselineStatusResult = requestServerStatus(serverClient, timeoutMs);
+        if (baselineStatusResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server StatusGet failed: " + baselineStatusResult.errorValue());
+        }
+
+        auto advanceBeforeInput = waitForServerTimestepAdvance(
+            serverClient, baselineStatusResult.value().timestep, timeoutMs);
+        if (advanceBeforeInput.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(advanceBeforeInput.errorValue());
+        }
+
+        constexpr uint8_t kNesButtonStart = 1u << 3;
+        Api::NesInputSet::Command pressStartCmd{ .controller1_mask = kNesButtonStart };
+        auto pressStartResult =
+            unwrapResponse(serverClient.sendCommandAndGetResponse<Api::NesInputSet::OkayType>(
+                pressStartCmd, timeoutMs));
+        if (pressStartResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "NesInputSet press failed: " + pressStartResult.errorValue());
+        }
+
+        auto advanceAfterPress = waitForServerTimestepAdvance(
+            serverClient, advanceBeforeInput.value().timestep, timeoutMs);
+        if (advanceAfterPress.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(advanceAfterPress.errorValue());
+        }
+
+        Api::NesInputSet::Command releaseCmd{ .controller1_mask = 0 };
+        auto releaseResult =
+            unwrapResponse(serverClient.sendCommandAndGetResponse<Api::NesInputSet::OkayType>(
+                releaseCmd, timeoutMs));
+        if (releaseResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "NesInputSet release failed: " + releaseResult.errorValue());
+        }
+
+        auto advanceAfterRelease = waitForServerTimestepAdvance(
+            serverClient, advanceAfterPress.value().timestep, timeoutMs);
+        if (advanceAfterRelease.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(advanceAfterRelease.errorValue());
+        }
+
+        if (!advanceAfterRelease.value().scenario_id.has_value()
+            || advanceAfterRelease.value().scenario_id.value() != Scenario::EnumType::Nes) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server scenario changed unexpectedly while controlling NES");
+        }
+
+        UiApi::SimStop::Command simStopCmd{};
+        auto stopResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+        if (stopResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SimStop failed: " + stopResult.errorValue());
+        }
+
+        auto uiStartMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+        if (uiStartMenuResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiStartMenuResult.errorValue());
+        }
+
+        auto serverIdleAfterStop = waitForServerState(serverClient, "Idle", timeoutMs);
+        if (serverIdleAfterStop.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleAfterStop.errorValue());
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canControlNesScenario",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

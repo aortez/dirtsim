@@ -441,6 +441,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             // Copy entities (duck, sparkle, etc.).
             worldData.entities = renderMsg.entities;
 
+            // Copy scenario-native video frame if present.
+            worldData.scenario_video_frame = renderMsg.scenario_video_frame;
+
             // Create UiUpdateEvent and queue to EventSink.
             auto now = std::chrono::steady_clock::now();
             UiUpdateEvent evt{ .sequenceNum = 0,

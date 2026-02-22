@@ -12,6 +12,39 @@
 
 namespace DirtSim {
 
+namespace {
+constexpr size_t kNesFlappyObservationCount = 66;
+constexpr size_t kNesFlappyButtonCount = 8;
+constexpr size_t kNesFlappyGenomeWeightCount =
+    (kNesFlappyObservationCount * kNesFlappyButtonCount) + kNesFlappyButtonCount;
+} // namespace
+
+std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind)
+{
+    if (brainKind == TrainingBrainKind::NeuralNet) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::TreeGermination,
+            .defaultNesRomId = std::nullopt,
+        };
+    }
+    if (brainKind == TrainingBrainKind::DuckNeuralNetRecurrent
+        || brainKind == TrainingBrainKind::Random || brainKind == TrainingBrainKind::WallBouncing
+        || brainKind == TrainingBrainKind::DuckBrain2) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::Clock,
+            .defaultNesRomId = std::nullopt,
+        };
+    }
+    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::Nes,
+            .defaultNesRomId = std::string{ "flappy-paratroopa-world-unl" },
+        };
+    }
+
+    return std::nullopt;
+}
+
 void TrainingBrainRegistry::registerBrain(
     OrganismType organismType,
     const std::string& brainKind,
@@ -19,7 +52,14 @@ void TrainingBrainRegistry::registerBrain(
     BrainRegistryEntry entry)
 {
     DIRTSIM_ASSERT(!brainKind.empty(), "TrainingBrainRegistry: brainKind must not be empty");
-    DIRTSIM_ASSERT(entry.spawn, "TrainingBrainRegistry: spawn function must be set");
+    if (entry.controlMode == BrainRegistryEntry::ControlMode::OrganismDriven) {
+        DIRTSIM_ASSERT(entry.spawn, "TrainingBrainRegistry: spawn function must be set");
+    }
+    else {
+        DIRTSIM_ASSERT(
+            !entry.spawn,
+            "TrainingBrainRegistry: spawn function must be unset for scenario-driven brains");
+    }
     if (entry.requiresGenome) {
         DIRTSIM_ASSERT(
             entry.createRandomGenome, "TrainingBrainRegistry: requiresGenome requires generator");
@@ -210,6 +250,30 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+        });
+
+    registry.registerBrain(
+        OrganismType::NES_FLAPPY_BIRD,
+        TrainingBrainKind::NesFlappyBird,
+        "",
+        BrainRegistryEntry{
+            .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
+            .requiresGenome = true,
+            .allowsMutation = true,
+            .spawn = nullptr,
+            .createRandomGenome =
+                [](std::mt19937& rng) {
+                    Genome genome(kNesFlappyGenomeWeightCount);
+                    std::normal_distribution<WeightType> dist(0.0f, 0.15f);
+                    for (auto& weight : genome.weights) {
+                        weight = dist(rng);
+                    }
+                    return genome;
+                },
+            .isGenomeCompatible =
+                [](const Genome& genome) {
+                    return genome.weights.size() == kNesFlappyGenomeWeightCount;
+                },
         });
 
     return registry;

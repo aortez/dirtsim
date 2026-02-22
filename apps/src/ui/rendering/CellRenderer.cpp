@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>   // for std::round
+#include <cstddef> // for std::to_integer
 #include <cstring> // for std::memcpy
 #include <new>     // for std::bad_alloc
 #include <spdlog/spdlog.h>
@@ -239,6 +240,77 @@ static void applyBilinearFilter(uint32_t* pixels, uint32_t width, uint32_t heigh
 static lv_color_t getLitColor(uint32_t rgba)
 {
     return lv_color_hex((rgba >> 8) & 0xFFFFFF);
+}
+
+static uint32_t rgb565ToArgb8888(uint16_t value)
+{
+    const uint8_t red5 = static_cast<uint8_t>((value >> 11) & 0x1F);
+    const uint8_t green6 = static_cast<uint8_t>((value >> 5) & 0x3F);
+    const uint8_t blue5 = static_cast<uint8_t>(value & 0x1F);
+
+    const uint8_t red8 = static_cast<uint8_t>((red5 << 3) | (red5 >> 2));
+    const uint8_t green8 = static_cast<uint8_t>((green6 << 2) | (green6 >> 4));
+    const uint8_t blue8 = static_cast<uint8_t>((blue5 << 3) | (blue5 >> 2));
+
+    return 0xFF000000u | (static_cast<uint32_t>(red8) << 16) | (static_cast<uint32_t>(green8) << 8)
+        | static_cast<uint32_t>(blue8);
+}
+
+static bool renderScenarioVideoFrameToCanvas(
+    const ScenarioVideoFrame& frame, uint32_t* pixels, uint32_t canvasWidth, uint32_t canvasHeight)
+{
+    if (pixels == nullptr || canvasWidth == 0 || canvasHeight == 0 || frame.width == 0
+        || frame.height == 0) {
+        return false;
+    }
+
+    const size_t expectedBytes =
+        static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 2u;
+    if (frame.pixels.size() != expectedBytes) {
+        return false;
+    }
+
+    // Clear destination before drawing scaled frame with letterbox bars.
+    std::fill(pixels, pixels + (static_cast<size_t>(canvasWidth) * canvasHeight), 0xFF000000u);
+
+    const double scaleX = static_cast<double>(canvasWidth) / static_cast<double>(frame.width);
+    const double scaleY = static_cast<double>(canvasHeight) / static_cast<double>(frame.height);
+    const double scale = std::min(scaleX, scaleY);
+    if (scale <= 0.0) {
+        return false;
+    }
+
+    const uint32_t drawWidth =
+        std::max<uint32_t>(1u, static_cast<uint32_t>(std::round(frame.width * scale)));
+    const uint32_t drawHeight =
+        std::max<uint32_t>(1u, static_cast<uint32_t>(std::round(frame.height * scale)));
+
+    const uint32_t offsetX = (canvasWidth - drawWidth) / 2u;
+    const uint32_t offsetY = (canvasHeight - drawHeight) / 2u;
+
+    for (uint32_t y = 0; y < drawHeight; ++y) {
+        const uint32_t srcY = std::min<uint32_t>(
+            static_cast<uint32_t>((static_cast<uint64_t>(y) * frame.height) / drawHeight),
+            frame.height - 1);
+        const uint32_t dstY = offsetY + y;
+        const size_t dstRowStart = static_cast<size_t>(dstY) * canvasWidth + offsetX;
+
+        for (uint32_t x = 0; x < drawWidth; ++x) {
+            const uint32_t srcX = std::min<uint32_t>(
+                static_cast<uint32_t>((static_cast<uint64_t>(x) * frame.width) / drawWidth),
+                frame.width - 1);
+            const size_t srcOffset =
+                (static_cast<size_t>(srcY) * frame.width + srcX) * static_cast<size_t>(2u);
+
+            const uint16_t rgb565 = static_cast<uint16_t>(
+                std::to_integer<uint8_t>(frame.pixels[srcOffset])
+                | (static_cast<uint16_t>(std::to_integer<uint8_t>(frame.pixels[srcOffset + 1]))
+                   << 8));
+            pixels[dstRowStart + x] = rgb565ToArgb8888(rgb565);
+        }
+    }
+
+    return true;
 }
 
 CellRenderer::~CellRenderer()
@@ -590,6 +662,22 @@ void CellRenderer::renderWorldData(
 
     // Clear buffer
     std::fill(canvasBuffer_.begin(), canvasBuffer_.end(), 0);
+
+    // Scenario-native video frame path (e.g., NES). This bypasses cell rendering and draws
+    // the frame directly with nearest-neighbor scaling and letterboxing.
+    if (worldData.scenario_video_frame.has_value()) {
+        uint32_t* pixels = reinterpret_cast<uint32_t*>(canvasBuffer_.data());
+        if (!renderScenarioVideoFrameToCanvas(
+                worldData.scenario_video_frame.value(), pixels, canvasWidth_, canvasHeight_)) {
+            spdlog::debug(
+                "CellRenderer: Invalid scenario video frame payload ({}x{}, {} bytes)",
+                worldData.scenario_video_frame->width,
+                worldData.scenario_video_frame->height,
+                worldData.scenario_video_frame->pixels.size());
+        }
+        lv_obj_invalidate(worldCanvas_);
+        return;
+    }
 
     // With transform scaling, world fills canvas exactly - no offset needed.
     int32_t renderOffsetX = 0;

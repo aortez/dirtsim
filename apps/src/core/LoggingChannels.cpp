@@ -293,7 +293,7 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
                 { "level", "debug" },
                 { "path", "dirtsim.log" },
                 { "truncate", true },
-                { "max_size_mb", 100 },
+                { "max_size_mb", 10 },
                 { "max_files", 3 } } },
 #endif
             { "specialized",
@@ -382,7 +382,9 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
               { { "enabled", true },
                 { "level", "debug" },
                 { "path", "dirtsim.log" },
-                { "truncate", true } } } } },
+                { "truncate", true },
+                { "max_size_mb", 10 },
+                { "max_files", 3 } } } } },
 #endif
         { "channels",
           { { "brain", "info" },
@@ -532,7 +534,7 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
                     // Use rotating sink if max_size_mb is specified, otherwise basic sink.
                     std::shared_ptr<spdlog::sinks::sink> file_sink;
                     if (fileCfg.contains("max_size_mb")) {
-                        size_t maxSizeMB = fileCfg.value("max_size_mb", 100);
+                        size_t maxSizeMB = fileCfg.value("max_size_mb", 10);
                         size_t maxFiles = fileCfg.value("max_files", 3);
                         size_t maxSizeBytes = maxSizeMB * 1024 * 1024;
                         file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(

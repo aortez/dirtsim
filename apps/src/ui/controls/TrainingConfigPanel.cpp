@@ -315,7 +315,7 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
     const int32_t initialGenerations = evolutionConfig_.maxGenerations;
     generationsStepper_ = LVGLBuilder::actionStepper(parent)
                               .label("Generations")
-                              .range(1, 1000)
+                              .range(0, 1000)
                               .step(initialGenerations <= 10 ? 1 : 10)
                               .value(initialGenerations)
                               .valueFormat("%.0f")

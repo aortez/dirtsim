@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 
 #include <functional>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -20,7 +22,15 @@ inline constexpr const char* Random = "Random";
 inline constexpr const char* WallBouncing = "WallBouncing";
 inline constexpr const char* DuckBrain2 = "DuckBrain2";
 inline constexpr const char* DuckNeuralNetRecurrent = "DuckNeuralNetRecurrent";
+inline constexpr const char* NesFlappyBird = "NesFlappyBird";
 } // namespace TrainingBrainKind
+
+struct TrainingBrainDefaults {
+    Scenario::EnumType defaultScenarioId = Scenario::EnumType::TreeGermination;
+    std::optional<std::string> defaultNesRomId = std::nullopt;
+};
+
+std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind);
 
 struct BrainRegistryKey {
     OrganismType organismType = OrganismType::TREE;
@@ -45,6 +55,12 @@ struct BrainRegistryKeyHash {
 };
 
 struct BrainRegistryEntry {
+    enum class ControlMode : uint8_t {
+        OrganismDriven = 0,
+        ScenarioDriven = 1,
+    };
+
+    ControlMode controlMode = ControlMode::OrganismDriven;
     bool requiresGenome = false;
     bool allowsMutation = false;
     std::function<OrganismId(World& world, uint32_t x, uint32_t y, const Genome* genome)> spawn;

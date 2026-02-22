@@ -83,6 +83,9 @@ const DEPLOY_ASSETS = [
     remote: '/usr/share/fonts/fontawesome/fa-solid-900.ttf',
   },
 ];
+const NES_ROM_FIXTURE_DIR = join(APPS_DIR, 'testdata/roms');
+const NES_ROM_REMOTE_DIR = '/data/dirtsim/testdata/roms';
+const FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS = 45000;
 
 // Systemd service files to install/update on x86 targets during fast deploy.
 // x86 targets do not get their rootfs replaced, so service file changes need to be copied explicitly.
@@ -174,6 +177,43 @@ function runCapture(command, options = {}) {
   } catch {
     return '';
   }
+}
+
+function runCaptureWithStatus(command, options = {}) {
+  try {
+    const output = execSync(command, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
+      .toString()
+      .trim();
+    return { ok: true, output };
+  } catch (err) {
+    const stdout = err?.stdout ? err.stdout.toString() : '';
+    const stderr = err?.stderr ? err.stderr.toString() : '';
+    const output = `${stdout}${stderr}`.trim();
+    return { ok: false, output };
+  }
+}
+
+function parseTrailingJsonObject(output) {
+  if (!output) {
+    return null;
+  }
+  const lines = output
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (let idx = lines.length - 1; idx >= 0; idx -= 1) {
+    const line = lines[idx];
+    if (!line.startsWith('{') || !line.endsWith('}')) {
+      continue;
+    }
+    try {
+      return JSON.parse(line);
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function getSshIdentity() {
@@ -554,6 +594,38 @@ async function waitForSystemStatusOk(remoteTarget, remoteHost, timeoutSec = 120)
   return false;
 }
 
+function runFastDeployFunctionalTest(remoteTarget, testName, timeoutMs) {
+  info(`Running functional test (${testName})...`);
+  const remoteCommand =
+    `dirtsim-cli functional-test ${testName} ` +
+    `--timeout ${timeoutMs} ` +
+    '--ui-address ws://localhost:7070 ' +
+    '--server-address ws://localhost:8080 ' +
+    '--os-manager-address ws://localhost:9090 2>&1';
+
+  const result = runCaptureWithStatus(
+    `ssh ${buildSshOptions()} ${remoteTarget} "${remoteCommand}"`
+  );
+  const parsed = parseTrailingJsonObject(result.output);
+
+  if (!parsed) {
+    error(`Functional test ${testName} did not produce JSON output.`);
+    if (result.output) {
+      warn(result.output);
+    }
+    return false;
+  }
+
+  if (parsed?.result?.success !== true) {
+    const errorMessage = parsed?.result?.error || 'unknown error';
+    error(`Functional test ${testName} failed: ${errorMessage}`);
+    return false;
+  }
+
+  success(`Functional test ${testName} passed.`);
+  return true;
+}
+
 /**
  * Fast deploy: ninja build + scp binaries + restart services.
  * Skips rootfs regeneration, image creation, and flash/reboot.
@@ -891,6 +963,46 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     }
   }
 
+  // Deploy NES ROM fixtures used by runtime tests.
+  banner('Deploying NES ROM fixtures...', consola);
+
+  const romInstallCmds = [];
+  const romFixtures = existsSync(NES_ROM_FIXTURE_DIR)
+    ? readdirSync(NES_ROM_FIXTURE_DIR, { withFileTypes: true })
+        .filter(entry => entry.isFile() && entry.name.endsWith('.nes'))
+        .map(entry => ({
+          name: entry.name,
+          local: join(NES_ROM_FIXTURE_DIR, entry.name),
+          remote: `${NES_ROM_REMOTE_DIR}/${entry.name}`,
+        }))
+    : [];
+
+  if (romFixtures.length === 0) {
+    info('No NES ROM fixtures found');
+  } else {
+    romInstallCmds.push(`sudo mkdir -p ${NES_ROM_REMOTE_DIR}`);
+    for (const rom of romFixtures) {
+      info(`${rom.name} → ${rom.remote}`);
+      if (!dryRun) {
+        try {
+          execSync(
+            `scp ${buildScpOptions()} "${rom.local}" "${remoteTarget}:${remoteStageDir}/${rom.name}"`,
+            { stdio: 'pipe' },
+          );
+          romInstallCmds.push(`sudo cp ${remoteStageDir}/${rom.name} ${rom.remote}`);
+          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${rom.remote}`);
+          success(`${rom.name} transferred`);
+        } catch (err) {
+          error(`Failed to transfer ${rom.name}`);
+          error(err.message);
+          process.exit(1);
+        }
+      } else {
+        info(`Would scp ${rom.local} to ${remoteTarget}:${remoteStageDir}/${rom.name}`);
+      }
+    }
+  }
+
   // Stop services, copy binaries, start services.
   banner('Restarting services...', consola);
 
@@ -918,6 +1030,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
         execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${assetInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
       }
 
+      if (romInstallCmds.length > 0) {
+        info('Installing NES ROM fixtures...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${romInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
+      }
+
       if (systemdInstallCmds.length > 0) {
         info('Installing systemd services...');
         execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${systemdInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
@@ -940,6 +1057,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     const statusOk = await waitForSystemStatusOk(remoteTarget, remoteHost, 120);
     if (!statusOk) {
       error('SystemStatus check failed after fast deploy.');
+      process.exit(1);
+    }
+
+    const nesControlTestOk = runFastDeployFunctionalTest(
+      remoteTarget,
+      'canControlNesScenario',
+      FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS
+    );
+    if (!nesControlTestOk) {
+      error('NES control functional test failed after fast deploy.');
       process.exit(1);
     }
 

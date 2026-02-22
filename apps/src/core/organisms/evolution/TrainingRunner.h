@@ -8,6 +8,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
@@ -48,6 +49,9 @@ public:
         int commandsAccepted = 0;
         int commandsRejected = 0;
         int idleCancels = 0;
+        uint64_t nesFramesSurvived = 0;
+        double nesRewardTotal = 0.0;
+        uint8_t nesControllerMask = 0;
     };
 
     struct BrainSpec {
@@ -109,6 +113,21 @@ public:
     bool isOrganismAlive() const;
 
 private:
+    static constexpr int NES_POLICY_DOWNSAMPLED_WIDTH = 8;
+    static constexpr int NES_POLICY_DOWNSAMPLED_HEIGHT = 8;
+    static constexpr int NES_POLICY_EXTRA_FEATURE_COUNT = 2;
+    static constexpr int NES_POLICY_INPUT_COUNT =
+        (NES_POLICY_DOWNSAMPLED_WIDTH * NES_POLICY_DOWNSAMPLED_HEIGHT)
+        + NES_POLICY_EXTRA_FEATURE_COUNT;
+    static constexpr int NES_POLICY_OUTPUT_COUNT = 8;
+    static constexpr size_t NES_POLICY_WEIGHT_COUNT =
+        static_cast<size_t>(NES_POLICY_INPUT_COUNT) * static_cast<size_t>(NES_POLICY_OUTPUT_COUNT)
+        + static_cast<size_t>(NES_POLICY_OUTPUT_COUNT);
+
+    void resolveBrainEntry();
+    void applyNesBrainDefaults();
+    void runScenarioDrivenStep();
+    uint8_t inferNesControllerMask() const;
     void spawnEvaluationOrganism();
     static Config makeDefaultConfig();
 
@@ -128,6 +147,10 @@ private:
     std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
     std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
+    BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
+    uint8_t nesControllerMask_ = 0;
+    uint64_t nesFramesSurvived_ = 0;
+    double nesRewardTotal_ = 0.0;
 
     static constexpr double TIMESTEP = 0.016;
 };

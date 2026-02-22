@@ -186,6 +186,7 @@ inline RenderMessage packRenderMessage(
     msg.organisms = extractOrganisms(organism_grid);
     msg.bones = {};
     msg.entities = data.entities;
+    msg.scenario_video_frame = data.scenario_video_frame;
 
     return msg;
 }

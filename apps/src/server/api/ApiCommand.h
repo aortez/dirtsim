@@ -17,6 +17,7 @@
 #include "GenomeList.h"
 #include "GenomeSet.h"
 #include "GravitySet.h"
+#include "NesInputSet.h"
 #include "PerfStatsGet.h"
 #include "PhysicsSettingsGet.h"
 #include "PhysicsSettingsSet.h"
@@ -91,6 +92,7 @@ using ApiCommand = std::variant<
     Api::GenomeList::Command,
     Api::GenomeSet::Command,
     Api::GravitySet::Command,
+    Api::NesInputSet::Command,
     Api::PerfStatsGet::Command,
     Api::PhysicsSettingsGet::Command,
     Api::PhysicsSettingsSet::Command,

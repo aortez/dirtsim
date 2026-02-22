@@ -5,6 +5,7 @@
 #include "RenderFormat.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
+#include <cstddef>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -84,6 +85,20 @@ struct BoneData {
 };
 
 /**
+ * @brief Generic scenario-provided video frame payload.
+ *
+ * Pixels are encoded as packed RGB565 (little-endian), row-major.
+ */
+struct ScenarioVideoFrame {
+    uint16_t width = 0;
+    uint16_t height = 0;
+    uint64_t frame_id = 0;
+    std::vector<std::byte> pixels;
+
+    using serialize = zpp::bits::members<4>;
+};
+
+/**
  * @brief Render message containing optimized world state.
  *
  * Replaces full WorldData serialization for frame streaming.
@@ -113,7 +128,10 @@ struct RenderMessage {
     // Entities (duck, butterfly, etc.) - sprite-based world overlays.
     std::vector<Entity> entities;
 
-    using serialize = zpp::bits::members<10>;
+    // Optional scenario-native video frame (RGB565) for direct display.
+    std::optional<ScenarioVideoFrame> scenario_video_frame;
+
+    using serialize = zpp::bits::members<11>;
 };
 
 void to_json(nlohmann::json& j, const BasicCell& cell);
@@ -124,5 +142,7 @@ void to_json(nlohmann::json& j, const DebugCell& cell);
 void from_json(const nlohmann::json& j, DebugCell& cell);
 void to_json(nlohmann::json& j, const OrganismData& org);
 void from_json(const nlohmann::json& j, OrganismData& org);
+void to_json(nlohmann::json& j, const ScenarioVideoFrame& frame);
+void from_json(const nlohmann::json& j, ScenarioVideoFrame& frame);
 
 } // namespace DirtSim

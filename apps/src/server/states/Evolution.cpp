@@ -339,9 +339,20 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+bool hasNesFlappyPopulation(const TrainingSpec& spec)
+{
+    for (const auto& entry : spec.population) {
+        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+    return false;
+}
+
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
+    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut);
@@ -359,10 +370,18 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
+    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
+    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+        if (breakdownOut) {
+            breakdownOut->reset();
+        }
+        return status.nesRewardTotal;
+    }
+
     const World* world = runner.getWorld();
     DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
 
@@ -455,6 +474,7 @@ std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
 EvaluationPassResult buildEvaluationPassResult(
     TrainingRunner& runner,
     const TrainingRunner::Status& status,
+    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
     bool includeGenerationDetails)
@@ -465,8 +485,8 @@ EvaluationPassResult buildEvaluationPassResult(
     pass.simTime = status.simTime;
 
     if (!includeGenerationDetails) {
-        pass.fitness =
-            computeFitnessForRunner(runner, status, organismType, evolutionConfig, nullptr);
+        pass.fitness = computeFitnessForRunner(
+            runner, status, brainKind, organismType, evolutionConfig, nullptr);
         return pass;
     }
 
@@ -475,8 +495,8 @@ EvaluationPassResult buildEvaluationPassResult(
         runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
 
     std::optional<TreeFitnessBreakdown> breakdown;
-    pass.fitness =
-        computeFitnessForRunner(runner, status, organismType, evolutionConfig, &breakdown);
+    pass.fitness = computeFitnessForRunner(
+        runner, status, brainKind, organismType, evolutionConfig, &breakdown);
     pass.treeFitnessBreakdown = breakdown;
     if (const World* world = runner.getWorld()) {
         pass.timerStats = collectTimerStats(world->getTimers());
@@ -510,7 +530,12 @@ EvaluationPassResult runEvaluationPass(
     }
 
     return buildEvaluationPassResult(
-        runner, status, trainingSpec.organismType, evolutionConfig, includeGenerationDetails);
+        runner,
+        status,
+        individual.brain.brainKind,
+        trainingSpec.organismType,
+        evolutionConfig,
+        includeGenerationDetails);
 }
 
 void mergeTimerStats(
@@ -774,6 +799,13 @@ void Evolution::onEnter(StateMachine& dsm)
 
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
+    if (hasNesFlappyPopulation(trainingSpec) && evolutionConfig.maxParallelEvaluations > 1) {
+        LOG_WARN(
+            State,
+            "Evolution: forcing max parallel evaluations to 1 for NES training "
+            "(smolnes runtime is process-global)");
+        evolutionConfig.maxParallelEvaluations = 1;
+    }
 
     // Initialize CPU telemetry.
     cpuMetrics_ = std::make_unique<SystemMetrics>();
@@ -1303,6 +1335,7 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         EvaluationPassResult completedPass = buildEvaluationPassResult(
             *visibleRunner_,
             status,
+            population[visibleEvalIndex_].brainKind,
             trainingSpec.organismType,
             evolutionConfig,
             includeGenerationDetails);
