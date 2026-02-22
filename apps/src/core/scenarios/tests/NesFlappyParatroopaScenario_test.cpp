@@ -2,7 +2,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/evolution/GenomeRepository.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
@@ -57,11 +57,12 @@ ParallelRuntimeResult runScenarioFrames(const std::filesystem::path& romPath, in
 {
     ParallelRuntimeResult result;
 
-    auto scenario = std::make_unique<NesScenario>();
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
     const ScenarioMetadata& metadata = scenario->getMetadata();
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
-    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
     config.romPath = romPath.string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
@@ -91,14 +92,14 @@ ParallelRuntimeResult runScenarioFrames(const std::filesystem::path& romPath, in
 
 } // namespace
 
-TEST(NesScenarioTest, InspectRomAcceptsMapperZero)
+TEST(NesFlappyParatroopaScenarioTest, InspectRomAcceptsMapperZero)
 {
     const std::filesystem::path romPath =
         std::filesystem::path(::testing::TempDir()) / "nes_mapper0_fixture.nes";
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::Compatible);
     EXPECT_TRUE(result.isCompatible());
@@ -107,34 +108,34 @@ TEST(NesScenarioTest, InspectRomAcceptsMapperZero)
     EXPECT_EQ(result.chrBanks8k, 1u);
 }
 
-TEST(NesScenarioTest, InspectRomRejectsUnsupportedMapper)
+TEST(NesFlappyParatroopaScenarioTest, InspectRomRejectsUnsupportedMapper)
 {
     const std::filesystem::path romPath =
         std::filesystem::path(::testing::TempDir()) / "nes_mapper30_fixture.nes";
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x20, 0x00, 0xE3, 0x10, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::UnsupportedMapper);
     EXPECT_FALSE(result.isCompatible());
     EXPECT_EQ(result.mapper, 30u);
 }
 
-TEST(NesScenarioTest, InspectRomRejectsInvalidHeader)
+TEST(NesFlappyParatroopaScenarioTest, InspectRomRejectsInvalidHeader)
 {
     const std::filesystem::path romPath =
         std::filesystem::path(::testing::TempDir()) / "nes_invalid_header_fixture.nes";
     writeRomHeader(
         romPath, { 'B', 'A', 'D', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::InvalidHeader);
     EXPECT_FALSE(result.isCompatible());
 }
 
-TEST(NesScenarioTest, ValidateConfigResolvesRomIdFromCatalog)
+TEST(NesFlappyParatroopaScenarioTest, ValidateConfigResolvesRomIdFromCatalog)
 {
     const std::filesystem::path romDir =
         std::filesystem::path(::testing::TempDir()) / "nes_catalog_valid";
@@ -143,80 +144,86 @@ TEST(NesScenarioTest, ValidateConfigResolvesRomIdFromCatalog)
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    Config::Nes config{};
+    Config::NesFlappyParatroopa config{};
     config.romPath = "";
     config.romId = "flappy-paratroopa-world-unl";
     config.romDirectory = romDir.string();
 
-    const NesConfigValidationResult validation = NesScenario::validateConfig(config);
+    const NesConfigValidationResult validation =
+        NesFlappyParatroopaScenario::validateConfig(config);
     EXPECT_TRUE(validation.valid);
     EXPECT_EQ(validation.resolvedRomPath, romPath);
     EXPECT_EQ(validation.resolvedRomId, "flappy-paratroopa-world-unl");
     EXPECT_TRUE(validation.romCheck.isCompatible());
 }
 
-TEST(NesScenarioTest, ValidateConfigRejectsUnknownRomId)
+TEST(NesFlappyParatroopaScenarioTest, ValidateConfigRejectsUnknownRomId)
 {
     const std::filesystem::path romDir =
         std::filesystem::path(::testing::TempDir()) / "nes_catalog_missing";
     std::filesystem::create_directories(romDir);
 
-    Config::Nes config{};
+    Config::NesFlappyParatroopa config{};
     config.romPath = "";
     config.romId = "missing-rom";
     config.romDirectory = romDir.string();
 
-    const NesConfigValidationResult validation = NesScenario::validateConfig(config);
+    const NesConfigValidationResult validation =
+        NesFlappyParatroopaScenario::validateConfig(config);
     EXPECT_FALSE(validation.valid);
     EXPECT_EQ(validation.romCheck.status, NesRomCheckStatus::FileNotFound);
     EXPECT_NE(validation.message.find("No ROM found"), std::string::npos);
 }
 
-TEST(NesScenarioTest, ValidateConfigFallsBackToRomPathWhenCatalogLookupMisses)
+TEST(NesFlappyParatroopaScenarioTest, ValidateConfigFallsBackToRomPathWhenCatalogLookupMisses)
 {
     const std::filesystem::path romPath =
         std::filesystem::path(::testing::TempDir()) / "Flappy.Paratroopa.World.Unl.nes";
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    Config::Nes config{};
+    Config::NesFlappyParatroopa config{};
     config.romId = "flappy-paratroopa-world-unl";
     config.romDirectory =
         (std::filesystem::path(::testing::TempDir()) / "missing_rom_dir").string();
     config.romPath = romPath.string();
 
-    const NesConfigValidationResult validation = NesScenario::validateConfig(config);
+    const NesConfigValidationResult validation =
+        NesFlappyParatroopaScenario::validateConfig(config);
     EXPECT_TRUE(validation.valid);
     EXPECT_EQ(validation.resolvedRomPath, romPath);
     EXPECT_EQ(validation.resolvedRomId, "flappy-paratroopa-world-unl");
     EXPECT_TRUE(validation.romCheck.isCompatible());
 }
 
-TEST(NesScenarioTest, ScenarioConfigMapsToNesEnum)
+TEST(NesFlappyParatroopaScenarioTest, ScenarioConfigMapsToNesEnum)
 {
-    const ScenarioConfig config = makeDefaultConfig(Scenario::EnumType::Nes);
-    ASSERT_TRUE(std::holds_alternative<Config::Nes>(config));
-    EXPECT_EQ(getScenarioId(config), Scenario::EnumType::Nes);
+    const ScenarioConfig config = makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa);
+    ASSERT_TRUE(std::holds_alternative<Config::NesFlappyParatroopa>(config));
+    EXPECT_EQ(getScenarioId(config), Scenario::EnumType::NesFlappyParatroopa);
 }
 
-TEST(NesScenarioTest, ScenarioRegistryRegistersNesScenario)
+TEST(NesFlappyParatroopaScenarioTest, ScenarioRegistryRegistersNesFlappyParatroopaScenario)
 {
     GenomeRepository genomeRepository;
     const ScenarioRegistry registry = ScenarioRegistry::createDefault(genomeRepository);
 
     const auto ids = registry.getScenarioIds();
-    EXPECT_NE(std::find(ids.begin(), ids.end(), Scenario::EnumType::Nes), ids.end());
+    EXPECT_NE(
+        std::find(ids.begin(), ids.end(), Scenario::EnumType::NesFlappyParatroopa), ids.end());
 
-    const ScenarioMetadata* metadata = registry.getMetadata(Scenario::EnumType::Nes);
+    const ScenarioMetadata* metadata =
+        registry.getMetadata(Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_NE(metadata, nullptr);
-    EXPECT_EQ(metadata->name, "NES");
+    EXPECT_EQ(metadata->name, "NES Flappy Paratroopa");
 
-    std::unique_ptr<ScenarioRunner> scenario = registry.createScenario(Scenario::EnumType::Nes);
+    std::unique_ptr<ScenarioRunner> scenario =
+        registry.createScenario(Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_NE(scenario, nullptr);
-    EXPECT_TRUE(std::holds_alternative<Config::Nes>(scenario->getConfig()));
+    EXPECT_TRUE(std::holds_alternative<Config::NesFlappyParatroopa>(scenario->getConfig()));
 }
 
-TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
+TEST(NesFlappyParatroopaScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -224,11 +231,12 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesScenario>();
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
     const ScenarioMetadata& metadata = scenario->getMetadata();
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
-    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
@@ -257,7 +265,7 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
     EXPECT_EQ(videoFrame.pixels.size(), static_cast<size_t>(SMOLNES_RUNTIME_FRAME_BYTES));
 }
 
-TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
+TEST(NesFlappyParatroopaScenarioTest, ResetRestartsRuntimeFrameCounter)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -265,11 +273,12 @@ TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesScenario>();
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
     const ScenarioMetadata& metadata = scenario->getMetadata();
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
-    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
@@ -299,7 +308,7 @@ TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
     EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 1u);
 }
 
-TEST(NesScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
+TEST(NesFlappyParatroopaScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -307,11 +316,12 @@ TEST(NesScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesScenario>();
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
     const ScenarioMetadata& metadata = scenario->getMetadata();
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
-    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
@@ -345,7 +355,7 @@ TEST(NesScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
     EXPECT_TRUE(cpuChanged) << "CPU RAM should change after advancing a frame.";
 }
 
-TEST(NesScenarioTest, ParallelRuntimeInstancesCanAdvanceIndependently)
+TEST(NesFlappyParatroopaScenarioTest, ParallelRuntimeInstancesCanAdvanceIndependently)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {

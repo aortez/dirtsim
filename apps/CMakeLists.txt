@@ -401,7 +401,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
-    src/core/scenarios/NesScenario.cpp
+    src/core/scenarios/NesFlappyParatroopaScenario.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomProfileExtractor.cpp
@@ -816,7 +816,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/ClockScenario_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
     src/core/scenarios/tests/NesRomProfileExtractor_test.cpp
-    src/core/scenarios/tests/NesScenario_test.cpp
+    src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp

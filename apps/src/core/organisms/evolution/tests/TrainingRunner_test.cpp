@@ -500,7 +500,7 @@ TEST_F(TrainingRunnerTest, TrainingBrainDefaultsExposeNesFlappyBirdMapping)
     const std::optional<TrainingBrainDefaults> defaults =
         getTrainingBrainDefaults(TrainingBrainKind::NesFlappyBird);
     ASSERT_TRUE(defaults.has_value());
-    EXPECT_EQ(defaults->defaultScenarioId, Scenario::EnumType::Nes);
+    EXPECT_EQ(defaults->defaultScenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_TRUE(defaults->defaultNesRomId.has_value());
     EXPECT_EQ(defaults->defaultNesRomId.value(), "flappy-paratroopa-world-unl");
 }
@@ -523,7 +523,7 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenE
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 {
     TrainingSpec spec;
-    spec.scenarioId = Scenario::EnumType::Nes;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     spec.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
@@ -534,7 +534,7 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
-    individual.scenarioId = Scenario::EnumType::Nes;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = entry->createRandomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
@@ -556,12 +556,12 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesOnRomDoneBefor
     config_.maxSimulationTime = 60.0;
 
     TrainingSpec spec;
-    spec.scenarioId = Scenario::EnumType::Nes;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     spec.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
-    individual.scenarioId = Scenario::EnumType::Nes;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = Genome(NesPolicyLayout::WeightCount);
     std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), -1.0f);
 

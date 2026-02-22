@@ -118,7 +118,7 @@ TrainingPopulationPanel::TrainingPopulationPanel(
         Scenario::EnumType::Empty,
         Scenario::EnumType::GooseTest,
         Scenario::EnumType::Lights,
-        Scenario::EnumType::Nes,
+        Scenario::EnumType::NesFlappyParatroopa,
         Scenario::EnumType::Raining,
         Scenario::EnumType::Sandbox,
         Scenario::EnumType::TreeGermination,
@@ -140,7 +140,7 @@ TrainingPopulationPanel::TrainingPopulationPanel(
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
     if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::Nes;
+        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
     setBrainOptionsForOrganism(selectedOrganism_);
 
@@ -618,7 +618,7 @@ void TrainingPopulationPanel::refreshFromSpec()
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
     if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::Nes;
+        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
     setBrainOptionsForOrganism(selectedOrganism_);
 
@@ -674,11 +674,11 @@ void TrainingPopulationPanel::applySpecUpdates()
 {
     trainingSpec_.organismType = selectedOrganism_;
     if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::Nes;
+        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
     for (auto& spec : trainingSpec_.population) {
         if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-            spec.scenarioId = Scenario::EnumType::Nes;
+            spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
         }
         const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
         const bool specRequiresGenome = resolvedBrain.requiresGenome;
@@ -1256,7 +1256,7 @@ void TrainingPopulationPanel::onScenarioSelected(lv_event_t* e)
     }
     self->selectedScenario_ = it->second;
     if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        self->selectedScenario_ = Scenario::EnumType::Nes;
+        self->selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
     self->applySpecUpdates();
     self->syncUiFromState();
@@ -1276,7 +1276,7 @@ void TrainingPopulationPanel::onOrganismSelected(lv_event_t* e)
     }
     self->selectedOrganism_ = it->second;
     if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        self->selectedScenario_ = Scenario::EnumType::Nes;
+        self->selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
     self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->trainingSpec_.population.clear();

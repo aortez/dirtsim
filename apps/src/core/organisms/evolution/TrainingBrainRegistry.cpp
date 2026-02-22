@@ -31,7 +31,7 @@ std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string&
     }
     if (brainKind == TrainingBrainKind::NesFlappyBird) {
         return TrainingBrainDefaults{
-            .defaultScenarioId = Scenario::EnumType::Nes,
+            .defaultScenarioId = Scenario::EnumType::NesFlappyParatroopa,
             .defaultNesRomId = std::string{ NesPolicyLayout::FlappyParatroopaWorldUnlRomId },
         };
     }

@@ -23,6 +23,8 @@ ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
             return Config::GooseTest{};
         case Scenario::EnumType::Lights:
             return Config::Lights{};
+        case Scenario::EnumType::NesFlappyParatroopa:
+            return Config::NesFlappyParatroopa{};
         case Scenario::EnumType::Raining:
             return Config::Raining{};
         case Scenario::EnumType::Sandbox:
@@ -31,8 +33,6 @@ ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
             return Config::TreeGermination{};
         case Scenario::EnumType::WaterEqualization:
             return Config::WaterEqualization{};
-        case Scenario::EnumType::Nes:
-            return Config::Nes{};
     }
     return Config::Empty{};
 }

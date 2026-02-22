@@ -92,12 +92,12 @@ constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 bool isNesTrainingTarget(const TrainingSpec& spec)
 {
     if (spec.organismType == OrganismType::NES_FLAPPY_BIRD
-        || spec.scenarioId == Scenario::EnumType::Nes) {
+        || spec.scenarioId == Scenario::EnumType::NesFlappyParatroopa) {
         return true;
     }
 
     for (const auto& population : spec.population) {
-        if (population.scenarioId == Scenario::EnumType::Nes
+        if (population.scenarioId == Scenario::EnumType::NesFlappyParatroopa
             || population.brainKind == TrainingBrainKind::NesFlappyBird) {
             return true;
         }
@@ -118,15 +118,15 @@ void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& reco
         recordUpdate("trainingSpec.organismType promoted to NES_FLAPPY_BIRD for NES training");
     }
 
-    if (settings.trainingSpec.scenarioId != Scenario::EnumType::Nes) {
-        settings.trainingSpec.scenarioId = Scenario::EnumType::Nes;
+    if (settings.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
+        settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
         recordUpdate("trainingSpec.scenarioId forced to Nes for NES training");
     }
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
-        if (population.scenarioId != Scenario::EnumType::Nes) {
-            population.scenarioId = Scenario::EnumType::Nes;
+        if (population.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
+            population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
             recordUpdate(
                 "trainingSpec population[" + std::to_string(index)
                 + "] scenarioId forced to Nes for NES training");

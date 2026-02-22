@@ -1,4 +1,4 @@
-#include "NesScenario.h"
+#include "NesFlappyParatroopaScenario.h"
 
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
@@ -70,7 +70,7 @@ bool hasNesExtension(const std::filesystem::path& path)
     return extension == ".nes";
 }
 
-std::filesystem::path resolveRomDirectory(const DirtSim::Config::Nes& config)
+std::filesystem::path resolveRomDirectory(const DirtSim::Config::NesFlappyParatroopa& config)
 {
     if (!config.romDirectory.empty()) {
         return config.romDirectory;
@@ -84,7 +84,7 @@ std::filesystem::path resolveRomDirectory(const DirtSim::Config::Nes& config)
     return std::filesystem::path{ "testdata/roms" };
 }
 
-std::string describeRomSource(const DirtSim::Config::Nes& config)
+std::string describeRomSource(const DirtSim::Config::NesFlappyParatroopa& config)
 {
     if (!config.romId.empty()) {
         return "romId '" + config.romId + "'";
@@ -96,43 +96,43 @@ std::string describeRomSource(const DirtSim::Config::Nes& config)
 
 namespace DirtSim {
 
-NesScenario::NesScenario()
+NesFlappyParatroopaScenario::NesFlappyParatroopaScenario()
 {
-    metadata_.name = "NES";
-    metadata_.description = "NES ROM runner scaffold for smolnes-compatible mapper workflows";
+    metadata_.name = "NES Flappy Paratroopa";
+    metadata_.description = "NES Flappy Paratroopa World training scenario";
     metadata_.category = "organisms";
     metadata_.requiredWidth = 47;
     metadata_.requiredHeight = 30;
     runtime_ = std::make_unique<SmolnesRuntime>();
 }
 
-NesScenario::~NesScenario()
+NesFlappyParatroopaScenario::~NesFlappyParatroopaScenario()
 {
     stopRuntime();
 }
 
-const ScenarioMetadata& NesScenario::getMetadata() const
+const ScenarioMetadata& NesFlappyParatroopaScenario::getMetadata() const
 {
     return metadata_;
 }
 
-ScenarioConfig NesScenario::getConfig() const
+ScenarioConfig NesFlappyParatroopaScenario::getConfig() const
 {
     return config_;
 }
 
-void NesScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+void NesFlappyParatroopaScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
-    if (!std::holds_alternative<Config::Nes>(newConfig)) {
-        LOG_ERROR(Scenario, "NesScenario: Invalid config type provided");
+    if (!std::holds_alternative<Config::NesFlappyParatroopa>(newConfig)) {
+        LOG_ERROR(Scenario, "NesFlappyParatroopaScenario: Invalid config type provided");
         return;
     }
 
-    config_ = std::get<Config::Nes>(newConfig);
-    LOG_INFO(Scenario, "NesScenario: Config updated");
+    config_ = std::get<Config::NesFlappyParatroopa>(newConfig);
+    LOG_INFO(Scenario, "NesFlappyParatroopaScenario: Config updated");
 }
 
-void NesScenario::setup(World& world)
+void NesFlappyParatroopaScenario::setup(World& world)
 {
     stopRuntime();
     world.getData().scenario_video_frame.reset();
@@ -164,7 +164,7 @@ void NesScenario::setup(World& world)
         const char* statusText = romCheckStatusToString(lastRomCheck_.status);
         LOG_ERROR(
             Scenario,
-            "NesScenario: {} invalid ({}, mapper={}): {}",
+            "NesFlappyParatroopaScenario: {} invalid ({}, mapper={}): {}",
             describeRomSource(config_),
             statusText,
             lastRomCheck_.mapper,
@@ -174,7 +174,8 @@ void NesScenario::setup(World& world)
 
     LOG_INFO(
         Scenario,
-        "NesScenario: ROM '{}' compatible (id='{}', mapper={}, prg16k={}, chr8k={})",
+        "NesFlappyParatroopaScenario: ROM '{}' compatible (id='{}', mapper={}, prg16k={}, "
+        "chr8k={})",
         validation.resolvedRomPath.string(),
         validation.resolvedRomId,
         lastRomCheck_.mapper,
@@ -187,25 +188,30 @@ void NesScenario::setup(World& world)
 
     if (!runtime_->start(validation.resolvedRomPath.string())) {
         LOG_ERROR(
-            Scenario, "NesScenario: Failed to start smolnes runtime: {}", runtime_->getLastError());
+            Scenario,
+            "NesFlappyParatroopaScenario: Failed to start smolnes runtime: {}",
+            runtime_->getLastError());
     }
     else {
         runtime_->setController1State(controller1State_);
     }
 }
 
-void NesScenario::reset(World& world)
+void NesFlappyParatroopaScenario::reset(World& world)
 {
     setup(world);
 }
 
-void NesScenario::tick(World& world, double /*deltaTime*/)
+void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
 {
     if (!runtime_ || !runtime_->isRunning()) {
         return;
     }
     if (!runtime_->isHealthy()) {
-        LOG_ERROR(Scenario, "NesScenario: smolnes runtime unhealthy: {}", runtime_->getLastError());
+        LOG_ERROR(
+            Scenario,
+            "NesFlappyParatroopaScenario: smolnes runtime unhealthy: {}",
+            runtime_->getLastError());
         stopRuntime();
         return;
     }
@@ -223,7 +229,7 @@ void NesScenario::tick(World& world, double /*deltaTime*/)
     if (!runtime_->runFrames(framesToRun, tickTimeoutMs)) {
         LOG_ERROR(
             Scenario,
-            "NesScenario: smolnes frame step failed after {} frames: {}",
+            "NesFlappyParatroopaScenario: smolnes frame step failed after {} frames: {}",
             runtime_->getRenderedFrameCount(),
             runtime_->getLastError());
         world.getData().scenario_video_frame.reset();
@@ -237,22 +243,22 @@ void NesScenario::tick(World& world, double /*deltaTime*/)
     }
 }
 
-const NesRomCheckResult& NesScenario::getLastRomCheck() const
+const NesRomCheckResult& NesFlappyParatroopaScenario::getLastRomCheck() const
 {
     return lastRomCheck_;
 }
 
-bool NesScenario::isRuntimeHealthy() const
+bool NesFlappyParatroopaScenario::isRuntimeHealthy() const
 {
     return runtime_ && runtime_->isHealthy();
 }
 
-bool NesScenario::isRuntimeRunning() const
+bool NesFlappyParatroopaScenario::isRuntimeRunning() const
 {
     return runtime_ && runtime_->isRunning();
 }
 
-uint64_t NesScenario::getRuntimeRenderedFrameCount() const
+uint64_t NesFlappyParatroopaScenario::getRuntimeRenderedFrameCount() const
 {
     if (!runtime_) {
         return 0;
@@ -260,12 +266,12 @@ uint64_t NesScenario::getRuntimeRenderedFrameCount() const
     return runtime_->getRenderedFrameCount();
 }
 
-std::string NesScenario::getRuntimeResolvedRomId() const
+std::string NesFlappyParatroopaScenario::getRuntimeResolvedRomId() const
 {
     return runtimeResolvedRomId_;
 }
 
-std::string NesScenario::getRuntimeLastError() const
+std::string NesFlappyParatroopaScenario::getRuntimeLastError() const
 {
     if (!runtime_) {
         return {};
@@ -273,7 +279,8 @@ std::string NesScenario::getRuntimeLastError() const
     return runtime_->getLastError();
 }
 
-std::optional<SmolnesRuntime::MemorySnapshot> NesScenario::copyRuntimeMemorySnapshot() const
+std::optional<SmolnesRuntime::MemorySnapshot> NesFlappyParatroopaScenario::
+    copyRuntimeMemorySnapshot() const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
         return std::nullopt;
@@ -281,7 +288,7 @@ std::optional<SmolnesRuntime::MemorySnapshot> NesScenario::copyRuntimeMemorySnap
     return runtime_->copyMemorySnapshot();
 }
 
-void NesScenario::setController1State(uint8_t buttonMask)
+void NesFlappyParatroopaScenario::setController1State(uint8_t buttonMask)
 {
     controller1State_ = buttonMask;
     if (runtime_ && runtime_->isRunning()) {
@@ -289,7 +296,8 @@ void NesScenario::setController1State(uint8_t buttonMask)
     }
 }
 
-std::vector<NesRomCatalogEntry> NesScenario::scanRomCatalog(const std::filesystem::path& romDir)
+std::vector<NesRomCatalogEntry> NesFlappyParatroopaScenario::scanRomCatalog(
+    const std::filesystem::path& romDir)
 {
     std::vector<NesRomCatalogEntry> entries;
 
@@ -330,12 +338,13 @@ std::vector<NesRomCatalogEntry> NesScenario::scanRomCatalog(const std::filesyste
     return entries;
 }
 
-std::string NesScenario::makeRomId(const std::string& rawName)
+std::string NesFlappyParatroopaScenario::makeRomId(const std::string& rawName)
 {
     return normalizeRomId(rawName);
 }
 
-NesConfigValidationResult NesScenario::validateConfig(const Config::Nes& config)
+NesConfigValidationResult NesFlappyParatroopaScenario::validateConfig(
+    const Config::NesFlappyParatroopa& config)
 {
     NesConfigValidationResult validation{};
 
@@ -413,7 +422,7 @@ NesConfigValidationResult NesScenario::validateConfig(const Config::Nes& config)
     return validation;
 }
 
-NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)
+NesRomCheckResult NesFlappyParatroopaScenario::inspectRom(const std::filesystem::path& romPath)
 {
     NesRomCheckResult result{};
     if (!std::filesystem::exists(romPath)) {
@@ -464,7 +473,7 @@ NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)
     return result;
 }
 
-bool NesScenario::isMapperSupportedBySmolnes(uint16_t mapper)
+bool NesFlappyParatroopaScenario::isMapperSupportedBySmolnes(uint16_t mapper)
 {
     for (const uint16_t supportedMapper : kSmolnesSupportedMappers) {
         if (supportedMapper == mapper) {
@@ -474,7 +483,7 @@ bool NesScenario::isMapperSupportedBySmolnes(uint16_t mapper)
     return false;
 }
 
-void NesScenario::stopRuntime()
+void NesFlappyParatroopaScenario::stopRuntime()
 {
     if (!runtime_) {
         return;

@@ -375,7 +375,7 @@ TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
 
     bool switchCallbackInvoked = false;
     Api::ScenarioSwitch::Command switchCmd{
-        .scenario_id = Scenario::EnumType::Nes,
+        .scenario_id = Scenario::EnumType::NesFlappyParatroopa,
     };
     Api::ScenarioSwitch::Cwc switchCwc(switchCmd, [&](Api::ScenarioSwitch::Response&& response) {
         switchCallbackInvoked = true;
@@ -386,10 +386,10 @@ TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
     ASSERT_TRUE(std::holds_alternative<SimRunning>(switchedState.getVariant()));
     simRunning = std::move(std::get<SimRunning>(switchedState.getVariant()));
     ASSERT_TRUE(switchCallbackInvoked);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Nes);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::NesFlappyParatroopa);
 
     Api::ScenarioConfigSet::Response configResponse;
-    Config::Nes invalidConfig{};
+    Config::NesFlappyParatroopa invalidConfig{};
     invalidConfig.romId = "missing-rom-id";
     invalidConfig.romDirectory = std::filesystem::path(::testing::TempDir()).string();
     invalidConfig.romPath = "";

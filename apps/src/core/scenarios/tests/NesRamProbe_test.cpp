@@ -1,6 +1,6 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/nes/NesRamProbe.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
@@ -52,11 +52,12 @@ std::vector<uint8_t> buildScriptedControllerSequence()
 
 NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
 {
-    auto scenario = std::make_unique<NesScenario>();
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
     const ScenarioMetadata& metadata = scenario->getMetadata();
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
-    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
     config.romPath = romPath.string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);

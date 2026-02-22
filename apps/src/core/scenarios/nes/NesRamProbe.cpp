@@ -33,7 +33,7 @@ bool NesRamProbeTrace::writeCsv(const std::filesystem::path& path) const
 }
 
 NesRamProbeTrace captureNesRamProbeTrace(
-    NesScenario& scenario,
+    NesFlappyParatroopaScenario& scenario,
     World& world,
     const std::vector<uint8_t>& controllerScript,
     const std::vector<NesRamProbeAddress>& cpuAddresses,

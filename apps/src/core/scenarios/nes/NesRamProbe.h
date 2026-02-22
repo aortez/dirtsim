@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -30,7 +30,7 @@ struct NesRamProbeTrace {
 };
 
 NesRamProbeTrace captureNesRamProbeTrace(
-    NesScenario& scenario,
+    NesFlappyParatroopaScenario& scenario,
     World& world,
     const std::vector<uint8_t>& controllerScript,
     const std::vector<NesRamProbeAddress>& cpuAddresses,

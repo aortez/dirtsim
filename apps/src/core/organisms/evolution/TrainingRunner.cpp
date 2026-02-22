@@ -7,7 +7,7 @@
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <algorithm>
@@ -143,14 +143,12 @@ TrainingRunner::TrainingRunner(
         }
     }
 
-    applyNesBrainDefaults();
-
     // Setup scenario.
     scenario_->setup(*world_);
     world_->setScenario(scenario_.get());
 
     nesPolicyInputs_.fill(0.0f);
-    if (auto* nesScenario = dynamic_cast<NesScenario*>(scenario_.get())) {
+    if (auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario_.get())) {
         nesRomExtractor_.emplace(nesScenario->getRuntimeResolvedRomId());
         nesFlappyEvaluator_.emplace();
         nesFlappyEvaluator_->reset();
@@ -335,38 +333,12 @@ void TrainingRunner::resolveBrainEntry()
     controlMode_ = entry->controlMode;
 }
 
-void TrainingRunner::applyNesBrainDefaults()
-{
-    if (!scenario_ || !world_) {
-        return;
-    }
-
-    if (individual_.scenarioId != Scenario::EnumType::Nes) {
-        return;
-    }
-
-    const std::optional<TrainingBrainDefaults> defaults =
-        getTrainingBrainDefaults(individual_.brain.brainKind);
-    if (!defaults.has_value() || !defaults->defaultNesRomId.has_value()) {
-        return;
-    }
-
-    ScenarioConfig scenarioConfig = scenario_->getConfig();
-    auto* nesConfig = std::get_if<DirtSim::Config::Nes>(&scenarioConfig);
-    if (!nesConfig || !nesConfig->romId.empty()) {
-        return;
-    }
-
-    nesConfig->romId = defaults->defaultNesRomId.value();
-    scenario_->setConfig(scenarioConfig, *world_);
-}
-
 void TrainingRunner::runScenarioDrivenStep()
 {
     DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
     DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
 
-    auto* nesScenario = dynamic_cast<NesScenario*>(scenario_.get());
+    auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario_.get());
     if (!nesScenario) {
         state_ = State::OrganismDied;
         return;

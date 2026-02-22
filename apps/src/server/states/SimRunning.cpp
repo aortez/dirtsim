@@ -22,7 +22,7 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
@@ -299,8 +299,8 @@ void SimRunning::tick(StateMachine& dsm)
     auto& gm = dsm.getGamepadManager();
     gm.poll();
 
-    auto* nesScenario = (scenario_id == Scenario::EnumType::Nes)
-        ? dynamic_cast<NesScenario*>(scenario.get())
+    auto* nesScenario = (scenario_id == Scenario::EnumType::NesFlappyParatroopa)
+        ? dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get())
         : nullptr;
 
     if (nesScenario != nullptr) {
@@ -782,12 +782,12 @@ State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /
 {
     using Response = Api::NesInputSet::Response;
 
-    if (scenario_id != Scenario::EnumType::Nes || !scenario) {
+    if (scenario_id != Scenario::EnumType::NesFlappyParatroopa || !scenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
         return std::move(*this);
     }
 
-    auto* nesScenario = dynamic_cast<NesScenario*>(scenario.get());
+    auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get());
     if (!nesScenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet could not resolve NES scenario")));
         return std::move(*this);
@@ -925,15 +925,17 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     assert(world && "World must exist in SimRunning");
     assert(scenario && "Scenario must exist in SimRunning");
 
-    if (scenario_id == Scenario::EnumType::Nes) {
-        const auto* nesConfig = std::get_if<Config::Nes>(&cwc.command.config);
+    if (scenario_id == Scenario::EnumType::NesFlappyParatroopa) {
+        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&cwc.command.config);
         if (!nesConfig) {
             cwc.sendResponse(
-                Response::error(ApiError("Nes scenario requires Config::Nes payload")));
+                Response::error(
+                    ApiError("Nes scenario requires Config::NesFlappyParatroopa payload")));
             return std::move(*this);
         }
 
-        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        const NesConfigValidationResult validation =
+            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Response::error(ApiError("Invalid NES config: " + validation.message)));

@@ -48,10 +48,10 @@ struct NesConfigValidationResult {
     std::string message;
 };
 
-class NesScenario : public ScenarioRunner {
+class NesFlappyParatroopaScenario : public ScenarioRunner {
 public:
-    NesScenario();
-    ~NesScenario() override;
+    NesFlappyParatroopaScenario();
+    ~NesFlappyParatroopaScenario() override;
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -72,14 +72,14 @@ public:
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
     static std::vector<NesRomCatalogEntry> scanRomCatalog(const std::filesystem::path& romDir);
     static std::string makeRomId(const std::string& rawName);
-    static NesConfigValidationResult validateConfig(const Config::Nes& config);
+    static NesConfigValidationResult validateConfig(const Config::NesFlappyParatroopa& config);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:
     void stopRuntime();
 
     ScenarioMetadata metadata_;
-    Config::Nes config_;
+    Config::NesFlappyParatroopa config_;
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;

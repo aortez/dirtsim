@@ -117,7 +117,6 @@ public:
 
 private:
     void resolveBrainEntry();
-    void applyNesBrainDefaults();
     void runScenarioDrivenStep();
     uint8_t inferNesControllerMask() const;
     void spawnEvaluationOrganism();

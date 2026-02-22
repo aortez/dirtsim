@@ -8,7 +8,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -27,22 +27,6 @@ namespace Server {
 namespace State {
 
 namespace {
-
-bool hasNesTrainingPopulation(const TrainingSpec& spec)
-{
-    if (spec.scenarioId == Scenario::EnumType::Nes) {
-        return true;
-    }
-
-    for (const auto& entry : spec.population) {
-        if (entry.scenarioId == Scenario::EnumType::Nes
-            || entry.brainKind == TrainingBrainKind::NesFlappyBird) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
@@ -340,28 +324,6 @@ std::optional<ApiError> validateTrainingConfig(
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
 
-    if (hasNesTrainingPopulation(outSpec)) {
-        if (outSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
-            LOG_WARN(
-                State,
-                "EvolutionStart: promoting organism type {} to NES_FLAPPY_BIRD for NES scenario",
-                static_cast<int>(outSpec.organismType));
-            outSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-        }
-
-        outSpec.scenarioId = Scenario::EnumType::Nes;
-        for (auto& spec : outSpec.population) {
-            spec.scenarioId = Scenario::EnumType::Nes;
-            if (spec.brainKind != TrainingBrainKind::NesFlappyBird
-                || spec.brainVariant.has_value()) {
-                spec.brainKind = TrainingBrainKind::NesFlappyBird;
-                spec.brainVariant.reset();
-                spec.seedGenomes.clear();
-                spec.randomCount = spec.count;
-            }
-        }
-    }
-
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
             return ApiError("populationSize must be > 0 when population is empty");
@@ -381,7 +343,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                defaultSpec.scenarioId = Scenario::EnumType::Nes;
+                defaultSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
                 defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
@@ -414,10 +376,6 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
-        if (outSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
-            spec.scenarioId = Scenario::EnumType::Nes;
-            outSpec.scenarioId = Scenario::EnumType::Nes;
-        }
         const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
         if (!metadata) {
             return ApiError(
@@ -728,15 +686,16 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     // Apply config from server settings and user settings.
     ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
-    if (scenarioId == Scenario::EnumType::Nes) {
-        const auto* nesConfig = std::get_if<Config::Nes>(&scenarioConfig);
+    if (scenarioId == Scenario::EnumType::NesFlappyParatroopa) {
+        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&scenarioConfig);
         if (!nesConfig) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(
                     ApiError("Scenario config mismatch for NES scenario")));
             return Idle{};
         }
-        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        const NesConfigValidationResult validation =
+            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(

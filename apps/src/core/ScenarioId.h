@@ -23,8 +23,8 @@ enum class EnumType : uint8_t {
     Raining,
     Sandbox,
     TreeGermination,
+    NesFlappyParatroopa,
     WaterEqualization,
-    Nes,
 };
 
 std::string toString(EnumType id);

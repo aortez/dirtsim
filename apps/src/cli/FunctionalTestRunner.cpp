@@ -1258,11 +1258,11 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
         trainCmd.evolution.maxParallelEvaluations = 4;
         trainCmd.evolution.maxGenerations = 1;
         trainCmd.evolution.maxSimulationTime = 0.1;
-        trainCmd.training.scenarioId = Scenario::EnumType::Nes;
+        trainCmd.training.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
         trainCmd.training.organismType = OrganismType::NES_FLAPPY_BIRD;
 
         PopulationSpec population;
-        population.scenarioId = Scenario::EnumType::Nes;
+        population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
         population.brainKind = TrainingBrainKind::NesFlappyBird;
         population.count = trainCmd.evolution.populationSize;
         population.randomCount = trainCmd.evolution.populationSize;
@@ -1275,7 +1275,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
         }
 
         const auto& summary = trainingResult.value();
-        if (summary.scenario_id != Scenario::toString(Scenario::EnumType::Nes)) {
+        if (summary.scenario_id != Scenario::toString(Scenario::EnumType::NesFlappyParatroopa)) {
             return Result<std::monostate, std::string>::error(
                 "Expected NES scenario summary, got " + summary.scenario_id);
         }
@@ -2517,7 +2517,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanControlNesScenario(
         }
 
         UiApi::SimRun::Command simRunCmd{
-            .scenario_id = Scenario::EnumType::Nes,
+            .scenario_id = Scenario::EnumType::NesFlappyParatroopa,
         };
         auto simRunResult = unwrapResponse(
             uiClient.sendCommandAndGetResponse<UiApi::SimRun::Okay>(simRunCmd, timeoutMs));
@@ -2543,7 +2543,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanControlNesScenario(
         }
 
         auto scenarioResult =
-            waitForServerScenario(serverClient, Scenario::EnumType::Nes, timeoutMs);
+            waitForServerScenario(serverClient, Scenario::EnumType::NesFlappyParatroopa, timeoutMs);
         if (scenarioResult.isError()) {
             uiClient.disconnect();
             serverClient.disconnect();
@@ -2606,7 +2606,8 @@ FunctionalTestSummary FunctionalTestRunner::runCanControlNesScenario(
         }
 
         if (!advanceAfterRelease.value().scenario_id.has_value()
-            || advanceAfterRelease.value().scenario_id.value() != Scenario::EnumType::Nes) {
+            || advanceAfterRelease.value().scenario_id.value()
+                != Scenario::EnumType::NesFlappyParatroopa) {
             uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
