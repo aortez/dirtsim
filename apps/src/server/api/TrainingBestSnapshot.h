@@ -2,6 +2,7 @@
 
 #include "core/WorldData.h"
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 #include <zpp_bits.h>
@@ -30,10 +31,11 @@ struct TrainingBestSnapshot {
     int commandsRejected = 0;
     std::vector<CommandSignatureCount> topCommandSignatures;
     std::vector<CommandSignatureCount> topCommandOutcomeSignatures;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
 
     static constexpr const char* name() { return "TrainingBestSnapshot"; }
 
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<9>;
 };
 
 void to_json(nlohmann::json& j, const TrainingBestSnapshot::CommandSignatureCount& value);

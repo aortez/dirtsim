@@ -646,6 +646,7 @@ void broadcastTrainingBestSnapshot(
                 .count = count,
             });
     }
+    bestSnapshot.scenarioVideoFrame = bestSnapshot.worldData.scenario_video_frame;
 
     dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
     dsm.broadcastEventData(
@@ -664,6 +665,7 @@ void broadcastTrainingBestPlaybackFrame(
     frame.organismIds = std::move(organismIds);
     frame.fitness = fitness;
     frame.generation = generation;
+    frame.scenarioVideoFrame = frame.worldData.scenario_video_frame;
 
     dsm.broadcastEventData(
         Api::TrainingBestPlaybackFrame::name(), Network::serialize_payload(frame));

@@ -331,6 +331,7 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.frame.worldData;
+    worldData.scenario_video_frame = evt.frame.scenarioVideoFrame;
     worldData.organism_ids = evt.frame.organismIds;
     view_->updateBestPlaybackFrame(worldData, evt.frame.fitness, evt.frame.generation);
     return std::move(*this);
@@ -342,6 +343,7 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.snapshot.worldData;
+    worldData.scenario_video_frame = evt.snapshot.scenarioVideoFrame;
     worldData.organism_ids = evt.snapshot.organismIds;
     LOG_INFO(
         State,
