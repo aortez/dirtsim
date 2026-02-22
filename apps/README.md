@@ -56,6 +56,9 @@ The project uses git submodules for LVGL and other dependencies:
 git submodule update --init --recursive
 ```
 
+Note: `external/smolnes` is vendored (not a submodule). Its upstream MIT license is kept at
+`external/smolnes/LICENSE`.
+
 ### 3. Build
 
 ```bash
