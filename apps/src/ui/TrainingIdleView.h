@@ -56,6 +56,8 @@ public:
     void createTrainingResultBrowserPanel();
     Result<std::monostate, std::string> showTrainingConfigView(TrainingConfigView view);
     void setStreamIntervalMs(int value);
+    void setBestPlaybackEnabled(bool enabled);
+    void setBestPlaybackIntervalMs(int value);
     void setEvolutionStarted(bool started);
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
