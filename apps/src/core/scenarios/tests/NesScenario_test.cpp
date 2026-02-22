@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include <optional>
 #include <string>
+#include <thread>
 
 using namespace DirtSim;
 
@@ -44,6 +45,48 @@ std::optional<std::filesystem::path> resolveNesFixtureRomPath()
     }
 
     return std::nullopt;
+}
+
+struct ParallelRuntimeResult {
+    std::string lastError;
+    uint64_t renderedFrames = 0;
+    bool healthy = false;
+};
+
+ParallelRuntimeResult runScenarioFrames(const std::filesystem::path& romPath, int frameCount)
+{
+    ParallelRuntimeResult result;
+
+    auto scenario = std::make_unique<NesScenario>();
+    const ScenarioMetadata& metadata = scenario->getMetadata();
+    World world(metadata.requiredWidth, metadata.requiredHeight);
+
+    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    config.romPath = romPath.string();
+    config.requireSmolnesMapper = true;
+    scenario->setConfig(config, world);
+    scenario->setup(world);
+
+    if (!scenario->isRuntimeRunning()) {
+        result.lastError = scenario->getRuntimeLastError();
+        return result;
+    }
+    if (!scenario->isRuntimeHealthy()) {
+        result.lastError = scenario->getRuntimeLastError();
+        return result;
+    }
+
+    constexpr double deltaTime = 1.0 / 60.0;
+    for (int frame = 0; frame < frameCount; ++frame) {
+        scenario->tick(world, deltaTime);
+    }
+
+    result.healthy = scenario->isRuntimeHealthy();
+    result.renderedFrames = scenario->getRuntimeRenderedFrameCount();
+    if (!result.healthy) {
+        result.lastError = scenario->getRuntimeLastError();
+    }
+    return result;
 }
 
 } // namespace
@@ -300,4 +343,34 @@ TEST(NesScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
         }
     }
     EXPECT_TRUE(cpuChanged) << "CPU RAM should change after advancing a frame.";
+}
+
+TEST(NesScenarioTest, ParallelRuntimeInstancesCanAdvanceIndependently)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    constexpr int frameCount = 90;
+    ParallelRuntimeResult firstResult;
+    ParallelRuntimeResult secondResult;
+    const std::filesystem::path resolvedRomPath = romPath.value();
+
+    std::thread firstThread([&firstResult, &resolvedRomPath, frameCount]() {
+        firstResult = runScenarioFrames(resolvedRomPath, frameCount);
+    });
+    std::thread secondThread([&secondResult, &resolvedRomPath, frameCount]() {
+        secondResult = runScenarioFrames(resolvedRomPath, frameCount);
+    });
+    firstThread.join();
+    secondThread.join();
+
+    EXPECT_TRUE(firstResult.lastError.empty()) << firstResult.lastError;
+    EXPECT_TRUE(secondResult.lastError.empty()) << secondResult.lastError;
+    EXPECT_TRUE(firstResult.healthy) << firstResult.lastError;
+    EXPECT_TRUE(secondResult.healthy) << secondResult.lastError;
+    EXPECT_EQ(firstResult.renderedFrames, static_cast<uint64_t>(frameCount));
+    EXPECT_EQ(secondResult.renderedFrames, static_cast<uint64_t>(frameCount));
 }

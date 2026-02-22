@@ -2,75 +2,99 @@
 
 #include <SDL2/SDL.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-static pthread_mutex_t gRuntimeMutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t gRuntimeCond = PTHREAD_COND_INITIALIZER;
+#if defined(_MSC_VER)
+#define SMOLNES_THREAD_LOCAL __declspec(thread)
+#else
+#define SMOLNES_THREAD_LOCAL __thread
+#endif
 
-static pthread_t gRuntimeThread;
-static bool gThreadJoinable = false;
-static bool gThreadRunning = false;
-static bool gStopRequested = false;
-static bool gHealthy = false;
+struct SmolnesRuntimeHandle {
+    pthread_cond_t runtimeCond;
+    pthread_mutex_t runtimeMutex;
 
-static uint64_t gRenderedFrames = 0;
-static uint64_t gTargetFrames = 0;
-static uint64_t gLatestFrameId = 0;
-static bool gHasLatestFrame = false;
-static uint8_t gLatestFrame[SMOLNES_RUNTIME_FRAME_BYTES] = { 0 };
-static uint8_t gController1State = 0;
+    pthread_t runtimeThread;
+    bool hasLatestFrame;
+    bool hasMemorySnapshot;
+    bool healthy;
+    bool stopRequested;
+    bool threadJoinable;
+    bool threadRunning;
 
-static char gLastError[256] = { 0 };
-static char gRomPath[1024] = { 0 };
+    uint64_t latestFrameId;
+    uint64_t renderedFrames;
+    uint64_t targetFrames;
 
-static uint8_t gKeyboardState[SDL_NUM_SCANCODES] = { 0 };
-static uint8_t gWindowStub = 0;
-static uint8_t gRendererStub = 0;
-static uint8_t gTextureStub = 0;
+    uint8_t controller1State;
+    uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
+    uint8_t keyboardState[SDL_NUM_SCANCODES];
+    uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
+    uint8_t prgRamSnapshot[SMOLNES_RUNTIME_PRG_RAM_BYTES];
+    uint8_t rendererStub;
+    uint8_t textureStub;
+    uint8_t windowStub;
+
+    char lastError[256];
+    char romPath[1024];
+};
+
+static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
+static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
 
 int smolnesRuntimeEntryPoint(int argc, char** argv);
 
-static void clearLastErrorLocked()
+static void clearLastErrorLocked(SmolnesRuntimeHandle* runtime)
 {
-    gLastError[0] = '\0';
+    runtime->lastError[0] = '\0';
 }
 
-static void setLastErrorLocked(const char* message)
+static void setLastErrorLocked(SmolnesRuntimeHandle* runtime, const char* message)
 {
     if (message == NULL) {
-        clearLastErrorLocked();
+        clearLastErrorLocked(runtime);
         return;
     }
-    snprintf(gLastError, sizeof(gLastError), "%s", message);
+    snprintf(runtime->lastError, sizeof(runtime->lastError), "%s", message);
 }
 
-static void setLastError(const char* message)
+static void setLastError(SmolnesRuntimeHandle* runtime, const char* message)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    setLastErrorLocked(message);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    setLastErrorLocked(runtime, message);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-static void applyController1StateToKeyboardLocked(void)
+static void applyController1StateToKeyboardLocked(SmolnesRuntimeHandle* runtime)
 {
-    memset(gKeyboardState, 0, sizeof(gKeyboardState));
+    memset(runtime->keyboardState, 0, sizeof(runtime->keyboardState));
 
-    gKeyboardState[SDL_SCANCODE_X] = (gController1State & SMOLNES_RUNTIME_BUTTON_A) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_Z] = (gController1State & SMOLNES_RUNTIME_BUTTON_B) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_TAB] =
-        (gController1State & SMOLNES_RUNTIME_BUTTON_SELECT) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_RETURN] =
-        (gController1State & SMOLNES_RUNTIME_BUTTON_START) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_UP] = (gController1State & SMOLNES_RUNTIME_BUTTON_UP) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_DOWN] = (gController1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_LEFT] = (gController1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
-    gKeyboardState[SDL_SCANCODE_RIGHT] =
-        (gController1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_X] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_A) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_Z] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_B) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_TAB] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_SELECT) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_RETURN] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_START) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_UP] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_UP) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_DOWN] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_LEFT] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
+    runtime->keyboardState[SDL_SCANCODE_RIGHT] =
+        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
 }
 
 static struct timespec buildDeadline(uint32_t timeoutMs)
@@ -87,29 +111,48 @@ static struct timespec buildDeadline(uint32_t timeoutMs)
     return deadline;
 }
 
+static SmolnesRuntimeHandle* getCurrentRuntime(void)
+{
+    return gCurrentRuntime;
+}
+
+static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime);
+
 static void* runtimeThreadMain(void* arg)
 {
-    (void)arg;
-    char* argv[] = { "smolnes", gRomPath };
+    SmolnesRuntimeHandle* runtime = (SmolnesRuntimeHandle*)arg;
+    if (runtime == NULL) {
+        return NULL;
+    }
+
+    gCurrentRuntime = runtime;
+    char* argv[] = { "smolnes", runtime->romPath };
     const int exitCode = smolnesRuntimeEntryPoint(2, argv);
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    gThreadRunning = false;
-    if (!gStopRequested && exitCode != 0) {
-        gHealthy = false;
-        setLastErrorLocked("smolnes runtime exited with an error.");
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->threadRunning = false;
+    if (!runtime->stopRequested && exitCode != 0) {
+        runtime->healthy = false;
+        setLastErrorLocked(runtime, "smolnes runtime exited with an error.");
     }
-    pthread_cond_broadcast(&gRuntimeCond);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+    gCurrentRuntime = NULL;
     return NULL;
 }
 
 int smolnesRuntimeWrappedInit(Uint32 flags)
 {
     (void)flags;
-    pthread_mutex_lock(&gRuntimeMutex);
-    applyController1StateToKeyboardLocked();
-    pthread_mutex_unlock(&gRuntimeMutex);
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    applyController1StateToKeyboardLocked(runtime);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
     return 0;
 }
 
@@ -118,7 +161,12 @@ const Uint8* smolnesRuntimeWrappedGetKeyboardState(int* numkeys)
     if (numkeys != NULL) {
         *numkeys = SDL_NUM_SCANCODES;
     }
-    return gKeyboardState;
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return gEmptyKeyboardState;
+    }
+    return runtime->keyboardState;
 }
 
 SDL_Window* smolnesRuntimeWrappedCreateWindow(
@@ -130,7 +178,12 @@ SDL_Window* smolnesRuntimeWrappedCreateWindow(
     (void)w;
     (void)h;
     (void)flags;
-    return (SDL_Window*)&gWindowStub;
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return NULL;
+    }
+    return (SDL_Window*)&runtime->windowStub;
 }
 
 SDL_Renderer* smolnesRuntimeWrappedCreateRenderer(SDL_Window* window, int index, Uint32 flags)
@@ -138,7 +191,12 @@ SDL_Renderer* smolnesRuntimeWrappedCreateRenderer(SDL_Window* window, int index,
     (void)window;
     (void)index;
     (void)flags;
-    return (SDL_Renderer*)&gRendererStub;
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return NULL;
+    }
+    return (SDL_Renderer*)&runtime->rendererStub;
 }
 
 SDL_Texture* smolnesRuntimeWrappedCreateTexture(
@@ -149,13 +207,23 @@ SDL_Texture* smolnesRuntimeWrappedCreateTexture(
     (void)access;
     (void)w;
     (void)h;
-    return (SDL_Texture*)&gTextureStub;
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return NULL;
+    }
+    return (SDL_Texture*)&runtime->textureStub;
 }
 
 int smolnesRuntimeWrappedUpdateTexture(
     SDL_Texture* texture, const SDL_Rect* rect, const void* pixels, int pitch)
 {
     (void)texture;
+
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return -1;
+    }
 
     if (pixels == NULL) {
         return 0;
@@ -169,14 +237,14 @@ int smolnesRuntimeWrappedUpdateTexture(
         return 0;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
+    pthread_mutex_lock(&runtime->runtimeMutex);
     for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
         const uint8_t* src = (const uint8_t*)pixels + ((size_t)row * (size_t)pitch);
-        uint8_t* dst = gLatestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+        uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
         memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
     }
-    gHasLatestFrame = true;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    runtime->hasLatestFrame = true;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 
     return 0;
 }
@@ -195,23 +263,34 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
 {
     (void)renderer;
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    while (!gStopRequested && gRenderedFrames >= gTargetFrames) {
-        pthread_cond_wait(&gRuntimeCond, &gRuntimeMutex);
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return;
     }
-    if (!gStopRequested) {
-        ++gRenderedFrames;
-        gLatestFrameId = gRenderedFrames;
-        pthread_cond_broadcast(&gRuntimeCond);
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    while (!runtime->stopRequested && runtime->renderedFrames >= runtime->targetFrames) {
+        pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
     }
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (!runtime->stopRequested) {
+        refreshMemorySnapshotLocked(runtime);
+        ++runtime->renderedFrames;
+        runtime->latestFrameId = runtime->renderedFrames;
+        pthread_cond_broadcast(&runtime->runtimeCond);
+    }
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
 int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    const bool shouldStop = gStopRequested;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL) {
+        return 1;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    const bool shouldStop = runtime->stopRequested;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 
     if (!shouldStop) {
         return 0;
@@ -233,6 +312,7 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SDL_RenderCopy smolnesRuntimeWrappedRenderCopy
 #define SDL_RenderPresent smolnesRuntimeWrappedRenderPresent
 #define SDL_UpdateTexture smolnesRuntimeWrappedUpdateTexture
+#define SMOLNES_TLS SMOLNES_THREAD_LOCAL
 #define main smolnesRuntimeEntryPoint
 
 #include "../../../../external/smolnes/deobfuscated.c"
@@ -246,221 +326,307 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #undef SDL_RenderCopy
 #undef SDL_RenderPresent
 #undef SDL_UpdateTexture
+#undef SMOLNES_TLS
 #undef main
 
-bool smolnesRuntimeStart(const char* romPath)
+static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
 {
-    if (romPath == NULL || romPath[0] == '\0') {
-        setLastError("ROM path is empty.");
+    memcpy(runtime->cpuRamSnapshot, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    memcpy(runtime->prgRamSnapshot, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    runtime->hasMemorySnapshot = true;
+}
+
+SmolnesRuntimeHandle* smolnesRuntimeCreate(void)
+{
+    SmolnesRuntimeHandle* runtime =
+        (SmolnesRuntimeHandle*)calloc(1u, sizeof(SmolnesRuntimeHandle));
+    if (runtime == NULL) {
+        return NULL;
+    }
+
+    if (pthread_mutex_init(&runtime->runtimeMutex, NULL) != 0) {
+        free(runtime);
+        return NULL;
+    }
+    if (pthread_cond_init(&runtime->runtimeCond, NULL) != 0) {
+        pthread_mutex_destroy(&runtime->runtimeMutex);
+        free(runtime);
+        return NULL;
+    }
+
+    return runtime;
+}
+
+void smolnesRuntimeDestroy(SmolnesRuntimeHandle* runtime)
+{
+    if (runtime == NULL) {
+        return;
+    }
+
+    smolnesRuntimeStop(runtime);
+    pthread_cond_destroy(&runtime->runtimeCond);
+    pthread_mutex_destroy(&runtime->runtimeMutex);
+    free(runtime);
+}
+
+bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
+{
+    if (runtime == NULL) {
         return false;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    if (gThreadRunning) {
-        setLastErrorLocked("smolnes runtime is already running.");
-        pthread_mutex_unlock(&gRuntimeMutex);
+    if (romPath == NULL || romPath[0] == '\0') {
+        setLastError(runtime, "ROM path is empty.");
         return false;
     }
-    const bool joinOldThread = gThreadJoinable;
-    pthread_mutex_unlock(&gRuntimeMutex);
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    if (runtime->threadRunning) {
+        setLastErrorLocked(runtime, "smolnes runtime is already running.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
+        return false;
+    }
+    const bool joinOldThread = runtime->threadJoinable;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 
     if (joinOldThread) {
-        pthread_join(gRuntimeThread, NULL);
-        pthread_mutex_lock(&gRuntimeMutex);
-        gThreadJoinable = false;
-        pthread_mutex_unlock(&gRuntimeMutex);
+        pthread_join(runtime->runtimeThread, NULL);
+        pthread_mutex_lock(&runtime->runtimeMutex);
+        runtime->threadJoinable = false;
+        pthread_mutex_unlock(&runtime->runtimeMutex);
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    clearLastErrorLocked();
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    clearLastErrorLocked(runtime);
 
-    snprintf(gRomPath, sizeof(gRomPath), "%s", romPath);
+    snprintf(runtime->romPath, sizeof(runtime->romPath), "%s", romPath);
 
-    gStopRequested = false;
-    gHealthy = true;
-    gRenderedFrames = 0;
-    gTargetFrames = 0;
-    gLatestFrameId = 0;
-    gHasLatestFrame = false;
-    memset(gLatestFrame, 0, sizeof(gLatestFrame));
-    gController1State = 0;
-    applyController1StateToKeyboardLocked();
-    gThreadRunning = true;
+    runtime->stopRequested = false;
+    runtime->healthy = true;
+    runtime->renderedFrames = 0;
+    runtime->targetFrames = 0;
+    runtime->latestFrameId = 0;
+    runtime->hasLatestFrame = false;
+    runtime->hasMemorySnapshot = false;
+    memset(runtime->latestFrame, 0, sizeof(runtime->latestFrame));
+    memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
+    memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
+    runtime->controller1State = 0;
+    applyController1StateToKeyboardLocked(runtime);
+    runtime->threadRunning = true;
 
-    const int createResult = pthread_create(&gRuntimeThread, NULL, runtimeThreadMain, NULL);
+    const int createResult = pthread_create(&runtime->runtimeThread, NULL, runtimeThreadMain, runtime);
     if (createResult != 0) {
-        gThreadRunning = false;
-        gHealthy = false;
-        setLastErrorLocked("Failed to start smolnes runtime thread.");
-        pthread_mutex_unlock(&gRuntimeMutex);
+        runtime->threadRunning = false;
+        runtime->healthy = false;
+        setLastErrorLocked(runtime, "Failed to start smolnes runtime thread.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
         return false;
     }
 
-    gThreadJoinable = true;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    runtime->threadJoinable = true;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
     return true;
 }
 
-bool smolnesRuntimeRunFrames(uint32_t frameCount, uint32_t timeoutMs)
+bool smolnesRuntimeRunFrames(SmolnesRuntimeHandle* runtime, uint32_t frameCount, uint32_t timeoutMs)
 {
+    if (runtime == NULL) {
+        return false;
+    }
+
     if (frameCount == 0) {
         return true;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    if (!gThreadRunning || !gHealthy) {
-        setLastErrorLocked("smolnes runtime is not healthy.");
-        pthread_mutex_unlock(&gRuntimeMutex);
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    if (!runtime->threadRunning || !runtime->healthy) {
+        setLastErrorLocked(runtime, "smolnes runtime is not healthy.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
         return false;
     }
 
-    const uint64_t requestedFrames = gTargetFrames + frameCount;
-    gTargetFrames = requestedFrames;
-    pthread_cond_broadcast(&gRuntimeCond);
+    const uint64_t requestedFrames = runtime->targetFrames + frameCount;
+    runtime->targetFrames = requestedFrames;
+    pthread_cond_broadcast(&runtime->runtimeCond);
 
     const struct timespec deadline = buildDeadline(timeoutMs);
-    while (gRenderedFrames < requestedFrames && gThreadRunning && gHealthy) {
+    while (runtime->renderedFrames < requestedFrames && runtime->threadRunning && runtime->healthy) {
         int waitResult = 0;
         if (timeoutMs == 0) {
-            waitResult = pthread_cond_wait(&gRuntimeCond, &gRuntimeMutex);
+            waitResult = pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
         }
         else {
-            waitResult = pthread_cond_timedwait(&gRuntimeCond, &gRuntimeMutex, &deadline);
+            waitResult = pthread_cond_timedwait(&runtime->runtimeCond, &runtime->runtimeMutex, &deadline);
         }
 
         if (waitResult == ETIMEDOUT) {
-            gHealthy = false;
-            setLastErrorLocked("Timed out waiting for smolnes frame progression.");
-            pthread_mutex_unlock(&gRuntimeMutex);
+            runtime->healthy = false;
+            setLastErrorLocked(runtime, "Timed out waiting for smolnes frame progression.");
+            pthread_mutex_unlock(&runtime->runtimeMutex);
             return false;
         }
     }
 
-    if (gRenderedFrames < requestedFrames) {
-        gHealthy = false;
-        setLastErrorLocked("smolnes runtime stopped before requested frames completed.");
-        pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime->renderedFrames < requestedFrames) {
+        runtime->healthy = false;
+        setLastErrorLocked(runtime, "smolnes runtime stopped before requested frames completed.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
         return false;
     }
 
-    pthread_mutex_unlock(&gRuntimeMutex);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
     return true;
 }
 
-void smolnesRuntimeStop(void)
+void smolnesRuntimeStop(SmolnesRuntimeHandle* runtime)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    const bool joinThread = gThreadJoinable;
-    gStopRequested = true;
-    pthread_cond_broadcast(&gRuntimeCond);
-    pthread_mutex_unlock(&gRuntimeMutex);
-
-    if (joinThread) {
-        pthread_join(gRuntimeThread, NULL);
+    if (runtime == NULL) {
+        return;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    gThreadJoinable = false;
-    gThreadRunning = false;
-    gStopRequested = false;
-    gTargetFrames = gRenderedFrames;
-    pthread_cond_broadcast(&gRuntimeCond);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    const bool joinThread = runtime->threadJoinable;
+    runtime->stopRequested = true;
+    pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+
+    if (joinThread) {
+        pthread_join(runtime->runtimeThread, NULL);
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->threadJoinable = false;
+    runtime->threadRunning = false;
+    runtime->stopRequested = false;
+    runtime->targetFrames = runtime->renderedFrames;
+    pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-bool smolnesRuntimeIsHealthy(void)
+bool smolnesRuntimeIsHealthy(const SmolnesRuntimeHandle* runtime)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    const bool healthy = gHealthy;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    const bool healthy = mutableRuntime->healthy;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return healthy;
 }
 
-bool smolnesRuntimeIsRunning(void)
+bool smolnesRuntimeIsRunning(const SmolnesRuntimeHandle* runtime)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    const bool running = gThreadRunning;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    const bool running = mutableRuntime->threadRunning;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return running;
 }
 
-uint64_t smolnesRuntimeGetRenderedFrameCount(void)
+uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    const uint64_t frameCount = gRenderedFrames;
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        return 0;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    const uint64_t frameCount = mutableRuntime->renderedFrames;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return frameCount;
 }
 
-void smolnesRuntimeSetController1State(uint8_t buttonMask)
+void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask)
 {
-    pthread_mutex_lock(&gRuntimeMutex);
-    gController1State = buttonMask;
-    applyController1StateToKeyboardLocked();
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->controller1State = buttonMask;
+    applyController1StateToKeyboardLocked(runtime);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-bool smolnesRuntimeCopyLatestFrame(uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)
+bool smolnesRuntimeCopyLatestFrame(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)
 {
-    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_FRAME_BYTES) {
+    if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_FRAME_BYTES) {
         return false;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    if (!gHasLatestFrame) {
-        pthread_mutex_unlock(&gRuntimeMutex);
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->hasLatestFrame) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
 
-    memcpy(buffer, gLatestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
+    memcpy(buffer, mutableRuntime->latestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
     if (frameId != NULL) {
-        *frameId = gLatestFrameId;
+        *frameId = mutableRuntime->latestFrameId;
     }
-    pthread_mutex_unlock(&gRuntimeMutex);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }
 
-bool smolnesRuntimeCopyCpuRam(uint8_t* buffer, uint32_t bufferSize)
+bool smolnesRuntimeCopyCpuRam(const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
-    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES) {
+    if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES) {
         return false;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    if (!gThreadRunning || !gHealthy) {
-        pthread_mutex_unlock(&gRuntimeMutex);
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
 
-    memcpy(buffer, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    memcpy(buffer, mutableRuntime->cpuRamSnapshot, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }
 
-bool smolnesRuntimeCopyPrgRam(uint8_t* buffer, uint32_t bufferSize)
+bool smolnesRuntimeCopyPrgRam(const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
-    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+    if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
         return false;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    if (!gThreadRunning || !gHealthy) {
-        pthread_mutex_unlock(&gRuntimeMutex);
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
 
-    memcpy(buffer, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    memcpy(buffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }
 
-void smolnesRuntimeGetLastErrorCopy(char* buffer, uint32_t bufferSize)
+void smolnesRuntimeGetLastErrorCopy(
+    const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize)
 {
     if (buffer == NULL || bufferSize == 0) {
         return;
     }
 
-    pthread_mutex_lock(&gRuntimeMutex);
-    snprintf(buffer, bufferSize, "%s", gLastError);
-    pthread_mutex_unlock(&gRuntimeMutex);
+    if (runtime == NULL) {
+        buffer[0] = '\0';
+        return;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    snprintf(buffer, bufferSize, "%s", mutableRuntime->lastError);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
 }

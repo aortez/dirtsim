@@ -17,6 +17,12 @@ public:
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
     };
 
+    SmolnesRuntime();
+    ~SmolnesRuntime();
+
+    SmolnesRuntime(const SmolnesRuntime&) = delete;
+    SmolnesRuntime& operator=(const SmolnesRuntime&) = delete;
+
     bool start(const std::string& romPath);
     bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
     void stop();
@@ -28,6 +34,9 @@ public:
     std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     std::optional<MemorySnapshot> copyMemorySnapshot() const;
     std::string getLastError() const;
+
+private:
+    SmolnesRuntimeHandle* runtimeHandle_ = nullptr;
 };
 
 } // namespace DirtSim

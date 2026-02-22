@@ -100,7 +100,7 @@ TEST(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
 }
 
-TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
+TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -132,7 +132,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
 
     ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
-    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 1);
+    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 4);
 
     ASSERT_TRUE(callbackInvoked);
     ASSERT_TRUE(capturedResponse.isValue());
@@ -198,7 +198,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForDuckClockS
     EXPECT_EQ(population.randomCount, 3);
 }
 
-TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndCapsParallelism)
+TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndKeepsParallelism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -235,7 +235,7 @@ TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndCapsPa
     EXPECT_EQ(evolution.trainingSpec.population.front().scenarioId, Scenario::EnumType::Nes);
     EXPECT_EQ(
         evolution.trainingSpec.population.front().brainKind, TrainingBrainKind::NesFlappyBird);
-    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 1);
+    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 2);
 }
 
 TEST(StateEvolutionTest, EvolutionStartAllowsZeroMaxGenerations)

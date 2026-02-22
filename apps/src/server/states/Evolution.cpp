@@ -339,16 +339,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
-bool hasNesFlappyPopulation(const TrainingSpec& spec)
-{
-    for (const auto& entry : spec.population) {
-        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
-            return true;
-        }
-    }
-    return false;
-}
-
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
@@ -800,13 +790,6 @@ void Evolution::onEnter(StateMachine& dsm)
 
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
-    if (hasNesFlappyPopulation(trainingSpec) && evolutionConfig.maxParallelEvaluations > 1) {
-        LOG_WARN(
-            State,
-            "Evolution: forcing max parallel evaluations to 1 for NES training "
-            "(smolnes runtime is process-global)");
-        evolutionConfig.maxParallelEvaluations = 1;
-    }
 
     // Initialize CPU telemetry.
     cpuMetrics_ = std::make_unique<SystemMetrics>();

@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+typedef struct SmolnesRuntimeHandle SmolnesRuntimeHandle;
+
 #define SMOLNES_RUNTIME_FRAME_WIDTH 256u
 #define SMOLNES_RUNTIME_FRAME_HEIGHT 224u
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
@@ -24,18 +26,26 @@ extern "C" {
 #define SMOLNES_RUNTIME_BUTTON_LEFT (1u << 6)
 #define SMOLNES_RUNTIME_BUTTON_RIGHT (1u << 7)
 
-bool smolnesRuntimeStart(const char* romPath);
-bool smolnesRuntimeRunFrames(uint32_t frameCount, uint32_t timeoutMs);
-void smolnesRuntimeStop(void);
+SmolnesRuntimeHandle* smolnesRuntimeCreate(void);
+void smolnesRuntimeDestroy(SmolnesRuntimeHandle* runtime);
 
-bool smolnesRuntimeIsHealthy(void);
-bool smolnesRuntimeIsRunning(void);
-uint64_t smolnesRuntimeGetRenderedFrameCount(void);
-void smolnesRuntimeSetController1State(uint8_t buttonMask);
-bool smolnesRuntimeCopyLatestFrame(uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
-bool smolnesRuntimeCopyCpuRam(uint8_t* buffer, uint32_t bufferSize);
-bool smolnesRuntimeCopyPrgRam(uint8_t* buffer, uint32_t bufferSize);
-void smolnesRuntimeGetLastErrorCopy(char* buffer, uint32_t bufferSize);
+bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath);
+bool smolnesRuntimeRunFrames(
+    SmolnesRuntimeHandle* runtime, uint32_t frameCount, uint32_t timeoutMs);
+void smolnesRuntimeStop(SmolnesRuntimeHandle* runtime);
+
+bool smolnesRuntimeIsHealthy(const SmolnesRuntimeHandle* runtime);
+bool smolnesRuntimeIsRunning(const SmolnesRuntimeHandle* runtime);
+uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime);
+void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask);
+bool smolnesRuntimeCopyLatestFrame(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
+bool smolnesRuntimeCopyCpuRam(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
+bool smolnesRuntimeCopyPrgRam(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
+void smolnesRuntimeGetLastErrorCopy(
+    const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 
 #ifdef __cplusplus
 }
