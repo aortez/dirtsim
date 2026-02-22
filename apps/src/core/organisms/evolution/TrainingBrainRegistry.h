@@ -1,11 +1,9 @@
 #pragma once
 
-#include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 
 #include <functional>
-#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -24,13 +22,6 @@ inline constexpr const char* DuckBrain2 = "DuckBrain2";
 inline constexpr const char* DuckNeuralNetRecurrent = "DuckNeuralNetRecurrent";
 inline constexpr const char* NesFlappyBird = "NesFlappyBird";
 } // namespace TrainingBrainKind
-
-struct TrainingBrainDefaults {
-    Scenario::EnumType defaultScenarioId = Scenario::EnumType::TreeGermination;
-    std::optional<std::string> defaultNesRomId = std::nullopt;
-};
-
-std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind);
 
 struct BrainRegistryKey {
     OrganismType organismType = OrganismType::TREE;
