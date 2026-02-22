@@ -34,7 +34,6 @@ struct SmolnesRuntimeHandle {
 
     uint8_t controller1State;
     uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
-    uint8_t keyboardState[SDL_NUM_SCANCODES];
     uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
     uint8_t prgRamSnapshot[SMOLNES_RUNTIME_PRG_RAM_BYTES];
     uint8_t rendererStub;
@@ -47,6 +46,7 @@ struct SmolnesRuntimeHandle {
 
 static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
 static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
+static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 0 };
 
 int smolnesRuntimeEntryPoint(int argc, char** argv);
 
@@ -75,26 +75,18 @@ static void setLastError(SmolnesRuntimeHandle* runtime, const char* message)
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-static void applyController1StateToKeyboardLocked(SmolnesRuntimeHandle* runtime)
+static void mapController1StateToKeyboard(uint8_t controller1State, uint8_t* keyboardState)
 {
-    memset(runtime->keyboardState, 0, sizeof(runtime->keyboardState));
+    memset(keyboardState, 0, SDL_NUM_SCANCODES * sizeof(uint8_t));
 
-    runtime->keyboardState[SDL_SCANCODE_X] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_A) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_Z] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_B) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_TAB] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_SELECT) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_RETURN] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_START) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_UP] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_UP) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_DOWN] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_LEFT] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
-    runtime->keyboardState[SDL_SCANCODE_RIGHT] =
-        (runtime->controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_X] = (controller1State & SMOLNES_RUNTIME_BUTTON_A) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_Z] = (controller1State & SMOLNES_RUNTIME_BUTTON_B) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_TAB] = (controller1State & SMOLNES_RUNTIME_BUTTON_SELECT) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_RETURN] = (controller1State & SMOLNES_RUNTIME_BUTTON_START) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_UP] = (controller1State & SMOLNES_RUNTIME_BUTTON_UP) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_DOWN] = (controller1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_LEFT] = (controller1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
+    keyboardState[SDL_SCANCODE_RIGHT] = (controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
 }
 
 static struct timespec buildDeadline(uint32_t timeoutMs)
@@ -150,9 +142,6 @@ int smolnesRuntimeWrappedInit(Uint32 flags)
         return -1;
     }
 
-    pthread_mutex_lock(&runtime->runtimeMutex);
-    applyController1StateToKeyboardLocked(runtime);
-    pthread_mutex_unlock(&runtime->runtimeMutex);
     return 0;
 }
 
@@ -166,7 +155,12 @@ const Uint8* smolnesRuntimeWrappedGetKeyboardState(int* numkeys)
     if (runtime == NULL) {
         return gEmptyKeyboardState;
     }
-    return runtime->keyboardState;
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    const uint8_t controller1State = runtime->controller1State;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+    mapController1StateToKeyboard(controller1State, gThreadKeyboardState);
+    return gThreadKeyboardState;
 }
 
 SDL_Window* smolnesRuntimeWrappedCreateWindow(
@@ -412,7 +406,6 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
     runtime->controller1State = 0;
-    applyController1StateToKeyboardLocked(runtime);
     runtime->threadRunning = true;
 
     const int createResult = pthread_create(&runtime->runtimeThread, NULL, runtimeThreadMain, runtime);
@@ -551,7 +544,6 @@ void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t bu
 
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->controller1State = buttonMask;
-    applyController1StateToKeyboardLocked(runtime);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
