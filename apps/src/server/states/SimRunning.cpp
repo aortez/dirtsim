@@ -47,14 +47,6 @@ namespace State {
 
 namespace {
 
-Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
-{
-    if (scenarioId == Scenario::EnumType::DuckTraining) {
-        return Scenario::EnumType::Clock;
-    }
-    return scenarioId;
-}
-
 constexpr float NES_ANALOG_DEADZONE = 0.25f;
 constexpr uint8_t NES_BUTTON_A = 1u << 0;
 constexpr uint8_t NES_BUTTON_B = 1u << 1;
@@ -249,8 +241,7 @@ void SimRunning::onEnter(StateMachine& dsm)
 
     // Apply default scenario if no scenario is set.
     if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
-        const Scenario::EnumType defaultScenarioId =
-            normalizeLegacyScenarioId(dsm.getUserSettings().defaultScenario);
+        const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
@@ -965,7 +956,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     assert(world && "World must exist in SimRunning");
 
-    Scenario::EnumType newScenarioId = normalizeLegacyScenarioId(cwc.command.scenario_id);
+    Scenario::EnumType newScenarioId = cwc.command.scenario_id;
     LOG_INFO(
         State,
         "Switching scenario from '{}' to '{}'",

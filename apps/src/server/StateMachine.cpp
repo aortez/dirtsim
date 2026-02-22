@@ -338,22 +338,10 @@ UserSettings sanitizeUserSettings(
         recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
     }
 
-    if (settings.trainingSpec.scenarioId == Scenario::EnumType::DuckTraining) {
-        settings.trainingSpec.scenarioId = Scenario::EnumType::Clock;
-        recordUpdate("trainingSpec.scenarioId migrated from DuckTraining to Clock");
-    }
-
     canonicalizeNesTrainingTarget(settings, recordUpdate);
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
-        if (population.scenarioId == Scenario::EnumType::DuckTraining) {
-            population.scenarioId = Scenario::EnumType::Clock;
-            recordUpdate(
-                "trainingSpec population[" + std::to_string(index)
-                + "] scenarioId migrated from DuckTraining to Clock");
-        }
-
         const int originalSeedCount = static_cast<int>(population.seedGenomes.size());
         population.seedGenomes.erase(
             std::remove_if(

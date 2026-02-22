@@ -1025,7 +1025,7 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
     EXPECT_FALSE(foundExecutionAnchorPrefix);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
+TEST_F(TrainingRunnerTest, ClockDuckPopulatesCommandSignatures)
 {
     config_.maxSimulationTime = 5.0;
 
@@ -1106,7 +1106,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     EXPECT_TRUE(foundRunRight);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
+TEST_F(TrainingRunnerTest, ClockDuckDisablesClockDuckEvent)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;
@@ -1126,7 +1126,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
     EXPECT_FALSE(clockConfig->rainEnabled);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
+TEST_F(TrainingRunnerTest, ClockDuckRandomizesSpawnSide)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;
@@ -1186,7 +1186,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
     EXPECT_TRUE(sawRightSpawn);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockSpawnSideOverrideRespectsRequestedSide)
+TEST_F(TrainingRunnerTest, ClockDuckSpawnSideOverrideRespectsRequestedSide)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;

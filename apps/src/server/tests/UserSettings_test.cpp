@@ -282,7 +282,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     Api::UserSettingsPatch::Response response;
 
     TrainingSpec updatedTrainingSpec;
-    updatedTrainingSpec.scenarioId = Scenario::EnumType::DuckTraining;
+    updatedTrainingSpec.scenarioId = Scenario::EnumType::Clock;
     updatedTrainingSpec.organismType = OrganismType::DUCK;
     updatedTrainingSpec.population.clear();
 

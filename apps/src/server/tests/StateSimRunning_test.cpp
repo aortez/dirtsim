@@ -818,31 +818,3 @@ TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 0u)
         << "Organisms should be cleared on scenario switch";
 }
-
-TEST(StateSimRunningTest, ScenarioSwitch_LegacyDuckTrainingMapsToClock)
-{
-    TestStateMachineFixture fixture;
-
-    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
-
-    bool callbackInvoked = false;
-    Api::ScenarioSwitch::Command cmd;
-    cmd.scenario_id = Scenario::EnumType::DuckTraining;
-    Api::ScenarioSwitch::Cwc cwc(cmd, [&](Api::ScenarioSwitch::Response&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
-    });
-
-    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
-    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
-
-    ASSERT_TRUE(callbackInvoked);
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
-
-    const ScenarioConfig config = simRunning.scenario->getConfig();
-    const auto* clockConfig = std::get_if<Config::Clock>(&config);
-    ASSERT_NE(clockConfig, nullptr);
-}

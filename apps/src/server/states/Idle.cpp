@@ -28,14 +28,6 @@ namespace State {
 
 namespace {
 
-Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
-{
-    if (scenarioId == Scenario::EnumType::DuckTraining) {
-        return Scenario::EnumType::Clock;
-    }
-    return scenarioId;
-}
-
 bool hasNesTrainingPopulation(const TrainingSpec& spec)
 {
     if (spec.scenarioId == Scenario::EnumType::Nes) {
@@ -54,8 +46,6 @@ bool hasNesTrainingPopulation(const TrainingSpec& spec)
 
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
-    scenarioId = normalizeLegacyScenarioId(scenarioId);
-
     ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
     if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
         scenarioConfig = dsm.serverConfig->startupConfig;
@@ -346,12 +336,9 @@ std::optional<ApiError> validateTrainingConfig(
     int& outWarmSeedInjectedCount)
 {
     outWarmSeedInjectedCount = 0;
-    outSpec.scenarioId = normalizeLegacyScenarioId(command.scenarioId);
+    outSpec.scenarioId = command.scenarioId;
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
-    for (auto& populationSpec : outSpec.population) {
-        populationSpec.scenarioId = normalizeLegacyScenarioId(populationSpec.scenarioId);
-    }
 
     if (hasNesTrainingPopulation(outSpec)) {
         if (outSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
@@ -589,11 +576,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
-bool hasNesFlappyPopulation(const TrainingSpec& spec)
-{
-    return hasNesTrainingPopulation(spec);
-}
-
 } // namespace
 
 void Idle::onEnter(StateMachine& /*dsm*/)
@@ -634,14 +616,6 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
     newState.evolutionConfig.populationSize = populationSize;
     newState.evolutionConfig.maxParallelEvaluations =
         resolveParallelEvaluations(cwc.command.evolution.maxParallelEvaluations, populationSize);
-    if (hasNesFlappyPopulation(newState.trainingSpec)
-        && newState.evolutionConfig.maxParallelEvaluations > 1) {
-        LOG_WARN(
-            State,
-            "Evolution: capping max parallel evaluations to 1 for NES training "
-            "(smolnes runtime is currently process-global)");
-        newState.evolutionConfig.maxParallelEvaluations = 1;
-    }
 
     LOG_INFO(
         State,
@@ -693,7 +667,6 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
         : dsm.getUserSettings().defaultScenario;
-    scenarioId = normalizeLegacyScenarioId(scenarioId);
     LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));
 
     // Validate max_frame_ms parameter.
