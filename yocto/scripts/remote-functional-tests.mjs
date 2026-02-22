@@ -4,6 +4,9 @@
  */
 
 import { spawnSync } from 'child_process';
+import { existsSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import {
   checkRemoteReachable,
   colors,
@@ -20,12 +23,21 @@ const DEFAULT_TEST_TIMEOUT_MS = 20000;
 const DEFAULT_VERIFY_TIMEOUT_MS = 300000;
 const DEFAULT_SSH_TIMEOUT_SEC = 5;
 const DEFAULT_WAIT_SEC = 180;
+const NES_FIXTURE_FILE = 'Flappy.Paratroopa.World.Unl.nes';
+const NES_FIXTURE_REMOTE_DIR = '/data/dirtsim/testdata/roms';
+const NES_FIXTURE_REMOTE_PATH = `${NES_FIXTURE_REMOTE_DIR}/${NES_FIXTURE_FILE}`;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const APPS_DIR = join(__dirname, '..', '..', 'apps');
+const NES_FIXTURE_LOCAL_PATH = join(APPS_DIR, 'testdata', 'roms', NES_FIXTURE_FILE);
+const NES_FETCH_SCRIPT = join(APPS_DIR, 'scripts', 'fetch_nes_test_rom.sh');
 
 const ALL_TESTS = [
   'canExit',
   'canTrain',
   'canSetGenerationsAndTrain',
   'canPlantTreeSeed',
+  'canControlNesScenario',
   'canLoadGenomeFromBrowser',
   'canOpenTrainingConfigPanel',
   'verifyTraining',
@@ -117,6 +129,91 @@ function runSsh(remoteTarget, command, timeoutSec, identityPath) {
   const stderr = result.stderr || '';
   const status = typeof result.status === 'number' ? result.status : 1;
   return { status, stdout, stderr, output: `${stdout}${stderr}` };
+}
+
+function runScp(localPath, remoteTarget, remotePath, timeoutSec, identityPath) {
+  const args = [
+    ...buildSshArgs(timeoutSec, identityPath),
+    localPath,
+    `${remoteTarget}:${remotePath}`,
+  ];
+  const result = spawnSync('scp', args, { encoding: 'utf-8' });
+  const stdout = result.stdout || '';
+  const stderr = result.stderr || '';
+  const status = typeof result.status === 'number' ? result.status : 1;
+  return { status, stdout, stderr, output: `${stdout}${stderr}` };
+}
+
+function ensureLocalNesFixture() {
+  if (existsSync(NES_FIXTURE_LOCAL_PATH)) {
+    return NES_FIXTURE_LOCAL_PATH;
+  }
+
+  info(`NES fixture missing locally; running ${NES_FETCH_SCRIPT}`);
+  const fetchResult = spawnSync(NES_FETCH_SCRIPT, { encoding: 'utf-8' });
+  if (fetchResult.status !== 0) {
+    const output = `${fetchResult.stdout || ''}${fetchResult.stderr || ''}`.trim();
+    fail(`Failed to fetch NES fixture ROM:\n${output}`);
+  }
+
+  if (!existsSync(NES_FIXTURE_LOCAL_PATH)) {
+    fail(`NES fixture ROM not found after fetch: ${NES_FIXTURE_LOCAL_PATH}`);
+  }
+
+  return NES_FIXTURE_LOCAL_PATH;
+}
+
+function ensureRemoteNesFixture(remoteTarget, timeoutSec, identityPath) {
+  const fixtureCheck = runSsh(
+    remoteTarget,
+    `test -f "${NES_FIXTURE_REMOTE_PATH}"`,
+    timeoutSec,
+    identityPath
+  );
+  if (fixtureCheck.status === 0) {
+    info(`NES fixture ready: ${NES_FIXTURE_REMOTE_PATH}`);
+    return;
+  }
+
+  const localFixturePath = ensureLocalNesFixture();
+  info(`Installing NES fixture on target: ${NES_FIXTURE_REMOTE_PATH}`);
+
+  const mkdirResult = runSsh(
+    remoteTarget,
+    `sudo mkdir -p "${NES_FIXTURE_REMOTE_DIR}"`,
+    timeoutSec,
+    identityPath
+  );
+  if (mkdirResult.status !== 0) {
+    fail(`Failed to create remote NES fixture directory:\n${mkdirResult.output.trim()}`);
+  }
+
+  const stagedRemotePath = `/tmp/${NES_FIXTURE_FILE}.${Date.now()}.${process.pid}`;
+  const scpResult = runScp(
+    localFixturePath,
+    remoteTarget,
+    stagedRemotePath,
+    timeoutSec,
+    identityPath
+  );
+  if (scpResult.status !== 0) {
+    fail(`Failed to upload NES fixture ROM:\n${scpResult.output.trim()}`);
+  }
+
+  const installResult = runSsh(
+    remoteTarget,
+    `sudo cp "${stagedRemotePath}" "${NES_FIXTURE_REMOTE_PATH}" && ` +
+      `sudo chown dirtsim:dirtsim "${NES_FIXTURE_REMOTE_PATH}" && ` +
+      `sudo chmod 0644 "${NES_FIXTURE_REMOTE_PATH}" && ` +
+      `rm -f "${stagedRemotePath}"`,
+    timeoutSec,
+    identityPath
+  );
+  if (installResult.status !== 0) {
+    fail(`Failed to install NES fixture ROM:\n${installResult.output.trim()}`);
+  }
+
+  success(`NES fixture installed: ${NES_FIXTURE_REMOTE_PATH}`);
 }
 
 async function waitForSsh(remoteTarget, timeoutSec, waitSec, identityPath) {
@@ -245,6 +342,10 @@ async function main() {
   const sshReady = await waitForSsh(remoteTarget, sshTimeoutSec, waitSec, sshIdentityPath);
   if (!sshReady) {
     fail(`Timed out waiting for SSH on ${remoteTarget}`);
+  }
+
+  if (selectedTests.includes('canControlNesScenario')) {
+    ensureRemoteNesFixture(remoteTarget, sshTimeoutSec, sshIdentityPath);
   }
 
   let testResults = '';

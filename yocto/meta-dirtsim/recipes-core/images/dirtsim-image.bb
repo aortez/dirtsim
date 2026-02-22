@@ -101,8 +101,8 @@ setup_coredump_config() {
 [Coredump]
 Storage=external
 Compress=yes
-MaxUse=500M
-KeepFree=100M
+MaxUse=128M
+KeepFree=256M
 EOF
 
     # Store coredumps on /data partition (more space than rootfs).

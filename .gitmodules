@@ -10,3 +10,6 @@
 [submodule "yocto/pi-base"]
 	path = yocto/pi-base
 	url = ../sparkle-duck-shared
+[submodule "apps/external/smolnes"]
+	path = apps/external/smolnes
+	url = https://github.com/binji/smolnes.git

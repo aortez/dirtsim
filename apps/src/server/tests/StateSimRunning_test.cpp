@@ -9,8 +9,10 @@
 #include "server/states/SimRunning.h"
 #include "server/states/State.h"
 #include "server/tests/TestStateMachineFixture.h"
+#include <filesystem>
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
+#include <string>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
@@ -364,6 +366,45 @@ TEST(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     EXPECT_EQ(restoredCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should be restored";
     EXPECT_GT(restoredCell.fill_ratio, 0.9) << "Quadrant cells should be filled";
+}
+
+TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
+{
+    TestStateMachineFixture fixture;
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+
+    bool switchCallbackInvoked = false;
+    Api::ScenarioSwitch::Command switchCmd{
+        .scenario_id = Scenario::EnumType::Nes,
+    };
+    Api::ScenarioSwitch::Cwc switchCwc(switchCmd, [&](Api::ScenarioSwitch::Response&& response) {
+        switchCallbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
+    });
+
+    State::Any switchedState = simRunning.onEvent(switchCwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(switchedState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(switchedState.getVariant()));
+    ASSERT_TRUE(switchCallbackInvoked);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Nes);
+
+    Api::ScenarioConfigSet::Response configResponse;
+    Config::Nes invalidConfig{};
+    invalidConfig.romId = "missing-rom-id";
+    invalidConfig.romDirectory = std::filesystem::path(::testing::TempDir()).string();
+    invalidConfig.romPath = "";
+
+    Api::ScenarioConfigSet::Command configCmd{
+        .config = invalidConfig,
+    };
+    Api::ScenarioConfigSet::Cwc configCwc(
+        configCmd,
+        [&](Api::ScenarioConfigSet::Response&& response) { configResponse = std::move(response); });
+
+    State::Any updatedState = simRunning.onEvent(configCwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(updatedState.getVariant()));
+    ASSERT_TRUE(configResponse.isError());
+    EXPECT_NE(configResponse.errorValue().message.find("Invalid NES config"), std::string::npos);
 }
 
 /**

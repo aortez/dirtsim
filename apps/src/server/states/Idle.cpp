@@ -8,6 +8,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/NesScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -33,6 +34,22 @@ Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
         return Scenario::EnumType::Clock;
     }
     return scenarioId;
+}
+
+bool hasNesTrainingPopulation(const TrainingSpec& spec)
+{
+    if (spec.scenarioId == Scenario::EnumType::Nes) {
+        return true;
+    }
+
+    for (const auto& entry : spec.population) {
+        if (entry.scenarioId == Scenario::EnumType::Nes
+            || entry.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
@@ -336,6 +353,28 @@ std::optional<ApiError> validateTrainingConfig(
         populationSpec.scenarioId = normalizeLegacyScenarioId(populationSpec.scenarioId);
     }
 
+    if (hasNesTrainingPopulation(outSpec)) {
+        if (outSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
+            LOG_WARN(
+                State,
+                "EvolutionStart: promoting organism type {} to NES_FLAPPY_BIRD for NES scenario",
+                static_cast<int>(outSpec.organismType));
+            outSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+        }
+
+        outSpec.scenarioId = Scenario::EnumType::Nes;
+        for (auto& spec : outSpec.population) {
+            spec.scenarioId = Scenario::EnumType::Nes;
+            if (spec.brainKind != TrainingBrainKind::NesFlappyBird
+                || spec.brainVariant.has_value()) {
+                spec.brainKind = TrainingBrainKind::NesFlappyBird;
+                spec.brainVariant.reset();
+                spec.seedGenomes.clear();
+                spec.randomCount = spec.count;
+            }
+        }
+    }
+
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
             return ApiError("populationSize must be > 0 when population is empty");
@@ -352,6 +391,11 @@ std::optional<ApiError> validateTrainingConfig(
                 break;
             case OrganismType::DUCK:
                 defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+                defaultSpec.randomCount = defaultSpec.count;
+                break;
+            case OrganismType::NES_FLAPPY_BIRD:
+                defaultSpec.scenarioId = Scenario::EnumType::Nes;
+                defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
@@ -383,6 +427,10 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
+        if (outSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
+            spec.scenarioId = Scenario::EnumType::Nes;
+            outSpec.scenarioId = Scenario::EnumType::Nes;
+        }
         const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
         if (!metadata) {
             return ApiError(
@@ -541,6 +589,11 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+bool hasNesFlappyPopulation(const TrainingSpec& spec)
+{
+    return hasNesTrainingPopulation(spec);
+}
+
 } // namespace
 
 void Idle::onEnter(StateMachine& /*dsm*/)
@@ -581,6 +634,14 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
     newState.evolutionConfig.populationSize = populationSize;
     newState.evolutionConfig.maxParallelEvaluations =
         resolveParallelEvaluations(cwc.command.evolution.maxParallelEvaluations, populationSize);
+    if (hasNesFlappyPopulation(newState.trainingSpec)
+        && newState.evolutionConfig.maxParallelEvaluations > 1) {
+        LOG_WARN(
+            State,
+            "Evolution: capping max parallel evaluations to 1 for NES training "
+            "(smolnes runtime is currently process-global)");
+        newState.evolutionConfig.maxParallelEvaluations = 1;
+    }
 
     LOG_INFO(
         State,
@@ -693,7 +754,24 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     newState.scenario_id = scenarioId;
 
     // Apply config from server settings and user settings.
-    const ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
+    ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
+    if (scenarioId == Scenario::EnumType::Nes) {
+        const auto* nesConfig = std::get_if<Config::Nes>(&scenarioConfig);
+        if (!nesConfig) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Scenario config mismatch for NES scenario")));
+            return Idle{};
+        }
+        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        if (!validation.valid) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Invalid NES config: " + validation.message)));
+            return Idle{};
+        }
+    }
+
     newState.scenario->setConfig(scenarioConfig, *newState.world);
 
     // Run scenario setup to initialize world.

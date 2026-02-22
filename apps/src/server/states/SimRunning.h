@@ -10,11 +10,13 @@
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
+#include "server/api/NesInputSet.h"
 
 #include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 namespace DirtSim {
@@ -64,6 +66,7 @@ struct SimRunning {
     std::map<size_t, bool> prev_start_button_; // For edge detection of spawn.
     std::map<size_t, bool> prev_back_button_;  // For edge detection of reset.
     std::map<size_t, bool> prev_y_button_;     // For edge detection of debug toggle.
+    std::optional<uint8_t> nes_controller1_override_;
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
@@ -81,6 +84,7 @@ struct SimRunning {
     Any onEvent(const DirtSim::Api::FingerMove::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::FingerUp::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::GravitySet::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::NesInputSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::PerfStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::PhysicsSettingsGet::Cwc& cwc, StateMachine& dsm);

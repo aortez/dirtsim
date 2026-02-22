@@ -23,6 +23,7 @@ const DEFAULT_TESTS = [
 const ALL_TESTS = [
   'canExit',
   ...DEFAULT_TESTS,
+  'canControlNesScenario',
   'canLoadGenomeFromBrowser',
   'canOpenTrainingConfigPanel',
 ];
