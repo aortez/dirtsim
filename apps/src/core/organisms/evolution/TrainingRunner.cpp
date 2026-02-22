@@ -152,6 +152,8 @@ TrainingRunner::TrainingRunner(
     nesPolicyInputs_.fill(0.0f);
     if (auto* nesScenario = dynamic_cast<NesScenario*>(scenario_.get())) {
         nesRomExtractor_.emplace(nesScenario->getRuntimeResolvedRomId());
+        nesFlappyEvaluator_.emplace();
+        nesFlappyEvaluator_->reset();
     }
 }
 
@@ -402,16 +404,21 @@ void TrainingRunner::runScenarioDrivenStep()
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
         nesFramesSurvived_ += advancedFrames;
 
-        if (nesRomExtractor_.has_value() && nesRomExtractor_->isSupported()) {
+        if (nesRomExtractor_.has_value() && nesRomExtractor_->isSupported()
+            && nesFlappyEvaluator_.has_value()) {
             const auto snapshot = nesScenario->copyRuntimeMemorySnapshot();
             if (snapshot.has_value()) {
-                const NesRomFrameExtraction extraction =
+                const std::optional<NesFlappyBirdEvaluatorInput> evaluatorInput =
                     nesRomExtractor_->extract(snapshot.value(), nesControllerMask_);
-                nesPolicyInputs_ = extraction.features;
-                nesLastGameState_ = extraction.gameState;
-                nesRewardTotal_ += extraction.rewardDelta;
-                if (extraction.done) {
-                    state_ = State::OrganismDied;
+                if (evaluatorInput.has_value()) {
+                    const NesFlappyBirdEvaluatorOutput evaluation =
+                        nesFlappyEvaluator_->evaluate(evaluatorInput.value());
+                    nesPolicyInputs_ = evaluation.features;
+                    nesLastGameState_ = evaluation.gameState;
+                    nesRewardTotal_ += evaluation.rewardDelta;
+                    if (evaluation.done) {
+                        state_ = State::OrganismDied;
+                    }
                 }
             }
         }

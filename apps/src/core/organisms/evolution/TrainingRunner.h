@@ -144,6 +144,7 @@ private:
     std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::optional<NesRomProfileExtractor> nesRomExtractor_ = std::nullopt;
+    std::optional<NesFlappyBirdEvaluator> nesFlappyEvaluator_ = std::nullopt;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 

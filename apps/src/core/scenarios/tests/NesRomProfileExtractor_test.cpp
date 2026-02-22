@@ -107,9 +107,21 @@ SmolnesRuntime::MemorySnapshot makeSnapshot(const FixtureRow& row)
     return snapshot;
 }
 
+int decodeScore(const FixtureRow& row)
+{
+    return (std::min<int>(row.scoreHundreds, 9) * 100) + (std::min<int>(row.scoreTens, 9) * 10)
+        + std::min<int>(row.scoreOnes, 9);
+}
+
+float decodeVelocity(const FixtureRow& row)
+{
+    const int8_t velocityHi = static_cast<int8_t>(row.birdVelHi);
+    return static_cast<float>(velocityHi) + (static_cast<float>(row.birdVelLo) / 256.0f);
+}
+
 } // namespace
 
-TEST(NesRomProfileExtractorTest, UnsupportedRomYieldsNoSignals)
+TEST(NesRomProfileExtractorTest, UnsupportedRomYieldsNoEvaluationInput)
 {
     NesRomProfileExtractor extractor("unsupported-rom");
     ASSERT_FALSE(extractor.isSupported());
@@ -118,15 +130,11 @@ TEST(NesRomProfileExtractorTest, UnsupportedRomYieldsNoSignals)
     snapshot.cpuRam.fill(0);
     snapshot.prgRam.fill(0);
 
-    const NesRomFrameExtraction extraction = extractor.extract(snapshot, 0);
-    EXPECT_FALSE(extraction.done);
-    EXPECT_DOUBLE_EQ(extraction.rewardDelta, 0.0);
-    for (float feature : extraction.features) {
-        EXPECT_FLOAT_EQ(feature, 0.0f);
-    }
+    const auto extraction = extractor.extract(snapshot, 0);
+    EXPECT_FALSE(extraction.has_value());
 }
 
-TEST(NesRomProfileExtractorTest, FlappyFixtureProducesScoreRewardAndDone)
+TEST(NesRomProfileExtractorTest, FlappyFixtureMapsAbstractedStateFields)
 {
     const std::vector<FixtureRow> rows = loadFixtureRows();
     ASSERT_FALSE(rows.empty());
@@ -134,29 +142,60 @@ TEST(NesRomProfileExtractorTest, FlappyFixtureProducesScoreRewardAndDone)
     NesRomProfileExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
     ASSERT_TRUE(extractor.isSupported());
 
+    for (const FixtureRow& row : rows) {
+        const auto extraction = extractor.extract(makeSnapshot(row), row.mask);
+        ASSERT_TRUE(extraction.has_value());
+
+        const NesFlappyBirdEvaluatorInput input = extraction.value();
+        EXPECT_EQ(input.previousControllerMask, row.mask);
+        EXPECT_EQ(input.state.gameState, row.state);
+        EXPECT_FLOAT_EQ(input.state.birdY, static_cast<float>(row.birdY));
+        EXPECT_FLOAT_EQ(input.state.birdYFraction, static_cast<float>(row.birdYFrac));
+        EXPECT_FLOAT_EQ(input.state.birdVelocity, decodeVelocity(row));
+        EXPECT_EQ(input.state.scrollX, row.scrollX);
+        EXPECT_EQ(input.state.scrollNt, row.scrollNt);
+        EXPECT_EQ(input.state.nt0Pipe0Gap, row.nt0Pipe0Gap);
+        EXPECT_EQ(input.state.nt0Pipe1Gap, row.nt0Pipe1Gap);
+        EXPECT_EQ(input.state.nt1Pipe0Gap, row.nt1Pipe0Gap);
+        EXPECT_EQ(input.state.nt1Pipe1Gap, row.nt1Pipe1Gap);
+        EXPECT_EQ(input.state.score, decodeScore(row));
+    }
+}
+
+TEST(NesRomProfileExtractorTest, FlappyEvaluatorProducesScoreRewardAndDone)
+{
+    const std::vector<FixtureRow> rows = loadFixtureRows();
+    ASSERT_FALSE(rows.empty());
+
+    NesRomProfileExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
+    ASSERT_TRUE(extractor.isSupported());
+    NesFlappyBirdEvaluator evaluator;
+    evaluator.reset();
+
     bool sawScoreReward = false;
     bool sawDone = false;
     double cumulativeReward = 0.0;
 
     for (const FixtureRow& row : rows) {
-        const SmolnesRuntime::MemorySnapshot snapshot = makeSnapshot(row);
-        const NesRomFrameExtraction extraction = extractor.extract(snapshot, row.mask);
+        const auto extraction = extractor.extract(makeSnapshot(row), row.mask);
+        ASSERT_TRUE(extraction.has_value());
+        const NesFlappyBirdEvaluatorOutput evaluation = evaluator.evaluate(extraction.value());
 
-        cumulativeReward += extraction.rewardDelta;
-        if (extraction.rewardDelta > 0.0) {
+        cumulativeReward += evaluation.rewardDelta;
+        if (evaluation.rewardDelta > 0.0) {
             sawScoreReward = true;
-            EXPECT_DOUBLE_EQ(extraction.rewardDelta, 1.0);
+            EXPECT_DOUBLE_EQ(evaluation.rewardDelta, 1.0);
             EXPECT_EQ(row.frame, 347);
         }
-        if (extraction.done) {
+        if (evaluation.done) {
             sawDone = true;
             EXPECT_EQ(row.state, 3u);
             EXPECT_EQ(row.frame, 393);
-            EXPECT_DOUBLE_EQ(extraction.rewardDelta, -1.0);
+            EXPECT_DOUBLE_EQ(evaluation.rewardDelta, -1.0);
         }
 
-        EXPECT_EQ(extraction.features.size(), static_cast<size_t>(NesPolicyLayout::InputCount));
-        for (float feature : extraction.features) {
+        EXPECT_EQ(evaluation.features.size(), static_cast<size_t>(NesPolicyLayout::InputCount));
+        for (float feature : evaluation.features) {
             EXPECT_TRUE(std::isfinite(feature));
             EXPECT_GE(feature, -1.0f);
             EXPECT_LE(feature, 1.0f);

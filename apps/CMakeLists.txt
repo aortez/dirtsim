@@ -402,6 +402,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/NesScenario.cpp
+    src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomProfileExtractor.cpp
     src/core/scenarios/nes/SmolnesRuntime.cpp
