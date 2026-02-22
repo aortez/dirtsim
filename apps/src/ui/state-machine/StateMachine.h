@@ -96,6 +96,7 @@ public:
     UserSettings& getUserSettings() { return userSettingsManager_->get(); }
     const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
     const DirtSim::UserSettings& getServerUserSettings() const { return serverUserSettings_; }
+    void syncTrainingUserSettings(const DirtSim::UserSettings& settings);
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
 

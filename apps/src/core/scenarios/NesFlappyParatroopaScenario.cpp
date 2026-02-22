@@ -3,6 +3,7 @@
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
+#include "core/ScopeTimer.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
@@ -207,7 +208,15 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     if (!runtime_ || !runtime_->isRunning()) {
         return;
     }
-    if (!runtime_->isHealthy()) {
+
+    Timers& timers = world.getTimers();
+
+    bool runtimeHealthy = false;
+    {
+        ScopeTimer healthTimer(timers, "nes_runtime_health_check");
+        runtimeHealthy = runtime_->isHealthy();
+    }
+    if (!runtimeHealthy) {
         LOG_ERROR(
             Scenario,
             "NesFlappyParatroopaScenario: smolnes runtime unhealthy: {}",
@@ -216,7 +225,11 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
         return;
     }
 
-    const uint64_t renderedFrames = runtime_->getRenderedFrameCount();
+    uint64_t renderedFrames = 0;
+    {
+        ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
+        renderedFrames = runtime_->getRenderedFrameCount();
+    }
     if (renderedFrames >= config_.maxEpisodeFrames) {
         return;
     }
@@ -225,12 +238,26 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     const uint32_t framesToRun = static_cast<uint32_t>(std::min<uint64_t>(1u, framesRemaining));
 
     constexpr uint32_t tickTimeoutMs = 2000;
-    runtime_->setController1State(controller1State_);
-    if (!runtime_->runFrames(framesToRun, tickTimeoutMs)) {
+    {
+        ScopeTimer setControllerTimer(timers, "nes_runtime_set_controller");
+        runtime_->setController1State(controller1State_);
+    }
+
+    bool runFramesOk = false;
+    {
+        ScopeTimer runFramesTimer(timers, "nes_runtime_run_frames");
+        runFramesOk = runtime_->runFrames(framesToRun, tickTimeoutMs);
+    }
+    if (!runFramesOk) {
+        uint64_t failureRenderedFrameCount = 0;
+        {
+            ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
+            failureRenderedFrameCount = runtime_->getRenderedFrameCount();
+        }
         LOG_ERROR(
             Scenario,
             "NesFlappyParatroopaScenario: smolnes frame step failed after {} frames: {}",
-            runtime_->getRenderedFrameCount(),
+            failureRenderedFrameCount,
             runtime_->getLastError());
         world.getData().scenario_video_frame.reset();
         stopRuntime();
@@ -242,7 +269,12 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     if (!hadScenarioFrame) {
         scenarioFrame.emplace();
     }
-    if (!runtime_->copyLatestFrameInto(scenarioFrame.value()) && !hadScenarioFrame) {
+    bool copiedFrame = false;
+    {
+        ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
+        copiedFrame = runtime_->copyLatestFrameInto(scenarioFrame.value());
+    }
+    if (!copiedFrame && !hadScenarioFrame) {
         scenarioFrame.reset();
     }
 }

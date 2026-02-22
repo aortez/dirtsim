@@ -36,6 +36,7 @@ struct TrainingIdle {
     Any onEvent(const UiApi::GenomeDetailOpen::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingConfigShowEvolution::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& sm);

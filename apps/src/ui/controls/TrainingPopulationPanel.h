@@ -31,6 +31,7 @@ public:
         bool requiresGenome = false;
     };
     using PopulationTotalChangedCallback = std::function<void(int)>;
+    using SpecUpdatedCallback = std::function<void()>;
 
     TrainingPopulationPanel(
         lv_obj_t* container,
@@ -45,6 +46,7 @@ public:
     void setEvolutionCompleted();
     void setPopulationTotal(int total);
     void setPopulationTotalChangedCallback(const PopulationTotalChangedCallback& callback);
+    void setSpecUpdatedCallback(const SpecUpdatedCallback& callback);
     void addSeedGenome(const GenomeId& id);
 
 private:
@@ -108,6 +110,7 @@ private:
     std::vector<std::unique_ptr<EntryContext>> entryContexts_;
 
     PopulationTotalChangedCallback populationTotalChangedCallback_;
+    SpecUpdatedCallback specUpdatedCallback_;
 
     void createLayout();
     void createMainColumn(lv_obj_t* parent);

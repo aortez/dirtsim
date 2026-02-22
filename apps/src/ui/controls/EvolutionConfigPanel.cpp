@@ -208,13 +208,15 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                                  .callback(onTournamentSizeChanged, this)
                                  .buildOrLog();
 
-    // Max Sim Time stepper (10-1800 seconds, step 30).
+    // Max Sim Time stepper (10-1800 seconds, step 10 at <=60s, else 30).
     // Displayed in seconds.
+    const int32_t maxSimTimeValue = static_cast<int32_t>(evolutionConfig_.maxSimulationTime);
+    const int32_t maxSimTimeStep = maxSimTimeValue <= 60 ? 10 : 30;
     maxSimTimeStepper_ = LVGLBuilder::actionStepper(rightColumn)
                              .label("Max Sim Time (s)")
                              .range(10, 1800)
-                             .step(30)
-                             .value(static_cast<int32_t>(evolutionConfig_.maxSimulationTime))
+                             .step(maxSimTimeStep)
+                             .value(maxSimTimeValue)
                              .valueFormat("%.0f")
                              .valueScale(1.0)
                              .width(LV_PCT(95))
@@ -312,6 +314,16 @@ void EvolutionConfigPanel::updateControlsEnabled()
             lv_label_set_text(statusLabel_, "");
         }
     }
+}
+
+void EvolutionConfigPanel::updateMaxSimTimeStep(int32_t value)
+{
+    if (!maxSimTimeStepper_) {
+        return;
+    }
+
+    const int32_t step = value <= 60 ? 10 : 30;
+    LVGLBuilder::ActionStepperBuilder::setStep(maxSimTimeStepper_, step);
 }
 
 void EvolutionConfigPanel::updateButtonVisibility()
@@ -543,6 +555,7 @@ void EvolutionConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
 
     int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->maxSimTimeStepper_);
     self->evolutionConfig_.maxSimulationTime = static_cast<double>(value);
+    self->updateMaxSimTimeStep(value);
     spdlog::debug("EvolutionConfigPanel: Max sim time changed to {}s", value);
 }
 

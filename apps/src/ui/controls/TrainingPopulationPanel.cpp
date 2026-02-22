@@ -589,6 +589,11 @@ void TrainingPopulationPanel::setPopulationTotalChangedCallback(
     }
 }
 
+void TrainingPopulationPanel::setSpecUpdatedCallback(const SpecUpdatedCallback& callback)
+{
+    specUpdatedCallback_ = callback;
+}
+
 void TrainingPopulationPanel::addSeedGenome(const GenomeId& id)
 {
     if (id.isNil()) {
@@ -702,6 +707,9 @@ void TrainingPopulationPanel::applySpecUpdates()
     evolutionConfig_.populationSize = populationTotal_;
     if (populationTotalChangedCallback_) {
         populationTotalChangedCallback_(populationTotal_);
+    }
+    if (specUpdatedCallback_) {
+        specUpdatedCallback_();
     }
 }
 
