@@ -42,6 +42,12 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadFrameExecutionCalls;
     double runtimeThreadPpuStepMs;
     uint64_t runtimeThreadPpuStepCalls;
+    double runtimeThreadPpuVisiblePixelsMs;
+    uint64_t runtimeThreadPpuVisiblePixelsCalls;
+    double runtimeThreadPpuPrefetchMs;
+    uint64_t runtimeThreadPpuPrefetchCalls;
+    double runtimeThreadPpuOtherMs;
+    uint64_t runtimeThreadPpuOtherCalls;
     double runtimeThreadFrameSubmitMs;
     uint64_t runtimeThreadFrameSubmitCalls;
     double runtimeThreadEventPollMs;
@@ -74,6 +80,20 @@ static SMOLNES_THREAD_LOCAL bool gFrameExecutionActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameExecutionStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gPpuStepActive = false;
 static SMOLNES_THREAD_LOCAL double gPpuStepStartMs = 0.0;
+typedef enum SmolnesPpuPhaseBucket {
+    SmolnesPpuPhaseBucketNone = 0,
+    SmolnesPpuPhaseBucketVisiblePixels = 1,
+    SmolnesPpuPhaseBucketPrefetch = 2,
+    SmolnesPpuPhaseBucketOther = 3
+} SmolnesPpuPhaseBucket;
+static SMOLNES_THREAD_LOCAL SmolnesPpuPhaseBucket gPpuPhaseBucket = SmolnesPpuPhaseBucketNone;
+static SMOLNES_THREAD_LOCAL double gPpuPhaseBucketStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL double gPpuVisiblePixelsAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisiblePixelsAccumCalls = 0;
+static SMOLNES_THREAD_LOCAL double gPpuPrefetchAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuPrefetchAccumCalls = 0;
+static SMOLNES_THREAD_LOCAL double gPpuOtherAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuOtherAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL bool gFrameSubmitActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameSubmitStartMs = 0.0;
 
@@ -139,6 +159,58 @@ static double monotonicNowMs(void)
     return ((double)now.tv_sec * 1000.0) + ((double)now.tv_nsec / 1000000.0);
 }
 
+static void resetPpuPhaseBreakdown(void)
+{
+    gPpuPhaseBucket = SmolnesPpuPhaseBucketNone;
+    gPpuPhaseBucketStartMs = 0.0;
+    gPpuVisiblePixelsAccumMs = 0.0;
+    gPpuVisiblePixelsAccumCalls = 0;
+    gPpuPrefetchAccumMs = 0.0;
+    gPpuPrefetchAccumCalls = 0;
+    gPpuOtherAccumMs = 0.0;
+    gPpuOtherAccumCalls = 0;
+}
+
+static void accumulatePpuPhaseDuration(SmolnesPpuPhaseBucket phase, double durationMs)
+{
+    if (durationMs <= 0.0) {
+        return;
+    }
+
+    switch (phase) {
+    case SmolnesPpuPhaseBucketVisiblePixels:
+        gPpuVisiblePixelsAccumMs += durationMs;
+        gPpuVisiblePixelsAccumCalls++;
+        break;
+    case SmolnesPpuPhaseBucketPrefetch:
+        gPpuPrefetchAccumMs += durationMs;
+        gPpuPrefetchAccumCalls++;
+        break;
+    case SmolnesPpuPhaseBucketOther:
+        gPpuOtherAccumMs += durationMs;
+        gPpuOtherAccumCalls++;
+        break;
+    case SmolnesPpuPhaseBucketNone:
+    default:
+        break;
+    }
+}
+
+static void setPpuPhaseBucket(SmolnesPpuPhaseBucket nextPhase)
+{
+    if (nextPhase == gPpuPhaseBucket) {
+        return;
+    }
+
+    const double nowMs = monotonicNowMs();
+    if (gPpuPhaseBucket != SmolnesPpuPhaseBucketNone && gPpuPhaseBucketStartMs > 0.0) {
+        accumulatePpuPhaseDuration(gPpuPhaseBucket, nowMs - gPpuPhaseBucketStartMs);
+    }
+
+    gPpuPhaseBucket = nextPhase;
+    gPpuPhaseBucketStartMs = (nextPhase == SmolnesPpuPhaseBucketNone) ? 0.0 : nowMs;
+}
+
 static SmolnesRuntimeHandle* getCurrentRuntime(void)
 {
     return gCurrentRuntime;
@@ -162,6 +234,7 @@ static void* runtimeThreadMain(void* arg)
     gFrameExecutionStartMs = 0.0;
     gPpuStepActive = false;
     gPpuStepStartMs = 0.0;
+    resetPpuPhaseBreakdown();
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     char* argv[] = { "smolnes", runtime->romPath };
@@ -184,6 +257,7 @@ static void* runtimeThreadMain(void* arg)
     gFrameExecutionStartMs = 0.0;
     gPpuStepActive = false;
     gPpuStepStartMs = 0.0;
+    resetPpuPhaseBreakdown();
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     return NULL;
@@ -378,6 +452,7 @@ void smolnesRuntimeWrappedPpuStepBegin(void)
         return;
     }
 
+    resetPpuPhaseBreakdown();
     gPpuStepStartMs = monotonicNowMs();
     gPpuStepActive = true;
 }
@@ -389,6 +464,7 @@ void smolnesRuntimeWrappedPpuStepEnd(void)
         return;
     }
 
+    setPpuPhaseBucket(SmolnesPpuPhaseBucketNone);
     const double ppuStepMs = monotonicNowMs() - gPpuStepStartMs;
     gPpuStepActive = false;
     gPpuStepStartMs = 0.0;
@@ -399,7 +475,49 @@ void smolnesRuntimeWrappedPpuStepEnd(void)
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->runtimeThreadPpuStepMs += ppuStepMs;
     runtime->runtimeThreadPpuStepCalls++;
+    runtime->runtimeThreadPpuVisiblePixelsMs += gPpuVisiblePixelsAccumMs;
+    runtime->runtimeThreadPpuVisiblePixelsCalls += gPpuVisiblePixelsAccumCalls;
+    runtime->runtimeThreadPpuPrefetchMs += gPpuPrefetchAccumMs;
+    runtime->runtimeThreadPpuPrefetchCalls += gPpuPrefetchAccumCalls;
+    runtime->runtimeThreadPpuOtherMs += gPpuOtherAccumMs;
+    runtime->runtimeThreadPpuOtherCalls += gPpuOtherAccumCalls;
     pthread_mutex_unlock(&runtime->runtimeMutex);
+    resetPpuPhaseBreakdown();
+}
+
+void smolnesRuntimeWrappedPpuPhaseSet(uint32_t phaseId)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gPpuStepActive) {
+        return;
+    }
+
+    SmolnesPpuPhaseBucket nextPhase = SmolnesPpuPhaseBucketOther;
+    switch (phaseId) {
+    case 1u:
+        nextPhase = SmolnesPpuPhaseBucketVisiblePixels;
+        break;
+    case 2u:
+        nextPhase = SmolnesPpuPhaseBucketPrefetch;
+        break;
+    case 3u:
+        nextPhase = SmolnesPpuPhaseBucketOther;
+        break;
+    default:
+        nextPhase = SmolnesPpuPhaseBucketNone;
+        break;
+    }
+    setPpuPhaseBucket(nextPhase);
+}
+
+void smolnesRuntimeWrappedPpuPhaseClear(void)
+{
+    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
+    if (runtime == NULL || !gPpuStepActive) {
+        return;
+    }
+
+    setPpuPhaseBucket(SmolnesPpuPhaseBucketNone);
 }
 
 void smolnesRuntimeWrappedFrameSubmitBegin(void)
@@ -529,6 +647,8 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_FRAME_EXEC_END smolnesRuntimeWrappedFrameExecutionEnd
 #define SMOLNES_PPU_STEP_BEGIN smolnesRuntimeWrappedPpuStepBegin
 #define SMOLNES_PPU_STEP_END smolnesRuntimeWrappedPpuStepEnd
+#define SMOLNES_PPU_PHASE_SET smolnesRuntimeWrappedPpuPhaseSet
+#define SMOLNES_PPU_PHASE_CLEAR smolnesRuntimeWrappedPpuPhaseClear
 #define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
 #define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
@@ -553,6 +673,8 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #undef SMOLNES_FRAME_EXEC_END
 #undef SMOLNES_PPU_STEP_BEGIN
 #undef SMOLNES_PPU_STEP_END
+#undef SMOLNES_PPU_PHASE_SET
+#undef SMOLNES_PPU_PHASE_CLEAR
 #undef SMOLNES_FRAME_SUBMIT_BEGIN
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
@@ -652,6 +774,12 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runtimeThreadFrameExecutionCalls = 0;
     runtime->runtimeThreadPpuStepMs = 0.0;
     runtime->runtimeThreadPpuStepCalls = 0;
+    runtime->runtimeThreadPpuVisiblePixelsMs = 0.0;
+    runtime->runtimeThreadPpuVisiblePixelsCalls = 0;
+    runtime->runtimeThreadPpuPrefetchMs = 0.0;
+    runtime->runtimeThreadPpuPrefetchCalls = 0;
+    runtime->runtimeThreadPpuOtherMs = 0.0;
+    runtime->runtimeThreadPpuOtherCalls = 0;
     runtime->runtimeThreadFrameSubmitMs = 0.0;
     runtime->runtimeThreadFrameSubmitCalls = 0;
     runtime->runtimeThreadEventPollMs = 0.0;
@@ -885,6 +1013,12 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->runtime_thread_frame_execution_calls = mutableRuntime->runtimeThreadFrameExecutionCalls;
     snapshotOut->runtime_thread_ppu_step_ms = mutableRuntime->runtimeThreadPpuStepMs;
     snapshotOut->runtime_thread_ppu_step_calls = mutableRuntime->runtimeThreadPpuStepCalls;
+    snapshotOut->runtime_thread_ppu_visible_pixels_ms = mutableRuntime->runtimeThreadPpuVisiblePixelsMs;
+    snapshotOut->runtime_thread_ppu_visible_pixels_calls = mutableRuntime->runtimeThreadPpuVisiblePixelsCalls;
+    snapshotOut->runtime_thread_ppu_prefetch_ms = mutableRuntime->runtimeThreadPpuPrefetchMs;
+    snapshotOut->runtime_thread_ppu_prefetch_calls = mutableRuntime->runtimeThreadPpuPrefetchCalls;
+    snapshotOut->runtime_thread_ppu_other_ms = mutableRuntime->runtimeThreadPpuOtherMs;
+    snapshotOut->runtime_thread_ppu_other_calls = mutableRuntime->runtimeThreadPpuOtherCalls;
     snapshotOut->runtime_thread_frame_submit_ms = mutableRuntime->runtimeThreadFrameSubmitMs;
     snapshotOut->runtime_thread_frame_submit_calls = mutableRuntime->runtimeThreadFrameSubmitCalls;
     snapshotOut->runtime_thread_event_poll_ms = mutableRuntime->runtimeThreadEventPollMs;

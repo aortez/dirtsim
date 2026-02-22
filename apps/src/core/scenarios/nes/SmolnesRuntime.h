@@ -28,6 +28,12 @@ public:
         uint64_t runtimeThreadFrameExecutionCalls = 0;
         double runtimeThreadPpuStepMs = 0.0;
         uint64_t runtimeThreadPpuStepCalls = 0;
+        double runtimeThreadPpuVisiblePixelsMs = 0.0;
+        uint64_t runtimeThreadPpuVisiblePixelsCalls = 0;
+        double runtimeThreadPpuPrefetchMs = 0.0;
+        uint64_t runtimeThreadPpuPrefetchCalls = 0;
+        double runtimeThreadPpuOtherMs = 0.0;
+        uint64_t runtimeThreadPpuOtherCalls = 0;
         double runtimeThreadFrameSubmitMs = 0.0;
         uint64_t runtimeThreadFrameSubmitCalls = 0;
         double runtimeThreadEventPollMs = 0.0;

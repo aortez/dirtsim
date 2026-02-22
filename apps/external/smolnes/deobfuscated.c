@@ -45,6 +45,14 @@
 #define SMOLNES_PPU_STEP_END()
 #endif
 
+#ifndef SMOLNES_PPU_PHASE_SET
+#define SMOLNES_PPU_PHASE_SET(phase)
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_CLEAR
+#define SMOLNES_PPU_PHASE_CLEAR()
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -607,6 +615,18 @@ loop:
   SMOLNES_CPU_STEP_END();
   SMOLNES_PPU_STEP_BEGIN();
   for (tmp = cycles * 3 + 6; tmp--;) {
+    if (ppumask & 24 && scany < 240) {
+      if (dot < 256) {
+        SMOLNES_PPU_PHASE_SET(1);
+      } else if (dot >= 320) {
+        SMOLNES_PPU_PHASE_SET(2);
+      } else {
+        SMOLNES_PPU_PHASE_SET(3);
+      }
+    } else {
+      SMOLNES_PPU_PHASE_SET(3);
+    }
+
     if (ppumask & 24) { // If background or sprites are enabled.
       if (scany < 240) {
         if (dot - 256 > 63u) {  // dot [0..255,320..340]
@@ -731,6 +751,7 @@ loop:
         if (ppuctrl & 128)
           nmi_irq = 4;
         ppustatus |= 128;
+        SMOLNES_PPU_PHASE_CLEAR();
         SMOLNES_PPU_STEP_END();
         SMOLNES_FRAME_EXEC_END();
         SMOLNES_FRAME_SUBMIT_BEGIN();
@@ -765,6 +786,7 @@ loop:
       scany %= 262;
     }
   }
+  SMOLNES_PPU_PHASE_CLEAR();
   SMOLNES_PPU_STEP_END();
   goto loop;
 }

@@ -147,6 +147,12 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
     snapshot.runtimeThreadFrameExecutionCalls = raw.runtime_thread_frame_execution_calls;
     snapshot.runtimeThreadPpuStepMs = raw.runtime_thread_ppu_step_ms;
     snapshot.runtimeThreadPpuStepCalls = raw.runtime_thread_ppu_step_calls;
+    snapshot.runtimeThreadPpuVisiblePixelsMs = raw.runtime_thread_ppu_visible_pixels_ms;
+    snapshot.runtimeThreadPpuVisiblePixelsCalls = raw.runtime_thread_ppu_visible_pixels_calls;
+    snapshot.runtimeThreadPpuPrefetchMs = raw.runtime_thread_ppu_prefetch_ms;
+    snapshot.runtimeThreadPpuPrefetchCalls = raw.runtime_thread_ppu_prefetch_calls;
+    snapshot.runtimeThreadPpuOtherMs = raw.runtime_thread_ppu_other_ms;
+    snapshot.runtimeThreadPpuOtherCalls = raw.runtime_thread_ppu_other_calls;
     snapshot.runtimeThreadFrameSubmitMs = raw.runtime_thread_frame_submit_ms;
     snapshot.runtimeThreadFrameSubmitCalls = raw.runtime_thread_frame_submit_calls;
     snapshot.runtimeThreadEventPollMs = raw.runtime_thread_event_poll_ms;

@@ -610,6 +610,24 @@ void NesFlappyParatroopaScenario::updateRuntimeProfilingTimers(Timers& timers)
         current.runtimeThreadPpuStepCalls,
         previous.runtimeThreadPpuStepCalls);
     addDelta(
+        "nes_runtime_thread_ppu_visible_pixels",
+        current.runtimeThreadPpuVisiblePixelsMs,
+        previous.runtimeThreadPpuVisiblePixelsMs,
+        current.runtimeThreadPpuVisiblePixelsCalls,
+        previous.runtimeThreadPpuVisiblePixelsCalls);
+    addDelta(
+        "nes_runtime_thread_ppu_prefetch",
+        current.runtimeThreadPpuPrefetchMs,
+        previous.runtimeThreadPpuPrefetchMs,
+        current.runtimeThreadPpuPrefetchCalls,
+        previous.runtimeThreadPpuPrefetchCalls);
+    addDelta(
+        "nes_runtime_thread_ppu_other",
+        current.runtimeThreadPpuOtherMs,
+        previous.runtimeThreadPpuOtherMs,
+        current.runtimeThreadPpuOtherCalls,
+        previous.runtimeThreadPpuOtherCalls);
+    addDelta(
         "nes_runtime_thread_frame_submit",
         current.runtimeThreadFrameSubmitMs,
         previous.runtimeThreadFrameSubmitMs,
