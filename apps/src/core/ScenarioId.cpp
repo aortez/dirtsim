@@ -22,24 +22,16 @@ std::optional<EnumType> fromString(const std::string& str)
 
 void to_json(nlohmann::json& j, const EnumType& id)
 {
-    j = static_cast<int>(id);
+    j = toString(id);
 }
 
 void from_json(const nlohmann::json& j, EnumType& id)
 {
-    if (!j.is_number_integer()) {
-        throw std::runtime_error("Scenario id must be an integer.");
+    const auto result = fromString(j.get<std::string>());
+    if (!result.has_value()) {
+        throw std::runtime_error("Unknown scenario id: " + j.get<std::string>());
     }
-
-    const int value = j.get<int>();
-    for (const auto& enumerator : reflect::enumerators<EnumType>) {
-        if (static_cast<int>(enumerator.first) == value) {
-            id = static_cast<EnumType>(enumerator.first);
-            return;
-        }
-    }
-
-    throw std::runtime_error("Invalid scenario id: " + std::to_string(value));
+    id = result.value();
 }
 
 } // namespace DirtSim::Scenario
