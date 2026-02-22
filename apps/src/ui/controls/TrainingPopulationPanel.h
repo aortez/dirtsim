@@ -45,11 +45,10 @@ public:
     void setEvolutionCompleted();
     void setPopulationTotal(int total);
     void setPopulationTotalChangedCallback(const PopulationTotalChangedCallback& callback);
-    void addSeedGenome(const GenomeId& id, Scenario::EnumType scenarioId);
+    void addSeedGenome(const GenomeId& id);
 
 private:
     struct PopulationEntry {
-        Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         std::optional<GenomeId> genomeId;
         bool isRandom = false;
     };
@@ -122,7 +121,6 @@ private:
     void setBrainOptionsForOrganism(OrganismType organismType);
     void syncUiFromState();
     void updateCountsLabel();
-    void updatePrimaryScenario();
     void rebuildPopulationList();
     void closeDetailModal();
     void openDetailModal(size_t index);
@@ -131,8 +129,8 @@ private:
     void setControlEnabled(lv_obj_t* control, bool enabled);
     void setScenarioColumnVisible(bool visible);
     void setOrganismListVisible(bool visible);
-    PopulationSpec* findPopulationSpec(Scenario::EnumType scenarioId);
-    PopulationSpec& ensurePopulationSpec(Scenario::EnumType scenarioId);
+    PopulationSpec* findPopulationSpec();
+    PopulationSpec& ensurePopulationSpec();
     void pruneEmptySpecs();
     void removeEntry(size_t index);
     int computeTotalPopulation() const;

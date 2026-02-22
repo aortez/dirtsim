@@ -396,7 +396,6 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
             return;
         }
         PopulationSpec entry;
-        entry.scenarioId = spec.scenarioId;
         switch (spec.organismType) {
             case OrganismType::TREE:
                 entry.brainKind = TrainingBrainKind::NeuralNet;
@@ -405,7 +404,6 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
                 entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                entry.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
                 entry.brainKind = TrainingBrainKind::NesFlappyBird;
                 break;
             case OrganismType::GOOSE:

@@ -97,8 +97,7 @@ bool isNesTrainingTarget(const TrainingSpec& spec)
     }
 
     for (const auto& population : spec.population) {
-        if (population.scenarioId == Scenario::EnumType::NesFlappyParatroopa
-            || population.brainKind == TrainingBrainKind::NesFlappyBird) {
+        if (population.brainKind == TrainingBrainKind::NesFlappyBird) {
             return true;
         }
     }
@@ -120,18 +119,11 @@ void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& reco
 
     if (settings.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
         settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-        recordUpdate("trainingSpec.scenarioId forced to Nes for NES training");
+        recordUpdate("trainingSpec.scenarioId forced to NesFlappyParatroopa for NES training");
     }
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
-        if (population.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
-            population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-            recordUpdate(
-                "trainingSpec population[" + std::to_string(index)
-                + "] scenarioId forced to Nes for NES training");
-        }
-
         if (population.brainKind != TrainingBrainKind::NesFlappyBird
             || population.brainVariant.has_value()) {
             population.brainKind = TrainingBrainKind::NesFlappyBird;

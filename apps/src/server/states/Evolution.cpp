@@ -414,14 +414,6 @@ double computeFitnessForRunner(
     return computeFitnessForOrganism(context);
 }
 
-Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
-{
-    if (!spec.population.empty()) {
-        return spec.population.front().scenarioId;
-    }
-    return spec.scenarioId;
-}
-
 std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
 {
     std::unordered_map<std::string, Evolution::TimerAggregate> stats;
@@ -723,7 +715,7 @@ void Evolution::onEnter(StateMachine& dsm)
         "Evolution: Starting with population={}, generations={}, scenario={}, organism_type={}",
         evolutionConfig.populationSize,
         evolutionConfig.maxGenerations,
-        toString(getPrimaryScenarioId(trainingSpec)),
+        toString(trainingSpec.scenarioId),
         static_cast<int>(trainingSpec.organismType));
 
     // Record training start time.
@@ -962,7 +954,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = genome.value(),
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -976,7 +968,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = entry->createRandomGenome(rng),
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -995,7 +987,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = std::nullopt,
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -1052,7 +1044,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
     visibleScenarioConfig_ = Config::Empty{};
-    visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
+    visibleScenarioId_ = trainingSpec.scenarioId;
     bestPlaybackIndividual_.reset();
     clearBestPlaybackRunner();
     bestPlaybackFitness_ = 0.0;
@@ -2514,7 +2506,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .robustFitnessSamples = {},
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-        .scenarioId = population[bestIdx].scenarioId,
+        .scenarioId = trainingSpec.scenarioId,
         .notes = "",
         .organismType = trainingSpec.organismType,
         .brainKind = population[bestIdx].brainKind,
@@ -2542,7 +2534,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
     result.evolutionConfig = evolutionConfig;
     result.mutationConfig = mutationConfig;
     result.trainingSpec = trainingSpec;
-    result.summary.scenarioId = getPrimaryScenarioId(trainingSpec);
+    result.summary.scenarioId = trainingSpec.scenarioId;
     result.summary.organismType = trainingSpec.organismType;
     result.summary.populationSize = evolutionConfig.populationSize;
     result.summary.maxGenerations = evolutionConfig.maxGenerations;
@@ -2590,7 +2582,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
             .robustFitnessSamples = { candidate.fitness },
             .generation = generationIndex,
             .createdTimestamp = now,
-            .scenarioId = population[i].scenarioId,
+            .scenarioId = trainingSpec.scenarioId,
             .notes = "",
             .organismType = trainingSpec.organismType,
             .brainKind = candidate.brainKind,

@@ -547,7 +547,7 @@ void TrainingPopulationPanel::setPopulationTotal(int total)
 
     if (desiredTotal > currentTotal) {
         const int addCount = desiredTotal - currentTotal;
-        PopulationSpec& spec = ensurePopulationSpec(selectedScenario_);
+        PopulationSpec& spec = ensurePopulationSpec();
         if (brainRequiresGenome_) {
             spec.randomCount += addCount;
             spec.count = static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
@@ -589,7 +589,7 @@ void TrainingPopulationPanel::setPopulationTotalChangedCallback(
     }
 }
 
-void TrainingPopulationPanel::addSeedGenome(const GenomeId& id, Scenario::EnumType scenarioId)
+void TrainingPopulationPanel::addSeedGenome(const GenomeId& id)
 {
     if (id.isNil()) {
         return;
@@ -598,11 +598,7 @@ void TrainingPopulationPanel::addSeedGenome(const GenomeId& id, Scenario::EnumTy
         return;
     }
 
-    const bool wasEmpty = trainingSpec_.population.empty();
-    PopulationSpec& spec = ensurePopulationSpec(scenarioId);
-    if (wasEmpty) {
-        selectedScenario_ = scenarioId;
-    }
+    PopulationSpec& spec = ensurePopulationSpec();
     if (std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), id) != spec.seedGenomes.end()) {
         return;
     }
@@ -623,7 +619,7 @@ void TrainingPopulationPanel::refreshFromSpec()
     setBrainOptionsForOrganism(selectedOrganism_);
 
     if (trainingSpec_.population.empty() && evolutionConfig_.populationSize > 0) {
-        PopulationSpec& spec = ensurePopulationSpec(selectedScenario_);
+        PopulationSpec& spec = ensurePopulationSpec();
         if (brainRequiresGenome_) {
             spec.randomCount = evolutionConfig_.populationSize;
             spec.count = spec.randomCount;
@@ -634,7 +630,7 @@ void TrainingPopulationPanel::refreshFromSpec()
     }
 
     for (auto& spec : trainingSpec_.population) {
-        const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
+        const BrainOption resolvedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
         const bool specRequiresGenome = resolvedBrain.requiresGenome;
 
         if (specRequiresGenome && spec.seedGenomes.empty() && spec.randomCount == 0
@@ -676,11 +672,9 @@ void TrainingPopulationPanel::applySpecUpdates()
     if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
         selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
     }
+    trainingSpec_.scenarioId = selectedScenario_;
     for (auto& spec : trainingSpec_.population) {
-        if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-            spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-        }
-        const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
+        const BrainOption resolvedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
         const bool specRequiresGenome = resolvedBrain.requiresGenome;
 
         spec.brainKind = resolvedBrain.kind;
@@ -700,11 +694,10 @@ void TrainingPopulationPanel::applySpecUpdates()
         }
     }
 
-    const BrainOption selectedBrain = resolveBrainOptionForScenario(selectedScenario_);
+    const BrainOption selectedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
     brainKind_ = selectedBrain.kind;
     brainRequiresGenome_ = selectedBrain.requiresGenome;
 
-    updatePrimaryScenario();
     populationTotal_ = computeTotalPopulation();
     evolutionConfig_.populationSize = populationTotal_;
     if (populationTotalChangedCallback_) {
@@ -774,34 +767,20 @@ void TrainingPopulationPanel::updateCountsLabel()
     lv_label_set_text(totalCountLabel_, text.c_str());
 }
 
-void TrainingPopulationPanel::updatePrimaryScenario()
+PopulationSpec* TrainingPopulationPanel::findPopulationSpec()
+{
+    if (trainingSpec_.population.empty()) {
+        return nullptr;
+    }
+    return &trainingSpec_.population.front();
+}
+
+PopulationSpec& TrainingPopulationPanel::ensurePopulationSpec()
 {
     if (!trainingSpec_.population.empty()) {
-        trainingSpec_.scenarioId = trainingSpec_.population.front().scenarioId;
+        return trainingSpec_.population.front();
     }
-    else {
-        trainingSpec_.scenarioId = selectedScenario_;
-    }
-}
-
-PopulationSpec* TrainingPopulationPanel::findPopulationSpec(Scenario::EnumType scenarioId)
-{
-    for (auto& spec : trainingSpec_.population) {
-        if (spec.scenarioId == scenarioId) {
-            return &spec;
-        }
-    }
-    return nullptr;
-}
-
-PopulationSpec& TrainingPopulationPanel::ensurePopulationSpec(Scenario::EnumType scenarioId)
-{
-    if (auto* spec = findPopulationSpec(scenarioId)) {
-        return *spec;
-    }
-
     PopulationSpec spec;
-    spec.scenarioId = scenarioId;
     spec.brainKind = brainKind_;
     spec.brainVariant.reset();
     spec.count = 0;
@@ -831,7 +810,7 @@ void TrainingPopulationPanel::removeEntry(size_t index)
     }
 
     const PopulationEntry& entry = populationEntries_[index];
-    PopulationSpec* spec = findPopulationSpec(entry.scenarioId);
+    PopulationSpec* spec = findPopulationSpec();
     if (!spec) {
         return;
     }
@@ -907,7 +886,7 @@ std::string TrainingPopulationPanel::formatEntryLabel(const PopulationEntry& ent
     else {
         oss << "Individual " << (index + 1);
     }
-    oss << "\nScenario: " << Scenario::toString(entry.scenarioId);
+    oss << "\nScenario: " << Scenario::toString(trainingSpec_.scenarioId);
     return oss.str();
 }
 
@@ -916,7 +895,7 @@ std::string TrainingPopulationPanel::formatEntryDetailText(const PopulationEntry
     std::ostringstream oss;
     if (!entry.genomeId.has_value()) {
         oss << "Random Individual\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         if (brainRequiresGenome_) {
             oss << "Genome: generated at training start\n";
         }
@@ -929,13 +908,13 @@ std::string TrainingPopulationPanel::formatEntryDetailText(const PopulationEntry
     const GenomeId genomeId = entry.genomeId.value();
     if (!wsService_) {
         oss << "Genome ID: " << genomeId.toString() << "\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         oss << "Metadata unavailable (no WebSocket service)";
         return oss.str();
     }
     if (!wsService_->isConnected()) {
         oss << "Genome ID: " << genomeId.toString() << "\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         oss << "Metadata unavailable (not connected)";
         return oss.str();
     }
@@ -944,13 +923,13 @@ std::string TrainingPopulationPanel::formatEntryDetailText(const PopulationEntry
     auto response = wsService_->sendCommandAndGetResponse<Api::GenomeGet::Okay>(cmd, 5000);
     if (response.isError()) {
         oss << "Genome ID: " << genomeId.toString() << "\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         oss << "Metadata unavailable (" << response.errorValue() << ")";
         return oss.str();
     }
     if (response.value().isError()) {
         oss << "Genome ID: " << genomeId.toString() << "\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         oss << "Metadata unavailable (" << response.value().errorValue().message << ")";
         return oss.str();
     }
@@ -958,7 +937,7 @@ std::string TrainingPopulationPanel::formatEntryDetailText(const PopulationEntry
     const auto& ok = response.value().value();
     if (!ok.found) {
         oss << "Genome ID: " << genomeId.toString() << "\n";
-        oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+        oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
         oss << "Metadata unavailable (genome not found)";
         return oss.str();
     }
@@ -968,7 +947,7 @@ std::string TrainingPopulationPanel::formatEntryDetailText(const PopulationEntry
     if (!meta.name.empty()) {
         oss << "Name: " << meta.name << "\n";
     }
-    oss << "Training Scenario: " << Scenario::toString(entry.scenarioId) << "\n";
+    oss << "Training Scenario: " << Scenario::toString(trainingSpec_.scenarioId) << "\n";
     oss << "Scenario: " << Scenario::toString(meta.scenarioId) << "\n";
     oss << "Fitness: " << std::fixed << std::setprecision(3) << meta.fitness << "\n";
     oss << "Generation: " << meta.generation << "\n";
@@ -1006,7 +985,6 @@ void TrainingPopulationPanel::rebuildPopulationList()
             for (const auto& id : spec.seedGenomes) {
                 populationEntries_.push_back(
                     PopulationEntry{
-                        .scenarioId = spec.scenarioId,
                         .genomeId = id,
                         .isRandom = false,
                     });
@@ -1014,7 +992,6 @@ void TrainingPopulationPanel::rebuildPopulationList()
             for (int i = 0; i < spec.randomCount; ++i) {
                 populationEntries_.push_back(
                     PopulationEntry{
-                        .scenarioId = spec.scenarioId,
                         .genomeId = std::nullopt,
                         .isRandom = true,
                     });
@@ -1024,7 +1001,6 @@ void TrainingPopulationPanel::rebuildPopulationList()
             for (int i = 0; i < spec.count; ++i) {
                 populationEntries_.push_back(
                     PopulationEntry{
-                        .scenarioId = spec.scenarioId,
                         .genomeId = std::nullopt,
                         .isRandom = true,
                     });
@@ -1311,7 +1287,7 @@ void TrainingPopulationPanel::onAddClicked(lv_event_t* e)
         return;
     }
 
-    PopulationSpec& spec = self->ensurePopulationSpec(self->selectedScenario_);
+    PopulationSpec& spec = self->ensurePopulationSpec();
     if (self->brainRequiresGenome_) {
         spec.randomCount += self->addCount_;
         spec.count = static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;

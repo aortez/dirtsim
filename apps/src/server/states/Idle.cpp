@@ -46,13 +46,16 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
 }
 
 bool isWarmGenomeCompatibleForPopulation(
-    const GenomeMetadata& metadata, OrganismType organismType, const PopulationSpec& populationSpec)
+    const GenomeMetadata& metadata,
+    OrganismType organismType,
+    const PopulationSpec& populationSpec,
+    Scenario::EnumType scenarioId)
 {
     if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
         return false;
     }
 
-    if (metadata.scenarioId != populationSpec.scenarioId) {
+    if (metadata.scenarioId != scenarioId) {
         return false;
     }
 
@@ -330,7 +333,6 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         PopulationSpec defaultSpec;
-        defaultSpec.scenarioId = outSpec.scenarioId;
         defaultSpec.count = command.evolution.populationSize;
 
         switch (outSpec.organismType) {
@@ -343,7 +345,6 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                defaultSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
                 defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
@@ -376,10 +377,10 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
-        const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
+        const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
         if (!metadata) {
             return ApiError(
-                std::string("Scenario not found: ") + std::string(toString(spec.scenarioId)));
+                std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
         }
         if (spec.count <= 0) {
             return ApiError("Population entry count must be > 0");
@@ -408,7 +409,10 @@ std::optional<ApiError> validateTrainingConfig(
                     compatibleCandidates.reserve(warmSeedCandidates.size());
                     for (const auto& candidate : warmSeedCandidates) {
                         if (!isWarmGenomeCompatibleForPopulation(
-                                candidate.metadata, outSpec.organismType, spec)) {
+                                candidate.metadata,
+                                outSpec.organismType,
+                                spec,
+                                outSpec.scenarioId)) {
                             continue;
                         }
                         if (std::find(
@@ -504,10 +508,6 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         outPopulationSize += spec.count;
-    }
-
-    if (!outSpec.population.empty()) {
-        outSpec.scenarioId = outSpec.population.front().scenarioId;
     }
 
     if (outPopulationSize <= 0) {

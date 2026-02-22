@@ -1262,7 +1262,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
         trainCmd.training.organismType = OrganismType::NES_FLAPPY_BIRD;
 
         PopulationSpec population;
-        population.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
         population.brainKind = TrainingBrainKind::NesFlappyBird;
         population.count = trainCmd.evolution.populationSize;
         population.randomCount = trainCmd.evolution.populationSize;
