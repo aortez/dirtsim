@@ -501,6 +501,8 @@ struct StateMachine::Impl {
     std::vector<SubscribedClient> subscribedClients_;
     std::vector<std::string> eventSubscribers_;
     mutable std::mutex trainingResultsMutex_;
+    std::vector<std::byte> renderEnvelopeDataScratch_;
+    Network::MessageEnvelope renderEnvelopeScratch_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
         : dataDir_(dataDir.value_or(getDefaultDataDir())),
@@ -511,6 +513,9 @@ struct StateMachine::Impl {
           userSettings_(
               loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_, genomeRepository_))
     {
+        renderEnvelopeScratch_.id = 0;
+        renderEnvelopeScratch_.message_type = "RenderMessage";
+
         if (userSettings_.evolutionConfig.genomeArchiveMaxSize > 0) {
             const size_t pruned = genomeRepository_.pruneManagedByFitness(
                 static_cast<size_t>(userSettings_.evolutionConfig.genomeArchiveMaxSize));
@@ -1842,19 +1847,20 @@ void StateMachine::broadcastRenderMessage(
         fullMsg.scenario_id = scenario_id;
         fullMsg.scenario_config = scenario_config;
 
-        // Serialize RenderMessageFull to payload.
-        std::vector<std::byte> payload;
-        zpp::bits::out payloadOut(payload);
+        Network::MessageEnvelope& envelope = pImpl->renderEnvelopeScratch_;
+        envelope.id = 0;
+        envelope.payload.clear();
+
+        // Serialize RenderMessageFull into reusable envelope payload storage.
+        zpp::bits::out payloadOut(envelope.payload);
         payloadOut(fullMsg).or_throw();
 
-        // Wrap in MessageEnvelope for consistent protocol.
-        Network::MessageEnvelope envelope{ .id = 0, // No correlation for server pushes.
-                                           .message_type = "RenderMessage",
-                                           .payload = std::move(payload) };
+        pImpl->renderEnvelopeDataScratch_.clear();
+        zpp::bits::out envelopeOut(pImpl->renderEnvelopeDataScratch_);
+        envelopeOut(envelope).or_throw();
 
-        std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
-
-        auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
+        auto result =
+            pImpl->wsService_->sendToClient(client.connectionId, pImpl->renderEnvelopeDataScratch_);
         if (result.isError()) {
             spdlog::error(
                 "StateMachine: Failed to send RenderMessage to '{}': {}",

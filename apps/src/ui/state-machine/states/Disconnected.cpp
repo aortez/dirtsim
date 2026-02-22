@@ -384,47 +384,49 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.timestep = renderMsg.timestep;
             worldData.fps_server = renderMsg.fps_server;
 
-            // Unpack cells based on format.
             size_t numCells = renderMsg.width * renderMsg.height;
-            worldData.cells.resize(numCells);
-            worldData.colors.resize(renderMsg.width, renderMsg.height);
+            if (!renderMsg.scenario_video_frame.has_value()) {
+                // Unpack cells based on format.
+                worldData.cells.resize(numCells);
+                worldData.colors.resize(renderMsg.width, renderMsg.height);
 
-            if (renderMsg.format == RenderFormat::EnumType::Debug) {
-                LOG_DEBUG(Network, "RenderMessage UNPACK: DEBUG format, {} cells", numCells);
+                if (renderMsg.format == RenderFormat::EnumType::Debug) {
+                    LOG_DEBUG(Network, "RenderMessage UNPACK: DEBUG format, {} cells", numCells);
 
-                const DebugCell* debugCells =
-                    reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
+                    const DebugCell* debugCells =
+                        reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
 
-                for (size_t i = 0; i < numCells; ++i) {
-                    auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
-                    worldData.cells[i].material_type = unpacked.material_type;
-                    worldData.cells[i].fill_ratio = unpacked.fill_ratio;
-                    worldData.cells[i].render_as = unpacked.render_as;
-                    worldData.cells[i].com = unpacked.com;
-                    worldData.cells[i].velocity = unpacked.velocity;
-                    worldData.cells[i].pressure = unpacked.pressure_hydro;
-                    worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
+                    for (size_t i = 0; i < numCells; ++i) {
+                        auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
+                        worldData.cells[i].material_type = unpacked.material_type;
+                        worldData.cells[i].fill_ratio = unpacked.fill_ratio;
+                        worldData.cells[i].render_as = unpacked.render_as;
+                        worldData.cells[i].com = unpacked.com;
+                        worldData.cells[i].velocity = unpacked.velocity;
+                        worldData.cells[i].pressure = unpacked.pressure_hydro;
+                        worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
+                    }
                 }
-            }
-            else {
-                // BASIC format: material + fill only.
-                LOG_DEBUG(
-                    Network,
-                    "RenderMessage UNPACK: BASIC format, {} cells (no COM data)",
-                    numCells);
-                const BasicCell* basicCells =
-                    reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
-                for (size_t i = 0; i < numCells; ++i) {
-                    Material::EnumType material;
-                    double fill_ratio;
-                    int8_t render_as;
-                    uint32_t color;
-                    RenderMessageUtils::unpackBasicCell(
-                        basicCells[i], material, fill_ratio, render_as, color);
-                    worldData.cells[i].material_type = material;
-                    worldData.cells[i].fill_ratio = fill_ratio;
-                    worldData.cells[i].render_as = render_as;
-                    worldData.colors.data[i] = ColorNames::toRgbF(color);
+                else {
+                    // BASIC format: material + fill only.
+                    LOG_DEBUG(
+                        Network,
+                        "RenderMessage UNPACK: BASIC format, {} cells (no COM data)",
+                        numCells);
+                    const BasicCell* basicCells =
+                        reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
+                    for (size_t i = 0; i < numCells; ++i) {
+                        Material::EnumType material;
+                        double fill_ratio;
+                        int8_t render_as;
+                        uint32_t color;
+                        RenderMessageUtils::unpackBasicCell(
+                            basicCells[i], material, fill_ratio, render_as, color);
+                        worldData.cells[i].material_type = material;
+                        worldData.cells[i].fill_ratio = fill_ratio;
+                        worldData.cells[i].render_as = render_as;
+                        worldData.colors.data[i] = ColorNames::toRgbF(color);
+                    }
                 }
             }
 
