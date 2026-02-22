@@ -402,6 +402,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/NesScenario.cpp
+    src/core/scenarios/nes/NesRamProbe.cpp
+    src/core/scenarios/nes/NesRomProfileExtractor.cpp
     src/core/scenarios/nes/SmolnesRuntime.cpp
     src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
@@ -811,6 +813,8 @@ add_executable(dirtsim-tests
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
+    src/core/scenarios/tests/NesRamProbe_test.cpp
+    src/core/scenarios/tests/NesRomProfileExtractor_test.cpp
     src/core/scenarios/tests/NesScenario_test.cpp
 
     # Organism tests.

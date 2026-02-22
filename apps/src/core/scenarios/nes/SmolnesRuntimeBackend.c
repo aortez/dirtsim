@@ -420,6 +420,40 @@ bool smolnesRuntimeCopyLatestFrame(uint8_t* buffer, uint32_t bufferSize, uint64_
     return true;
 }
 
+bool smolnesRuntimeCopyCpuRam(uint8_t* buffer, uint32_t bufferSize)
+{
+    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES) {
+        return false;
+    }
+
+    pthread_mutex_lock(&gRuntimeMutex);
+    if (!gThreadRunning || !gHealthy) {
+        pthread_mutex_unlock(&gRuntimeMutex);
+        return false;
+    }
+
+    memcpy(buffer, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    pthread_mutex_unlock(&gRuntimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyPrgRam(uint8_t* buffer, uint32_t bufferSize)
+{
+    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+        return false;
+    }
+
+    pthread_mutex_lock(&gRuntimeMutex);
+    if (!gThreadRunning || !gHealthy) {
+        pthread_mutex_unlock(&gRuntimeMutex);
+        return false;
+    }
+
+    memcpy(buffer, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    pthread_mutex_unlock(&gRuntimeMutex);
+    return true;
+}
+
 void smolnesRuntimeGetLastErrorCopy(char* buffer, uint32_t bufferSize)
 {
     if (buffer == NULL || bufferSize == 0) {

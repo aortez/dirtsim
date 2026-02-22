@@ -235,3 +235,49 @@ TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
     ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
     EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 1u);
 }
+
+TEST(NesScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    auto scenario = std::make_unique<NesScenario>();
+    const ScenarioMetadata& metadata = scenario->getMetadata();
+    World world(metadata.requiredWidth, metadata.requiredHeight);
+
+    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    config.romPath = romPath.value().string();
+    config.requireSmolnesMapper = true;
+    scenario->setConfig(config, world);
+    scenario->setup(world);
+
+    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+
+    constexpr double deltaTime = 1.0 / 60.0;
+    for (int frame = 0; frame < 8; ++frame) {
+        scenario->setController1State(SMOLNES_RUNTIME_BUTTON_START);
+        scenario->tick(world, deltaTime);
+    }
+
+    const auto firstSnapshot = scenario->copyRuntimeMemorySnapshot();
+    ASSERT_TRUE(firstSnapshot.has_value());
+    EXPECT_EQ(firstSnapshot->cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
+    EXPECT_EQ(firstSnapshot->prgRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_PRG_RAM_BYTES));
+
+    scenario->tick(world, deltaTime);
+    const auto secondSnapshot = scenario->copyRuntimeMemorySnapshot();
+    ASSERT_TRUE(secondSnapshot.has_value());
+
+    bool cpuChanged = false;
+    for (size_t i = 0; i < firstSnapshot->cpuRam.size(); ++i) {
+        if (firstSnapshot->cpuRam[i] != secondSnapshot->cpuRam[i]) {
+            cpuChanged = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(cpuChanged) << "CPU RAM should change after advancing a frame.";
+}

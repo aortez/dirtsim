@@ -137,6 +137,7 @@ void NesScenario::setup(World& world)
     stopRuntime();
     world.getData().scenario_video_frame.reset();
     controller1State_ = 0;
+    runtimeResolvedRomId_.clear();
 
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
@@ -179,6 +180,7 @@ void NesScenario::setup(World& world)
         lastRomCheck_.mapper,
         static_cast<uint32_t>(lastRomCheck_.prgBanks16k),
         static_cast<uint32_t>(lastRomCheck_.chrBanks8k));
+    runtimeResolvedRomId_ = validation.resolvedRomId;
     if (!runtime_) {
         runtime_ = std::make_unique<SmolnesRuntime>();
     }
@@ -258,12 +260,25 @@ uint64_t NesScenario::getRuntimeRenderedFrameCount() const
     return runtime_->getRenderedFrameCount();
 }
 
+std::string NesScenario::getRuntimeResolvedRomId() const
+{
+    return runtimeResolvedRomId_;
+}
+
 std::string NesScenario::getRuntimeLastError() const
 {
     if (!runtime_) {
         return {};
     }
     return runtime_->getLastError();
+}
+
+std::optional<SmolnesRuntime::MemorySnapshot> NesScenario::copyRuntimeMemorySnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyMemorySnapshot();
 }
 
 void NesScenario::setController1State(uint8_t buttonMask)

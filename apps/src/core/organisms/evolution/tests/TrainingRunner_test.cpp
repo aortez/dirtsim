@@ -21,6 +21,8 @@
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <filesystem>
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <iostream>
@@ -40,6 +42,32 @@ protected:
 };
 
 namespace {
+
+std::optional<std::filesystem::path> resolveNesFixtureRomPath()
+{
+    const std::filesystem::path repoRelativeRomPath =
+        std::filesystem::path("testdata") / "roms" / "Flappy.Paratroopa.World.Unl.nes";
+    if (std::filesystem::exists(repoRelativeRomPath)) {
+        return repoRelativeRomPath;
+    }
+
+    if (const char* romPathEnv = std::getenv("DIRTSIM_NES_TEST_ROM_PATH"); romPathEnv != nullptr) {
+        const std::filesystem::path romPath{ romPathEnv };
+        if (!std::filesystem::exists(romPath)) {
+            return std::nullopt;
+        }
+
+        std::filesystem::create_directories(repoRelativeRomPath.parent_path());
+        std::error_code ec;
+        std::filesystem::copy_file(
+            romPath, repoRelativeRomPath, std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec && std::filesystem::exists(repoRelativeRomPath)) {
+            return repoRelativeRomPath;
+        }
+    }
+
+    return std::nullopt;
+}
 
 class TestTreeBrain : public TreeBrain {
 public:
@@ -515,6 +543,42 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
     EXPECT_EQ(runner.getOrganism(), nullptr);
     EXPECT_EQ(status.nesFramesSurvived, 0u);
     EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesOnRomDoneBeforeTimeLimit)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 60.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Nes;
+    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
+    individual.scenarioId = Scenario::EnumType::Nes;
+    individual.genome = Genome(NesPolicyLayout::WeightCount);
+    std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), -1.0f);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while ((status = runner.step(1)).state == TrainingRunner::State::Running) {
+        steps++;
+        ASSERT_LT(steps, 10000) << "NES runner should terminate within a reasonable frame budget";
+    }
+
+    EXPECT_EQ(status.state, TrainingRunner::State::OrganismDied);
+    EXPECT_LT(status.simTime, config_.maxSimulationTime);
+    EXPECT_GT(status.nesFramesSurvived, 0u);
+    EXPECT_LT(status.nesRewardTotal, static_cast<double>(status.nesFramesSurvived));
+    EXPECT_LE(status.nesRewardTotal, 0.0);
 }
 
 // Proves we can finish and get results.

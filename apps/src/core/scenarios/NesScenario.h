@@ -2,6 +2,7 @@
 
 #include "NesConfig.h"
 #include "core/scenarios/Scenario.h"
+#include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -10,8 +11,6 @@
 #include <vector>
 
 namespace DirtSim {
-
-class SmolnesRuntime;
 
 enum class NesRomCheckStatus : uint8_t {
     Compatible = 0,
@@ -65,7 +64,9 @@ public:
     bool isRuntimeHealthy() const;
     bool isRuntimeRunning() const;
     uint64_t getRuntimeRenderedFrameCount() const;
+    std::string getRuntimeResolvedRomId() const;
     std::string getRuntimeLastError() const;
+    std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const;
     void setController1State(uint8_t buttonMask);
 
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
@@ -80,6 +81,7 @@ private:
     ScenarioMetadata metadata_;
     Config::Nes config_;
     NesRomCheckResult lastRomCheck_;
+    std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;
     uint8_t controller1State_ = 0;
 };

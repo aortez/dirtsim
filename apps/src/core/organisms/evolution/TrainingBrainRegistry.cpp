@@ -9,15 +9,9 @@
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
+#include "core/organisms/evolution/NesPolicyLayout.h"
 
 namespace DirtSim {
-
-namespace {
-constexpr size_t kNesFlappyObservationCount = 66;
-constexpr size_t kNesFlappyButtonCount = 8;
-constexpr size_t kNesFlappyGenomeWeightCount =
-    (kNesFlappyObservationCount * kNesFlappyButtonCount) + kNesFlappyButtonCount;
-} // namespace
 
 std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind)
 {
@@ -38,7 +32,7 @@ std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string&
     if (brainKind == TrainingBrainKind::NesFlappyBird) {
         return TrainingBrainDefaults{
             .defaultScenarioId = Scenario::EnumType::Nes,
-            .defaultNesRomId = std::string{ "flappy-paratroopa-world-unl" },
+            .defaultNesRomId = std::string{ NesPolicyLayout::FlappyParatroopaWorldUnlRomId },
         };
     }
 
@@ -263,7 +257,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .spawn = nullptr,
             .createRandomGenome =
                 [](std::mt19937& rng) {
-                    Genome genome(kNesFlappyGenomeWeightCount);
+                    Genome genome(NesPolicyLayout::WeightCount);
                     std::normal_distribution<WeightType> dist(0.0f, 0.15f);
                     for (auto& weight : genome.weights) {
                         weight = dist(rng);
@@ -272,7 +266,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .isGenomeCompatible =
                 [](const Genome& genome) {
-                    return genome.weights.size() == kNesFlappyGenomeWeightCount;
+                    return genome.weights.size() == NesPolicyLayout::WeightCount;
                 },
         });
 

@@ -375,7 +375,8 @@ double computeFitnessForRunner(
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
-    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+    if (organismType == OrganismType::NES_FLAPPY_BIRD
+        || brainKind == TrainingBrainKind::NesFlappyBird) {
         if (breakdownOut) {
             breakdownOut->reset();
         }

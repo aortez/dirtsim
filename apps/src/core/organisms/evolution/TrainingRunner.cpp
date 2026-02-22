@@ -3,7 +3,6 @@
 #include "FitnessCalculator.h"
 #include "GenomeRepository.h"
 #include "core/Assert.h"
-#include "core/RenderMessage.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
@@ -12,8 +11,6 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <algorithm>
-#include <array>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -21,15 +18,12 @@
 namespace DirtSim {
 
 namespace {
-float decodeRgb565Luma(std::byte lowByte, std::byte highByte)
-{
-    const uint16_t packed = static_cast<uint16_t>(std::to_integer<uint8_t>(lowByte))
-        | (static_cast<uint16_t>(std::to_integer<uint8_t>(highByte)) << 8);
-    const float red = static_cast<float>((packed >> 11) & 0x1Fu) / 31.0f;
-    const float green = static_cast<float>((packed >> 5) & 0x3Fu) / 63.0f;
-    const float blue = static_cast<float>(packed & 0x1Fu) / 31.0f;
-    return (0.299f * red) + (0.587f * green) + (0.114f * blue);
-}
+constexpr uint8_t kNesStateTitle = 0;
+constexpr uint8_t kNesStateWaiting = 1;
+constexpr uint8_t kNesStatePlaying = 2;
+constexpr uint8_t kNesStateGameOver = 7;
+constexpr uint8_t kNesStateFadeIn = 8;
+constexpr uint8_t kNesStateTitleFade = 9;
 
 Vector2i findSpawnCell(World& world)
 {
@@ -154,6 +148,11 @@ TrainingRunner::TrainingRunner(
     // Setup scenario.
     scenario_->setup(*world_);
     world_->setScenario(scenario_.get());
+
+    nesPolicyInputs_.fill(0.0f);
+    if (auto* nesScenario = dynamic_cast<NesScenario*>(scenario_.get())) {
+        nesRomExtractor_.emplace(nesScenario->getRuntimeResolvedRomId());
+    }
 }
 
 TrainingRunner::~TrainingRunner() = default;
@@ -378,10 +377,20 @@ void TrainingRunner::runScenarioDrivenStep()
 
     const uint64_t renderedFramesBefore = nesScenario->getRuntimeRenderedFrameCount();
     uint8_t controllerMask = inferNesControllerMask();
-    constexpr uint8_t kNesButtonStart = (1u << 3);
-    if (nesFramesSurvived_ < 5) {
-        controllerMask |= kNesButtonStart;
+    if (nesLastGameState_.has_value()) {
+        const uint8_t gameState = nesLastGameState_.value();
+        if (gameState == kNesStateWaiting) {
+            controllerMask |= NesPolicyLayout::ButtonA;
+        }
+        if (gameState == kNesStateTitle || gameState == kNesStateGameOver
+            || gameState == kNesStateFadeIn || gameState == kNesStateTitleFade) {
+            controllerMask |= NesPolicyLayout::ButtonStart;
+        }
     }
+    else {
+        controllerMask |= NesPolicyLayout::ButtonStart;
+    }
+
     nesControllerMask_ = controllerMask;
     nesScenario->setController1State(nesControllerMask_);
 
@@ -392,10 +401,27 @@ void TrainingRunner::runScenarioDrivenStep()
     if (renderedFramesAfter > renderedFramesBefore) {
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
         nesFramesSurvived_ += advancedFrames;
-        nesRewardTotal_ += static_cast<double>(advancedFrames);
+
+        if (nesRomExtractor_.has_value() && nesRomExtractor_->isSupported()) {
+            const auto snapshot = nesScenario->copyRuntimeMemorySnapshot();
+            if (snapshot.has_value()) {
+                const NesRomFrameExtraction extraction =
+                    nesRomExtractor_->extract(snapshot.value(), nesControllerMask_);
+                nesPolicyInputs_ = extraction.features;
+                nesLastGameState_ = extraction.gameState;
+                nesRewardTotal_ += extraction.rewardDelta;
+                if (extraction.done) {
+                    state_ = State::OrganismDied;
+                }
+            }
+        }
+        else {
+            nesRewardTotal_ += static_cast<double>(advancedFrames);
+        }
     }
 
-    if (!nesScenario->isRuntimeRunning() || !nesScenario->isRuntimeHealthy()) {
+    if (state_ == State::Running
+        && (!nesScenario->isRuntimeRunning() || !nesScenario->isRuntimeHealthy())) {
         state_ = State::OrganismDied;
     }
 }
@@ -403,59 +429,22 @@ void TrainingRunner::runScenarioDrivenStep()
 uint8_t TrainingRunner::inferNesControllerMask() const
 {
     if (!individual_.genome.has_value()
-        || individual_.genome->weights.size() != NES_POLICY_WEIGHT_COUNT) {
+        || individual_.genome->weights.size() != NesPolicyLayout::WeightCount) {
         return 0;
     }
 
-    std::array<float, NES_POLICY_INPUT_COUNT> inputs{};
-    inputs.fill(0.0f);
-
-    const auto& worldData = world_->getData();
-    if (worldData.scenario_video_frame.has_value()) {
-        const ScenarioVideoFrame& frame = worldData.scenario_video_frame.value();
-        const size_t pixelCount =
-            static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
-        const size_t expectedBytes = pixelCount * 2u;
-        if (frame.width > 0 && frame.height > 0 && frame.pixels.size() >= expectedBytes) {
-            for (int outY = 0; outY < NES_POLICY_DOWNSAMPLED_HEIGHT; ++outY) {
-                const uint16_t srcY = static_cast<uint16_t>(
-                    (static_cast<uint32_t>(outY) * frame.height) / NES_POLICY_DOWNSAMPLED_HEIGHT);
-                for (int outX = 0; outX < NES_POLICY_DOWNSAMPLED_WIDTH; ++outX) {
-                    const uint16_t srcX = static_cast<uint16_t>(
-                        (static_cast<uint32_t>(outX) * frame.width) / NES_POLICY_DOWNSAMPLED_WIDTH);
-                    const size_t pixelIndex =
-                        static_cast<size_t>(srcY) * static_cast<size_t>(frame.width) + srcX;
-                    const size_t byteIndex = pixelIndex * 2u;
-                    if ((byteIndex + 1u) >= frame.pixels.size()) {
-                        continue;
-                    }
-
-                    const float luma =
-                        decodeRgb565Luma(frame.pixels[byteIndex], frame.pixels[byteIndex + 1u]);
-                    const size_t inputIndex =
-                        static_cast<size_t>(outY * NES_POLICY_DOWNSAMPLED_WIDTH + outX);
-                    inputs[inputIndex] = luma;
-                }
-            }
-        }
-    }
-
-    const float progress = maxTime_ > 0.0 ? static_cast<float>(simTime_ / maxTime_) : 0.0f;
-    inputs[NES_POLICY_INPUT_COUNT - 2] = std::clamp(progress, 0.0f, 1.0f);
-    inputs[NES_POLICY_INPUT_COUNT - 1] = (nesControllerMask_ & 0x01u) != 0u ? 1.0f : 0.0f;
-
     const auto& weights = individual_.genome->weights;
-    const size_t outputBiasOffset =
-        static_cast<size_t>(NES_POLICY_INPUT_COUNT) * static_cast<size_t>(NES_POLICY_OUTPUT_COUNT);
+    const size_t outputBiasOffset = static_cast<size_t>(NesPolicyLayout::InputCount)
+        * static_cast<size_t>(NesPolicyLayout::OutputCount);
 
     uint8_t mask = 0;
-    for (int outputIndex = 0; outputIndex < NES_POLICY_OUTPUT_COUNT; ++outputIndex) {
+    for (int outputIndex = 0; outputIndex < NesPolicyLayout::OutputCount; ++outputIndex) {
         float sum = weights[outputBiasOffset + static_cast<size_t>(outputIndex)];
         const size_t outputWeightOffset =
-            static_cast<size_t>(outputIndex) * static_cast<size_t>(NES_POLICY_INPUT_COUNT);
-        for (int inputIndex = 0; inputIndex < NES_POLICY_INPUT_COUNT; ++inputIndex) {
+            static_cast<size_t>(outputIndex) * static_cast<size_t>(NesPolicyLayout::InputCount);
+        for (int inputIndex = 0; inputIndex < NesPolicyLayout::InputCount; ++inputIndex) {
             sum += weights[outputWeightOffset + static_cast<size_t>(inputIndex)]
-                * inputs[static_cast<size_t>(inputIndex)];
+                * nesPolicyInputs_[static_cast<size_t>(inputIndex)];
         }
 
         if (sum > 0.0f) {

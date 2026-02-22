@@ -56,6 +56,18 @@ std::optional<ScenarioVideoFrame> SmolnesRuntime::copyLatestFrame() const
     return frame;
 }
 
+std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot() const
+{
+    MemorySnapshot snapshot{};
+    if (!smolnesRuntimeCopyCpuRam(snapshot.cpuRam.data(), SMOLNES_RUNTIME_CPU_RAM_BYTES)) {
+        return std::nullopt;
+    }
+    if (!smolnesRuntimeCopyPrgRam(snapshot.prgRam.data(), SMOLNES_RUNTIME_PRG_RAM_BYTES)) {
+        return std::nullopt;
+    }
+    return snapshot;
+}
+
 std::string SmolnesRuntime::getLastError() const
 {
     char buffer[256] = { 0 };
