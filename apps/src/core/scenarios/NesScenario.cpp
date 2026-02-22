@@ -213,10 +213,8 @@ void NesScenario::tick(World& world, double /*deltaTime*/)
         return;
     }
 
-    const uint32_t maxFramesPerTick = std::max<uint32_t>(1, config_.frameSkip);
     const uint64_t framesRemaining = config_.maxEpisodeFrames - renderedFrames;
-    const uint32_t framesToRun =
-        static_cast<uint32_t>(std::min<uint64_t>(maxFramesPerTick, framesRemaining));
+    const uint32_t framesToRun = static_cast<uint32_t>(std::min<uint64_t>(1u, framesRemaining));
 
     constexpr uint32_t tickTimeoutMs = 2000;
     runtime_->setController1State(controller1State_);

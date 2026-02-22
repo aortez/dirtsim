@@ -167,7 +167,6 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
 
     Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
     config.romPath = romPath.value().string();
-    config.frameSkip = 1;
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
     scenario->setup(world);
@@ -209,7 +208,6 @@ TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
 
     Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
     config.romPath = romPath.value().string();
-    config.frameSkip = 1;
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
     scenario->setup(world);
