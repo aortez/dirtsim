@@ -359,22 +359,34 @@ NesConfigValidationResult NesScenario::validateConfig(const Config::Nes& config)
         }
 
         if (matchingPaths.empty()) {
-            validation.message =
-                "No ROM found for romId '" + config.romId + "' in '" + romDir.string() + "'";
-            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
-            validation.romCheck.message = validation.message;
-            return validation;
+            if (!config.romPath.empty()) {
+                const std::filesystem::path fallbackRomPath = config.romPath;
+                const std::string fallbackRomId = makeRomId(fallbackRomPath.stem().string());
+                if (fallbackRomId == requestedRomId) {
+                    resolvedRomPath = fallbackRomPath;
+                    validation.resolvedRomId = requestedRomId;
+                }
+            }
+
+            if (resolvedRomPath.empty()) {
+                validation.message =
+                    "No ROM found for romId '" + config.romId + "' in '" + romDir.string() + "'";
+                validation.romCheck.status = NesRomCheckStatus::FileNotFound;
+                validation.romCheck.message = validation.message;
+                return validation;
+            }
         }
-        if (matchingPaths.size() > 1) {
+        else if (matchingPaths.size() > 1) {
             validation.message = "romId '" + config.romId + "' matched multiple ROM files in '"
                 + romDir.string() + "'";
             validation.romCheck.status = NesRomCheckStatus::ReadError;
             validation.romCheck.message = validation.message;
             return validation;
         }
-
-        resolvedRomPath = matchingPaths.front();
-        validation.resolvedRomId = requestedRomId;
+        else {
+            resolvedRomPath = matchingPaths.front();
+            validation.resolvedRomId = requestedRomId;
+        }
     }
     else {
         if (config.romPath.empty()) {
