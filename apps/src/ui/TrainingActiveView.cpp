@@ -477,7 +477,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
         fitnessPlotsRow_,
         TimeSeriesPlotWidget::Config{
             .title = "Robust Evaluated",
-            .lineColor = lv_color_hex(0xFFDD66),
+            .lineColor = lv_color_hex(0x666666),
             .highlightColor = lv_color_hex(0xFF4FA3),
             .defaultMinY = 0.0f,
             .defaultMaxY = 1.0f,
