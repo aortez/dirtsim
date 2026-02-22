@@ -9,6 +9,8 @@ BUILD_RELEASE_DIR := build-release
 BUILD_DIR := build-debug  # Default to debug for backward compatibility.
 BIN_DIR := bin
 ROOT_DIR := $(abspath ..)
+NES_TEST_ROM_PATH := testdata/roms/Flappy.Paratroopa.World.Unl.nes
+NES_TEST_ROM_FETCH_SCRIPT := scripts/fetch_nes_test_rom.sh
 
 # Cross-compilation directories (aarch64).
 BUILD_CROSS_DEBUG_DIR := build-aarch64-debug
@@ -71,7 +73,7 @@ TEST_BINARY := dirtsim-tests
 TEST_SLOW_BINARY := dirtsim-tests-slow
 MAIN_BINARY := dirtsim
 
-.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
+.PHONY: all clean debug release asan build-tests build-tests-slow fetch-nes-test-rom test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
 
 all: release
 
@@ -118,16 +120,22 @@ build-tests-slow: debug
 	@echo "Slow test binary built successfully: $(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_BINARY)"
 
 test: build-tests
+	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests..."
-	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+
+fetch-nes-test-rom:
+	@echo "Preparing NES test ROM..."
+	@./$(NES_TEST_ROM_FETCH_SCRIPT)
 
 test-slow: build-tests-slow
 	@echo "Running slow tests..."
 	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_BINARY) $(ARGS)
 
 test-asan: asan
+	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests with AddressSanitizer..."
-	@ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:print_stats=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:print_stats=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
 
 test-all: test test-slow visual-tests
 
@@ -240,6 +248,7 @@ help:
 	@echo "  asan           - Build debug version with AddressSanitizer enabled"
 	@echo "  build-tests    - Build test binary without running tests"
 	@echo "  build-tests-slow - Build slow test binary"
+	@echo "  fetch-nes-test-rom - Download MIT-licensed NES ROM fixture for tests"
 	@echo "  test           - Build debug and run unit tests (fast)"
 	@echo "  test-slow      - Run slow integration/stress tests"
 	@echo "  test-asan      - Build and run tests with AddressSanitizer"

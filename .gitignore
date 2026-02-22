@@ -38,6 +38,7 @@ zephyrproject/modules/
 node_modules/
 apps/src/ui/docs/dist/
 apps/src/ui/docs/screenshots/
+Flappy.Paratroopa.World.Unl.nes
 
 # Zephyr project (not currently used).
 zephyrproject/

@@ -31,6 +31,7 @@ struct TrainingActive {
     void updateAnimations();
 
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingBestPlaybackFrameReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
@@ -51,7 +52,10 @@ struct TrainingActive {
     bool hasTrainingSpec_ = false;
     std::optional<Starfield::Snapshot> starfieldSnapshot_;
     bool trainingPaused_ = false;
+    bool hasPlottedRobustBestFitness_ = false;
+    float plottedRobustBestFitness_ = 0.0f;
     std::vector<float> plotBestSeries_;
+    std::vector<uint8_t> plotBestSeriesRobustHighMask_;
     uint64_t lastPlottedRobustEvaluationCount_ = 0;
     int lastPlottedCompletedGeneration_ = -1;
     uint64_t progressEventCount_ = 0;

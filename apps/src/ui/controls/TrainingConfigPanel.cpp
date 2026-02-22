@@ -28,7 +28,9 @@ TrainingConfigPanel::TrainingConfigPanel(
     EvolutionConfig& evolutionConfig,
     MutationConfig& mutationConfig,
     TrainingSpec& trainingSpec,
-    int& streamIntervalMs)
+    int& streamIntervalMs,
+    bool& bestPlaybackEnabled,
+    int& bestPlaybackIntervalMs)
     : container_(container),
       eventSink_(eventSink),
       panel_(panel),
@@ -37,7 +39,9 @@ TrainingConfigPanel::TrainingConfigPanel(
       evolutionConfig_(evolutionConfig),
       mutationConfig_(mutationConfig),
       trainingSpec_(trainingSpec),
-      streamIntervalMs_(streamIntervalMs)
+      streamIntervalMs_(streamIntervalMs),
+      bestPlaybackEnabled_(bestPlaybackEnabled),
+      bestPlaybackIntervalMs_(bestPlaybackIntervalMs)
 {
     collapsedWidth_ = ExpandablePanel::DefaultWidth;
     const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
@@ -101,6 +105,24 @@ void TrainingConfigPanel::setStreamIntervalMs(int value)
     streamIntervalMs_ = value;
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
+    }
+}
+
+void TrainingConfigPanel::setBestPlaybackEnabled(bool enabled)
+{
+    bestPlaybackEnabled_ = enabled;
+    if (bestPlaybackToggle_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(bestPlaybackToggle_, enabled);
+    }
+    updateControlsEnabled();
+}
+
+void TrainingConfigPanel::setBestPlaybackIntervalMs(int value)
+{
+    bestPlaybackIntervalMs_ = std::max(1, value);
+    if (bestPlaybackIntervalStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            bestPlaybackIntervalStepper_, bestPlaybackIntervalMs_);
     }
 }
 
@@ -293,7 +315,7 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
     const int32_t initialGenerations = evolutionConfig_.maxGenerations;
     generationsStepper_ = LVGLBuilder::actionStepper(parent)
                               .label("Generations")
-                              .range(1, 1000)
+                              .range(0, 1000)
                               .step(initialGenerations <= 10 ? 1 : 10)
                               .value(initialGenerations)
                               .valueFormat("%.0f")
@@ -401,6 +423,28 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                                  .callback(onStreamIntervalChanged, this)
                                  .buildOrLog();
 
+    bestPlaybackToggle_ = LVGLBuilder::actionButton(parent)
+                              .text("Best Playback")
+                              .mode(LVGLBuilder::ActionMode::Toggle)
+                              .checked(bestPlaybackEnabled_)
+                              .width(LV_PCT(95))
+                              .height(LVGLBuilder::Style::ACTION_SIZE)
+                              .layoutRow()
+                              .alignLeft()
+                              .callback(onBestPlaybackToggled, this)
+                              .buildOrLog();
+
+    bestPlaybackIntervalStepper_ = LVGLBuilder::actionStepper(parent)
+                                       .label("Best Playback (ms)")
+                                       .range(1, 5000)
+                                       .step(1)
+                                       .value(bestPlaybackIntervalMs_)
+                                       .valueFormat("%.0f")
+                                       .valueScale(1.0)
+                                       .width(LV_PCT(95))
+                                       .callback(onBestPlaybackIntervalChanged, this)
+                                       .buildOrLog();
+
     statusLabel_ = lv_label_create(parent);
     lv_label_set_text(statusLabel_, "");
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(kStatusReadyColor), 0);
@@ -469,6 +513,8 @@ void TrainingConfigPanel::updateControlsEnabled()
     setEnabled(tournamentSizeStepper_, enabled);
     setEnabled(maxSimTimeStepper_, enabled);
     setEnabled(streamIntervalStepper_, true);
+    setEnabled(bestPlaybackToggle_, true);
+    setEnabled(bestPlaybackIntervalStepper_, bestPlaybackEnabled_);
 
     setEnabled(mutationBudgetToggle_, enabled);
     if (enabled) {
@@ -677,7 +723,44 @@ void TrainingConfigPanel::onStreamIntervalChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
     self->streamIntervalMs_ = value;
-    self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = value,
+            .bestPlaybackEnabled = self->bestPlaybackEnabled_,
+            .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+        });
+}
+
+void TrainingConfigPanel::onBestPlaybackToggled(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->bestPlaybackToggle_) return;
+
+    self->bestPlaybackEnabled_ =
+        LVGLBuilder::ActionButtonBuilder::isChecked(self->bestPlaybackToggle_);
+    self->updateControlsEnabled();
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->streamIntervalMs_,
+            .bestPlaybackEnabled = self->bestPlaybackEnabled_,
+            .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+        });
+}
+
+void TrainingConfigPanel::onBestPlaybackIntervalChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->bestPlaybackIntervalStepper_) return;
+
+    const int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->bestPlaybackIntervalStepper_);
+    self->bestPlaybackIntervalMs_ = std::max(1, value);
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->streamIntervalMs_,
+            .bestPlaybackEnabled = self->bestPlaybackEnabled_,
+            .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+        });
 }
 
 } // namespace Ui

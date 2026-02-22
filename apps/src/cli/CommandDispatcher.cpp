@@ -57,6 +57,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::GenomeList::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GenomeSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GravitySet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::NesInputSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);

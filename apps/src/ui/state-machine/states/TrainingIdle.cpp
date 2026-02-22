@@ -189,6 +189,8 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     // broadcastTrainingResult against the UI's pending RenderFormatSet request.
     Api::TrainingStreamConfigSet::Command streamCmd{
         .intervalMs = sm.getUserSettings().streamIntervalMs,
+        .bestPlaybackEnabled = sm.getUserSettings().bestPlaybackEnabled,
+        .bestPlaybackIntervalMs = sm.getUserSettings().bestPlaybackIntervalMs,
     };
     auto streamResult = wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(
         streamCmd, 2000);
@@ -354,9 +356,13 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
 {
     auto& settings = sm.getUserSettings();
     settings.streamIntervalMs = std::max(0, evt.intervalMs);
+    settings.bestPlaybackEnabled = evt.bestPlaybackEnabled;
+    settings.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
     view_->setStreamIntervalMs(settings.streamIntervalMs);
+    view_->setBestPlaybackEnabled(settings.bestPlaybackEnabled);
+    view_->setBestPlaybackIntervalMs(settings.bestPlaybackIntervalMs);
 
     return std::move(*this);
 }

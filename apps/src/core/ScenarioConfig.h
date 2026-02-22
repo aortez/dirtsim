@@ -8,6 +8,7 @@
 #include "core/scenarios/EmptyConfig.h"
 #include "core/scenarios/GooseTestConfig.h"
 #include "core/scenarios/LightsConfig.h"
+#include "core/scenarios/NesConfig.h"
 #include "core/scenarios/RainingConfig.h"
 #include "core/scenarios/SandboxConfig.h"
 #include "core/scenarios/TreeGerminationConfig.h"
@@ -28,7 +29,8 @@ using ScenarioConfig = std::variant<
     Config::Sandbox,
     Config::TreeGermination,
     Config::WaterEqualization,
-    Config::DuckTraining>;
+    Config::DuckTraining,
+    Config::Nes>;
 
 // Map variant index to Scenario::EnumType enum (must stay in sync with variant order).
 Scenario::EnumType getScenarioId(const ScenarioConfig& config);

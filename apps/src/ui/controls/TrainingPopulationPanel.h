@@ -118,6 +118,7 @@ private:
     void updateSelectorLabels();
     void refreshFromSpec();
     void applySpecUpdates();
+    BrainOption resolveBrainOptionForScenario(Scenario::EnumType scenarioId) const;
     void setBrainOptionsForOrganism(OrganismType organismType);
     void syncUiFromState();
     void updateCountsLabel();

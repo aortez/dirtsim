@@ -34,6 +34,7 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
@@ -87,6 +88,62 @@ int getMaxTimezoneIndex()
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
+
+bool isNesTrainingTarget(const TrainingSpec& spec)
+{
+    if (spec.organismType == OrganismType::NES_FLAPPY_BIRD
+        || spec.scenarioId == Scenario::EnumType::Nes) {
+        return true;
+    }
+
+    for (const auto& population : spec.population) {
+        if (population.scenarioId == Scenario::EnumType::Nes
+            || population.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+template <typename RecordUpdateFn>
+void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& recordUpdate)
+{
+    if (!isNesTrainingTarget(settings.trainingSpec)) {
+        return;
+    }
+
+    if (settings.trainingSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
+        settings.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+        recordUpdate("trainingSpec.organismType promoted to NES_FLAPPY_BIRD for NES training");
+    }
+
+    if (settings.trainingSpec.scenarioId != Scenario::EnumType::Nes) {
+        settings.trainingSpec.scenarioId = Scenario::EnumType::Nes;
+        recordUpdate("trainingSpec.scenarioId forced to Nes for NES training");
+    }
+
+    for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
+        auto& population = settings.trainingSpec.population[index];
+        if (population.scenarioId != Scenario::EnumType::Nes) {
+            population.scenarioId = Scenario::EnumType::Nes;
+            recordUpdate(
+                "trainingSpec population[" + std::to_string(index)
+                + "] scenarioId forced to Nes for NES training");
+        }
+
+        if (population.brainKind != TrainingBrainKind::NesFlappyBird
+            || population.brainVariant.has_value()) {
+            population.brainKind = TrainingBrainKind::NesFlappyBird;
+            population.brainVariant.reset();
+            population.seedGenomes.clear();
+            population.randomCount = population.count;
+            recordUpdate(
+                "trainingSpec population[" + std::to_string(index)
+                + "] brainKind migrated to NesFlappyBird");
+        }
+    }
+}
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -285,6 +342,8 @@ UserSettings sanitizeUserSettings(
         settings.trainingSpec.scenarioId = Scenario::EnumType::Clock;
         recordUpdate("trainingSpec.scenarioId migrated from DuckTraining to Clock");
     }
+
+    canonicalizeNesTrainingTarget(settings, recordUpdate);
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
@@ -656,6 +715,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
+        DISPATCH_JSON_CMD_EMPTY(Api::NesInputSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PerfStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PhysicsSettingsGet);
         DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
@@ -904,6 +964,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GenomeSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::NesInputSet::Cwc>(
+        [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
         [this](Api::PerfStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PhysicsSettingsGet::Cwc>(

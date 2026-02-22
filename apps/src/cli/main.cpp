@@ -604,6 +604,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canExit\n";
     examples += "  cli functional-test canExit --restart\n";
     examples += "  cli functional-test canTrain\n";
+    examples += "  cli functional-test canTrainNesFlappy\n";
     examples += "  cli functional-test canSetGenerationsAndTrain\n";
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
@@ -612,6 +613,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canResetUserSettings\n";
     examples += "  cli functional-test canPersistUserSettingsAcrossRestart\n";
     examples += "  cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario\n";
+    examples += "  cli functional-test canControlNesScenario\n";
     examples += "  cli functional-test canApplyClockTimezoneFromUserSettings\n";
     examples += "  cli functional-test canPlaySynthKeys\n";
     examples += "  cli functional-test verifyTraining\n";
@@ -1129,20 +1131,23 @@ int main(int argc, char** argv)
         }
 
         const std::string testName = args::get(command);
-        if (testName != "canExit" && testName != "canTrain"
+        if (testName != "canExit" && testName != "canTrain" && testName != "canTrainNesFlappy"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
             && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
             && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
             && testName != "canPersistUserSettingsAcrossRestart"
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
+            && testName != "canControlNesScenario"
             && testName != "canApplyClockTimezoneFromUserSettings" && testName != "canPlaySynthKeys"
             && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
-            std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
+            std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
+                         "canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
                          "canOpenTrainingConfigPanel, canUpdateUserSettings, "
                          "canResetUserSettings, canPersistUserSettingsAcrossRestart, "
                          "canUseDefaultScenarioWhenSimRunHasNoScenario, "
+                         "canControlNesScenario, "
                          "canApplyClockTimezoneFromUserSettings, canPlaySynthKeys, "
                          "verifyTraining\n";
             return 1;
@@ -1177,6 +1182,10 @@ int main(int argc, char** argv)
         else if (testName == "canTrain") {
             summary = runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
+        else if (testName == "canTrainNesFlappy") {
+            summary =
+                runner.runCanTrainNesFlappy(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
         else if (testName == "canSetGenerationsAndTrain") {
             summary = runner.runCanSetGenerationsAndTrain(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
@@ -1203,6 +1212,10 @@ int main(int argc, char** argv)
         }
         else if (testName == "canUseDefaultScenarioWhenSimRunHasNoScenario") {
             summary = runner.runCanUseDefaultScenarioWhenSimRunHasNoScenario(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canControlNesScenario") {
+            summary = runner.runCanControlNesScenario(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "canApplyClockTimezoneFromUserSettings") {

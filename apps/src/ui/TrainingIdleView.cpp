@@ -215,7 +215,9 @@ void TrainingIdleView::createTrainingConfigPanel()
         userSettings_.evolutionConfig,
         userSettings_.mutationConfig,
         userSettings_.trainingSpec,
-        userSettings_.streamIntervalMs);
+        userSettings_.streamIntervalMs,
+        userSettings_.bestPlaybackEnabled,
+        userSettings_.bestPlaybackIntervalMs);
     LOG_INFO(Controls, "TrainingIdleView: Created Training config panel");
 }
 
@@ -266,6 +268,22 @@ void TrainingIdleView::setStreamIntervalMs(int value)
     userSettings_.streamIntervalMs = value;
     if (trainingConfigPanel_) {
         trainingConfigPanel_->setStreamIntervalMs(value);
+    }
+}
+
+void TrainingIdleView::setBestPlaybackEnabled(bool enabled)
+{
+    userSettings_.bestPlaybackEnabled = enabled;
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setBestPlaybackEnabled(enabled);
+    }
+}
+
+void TrainingIdleView::setBestPlaybackIntervalMs(int value)
+{
+    userSettings_.bestPlaybackIntervalMs = std::max(1, value);
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
     }
 }
 
@@ -346,6 +364,10 @@ void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId, Scenario::E
                 break;
             case OrganismType::DUCK:
                 spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+                break;
+            case OrganismType::NES_FLAPPY_BIRD:
+                spec.scenarioId = Scenario::EnumType::Nes;
+                spec.brainKind = TrainingBrainKind::NesFlappyBird;
                 break;
             case OrganismType::GOOSE:
                 spec.brainKind = TrainingBrainKind::Random;

@@ -11,8 +11,9 @@ namespace Ui {
 namespace {
 constexpr float axisPaddingRatio = 0.1f;
 constexpr float minAxisPadding = 0.1f;
-constexpr int yAxisRangeLabelWidthPx = 44;
+constexpr int minYAxisRangeLabelWidthPx = 20;
 constexpr int yAxisRangeLabelGapPx = 4;
+constexpr int yAxisRangeLabelPaddingPx = 2;
 } // namespace
 
 TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
@@ -47,9 +48,10 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_set_style_bg_opa(chart_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(chart_, 0, 0);
     lv_obj_set_style_pad_all(chart_, 4, 0);
-    lv_obj_set_style_pad_bottom(chart_, 6, 0);
+    const int32_t chartBottomPadPx = config_.chartType == LV_CHART_TYPE_BAR ? 0 : 6;
+    lv_obj_set_style_pad_bottom(chart_, chartBottomPadPx, 0);
     if (config_.showYAxisRangeLabels) {
-        lv_obj_set_style_pad_left(chart_, yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx, 0);
+        lv_obj_set_style_pad_left(chart_, yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx, 0);
     }
     lv_obj_set_style_line_width(chart_, 2, LV_PART_ITEMS);
     lv_obj_set_style_line_color(chart_, config_.lineColor, LV_PART_ITEMS);
@@ -58,6 +60,15 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_clear_flag(chart_, LV_OBJ_FLAG_CLICKABLE);
 
     lv_chart_set_type(chart_, config_.chartType);
+    if (config_.chartType == LV_CHART_TYPE_BAR) {
+        lv_obj_set_style_radius(chart_, 0, LV_PART_ITEMS);
+        if (config_.barGroupGapPx >= 0) {
+            lv_obj_set_style_pad_column(chart_, config_.barGroupGapPx, LV_PART_MAIN);
+        }
+        if (config_.barSeriesGapPx >= 0) {
+            lv_obj_set_style_pad_column(chart_, config_.barSeriesGapPx, LV_PART_ITEMS);
+        }
+    }
     lv_chart_set_update_mode(chart_, LV_CHART_UPDATE_MODE_SHIFT);
     lv_chart_set_div_line_count(chart_, 2, 3);
     lv_chart_set_point_count(chart_, minPointCount_);
@@ -65,9 +76,40 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     series_ = lv_chart_add_series(chart_, config_.lineColor, LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(chart_, series_, 0);
 
+    if (config_.showHighlights) {
+        highlightChart_ = lv_chart_create(chart_);
+        lv_obj_set_size(highlightChart_, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_opa(highlightChart_, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(highlightChart_, 0, 0);
+        lv_obj_set_style_pad_all(highlightChart_, 0, 0);
+        lv_obj_set_style_pad_gap(highlightChart_, 0, 0);
+        lv_obj_set_style_line_width(highlightChart_, 0, LV_PART_ITEMS);
+        lv_obj_set_style_line_opa(highlightChart_, LV_OPA_TRANSP, LV_PART_ITEMS);
+        const int32_t markerSizePx = std::max<int32_t>(1, config_.highlightMarkerSizePx);
+        lv_obj_set_style_width(highlightChart_, markerSizePx, LV_PART_INDICATOR);
+        lv_obj_set_style_height(highlightChart_, markerSizePx, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(highlightChart_, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(highlightChart_, config_.highlightColor, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(highlightChart_, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_border_color(highlightChart_, config_.highlightColor, LV_PART_INDICATOR);
+        lv_obj_set_style_border_opa(highlightChart_, LV_OPA_80, LV_PART_INDICATOR);
+        lv_obj_set_style_border_width(highlightChart_, 1, LV_PART_INDICATOR);
+        lv_obj_clear_flag(highlightChart_, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(highlightChart_, LV_OBJ_FLAG_CLICKABLE);
+
+        lv_chart_set_type(highlightChart_, LV_CHART_TYPE_LINE);
+        lv_chart_set_update_mode(highlightChart_, LV_CHART_UPDATE_MODE_SHIFT);
+        lv_chart_set_div_line_count(highlightChart_, 0, 0);
+        lv_chart_set_point_count(highlightChart_, minPointCount_);
+
+        highlightSeries_ =
+            lv_chart_add_series(highlightChart_, config_.highlightColor, LV_CHART_AXIS_PRIMARY_Y);
+        lv_chart_set_all_values(highlightChart_, highlightSeries_, LV_CHART_POINT_NONE);
+    }
+
     if (config_.showYAxisRangeLabels) {
         yAxisMaxLabel_ = lv_label_create(chart_);
-        lv_obj_set_width(yAxisMaxLabel_, yAxisRangeLabelWidthPx);
+        lv_obj_set_width(yAxisMaxLabel_, yAxisRangeLabelWidthPx_);
         lv_label_set_long_mode(yAxisMaxLabel_, LV_LABEL_LONG_CLIP);
         lv_label_set_text(yAxisMaxLabel_, "");
         lv_obj_set_style_text_color(yAxisMaxLabel_, lv_color_hex(0xAAAAAA), 0);
@@ -76,10 +118,13 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
         lv_obj_clear_flag(yAxisMaxLabel_, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_clear_flag(yAxisMaxLabel_, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(
-            yAxisMaxLabel_, LV_ALIGN_TOP_LEFT, -(yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx), 0);
+            yAxisMaxLabel_,
+            LV_ALIGN_TOP_LEFT,
+            -(yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx),
+            0);
 
         yAxisMinLabel_ = lv_label_create(chart_);
-        lv_obj_set_width(yAxisMinLabel_, yAxisRangeLabelWidthPx);
+        lv_obj_set_width(yAxisMinLabel_, yAxisRangeLabelWidthPx_);
         lv_label_set_long_mode(yAxisMinLabel_, LV_LABEL_LONG_CLIP);
         lv_label_set_text(yAxisMinLabel_, "");
         lv_obj_set_style_text_color(yAxisMinLabel_, lv_color_hex(0xAAAAAA), 0);
@@ -90,7 +135,7 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
         lv_obj_align(
             yAxisMinLabel_,
             LV_ALIGN_BOTTOM_LEFT,
-            -(yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx),
+            -(yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx),
             0);
     }
 
@@ -105,7 +150,7 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_set_style_pad_gap(bottomLabelsRow_, 0, 0);
     if (config_.showYAxisRangeLabels) {
         lv_obj_set_style_pad_left(
-            bottomLabelsRow_, yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx, 0);
+            bottomLabelsRow_, yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx, 0);
         lv_obj_set_style_pad_right(bottomLabelsRow_, 4, 0);
     }
     lv_obj_set_flex_flow(bottomLabelsRow_, LV_FLEX_FLOW_ROW);
@@ -138,6 +183,11 @@ void TimeSeriesPlotWidget::clear()
     chartValues_.assign(minPointCount_, 0);
     lv_chart_set_point_count(chart_, minPointCount_);
     lv_chart_set_all_values(chart_, series_, 0);
+    if (highlightChart_ && highlightSeries_) {
+        lv_chart_set_point_count(highlightChart_, minPointCount_);
+        lv_chart_set_all_values(highlightChart_, highlightSeries_, LV_CHART_POINT_NONE);
+        lv_chart_refresh(highlightChart_);
+    }
     setYAxisRange(config_.defaultMinY, config_.defaultMaxY);
     lv_chart_refresh(chart_);
 }
@@ -175,6 +225,18 @@ void TimeSeriesPlotWidget::clearBottomLabels()
 
 void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
 {
+    setSamplesInternal(samples, nullptr);
+}
+
+void TimeSeriesPlotWidget::setSamplesWithHighlights(
+    const std::vector<float>& samples, const std::vector<uint8_t>& highlightMask)
+{
+    setSamplesInternal(samples, &highlightMask);
+}
+
+void TimeSeriesPlotWidget::setSamplesInternal(
+    const std::vector<float>& samples, const std::vector<uint8_t>* highlightMask)
+{
     if (!chart_ || !series_) {
         return;
     }
@@ -189,6 +251,9 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
     const uint32_t pointCount = std::max(minPointCount_, static_cast<uint32_t>(samples.size()));
     if (lv_chart_get_point_count(chart_) != pointCount) {
         lv_chart_set_point_count(chart_, pointCount);
+    }
+    if (highlightChart_ && lv_chart_get_point_count(highlightChart_) != pointCount) {
+        lv_chart_set_point_count(highlightChart_, pointCount);
     }
 
     const auto toPlotValue = [this](float value) {
@@ -216,6 +281,19 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
     for (uint32_t i = 0; i < pointCount; ++i) {
         lv_chart_set_series_value_by_id(chart_, series_, i, chartValues_[i]);
     }
+
+    if (highlightChart_ && highlightSeries_) {
+        for (uint32_t i = 0; i < pointCount; ++i) {
+            int32_t highlightValue = LV_CHART_POINT_NONE;
+            if (highlightMask && i < highlightMask->size() && (*highlightMask)[i]
+                && i < samples.size()) {
+                highlightValue = toChartValue(samples[i]);
+            }
+            lv_chart_set_series_value_by_id(highlightChart_, highlightSeries_, i, highlightValue);
+        }
+        lv_chart_refresh(highlightChart_);
+    }
+
     lv_chart_refresh(chart_);
 }
 
@@ -227,6 +305,59 @@ lv_obj_t* TimeSeriesPlotWidget::getContainer() const
 int32_t TimeSeriesPlotWidget::toChartValue(float value) const
 {
     return static_cast<int32_t>(std::lround(value * config_.valueScale));
+}
+
+int32_t TimeSeriesPlotWidget::measureYAxisLabelTextWidth(const char* text) const
+{
+    if (!text || text[0] == '\0') {
+        return 0;
+    }
+
+    const lv_obj_t* referenceLabel = yAxisMinLabel_ ? yAxisMinLabel_ : yAxisMaxLabel_;
+    const lv_font_t* font = referenceLabel
+        ? lv_obj_get_style_text_font(referenceLabel, LV_PART_MAIN)
+        : &lv_font_montserrat_12;
+    const int32_t letterSpace =
+        referenceLabel ? lv_obj_get_style_text_letter_space(referenceLabel, LV_PART_MAIN) : 0;
+    const int32_t lineSpace =
+        referenceLabel ? lv_obj_get_style_text_line_space(referenceLabel, LV_PART_MAIN) : 0;
+
+    lv_point_t textSize{};
+    lv_text_get_size(
+        &textSize,
+        text,
+        font ? font : &lv_font_montserrat_12,
+        letterSpace,
+        lineSpace,
+        LV_COORD_MAX,
+        LV_TEXT_FLAG_NONE);
+    return textSize.x;
+}
+
+void TimeSeriesPlotWidget::updateYAxisLabelLayout(int32_t requiredLabelWidthPx)
+{
+    if (!config_.showYAxisRangeLabels || !chart_ || !yAxisMinLabel_ || !yAxisMaxLabel_) {
+        return;
+    }
+
+    const int32_t nextWidth = std::max(minYAxisRangeLabelWidthPx, requiredLabelWidthPx);
+    if (nextWidth <= yAxisRangeLabelWidthPx_) {
+        return;
+    }
+
+    yAxisRangeLabelWidthPx_ = nextWidth;
+    lv_obj_set_width(yAxisMaxLabel_, yAxisRangeLabelWidthPx_);
+    lv_obj_set_width(yAxisMinLabel_, yAxisRangeLabelWidthPx_);
+
+    const int32_t xOffset = -(yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx);
+    lv_obj_align(yAxisMaxLabel_, LV_ALIGN_TOP_LEFT, xOffset, 0);
+    lv_obj_align(yAxisMinLabel_, LV_ALIGN_BOTTOM_LEFT, xOffset, 0);
+
+    lv_obj_set_style_pad_left(chart_, yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx, 0);
+    if (bottomLabelsRow_) {
+        lv_obj_set_style_pad_left(
+            bottomLabelsRow_, yAxisRangeLabelWidthPx_ + yAxisRangeLabelGapPx, 0);
+    }
 }
 
 void TimeSeriesPlotWidget::setYAxisRange(float minValue, float maxValue)
@@ -241,6 +372,13 @@ void TimeSeriesPlotWidget::setYAxisRange(float minValue, float maxValue)
 
     lv_chart_set_axis_range(
         chart_, LV_CHART_AXIS_PRIMARY_Y, toChartValue(minValue), toChartValue(maxValue));
+    if (highlightChart_) {
+        lv_chart_set_axis_range(
+            highlightChart_,
+            LV_CHART_AXIS_PRIMARY_Y,
+            toChartValue(minValue),
+            toChartValue(maxValue));
+    }
     updateYAxisRangeLabels(minValue, maxValue);
 }
 
@@ -279,8 +417,20 @@ void TimeSeriesPlotWidget::updateYAxisRangeLabels(float minValue, float maxValue
 
     char minBuf[24];
     char maxBuf[24];
-    snprintf(minBuf, sizeof(minBuf), "%.2f", minValue);
-    snprintf(maxBuf, sizeof(maxBuf), "%.2f", maxValue);
+    const auto formatLabel = [](char* out, size_t outSize, float value) {
+        const float roundedValue = std::round(value);
+        if (std::abs(value - roundedValue) <= 0.005f) {
+            snprintf(out, outSize, "%.0f", roundedValue);
+            return;
+        }
+        snprintf(out, outSize, "%.2f", value);
+    };
+    formatLabel(minBuf, sizeof(minBuf), minValue);
+    formatLabel(maxBuf, sizeof(maxBuf), maxValue);
+    const int32_t requiredLabelWidthPx =
+        std::max(measureYAxisLabelTextWidth(minBuf), measureYAxisLabelTextWidth(maxBuf))
+        + yAxisRangeLabelPaddingPx;
+    updateYAxisLabelLayout(requiredLabelWidthPx);
     lv_label_set_text(yAxisMinLabel_, minBuf);
     lv_label_set_text(yAxisMaxLabel_, maxBuf);
 

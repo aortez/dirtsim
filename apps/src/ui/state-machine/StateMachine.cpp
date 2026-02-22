@@ -432,7 +432,8 @@ void StateMachine::handleEvent(const Event& event)
     {
         // High-frequency events log at DEBUG to avoid spam.
         const bool isHighFrequency = std::holds_alternative<UiUpdateEvent>(event)
-            || std::holds_alternative<EvolutionProgressReceivedEvent>(event);
+            || std::holds_alternative<EvolutionProgressReceivedEvent>(event)
+            || std::holds_alternative<TrainingBestPlaybackFrameReceivedEvent>(event);
         const std::string msg = "Handling global event: " + getEventName(event);
         if (isHighFrequency) {
             LOG_DEBUG(State, "{}", msg);
@@ -1043,8 +1044,10 @@ void StateMachine::handleEvent(const Event& event)
                         // Handle state-independent events generically.
                         if constexpr (
                             std::is_same_v<std::decay_t<decltype(evt)>, UiUpdateEvent>
-                            || std::
-                                is_same_v<std::decay_t<decltype(evt)>, UserSettingsUpdatedEvent>) {
+                            || std::is_same_v<std::decay_t<decltype(evt)>, UserSettingsUpdatedEvent>
+                            || std::is_same_v<
+                                std::decay_t<decltype(evt)>,
+                                TrainingBestPlaybackFrameReceivedEvent>) {
                             // UiUpdateEvent can arrive in any state (server keeps sending updates).
                             // States that care (SimRunning) have specific handlers.
                             // Other states (Paused, etc.) gracefully ignore without warning.

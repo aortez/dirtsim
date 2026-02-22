@@ -105,6 +105,9 @@ Backend selection is done at runtime via the `-b` flag.
 # Run all unit tests
 make test
 
+# Download/update MIT-licensed NES ROM fixture used by NES tests
+make fetch-nes-test-rom
+
 # Run specific test
 make test ARGS='--gtest_filter=StateIdle*'
 

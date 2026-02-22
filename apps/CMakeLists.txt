@@ -363,6 +363,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/TrainingBestPlaybackFrame.cpp
     src/server/api/UserSettingsSet.cpp
     src/server/api/TrainingBestSnapshot.cpp
     src/server/api/TrainingResult.cpp
@@ -400,6 +401,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
+    src/core/scenarios/NesScenario.cpp
+    src/core/scenarios/nes/SmolnesRuntime.cpp
+    src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
     src/core/scenarios/SandboxScenario.cpp
     src/core/scenarios/TreeGerminationScenario.cpp
@@ -465,6 +469,7 @@ target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/
 target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${SQLITE3_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
 target_compile_options(dirtsim-server-lib PRIVATE ${DIRTSIM_WARNINGS})
+set_source_files_properties(src/core/scenarios/nes/SmolnesRuntimeBackend.c PROPERTIES COMPILE_OPTIONS "-w")
 
 # Link OpenMP for parallel physics calculations (cohesion, adhesion loops).
 if(OpenMP_CXX_FOUND)
@@ -806,6 +811,7 @@ add_executable(dirtsim-tests
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
+    src/core/scenarios/tests/NesScenario_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp
