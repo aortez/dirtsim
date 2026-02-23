@@ -10,7 +10,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
-#include "core/scenarios/nes/NesRomProfileExtractor.h"
+#include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -24,6 +24,8 @@
 namespace DirtSim {
 
 class GenomeRepository;
+class NesGameAdapter;
+class NesScenarioRuntime;
 namespace Organism {
 class Body;
 }
@@ -72,6 +74,7 @@ public:
 
     struct Config {
         TrainingBrainRegistry brainRegistry;
+        NesGameAdapterRegistry nesGameAdapterRegistry = NesGameAdapterRegistry::createDefault();
         std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
     };
@@ -138,21 +141,19 @@ private:
 
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;
+    NesGameAdapterRegistry nesGameAdapterRegistry_;
     std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
     std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
     BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
+    NesScenarioRuntime* nesRuntime_ = nullptr;
+    std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
     std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
-    std::string nesRuntimeRomId_;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
-    std::optional<NesRomProfileExtractor> nesRomExtractor_ = std::nullopt;
-    std::optional<NesFlappyBirdEvaluator> nesFlappyEvaluator_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
-    uint32_t nesStartPulseFrameCounter_ = 0;
-    uint32_t nesWaitingFlapPulseFrameCounter_ = 0;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 

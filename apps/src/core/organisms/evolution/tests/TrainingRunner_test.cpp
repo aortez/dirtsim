@@ -19,6 +19,8 @@
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include "core/scenarios/nes/NesGameAdapter.h"
+#include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -153,6 +155,47 @@ public:
 private:
     std::vector<DuckInput> inputs_;
     size_t nextInputIndex_ = 0;
+};
+
+class RecordingNesAdapter : public NesGameAdapter {
+public:
+    RecordingNesAdapter(int* controllerCallCount, int* evaluateCallCount)
+        : controllerCallCount_(controllerCallCount), evaluateCallCount_(evaluateCallCount)
+    {}
+
+    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    {
+        if (controllerCallCount_) {
+            ++(*controllerCallCount_);
+        }
+        return input.inferredControllerMask;
+    }
+
+    NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
+    {
+        if (evaluateCallCount_) {
+            ++(*evaluateCallCount_);
+        }
+        NesGameAdapterFrameOutput output;
+        output.rewardDelta = static_cast<double>(input.advancedFrames);
+        return output;
+    }
+
+    DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
+    {
+        DuckSensoryData sensory{};
+        sensory.actual_width = DuckSensoryData::GRID_SIZE;
+        sensory.actual_height = DuckSensoryData::GRID_SIZE;
+        sensory.scale_factor = 1.0;
+        sensory.world_offset = { 0, 0 };
+        sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
+        sensory.delta_time_seconds = input.deltaTimeSeconds;
+        return sensory;
+    }
+
+private:
+    int* controllerCallCount_ = nullptr;
+    int* evaluateCallCount_ = nullptr;
 };
 
 struct ExecutedCommand {
@@ -594,6 +637,53 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfinite
     }
 
     EXPECT_TRUE(sawFlap || sawStart);
+}
+
+TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRegistry)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 2.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+
+    int controllerCalls = 0;
+    int evaluateCalls = 0;
+    NesGameAdapterRegistry adapterRegistry;
+    adapterRegistry.registerAdapter(
+        Scenario::EnumType::NesFlappyParatroopa, [&controllerCalls, &evaluateCalls]() {
+            return std::make_unique<RecordingNesAdapter>(&controllerCalls, &evaluateCalls);
+        });
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesGameAdapterRegistry = adapterRegistry,
+        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while ((status = runner.step(1)).state == TrainingRunner::State::Running) {
+        steps++;
+        ASSERT_LT(steps, 300) << "Runner should complete this short session";
+    }
+
+    EXPECT_GT(controllerCalls, 0);
+    EXPECT_GT(evaluateCalls, 0);
+    EXPECT_GT(status.nesFramesSurvived, 0u);
 }
 
 // Proves we can finish and get results.

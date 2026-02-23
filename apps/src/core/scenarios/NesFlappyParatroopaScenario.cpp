@@ -316,6 +316,14 @@ uint64_t NesFlappyParatroopaScenario::getRuntimeRenderedFrameCount() const
     return runtime_->getRenderedFrameCount();
 }
 
+std::optional<ScenarioVideoFrame> NesFlappyParatroopaScenario::copyRuntimeFrameSnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyLatestFrame();
+}
+
 std::string NesFlappyParatroopaScenario::getRuntimeResolvedRomId() const
 {
     return runtimeResolvedRomId_;
