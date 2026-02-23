@@ -3,16 +3,16 @@
 #include "FitnessCalculator.h"
 #include "GenomeRepository.h"
 #include "core/Assert.h"
-#include "core/RenderMessage.h"
+#include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/organisms/evolution/NesDuckSpecialSenseLayout.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -21,14 +21,146 @@
 namespace DirtSim {
 
 namespace {
-float decodeRgb565Luma(std::byte lowByte, std::byte highByte)
+constexpr uint8_t kNesStateTitle = 0;
+constexpr uint8_t kNesStateWaiting = 1;
+constexpr uint8_t kNesStateGameOver = 7;
+constexpr uint8_t kNesStateFadeIn = 8;
+constexpr uint8_t kNesStateTitleFade = 9;
+constexpr uint32_t kNesStartPulsePeriodFrames = 12;
+constexpr uint32_t kNesStartPulseWidthFrames = 2;
+constexpr uint32_t kNesWaitingFlapPulsePeriodFrames = 8;
+constexpr uint32_t kNesWaitingFlapPulseWidthFrames = 1;
+constexpr float kNesDuckMoveThreshold = 0.2f;
+constexpr float kNesDuckVelocityScale = 10.0f;
+constexpr uint8_t kNesHistogramMask = NesPolicyLayout::ButtonA | NesPolicyLayout::ButtonLeft
+    | NesPolicyLayout::ButtonRight | NesPolicyLayout::ButtonStart;
+static_assert(
+    NesPolicyLayout::InputCount == NesDuckSpecialSenseLayout::FlappyMappedCount,
+    "TrainingRunner: Flappy feature count must match special-sense mapping");
+
+void addSignatureCount(std::unordered_map<std::string, int>& counts, const std::string& signature)
 {
-    const uint16_t packed = static_cast<uint16_t>(std::to_integer<uint8_t>(lowByte))
-        | (static_cast<uint16_t>(std::to_integer<uint8_t>(highByte)) << 8);
-    const float red = static_cast<float>((packed >> 11) & 0x1Fu) / 31.0f;
-    const float green = static_cast<float>((packed >> 5) & 0x3Fu) / 63.0f;
-    const float blue = static_cast<float>(packed & 0x1Fu) / 31.0f;
-    return (0.299f * red) + (0.587f * green) + (0.114f * blue);
+    auto it = counts.find(signature);
+    if (it == counts.end()) {
+        counts.emplace(signature, 1);
+        return;
+    }
+    ++it->second;
+}
+
+std::vector<std::pair<std::string, int>> getTopSignatureEntries(
+    const std::unordered_map<std::string, int>& counts, size_t maxEntries)
+{
+    if (maxEntries == 0 || counts.empty()) {
+        return {};
+    }
+
+    std::vector<std::pair<std::string, int>> entries;
+    entries.reserve(counts.size());
+    for (const auto& [signature, count] : counts) {
+        entries.emplace_back(signature, count);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+
+    if (entries.size() > maxEntries) {
+        entries.resize(maxEntries);
+    }
+
+    return entries;
+}
+
+std::string buildNesCommandSignature(uint8_t controllerMask)
+{
+    controllerMask &= kNesHistogramMask;
+    if (controllerMask == 0u) {
+        return "Idle";
+    }
+
+    std::string signature;
+    const auto appendToken = [&signature](const char* token) {
+        if (!signature.empty()) {
+            signature += "+";
+        }
+        signature += token;
+    };
+
+    if ((controllerMask & NesPolicyLayout::ButtonStart) != 0u) {
+        appendToken("Start");
+    }
+    if ((controllerMask & NesPolicyLayout::ButtonA) != 0u) {
+        appendToken("Flap");
+    }
+    if ((controllerMask & NesPolicyLayout::ButtonLeft) != 0u) {
+        appendToken("Left");
+    }
+    if ((controllerMask & NesPolicyLayout::ButtonRight) != 0u) {
+        appendToken("Right");
+    }
+
+    return signature;
+}
+
+bool isTitleLikeNesState(uint8_t gameState)
+{
+    return gameState == kNesStateTitle || gameState == kNesStateGameOver
+        || gameState == kNesStateFadeIn || gameState == kNesStateTitleFade;
+}
+
+void mapFlappyParatroopaFeaturesToSpecialSenses(
+    const std::array<float, NesPolicyLayout::InputCount>& features,
+    std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
+{
+    const auto writeSense =
+        [&features, &specialSenses](NesDuckSpecialSenseLayout::Slot slot, int featureIndex) {
+            specialSenses[static_cast<size_t>(slot)] =
+                static_cast<double>(features[static_cast<size_t>(featureIndex)]);
+        };
+
+    writeSense(NesDuckSpecialSenseLayout::Bias, NesDuckSpecialSenseLayout::Bias);
+    writeSense(
+        NesDuckSpecialSenseLayout::BirdYNormalized, NesDuckSpecialSenseLayout::BirdYNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::BirdVelocityNormalized,
+        NesDuckSpecialSenseLayout::BirdVelocityNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::NextPipeDistanceNormalized,
+        NesDuckSpecialSenseLayout::NextPipeDistanceNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::NextPipeTopNormalized,
+        NesDuckSpecialSenseLayout::NextPipeTopNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::NextPipeBottomNormalized,
+        NesDuckSpecialSenseLayout::NextPipeBottomNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::BirdGapOffsetNormalized,
+        NesDuckSpecialSenseLayout::BirdGapOffsetNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::ScrollXNormalized, NesDuckSpecialSenseLayout::ScrollXNormalized);
+    writeSense(NesDuckSpecialSenseLayout::ScrollNt, NesDuckSpecialSenseLayout::ScrollNt);
+    writeSense(
+        NesDuckSpecialSenseLayout::GameStateNormalized,
+        NesDuckSpecialSenseLayout::GameStateNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::ScoreNormalized, NesDuckSpecialSenseLayout::ScoreNormalized);
+    writeSense(
+        NesDuckSpecialSenseLayout::PrevFlapPressed, NesDuckSpecialSenseLayout::PrevFlapPressed);
+}
+
+void mapNesFeaturesToDuckSpecialSenses(
+    const std::string& romId,
+    const std::array<float, NesPolicyLayout::InputCount>& features,
+    std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
+{
+    specialSenses.fill(0.0);
+    if (romId == NesPolicyLayout::FlappyParatroopaWorldUnlRomId) {
+        mapFlappyParatroopaFeaturesToSpecialSenses(features, specialSenses);
+    }
 }
 
 Vector2i findSpawnCell(World& world)
@@ -149,11 +281,26 @@ TrainingRunner::TrainingRunner(
         }
     }
 
-    applyNesBrainDefaults();
-
     // Setup scenario.
     scenario_->setup(*world_);
     world_->setScenario(scenario_.get());
+
+    nesPolicyInputs_.fill(0.0f);
+    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven
+        && individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
+        DIRTSIM_ASSERT(
+            individual_.genome.has_value(),
+            "TrainingRunner: NES duck recurrent controller requires a genome");
+        nesDuckBrain_ = std::make_unique<DuckNeuralNetRecurrentBrain>(individual_.genome.value());
+    }
+
+    nesRuntimeRomId_.clear();
+    if (auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario_.get())) {
+        nesRuntimeRomId_ = nesScenario->getRuntimeResolvedRomId();
+        nesRomExtractor_.emplace(nesRuntimeRomId_);
+        nesFlappyEvaluator_.emplace();
+        nesFlappyEvaluator_->reset();
+    }
 }
 
 TrainingRunner::~TrainingRunner() = default;
@@ -271,22 +418,30 @@ std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandSignatures
     size_t maxEntries) const
 {
     const Organism::Body* organism = getOrganism();
-    if (!organism) {
-        return {};
+    if (organism) {
+        return organism->getTopCommandSignatures(maxEntries);
     }
 
-    return organism->getTopCommandSignatures(maxEntries);
+    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
+        return getTopSignatureEntries(nesCommandSignatureCounts_, maxEntries);
+    }
+
+    return {};
 }
 
 std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandOutcomeSignatures(
     size_t maxEntries) const
 {
     const Organism::Body* organism = getOrganism();
-    if (!organism) {
-        return {};
+    if (organism) {
+        return organism->getTopCommandOutcomeSignatures(maxEntries);
     }
 
-    return organism->getTopCommandOutcomeSignatures(maxEntries);
+    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
+        return getTopSignatureEntries(nesCommandOutcomeSignatureCounts_, maxEntries);
+    }
+
+    return {};
 }
 
 double TrainingRunner::getCurrentMaxEnergy() const
@@ -334,38 +489,12 @@ void TrainingRunner::resolveBrainEntry()
     controlMode_ = entry->controlMode;
 }
 
-void TrainingRunner::applyNesBrainDefaults()
-{
-    if (!scenario_ || !world_) {
-        return;
-    }
-
-    if (individual_.scenarioId != Scenario::EnumType::Nes) {
-        return;
-    }
-
-    const std::optional<TrainingBrainDefaults> defaults =
-        getTrainingBrainDefaults(individual_.brain.brainKind);
-    if (!defaults.has_value() || !defaults->defaultNesRomId.has_value()) {
-        return;
-    }
-
-    ScenarioConfig scenarioConfig = scenario_->getConfig();
-    auto* nesConfig = std::get_if<DirtSim::Config::Nes>(&scenarioConfig);
-    if (!nesConfig || !nesConfig->romId.empty()) {
-        return;
-    }
-
-    nesConfig->romId = defaults->defaultNesRomId.value();
-    scenario_->setConfig(scenarioConfig, *world_);
-}
-
 void TrainingRunner::runScenarioDrivenStep()
 {
     DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
     DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
 
-    auto* nesScenario = dynamic_cast<NesScenario*>(scenario_.get());
+    auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario_.get());
     if (!nesScenario) {
         state_ = State::OrganismDied;
         return;
@@ -376,12 +505,35 @@ void TrainingRunner::runScenarioDrivenStep()
         return;
     }
 
+    bool frameAdvanced = false;
+    std::string commandOutcome = "NoFrameAdvance";
     const uint64_t renderedFramesBefore = nesScenario->getRuntimeRenderedFrameCount();
     uint8_t controllerMask = inferNesControllerMask();
-    constexpr uint8_t kNesButtonStart = (1u << 3);
-    if (nesFramesSurvived_ < 5) {
-        controllerMask |= kNesButtonStart;
+    const uint8_t gameState = nesLastGameState_.value_or(kNesStateTitle);
+    if (isTitleLikeNesState(gameState)) {
+        const bool pressStart =
+            (nesStartPulseFrameCounter_ % kNesStartPulsePeriodFrames) < kNesStartPulseWidthFrames;
+        controllerMask = pressStart ? NesPolicyLayout::ButtonStart : 0u;
+        ++nesStartPulseFrameCounter_;
+        nesWaitingFlapPulseFrameCounter_ = 0;
     }
+    else {
+        nesStartPulseFrameCounter_ = 0;
+        if (gameState == kNesStateWaiting) {
+            const bool pressFlap =
+                (nesWaitingFlapPulseFrameCounter_ % kNesWaitingFlapPulsePeriodFrames)
+                < kNesWaitingFlapPulseWidthFrames;
+            controllerMask = pressFlap ? NesPolicyLayout::ButtonA : 0u;
+            ++nesWaitingFlapPulseFrameCounter_;
+        }
+        else {
+            nesWaitingFlapPulseFrameCounter_ = 0;
+        }
+    }
+
+    const std::string commandSignature = buildNesCommandSignature(controllerMask);
+    addSignatureCount(nesCommandSignatureCounts_, commandSignature);
+
     nesControllerMask_ = controllerMask;
     nesScenario->setController1State(nesControllerMask_);
 
@@ -390,77 +542,174 @@ void TrainingRunner::runScenarioDrivenStep()
 
     const uint64_t renderedFramesAfter = nesScenario->getRuntimeRenderedFrameCount();
     if (renderedFramesAfter > renderedFramesBefore) {
+        frameAdvanced = true;
+        commandOutcome = "FrameAdvanced";
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
         nesFramesSurvived_ += advancedFrames;
-        nesRewardTotal_ += static_cast<double>(advancedFrames);
-    }
 
-    if (!nesScenario->isRuntimeRunning() || !nesScenario->isRuntimeHealthy()) {
-        state_ = State::OrganismDied;
-    }
-}
-
-uint8_t TrainingRunner::inferNesControllerMask() const
-{
-    if (!individual_.genome.has_value()
-        || individual_.genome->weights.size() != NES_POLICY_WEIGHT_COUNT) {
-        return 0;
-    }
-
-    std::array<float, NES_POLICY_INPUT_COUNT> inputs{};
-    inputs.fill(0.0f);
-
-    const auto& worldData = world_->getData();
-    if (worldData.scenario_video_frame.has_value()) {
-        const ScenarioVideoFrame& frame = worldData.scenario_video_frame.value();
-        const size_t pixelCount =
-            static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
-        const size_t expectedBytes = pixelCount * 2u;
-        if (frame.width > 0 && frame.height > 0 && frame.pixels.size() >= expectedBytes) {
-            for (int outY = 0; outY < NES_POLICY_DOWNSAMPLED_HEIGHT; ++outY) {
-                const uint16_t srcY = static_cast<uint16_t>(
-                    (static_cast<uint32_t>(outY) * frame.height) / NES_POLICY_DOWNSAMPLED_HEIGHT);
-                for (int outX = 0; outX < NES_POLICY_DOWNSAMPLED_WIDTH; ++outX) {
-                    const uint16_t srcX = static_cast<uint16_t>(
-                        (static_cast<uint32_t>(outX) * frame.width) / NES_POLICY_DOWNSAMPLED_WIDTH);
-                    const size_t pixelIndex =
-                        static_cast<size_t>(srcY) * static_cast<size_t>(frame.width) + srcX;
-                    const size_t byteIndex = pixelIndex * 2u;
-                    if ((byteIndex + 1u) >= frame.pixels.size()) {
-                        continue;
+        if (nesRomExtractor_.has_value() && nesRomExtractor_->isSupported()
+            && nesFlappyEvaluator_.has_value()) {
+            const auto snapshot = nesScenario->copyRuntimeMemorySnapshot();
+            if (snapshot.has_value()) {
+                const std::optional<NesFlappyBirdEvaluatorInput> evaluatorInput =
+                    nesRomExtractor_->extract(snapshot.value(), nesControllerMask_);
+                if (evaluatorInput.has_value()) {
+                    const NesFlappyBirdEvaluatorOutput evaluation =
+                        nesFlappyEvaluator_->evaluate(evaluatorInput.value());
+                    nesPolicyInputs_ = evaluation.features;
+                    nesLastGameState_ = evaluation.gameState;
+                    nesRewardTotal_ += evaluation.rewardDelta;
+                    if (evaluation.done) {
+                        state_ = State::OrganismDied;
+                        commandOutcome = "EpisodeEnd";
                     }
-
-                    const float luma =
-                        decodeRgb565Luma(frame.pixels[byteIndex], frame.pixels[byteIndex + 1u]);
-                    const size_t inputIndex =
-                        static_cast<size_t>(outY * NES_POLICY_DOWNSAMPLED_WIDTH + outX);
-                    inputs[inputIndex] = luma;
                 }
             }
         }
+        else {
+            nesRewardTotal_ += static_cast<double>(advancedFrames);
+        }
     }
 
-    const float progress = maxTime_ > 0.0 ? static_cast<float>(simTime_ / maxTime_) : 0.0f;
-    inputs[NES_POLICY_INPUT_COUNT - 2] = std::clamp(progress, 0.0f, 1.0f);
-    inputs[NES_POLICY_INPUT_COUNT - 1] = (nesControllerMask_ & 0x01u) != 0u ? 1.0f : 0.0f;
+    if (state_ == State::Running
+        && (!nesScenario->isRuntimeRunning() || !nesScenario->isRuntimeHealthy())) {
+        state_ = State::OrganismDied;
+        commandOutcome = "EpisodeEnd";
+    }
+    if (state_ != State::Running && frameAdvanced) {
+        commandOutcome = "EpisodeEnd";
+    }
 
-    const auto& weights = individual_.genome->weights;
-    const size_t outputBiasOffset =
-        static_cast<size_t>(NES_POLICY_INPUT_COUNT) * static_cast<size_t>(NES_POLICY_OUTPUT_COUNT);
+    addSignatureCount(
+        nesCommandOutcomeSignatureCounts_, commandSignature + " -> " + commandOutcome);
+}
+
+DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
+{
+    DuckSensoryData sensory{};
+    sensory.actual_width = DuckSensoryData::GRID_SIZE;
+    sensory.actual_height = DuckSensoryData::GRID_SIZE;
+    sensory.scale_factor = 1.0;
+    sensory.world_offset = { 0, 0 };
+    sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
+    sensory.delta_time_seconds = TIMESTEP;
+
+    const auto setDominantMaterial = [&sensory](int x, int y, Material::EnumType materialType) {
+        if (x < 0 || x >= DuckSensoryData::GRID_SIZE || y < 0 || y >= DuckSensoryData::GRID_SIZE) {
+            return;
+        }
+        auto& histogram =
+            sensory.material_histograms[static_cast<size_t>(y)][static_cast<size_t>(x)];
+        histogram.fill(0.0);
+        const size_t materialIndex = static_cast<size_t>(materialType);
+        DIRTSIM_ASSERT(
+            materialIndex < histogram.size(),
+            "TrainingRunner: Material index out of range for duck sensory histogram");
+        histogram[materialIndex] = 1.0;
+    };
+
+    for (int y = 0; y < DuckSensoryData::GRID_SIZE; ++y) {
+        for (int x = 0; x < DuckSensoryData::GRID_SIZE; ++x) {
+            setDominantMaterial(x, y, Material::EnumType::Air);
+        }
+    }
+
+    const int birdX = 3;
+    const float birdYNormalized = std::clamp(
+        nesPolicyInputs_[static_cast<size_t>(NesDuckSpecialSenseLayout::BirdYNormalized)],
+        0.0f,
+        1.0f);
+    const int birdY = std::clamp(
+        static_cast<int>(
+            std::lround(birdYNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
+        0,
+        DuckSensoryData::GRID_SIZE - 1);
+    setDominantMaterial(birdX, birdY, Material::EnumType::Wood);
+
+    const float pipeDistanceNormalized = std::clamp(
+        nesPolicyInputs_[static_cast<size_t>(
+            NesDuckSpecialSenseLayout::NextPipeDistanceNormalized)],
+        0.0f,
+        1.0f);
+    const float pipeTopNormalized = std::clamp(
+        nesPolicyInputs_[static_cast<size_t>(NesDuckSpecialSenseLayout::NextPipeTopNormalized)],
+        0.0f,
+        1.0f);
+    const float pipeBottomNormalized = std::clamp(
+        nesPolicyInputs_[static_cast<size_t>(NesDuckSpecialSenseLayout::NextPipeBottomNormalized)],
+        0.0f,
+        1.0f);
+    const int pipeX = std::clamp(
+        birdX
+            + static_cast<int>(std::lround(
+                pipeDistanceNormalized
+                * static_cast<float>(DuckSensoryData::GRID_SIZE - 1 - birdX))),
+        birdX + 1,
+        DuckSensoryData::GRID_SIZE - 1);
+    const int gapTop = std::clamp(
+        static_cast<int>(
+            std::lround(pipeTopNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
+        0,
+        DuckSensoryData::GRID_SIZE - 1);
+    const int gapBottom = std::clamp(
+        static_cast<int>(
+            std::lround(pipeBottomNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
+        gapTop,
+        DuckSensoryData::GRID_SIZE - 1);
+    for (int pipeColumn = pipeX; pipeColumn <= std::min(pipeX + 1, DuckSensoryData::GRID_SIZE - 1);
+         ++pipeColumn) {
+        for (int y = 0; y < DuckSensoryData::GRID_SIZE; ++y) {
+            if (y >= gapTop && y <= gapBottom) {
+                continue;
+            }
+            setDominantMaterial(pipeColumn, y, Material::EnumType::Wall);
+        }
+    }
+
+    const float birdVelocityNormalized = std::clamp(
+        nesPolicyInputs_[static_cast<size_t>(NesDuckSpecialSenseLayout::BirdVelocityNormalized)],
+        -1.0f,
+        1.0f);
+    sensory.velocity.x = 0.0;
+    sensory.velocity.y = static_cast<double>(birdVelocityNormalized * kNesDuckVelocityScale);
+    mapNesFeaturesToDuckSpecialSenses(nesRuntimeRomId_, nesPolicyInputs_, sensory.special_senses);
+
+    if ((nesControllerMask_ & NesPolicyLayout::ButtonLeft) != 0u) {
+        sensory.facing_x = -1.0f;
+        sensory.velocity.x = -1.0;
+    }
+    else if ((nesControllerMask_ & NesPolicyLayout::ButtonRight) != 0u) {
+        sensory.facing_x = 1.0f;
+        sensory.velocity.x = 1.0;
+    }
+    else {
+        sensory.facing_x = 1.0f;
+    }
+
+    sensory.on_ground =
+        nesLastGameState_.has_value() && nesLastGameState_.value() == kNesStateWaiting;
+    return sensory;
+}
+
+uint8_t TrainingRunner::inferNesControllerMask()
+{
+    if (individual_.brain.brainKind != TrainingBrainKind::DuckNeuralNetRecurrent
+        || !nesDuckBrain_) {
+        return 0;
+    }
+
+    const DuckSensoryData sensory = makeNesDuckSensoryData();
+    const DuckInput input = nesDuckBrain_->inferInput(sensory);
 
     uint8_t mask = 0;
-    for (int outputIndex = 0; outputIndex < NES_POLICY_OUTPUT_COUNT; ++outputIndex) {
-        float sum = weights[outputBiasOffset + static_cast<size_t>(outputIndex)];
-        const size_t outputWeightOffset =
-            static_cast<size_t>(outputIndex) * static_cast<size_t>(NES_POLICY_INPUT_COUNT);
-        for (int inputIndex = 0; inputIndex < NES_POLICY_INPUT_COUNT; ++inputIndex) {
-            sum += weights[outputWeightOffset + static_cast<size_t>(inputIndex)]
-                * inputs[static_cast<size_t>(inputIndex)];
-        }
-
-        if (sum > 0.0f) {
-            mask |= static_cast<uint8_t>(1u << outputIndex);
-        }
+    if (input.jump) {
+        mask |= NesPolicyLayout::ButtonA;
+    }
+    if (input.move.x <= -kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonLeft;
+    }
+    else if (input.move.x >= kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonRight;
     }
 
     return mask;

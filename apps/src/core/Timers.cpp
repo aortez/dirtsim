@@ -32,6 +32,17 @@ double Timers::stopTimer(const std::string& name)
     return timer.accumulatedTime;
 }
 
+void Timers::addSample(const std::string& name, double elapsedMs, uint32_t calls)
+{
+    auto& timer = timers[name];
+    if (elapsedMs > 0.0) {
+        timer.accumulatedTime += elapsedMs;
+    }
+    if (calls > 0) {
+        timer.callCount += calls;
+    }
+}
+
 bool Timers::hasTimer(const std::string& name) const
 {
     return timers.find(name) != timers.end();

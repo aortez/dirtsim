@@ -15,9 +15,10 @@ namespace {
 
 constexpr int GRID_SIZE = DuckSensoryData::GRID_SIZE;
 constexpr int NUM_MATERIALS = DuckSensoryData::NUM_MATERIALS;
+constexpr int SPECIAL_SENSE_COUNT = DuckSensoryData::SPECIAL_SENSE_COUNT;
 
 constexpr int INPUT_HISTOGRAM_SIZE = GRID_SIZE * GRID_SIZE * NUM_MATERIALS;
-constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + 4;
+constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + 4 + SPECIAL_SENSE_COUNT;
 constexpr int HIDDEN_SIZE = 32;
 constexpr int OUTPUT_SIZE = 2;
 
@@ -150,6 +151,9 @@ struct DuckNeuralNetRecurrentBrain::Impl {
         input_buffer[index++] =
             sensory.on_ground ? static_cast<WeightType>(1.0f) : static_cast<WeightType>(0.0f);
         input_buffer[index++] = static_cast<WeightType>(sensory.facing_x);
+        for (int sense = 0; sense < SPECIAL_SENSE_COUNT; ++sense) {
+            input_buffer[index++] = static_cast<WeightType>(sensory.special_senses[sense]);
+        }
 
         DIRTSIM_ASSERT(index == INPUT_SIZE, "DuckNeuralNetRecurrentBrain: Input size mismatch");
 
@@ -234,25 +238,31 @@ void DuckNeuralNetRecurrentBrain::think(
     Duck& duck, const DuckSensoryData& sensory, double deltaTime)
 {
     (void)deltaTime;
+    duck.setInput(inferInput(sensory));
+}
+
+DuckInput DuckNeuralNetRecurrentBrain::inferInput(const DuckSensoryData& sensory)
+{
     const auto& input = impl_->flattenSensoryData(sensory);
     const auto& output = impl_->forward(input);
 
     lastMoveX_ = static_cast<float>(std::tanh(output[0]));
     jumpHeld_ = output[1] > 0.0f;
 
-    duck.setInput({ .move = { lastMoveX_, 0.0f }, .jump = jumpHeld_ });
+    const DuckInput duckInput{ .move = { lastMoveX_, 0.0f }, .jump = jumpHeld_ };
 
     if (jumpHeld_ && sensory.on_ground) {
         current_action_ = DuckAction::JUMP;
-        return;
+        return duckInput;
     }
 
     if (std::abs(lastMoveX_) <= 0.05f) {
         current_action_ = DuckAction::WAIT;
-        return;
+        return duckInput;
     }
 
     current_action_ = lastMoveX_ < 0.0f ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
+    return duckInput;
 }
 
 Genome DuckNeuralNetRecurrentBrain::getGenome() const

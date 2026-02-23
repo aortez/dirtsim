@@ -22,7 +22,7 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
@@ -46,14 +46,6 @@ namespace Server {
 namespace State {
 
 namespace {
-
-Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
-{
-    if (scenarioId == Scenario::EnumType::DuckTraining) {
-        return Scenario::EnumType::Clock;
-    }
-    return scenarioId;
-}
 
 constexpr float NES_ANALOG_DEADZONE = 0.25f;
 constexpr uint8_t NES_BUTTON_A = 1u << 0;
@@ -249,8 +241,7 @@ void SimRunning::onEnter(StateMachine& dsm)
 
     // Apply default scenario if no scenario is set.
     if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
-        const Scenario::EnumType defaultScenarioId =
-            normalizeLegacyScenarioId(dsm.getUserSettings().defaultScenario);
+        const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
@@ -308,8 +299,8 @@ void SimRunning::tick(StateMachine& dsm)
     auto& gm = dsm.getGamepadManager();
     gm.poll();
 
-    auto* nesScenario = (scenario_id == Scenario::EnumType::Nes)
-        ? dynamic_cast<NesScenario*>(scenario.get())
+    auto* nesScenario = (scenario_id == Scenario::EnumType::NesFlappyParatroopa)
+        ? dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get())
         : nullptr;
 
     if (nesScenario != nullptr) {
@@ -791,12 +782,12 @@ State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /
 {
     using Response = Api::NesInputSet::Response;
 
-    if (scenario_id != Scenario::EnumType::Nes || !scenario) {
+    if (scenario_id != Scenario::EnumType::NesFlappyParatroopa || !scenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
         return std::move(*this);
     }
 
-    auto* nesScenario = dynamic_cast<NesScenario*>(scenario.get());
+    auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get());
     if (!nesScenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet could not resolve NES scenario")));
         return std::move(*this);
@@ -934,15 +925,17 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     assert(world && "World must exist in SimRunning");
     assert(scenario && "Scenario must exist in SimRunning");
 
-    if (scenario_id == Scenario::EnumType::Nes) {
-        const auto* nesConfig = std::get_if<Config::Nes>(&cwc.command.config);
+    if (scenario_id == Scenario::EnumType::NesFlappyParatroopa) {
+        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&cwc.command.config);
         if (!nesConfig) {
             cwc.sendResponse(
-                Response::error(ApiError("Nes scenario requires Config::Nes payload")));
+                Response::error(
+                    ApiError("Nes scenario requires Config::NesFlappyParatroopa payload")));
             return std::move(*this);
         }
 
-        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        const NesConfigValidationResult validation =
+            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Response::error(ApiError("Invalid NES config: " + validation.message)));
@@ -965,7 +958,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     assert(world && "World must exist in SimRunning");
 
-    Scenario::EnumType newScenarioId = normalizeLegacyScenarioId(cwc.command.scenario_id);
+    Scenario::EnumType newScenarioId = cwc.command.scenario_id;
     LOG_INFO(
         State,
         "Switching scenario from '{}' to '{}'",

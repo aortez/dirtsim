@@ -9,6 +9,7 @@
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "ui/TrainingActiveView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -256,7 +257,7 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     }
 
     const auto elapsed = now - lastProgressRateLog_;
-    if (elapsed >= std::chrono::seconds(1)) {
+    if (elapsed >= std::chrono::seconds(10)) {
         const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
         const double rate = elapsedSeconds > 0.0 ? (progressEventCount_ / elapsedSeconds) : 0.0;
         LOG_INFO(State, "Training progress rate: {:.1f} msgs/s", rate);
@@ -330,6 +331,7 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.frame.worldData;
+    worldData.scenario_video_frame = evt.frame.scenarioVideoFrame;
     worldData.organism_ids = evt.frame.organismIds;
     view_->updateBestPlaybackFrame(worldData, evt.frame.fitness, evt.frame.generation);
     return std::move(*this);
@@ -341,6 +343,7 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.snapshot.worldData;
+    worldData.scenario_video_frame = evt.snapshot.scenarioVideoFrame;
     worldData.organism_ids = evt.snapshot.organismIds;
     LOG_INFO(
         State,
@@ -455,6 +458,46 @@ State::Any TrainingActive::onEvent(
     view_->setTrainingPaused(trainingPaused_);
 
     LOG_INFO(State, "Training pause toggled: {}", trainingPaused_);
+    return std::move(*this);
+}
+
+State::Any TrainingActive::onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm)
+{
+    auto& localSettings = sm.getUserSettings();
+    localSettings.trainingSpec = evt.training;
+    localSettings.evolutionConfig = evt.evolution;
+    localSettings.mutationConfig = evt.mutation;
+
+    if (!sm.hasWebSocketService()) {
+        return std::move(*this);
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return std::move(*this);
+    }
+
+    Api::UserSettingsPatch::Command patchCmd{
+        .trainingSpec = evt.training,
+        .evolutionConfig = evt.evolution,
+        .mutationConfig = evt.mutation,
+    };
+    const auto patchResult =
+        wsService.sendCommandAndGetResponse<Api::UserSettingsPatch::Okay>(patchCmd, 2000);
+    if (patchResult.isError()) {
+        LOG_WARN(
+            State, "UserSettingsPatch failed for training config: {}", patchResult.errorValue());
+        return std::move(*this);
+    }
+    if (patchResult.value().isError()) {
+        LOG_WARN(
+            State,
+            "UserSettingsPatch rejected for training config: {}",
+            patchResult.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    sm.syncTrainingUserSettings(patchResult.value().value().settings);
     return std::move(*this);
 }
 

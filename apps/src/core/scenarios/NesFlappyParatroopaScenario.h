@@ -1,7 +1,9 @@
 #pragma once
 
 #include "NesConfig.h"
+#include "core/Timers.h"
 #include "core/scenarios/Scenario.h"
+#include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -10,8 +12,6 @@
 #include <vector>
 
 namespace DirtSim {
-
-class SmolnesRuntime;
 
 enum class NesRomCheckStatus : uint8_t {
     Compatible = 0,
@@ -49,10 +49,10 @@ struct NesConfigValidationResult {
     std::string message;
 };
 
-class NesScenario : public ScenarioRunner {
+class NesFlappyParatroopaScenario : public ScenarioRunner {
 public:
-    NesScenario();
-    ~NesScenario() override;
+    NesFlappyParatroopaScenario();
+    ~NesFlappyParatroopaScenario() override;
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -65,22 +65,27 @@ public:
     bool isRuntimeHealthy() const;
     bool isRuntimeRunning() const;
     uint64_t getRuntimeRenderedFrameCount() const;
+    std::string getRuntimeResolvedRomId() const;
     std::string getRuntimeLastError() const;
+    std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const;
     void setController1State(uint8_t buttonMask);
 
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
     static std::vector<NesRomCatalogEntry> scanRomCatalog(const std::filesystem::path& romDir);
     static std::string makeRomId(const std::string& rawName);
-    static NesConfigValidationResult validateConfig(const Config::Nes& config);
+    static NesConfigValidationResult validateConfig(const Config::NesFlappyParatroopa& config);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:
     void stopRuntime();
+    void updateRuntimeProfilingTimers(Timers& timers);
 
     ScenarioMetadata metadata_;
-    Config::Nes config_;
+    Config::NesFlappyParatroopa config_;
     NesRomCheckResult lastRomCheck_;
+    std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;
+    std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
     uint8_t controller1State_ = 0;
 };
 

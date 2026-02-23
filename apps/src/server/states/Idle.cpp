@@ -8,7 +8,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -28,34 +28,8 @@ namespace State {
 
 namespace {
 
-Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
-{
-    if (scenarioId == Scenario::EnumType::DuckTraining) {
-        return Scenario::EnumType::Clock;
-    }
-    return scenarioId;
-}
-
-bool hasNesTrainingPopulation(const TrainingSpec& spec)
-{
-    if (spec.scenarioId == Scenario::EnumType::Nes) {
-        return true;
-    }
-
-    for (const auto& entry : spec.population) {
-        if (entry.scenarioId == Scenario::EnumType::Nes
-            || entry.brainKind == TrainingBrainKind::NesFlappyBird) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
-    scenarioId = normalizeLegacyScenarioId(scenarioId);
-
     ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
     if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
         scenarioConfig = dsm.serverConfig->startupConfig;
@@ -72,13 +46,16 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
 }
 
 bool isWarmGenomeCompatibleForPopulation(
-    const GenomeMetadata& metadata, OrganismType organismType, const PopulationSpec& populationSpec)
+    const GenomeMetadata& metadata,
+    OrganismType organismType,
+    const PopulationSpec& populationSpec,
+    Scenario::EnumType scenarioId)
 {
     if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
         return false;
     }
 
-    if (metadata.scenarioId != populationSpec.scenarioId) {
+    if (metadata.scenarioId != scenarioId) {
         return false;
     }
 
@@ -346,34 +323,9 @@ std::optional<ApiError> validateTrainingConfig(
     int& outWarmSeedInjectedCount)
 {
     outWarmSeedInjectedCount = 0;
-    outSpec.scenarioId = normalizeLegacyScenarioId(command.scenarioId);
+    outSpec.scenarioId = command.scenarioId;
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
-    for (auto& populationSpec : outSpec.population) {
-        populationSpec.scenarioId = normalizeLegacyScenarioId(populationSpec.scenarioId);
-    }
-
-    if (hasNesTrainingPopulation(outSpec)) {
-        if (outSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
-            LOG_WARN(
-                State,
-                "EvolutionStart: promoting organism type {} to NES_FLAPPY_BIRD for NES scenario",
-                static_cast<int>(outSpec.organismType));
-            outSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-        }
-
-        outSpec.scenarioId = Scenario::EnumType::Nes;
-        for (auto& spec : outSpec.population) {
-            spec.scenarioId = Scenario::EnumType::Nes;
-            if (spec.brainKind != TrainingBrainKind::NesFlappyBird
-                || spec.brainVariant.has_value()) {
-                spec.brainKind = TrainingBrainKind::NesFlappyBird;
-                spec.brainVariant.reset();
-                spec.seedGenomes.clear();
-                spec.randomCount = spec.count;
-            }
-        }
-    }
 
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
@@ -381,7 +333,6 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         PopulationSpec defaultSpec;
-        defaultSpec.scenarioId = outSpec.scenarioId;
         defaultSpec.count = command.evolution.populationSize;
 
         switch (outSpec.organismType) {
@@ -394,8 +345,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                defaultSpec.scenarioId = Scenario::EnumType::Nes;
-                defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
+                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
@@ -427,14 +377,10 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
-        if (outSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
-            spec.scenarioId = Scenario::EnumType::Nes;
-            outSpec.scenarioId = Scenario::EnumType::Nes;
-        }
-        const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
+        const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
         if (!metadata) {
             return ApiError(
-                std::string("Scenario not found: ") + std::string(toString(spec.scenarioId)));
+                std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
         }
         if (spec.count <= 0) {
             return ApiError("Population entry count must be > 0");
@@ -463,7 +409,10 @@ std::optional<ApiError> validateTrainingConfig(
                     compatibleCandidates.reserve(warmSeedCandidates.size());
                     for (const auto& candidate : warmSeedCandidates) {
                         if (!isWarmGenomeCompatibleForPopulation(
-                                candidate.metadata, outSpec.organismType, spec)) {
+                                candidate.metadata,
+                                outSpec.organismType,
+                                spec,
+                                outSpec.scenarioId)) {
                             continue;
                         }
                         if (std::find(
@@ -561,10 +510,6 @@ std::optional<ApiError> validateTrainingConfig(
         outPopulationSize += spec.count;
     }
 
-    if (!outSpec.population.empty()) {
-        outSpec.scenarioId = outSpec.population.front().scenarioId;
-    }
-
     if (outPopulationSize <= 0) {
         return ApiError("Population size must be > 0");
     }
@@ -587,11 +532,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
         resolved = populationSize;
     }
     return resolved;
-}
-
-bool hasNesFlappyPopulation(const TrainingSpec& spec)
-{
-    return hasNesTrainingPopulation(spec);
 }
 
 } // namespace
@@ -634,14 +574,6 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
     newState.evolutionConfig.populationSize = populationSize;
     newState.evolutionConfig.maxParallelEvaluations =
         resolveParallelEvaluations(cwc.command.evolution.maxParallelEvaluations, populationSize);
-    if (hasNesFlappyPopulation(newState.trainingSpec)
-        && newState.evolutionConfig.maxParallelEvaluations > 1) {
-        LOG_WARN(
-            State,
-            "Evolution: capping max parallel evaluations to 1 for NES training "
-            "(smolnes runtime is currently process-global)");
-        newState.evolutionConfig.maxParallelEvaluations = 1;
-    }
 
     LOG_INFO(
         State,
@@ -693,7 +625,6 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
         : dsm.getUserSettings().defaultScenario;
-    scenarioId = normalizeLegacyScenarioId(scenarioId);
     LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));
 
     // Validate max_frame_ms parameter.
@@ -755,15 +686,16 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     // Apply config from server settings and user settings.
     ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
-    if (scenarioId == Scenario::EnumType::Nes) {
-        const auto* nesConfig = std::get_if<Config::Nes>(&scenarioConfig);
+    if (scenarioId == Scenario::EnumType::NesFlappyParatroopa) {
+        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&scenarioConfig);
         if (!nesConfig) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(
                     ApiError("Scenario config mismatch for NES scenario")));
             return Idle{};
         }
-        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        const NesConfigValidationResult validation =
+            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(

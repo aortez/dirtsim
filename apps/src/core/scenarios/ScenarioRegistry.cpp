@@ -8,7 +8,7 @@
 #include "core/scenarios/EmptyScenario.h"
 #include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/LightsScenario.h"
-#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/RainingScenario.h"
 #include "core/scenarios/SandboxScenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
@@ -53,9 +53,10 @@ ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeReposit
         return std::make_unique<LightsScenario>();
     });
 
-    registry.registerScenario(Scenario::EnumType::Nes, NesScenario{}.getMetadata(), []() {
-        return std::make_unique<NesScenario>();
-    });
+    registry.registerScenario(
+        Scenario::EnumType::NesFlappyParatroopa, NesFlappyParatroopaScenario{}.getMetadata(), []() {
+            return std::make_unique<NesFlappyParatroopaScenario>();
+        });
 
     registry.registerScenario(Scenario::EnumType::Raining, RainingScenario{}.getMetadata(), []() {
         return std::make_unique<RainingScenario>();

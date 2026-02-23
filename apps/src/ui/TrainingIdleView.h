@@ -62,7 +62,7 @@ public:
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
-    void addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId);
+    void addGenomeToTraining(const GenomeId& genomeId);
     bool isTrainingResultModalVisible() const;
     Starfield::Snapshot captureStarfieldSnapshot() const;
 

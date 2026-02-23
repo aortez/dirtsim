@@ -21,6 +21,8 @@
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <filesystem>
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <iostream>
@@ -40,6 +42,32 @@ protected:
 };
 
 namespace {
+
+std::optional<std::filesystem::path> resolveNesFixtureRomPath()
+{
+    const std::filesystem::path repoRelativeRomPath =
+        std::filesystem::path("testdata") / "roms" / "Flappy.Paratroopa.World.Unl.nes";
+    if (std::filesystem::exists(repoRelativeRomPath)) {
+        return repoRelativeRomPath;
+    }
+
+    if (const char* romPathEnv = std::getenv("DIRTSIM_NES_TEST_ROM_PATH"); romPathEnv != nullptr) {
+        const std::filesystem::path romPath{ romPathEnv };
+        if (!std::filesystem::exists(romPath)) {
+            return std::nullopt;
+        }
+
+        std::filesystem::create_directories(repoRelativeRomPath.parent_path());
+        std::error_code ec;
+        std::filesystem::copy_file(
+            romPath, repoRelativeRomPath, std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec && std::filesystem::exists(repoRelativeRomPath)) {
+            return repoRelativeRomPath;
+        }
+    }
+
+    return std::nullopt;
+}
 
 class TestTreeBrain : public TreeBrain {
 public:
@@ -467,21 +495,11 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
-TEST_F(TrainingRunnerTest, TrainingBrainDefaultsExposeNesFlappyBirdMapping)
-{
-    const std::optional<TrainingBrainDefaults> defaults =
-        getTrainingBrainDefaults(TrainingBrainKind::NesFlappyBird);
-    ASSERT_TRUE(defaults.has_value());
-    EXPECT_EQ(defaults->defaultScenarioId, Scenario::EnumType::Nes);
-    ASSERT_TRUE(defaults->defaultNesRomId.has_value());
-    EXPECT_EQ(defaults->defaultNesRomId.value(), "flappy-paratroopa-world-unl");
-}
-
 TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -495,18 +513,18 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenE
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 {
     TrainingSpec spec;
-    spec.scenarioId = Scenario::EnumType::Nes;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     spec.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
-    individual.scenarioId = Scenario::EnumType::Nes;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = entry->createRandomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
@@ -515,6 +533,67 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
     EXPECT_EQ(runner.getOrganism(), nullptr);
     EXPECT_EQ(status.nesFramesSurvived, 0u);
     EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 60.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), 0.0f);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while ((status = runner.step(1)).state == TrainingRunner::State::Running) {
+        steps++;
+        ASSERT_LT(steps, 10000) << "NES runner should terminate within a reasonable frame budget";
+    }
+
+    EXPECT_NE(status.state, TrainingRunner::State::Running);
+    if (status.state == TrainingRunner::State::OrganismDied) {
+        EXPECT_LT(status.simTime, config_.maxSimulationTime);
+    }
+    else {
+        EXPECT_EQ(status.state, TrainingRunner::State::TimeExpired);
+        EXPECT_GE(status.simTime, config_.maxSimulationTime);
+    }
+    EXPECT_GT(status.nesFramesSurvived, 0u);
+
+    const auto commands = runner.getTopCommandSignatures(20);
+    const auto outcomes = runner.getTopCommandOutcomeSignatures(20);
+    EXPECT_FALSE(commands.empty());
+    EXPECT_FALSE(outcomes.empty());
+
+    bool sawFlap = false;
+    bool sawStart = false;
+    for (const auto& [signature, count] : commands) {
+        if (count <= 0) {
+            continue;
+        }
+        if (signature.find("Flap") != std::string::npos) {
+            sawFlap = true;
+        }
+        if (signature.find("Start") != std::string::npos) {
+            sawStart = true;
+        }
+    }
+
+    EXPECT_TRUE(sawFlap || sawStart);
 }
 
 // Proves we can finish and get results.
@@ -961,7 +1040,7 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
     EXPECT_FALSE(foundExecutionAnchorPrefix);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
+TEST_F(TrainingRunnerTest, ClockDuckPopulatesCommandSignatures)
 {
     config_.maxSimulationTime = 5.0;
 
@@ -1071,7 +1150,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     EXPECT_TRUE(foundJumpRight);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
+TEST_F(TrainingRunnerTest, ClockDuckDisablesClockDuckEvent)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;
@@ -1091,7 +1170,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
     EXPECT_FALSE(clockConfig->rainEnabled);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
+TEST_F(TrainingRunnerTest, ClockDuckRandomizesSpawnSide)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;
@@ -1151,7 +1230,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
     EXPECT_TRUE(sawRightSpawn);
 }
 
-TEST_F(TrainingRunnerTest, DuckTrainingOnClockSpawnSideOverrideRespectsRequestedSide)
+TEST_F(TrainingRunnerTest, ClockDuckSpawnSideOverrideRespectsRequestedSide)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Clock;

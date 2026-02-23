@@ -1085,17 +1085,26 @@ void StateMachine::handleEvent(const Event& event)
         event);
 }
 
+void StateMachine::syncTrainingUserSettings(const DirtSim::UserSettings& settings)
+{
+    serverUserSettings_.trainingSpec = settings.trainingSpec;
+    serverUserSettings_.evolutionConfig = settings.evolutionConfig;
+    serverUserSettings_.mutationConfig = settings.mutationConfig;
+    serverUserSettings_.trainingResumePolicy = settings.trainingResumePolicy;
+
+    auto& uiSettings = getUserSettings();
+    uiSettings.trainingSpec = settings.trainingSpec;
+    uiSettings.evolutionConfig = settings.evolutionConfig;
+    uiSettings.mutationConfig = settings.mutationConfig;
+}
+
 void StateMachine::applyServerUserSettings(const DirtSim::UserSettings& settings)
 {
     serverUserSettings_ = settings;
     setSynthVolumePercent(settings.volumePercent);
     syncAudioMasterVolume(settings.volumePercent);
 
-    // Sync persistent training config into UI-local settings.
-    auto& uiSettings = getUserSettings();
-    uiSettings.trainingSpec = settings.trainingSpec;
-    uiSettings.evolutionConfig = settings.evolutionConfig;
-    uiSettings.mutationConfig = settings.mutationConfig;
+    syncTrainingUserSettings(settings);
 }
 
 void StateMachine::syncAudioMasterVolume(int volumePercent)

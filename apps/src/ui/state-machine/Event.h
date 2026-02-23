@@ -201,6 +201,14 @@ struct TrainingStreamConfigChangedEvent {
     int bestPlaybackIntervalMs = 16;
     static constexpr const char* name() { return "TrainingStreamConfigChangedEvent"; }
 };
+
+struct TrainingConfigUpdatedEvent {
+    EvolutionConfig evolution;
+    MutationConfig mutation;
+    TrainingSpec training;
+    static constexpr const char* name() { return "TrainingConfigUpdatedEvent"; }
+};
+
 struct GenomeLoadClickedEvent {
     GenomeId genomeId;
     Scenario::EnumType scenarioId = Scenario::EnumType::Sandbox;
@@ -295,6 +303,7 @@ using Event = std::variant<
     ViewBestButtonClickedEvent,
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
+    TrainingConfigUpdatedEvent,
     TrainingStreamConfigChangedEvent,
     GenomeLoadClickedEvent,
     GenomeAddToTrainingClickedEvent,

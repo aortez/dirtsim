@@ -23,10 +23,8 @@ enum class EnumType : uint8_t {
     Raining,
     Sandbox,
     TreeGermination,
+    NesFlappyParatroopa,
     WaterEqualization,
-    // Legacy: retained for deserialization compatibility; normalized to Clock.
-    DuckTraining = 10,
-    Nes = 11,
 };
 
 std::string toString(EnumType id);

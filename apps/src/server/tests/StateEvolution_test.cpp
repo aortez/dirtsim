@@ -4,6 +4,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TimerStatsGet.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include "server/states/Evolution.h"
@@ -100,7 +101,7 @@ TEST(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
 }
 
-TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
+TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -113,12 +114,11 @@ TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
     cmd.evolution.maxParallelEvaluations = 4;
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
-    cmd.scenarioId = Scenario::EnumType::Nes;
+    cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::Nes;
-    population.brainKind = TrainingBrainKind::NesFlappyBird;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     population.count = 4;
     population.randomCount = 4;
     cmd.population.push_back(population);
@@ -132,13 +132,13 @@ TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
 
     ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
-    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 1);
+    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 4);
 
     ASSERT_TRUE(callbackInvoked);
     ASSERT_TRUE(capturedResponse.isValue());
 }
 
-TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrganism)
+TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyOrganism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -148,7 +148,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrgan
     cmd.evolution.populationSize = 3;
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
-    cmd.scenarioId = Scenario::EnumType::Nes;
+    cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
@@ -163,7 +163,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrgan
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
     const PopulationSpec& population = evolution.trainingSpec.population.front();
-    EXPECT_EQ(population.brainKind, TrainingBrainKind::NesFlappyBird);
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
     EXPECT_EQ(population.count, 3);
     EXPECT_EQ(population.randomCount, 3);
 }
@@ -198,7 +198,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForDuckClockS
     EXPECT_EQ(population.randomCount, 3);
 }
 
-TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndCapsParallelism)
+TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -209,11 +209,10 @@ TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndCapsPa
     cmd.evolution.maxParallelEvaluations = 4;
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
-    cmd.scenarioId = Scenario::EnumType::Nes;
-    cmd.organismType = OrganismType::DUCK;
+    cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.scenarioId = Scenario::EnumType::Nes;
     population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     population.count = 2;
     population.randomCount = 2;
@@ -228,14 +227,9 @@ TEST(StateEvolutionTest, EvolutionStartPromotesNesDuckConfigToNesFlappyAndCapsPa
     ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
     ASSERT_TRUE(capturedResponse.isValue());
 
+    // maxParallelEvaluations of 4 is capped at population size of 2.
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
-    EXPECT_EQ(evolution.trainingSpec.organismType, OrganismType::NES_FLAPPY_BIRD);
-    EXPECT_EQ(evolution.trainingSpec.scenarioId, Scenario::EnumType::Nes);
-    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
-    EXPECT_EQ(evolution.trainingSpec.population.front().scenarioId, Scenario::EnumType::Nes);
-    EXPECT_EQ(
-        evolution.trainingSpec.population.front().brainKind, TrainingBrainKind::NesFlappyBird);
-    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 1);
+    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 2);
 }
 
 TEST(StateEvolutionTest, EvolutionStartAllowsZeroMaxGenerations)
@@ -645,6 +639,46 @@ TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
 
+TEST(StateEvolutionTest, TimerStatsGetReturnsLiveVisibleRunnerTimersDuringEvaluation)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    EvolutionWorkerGuard guard{ .evolution = &evolutionState,
+                                .stateMachine = fixture.stateMachine.get() };
+
+    auto tickResult = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_FALSE(tickResult.has_value());
+    ASSERT_EQ(evolutionState.currentEval, 0);
+
+    bool callbackInvoked = false;
+    Api::TimerStatsGet::Response capturedResponse;
+    Api::TimerStatsGet::Command cmd;
+    Api::TimerStatsGet::Cwc cwc(cmd, [&](Api::TimerStatsGet::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
+
+    evolutionState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const auto& timers = capturedResponse.value().timers;
+    ASSERT_FALSE(timers.empty());
+    const auto totalSimulation = timers.find("total_simulation");
+    ASSERT_NE(totalSimulation, timers.end());
+    EXPECT_GT(totalSimulation->second.calls, 0u);
+    EXPECT_GT(totalSimulation->second.total_ms, 0.0);
+}
+
 TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
 {
     TestStateMachineFixture fixture;
@@ -697,7 +731,6 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -762,7 +795,6 @@ TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -801,7 +833,6 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForSecondPassBeforeAdvan
     population.brainKind = TrainingBrainKind::NeuralNet;
     population.count = 1;
     population.randomCount = 1;
-    population.scenarioId = Scenario::EnumType::Clock;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;

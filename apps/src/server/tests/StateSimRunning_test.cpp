@@ -375,7 +375,7 @@ TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
 
     bool switchCallbackInvoked = false;
     Api::ScenarioSwitch::Command switchCmd{
-        .scenario_id = Scenario::EnumType::Nes,
+        .scenario_id = Scenario::EnumType::NesFlappyParatroopa,
     };
     Api::ScenarioSwitch::Cwc switchCwc(switchCmd, [&](Api::ScenarioSwitch::Response&& response) {
         switchCallbackInvoked = true;
@@ -386,10 +386,10 @@ TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
     ASSERT_TRUE(std::holds_alternative<SimRunning>(switchedState.getVariant()));
     simRunning = std::move(std::get<SimRunning>(switchedState.getVariant()));
     ASSERT_TRUE(switchCallbackInvoked);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Nes);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::NesFlappyParatroopa);
 
     Api::ScenarioConfigSet::Response configResponse;
-    Config::Nes invalidConfig{};
+    Config::NesFlappyParatroopa invalidConfig{};
     invalidConfig.romId = "missing-rom-id";
     invalidConfig.romDirectory = std::filesystem::path(::testing::TempDir()).string();
     invalidConfig.romPath = "";
@@ -817,32 +817,4 @@ TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Benchmark);
     EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 0u)
         << "Organisms should be cleared on scenario switch";
-}
-
-TEST(StateSimRunningTest, ScenarioSwitch_LegacyDuckTrainingMapsToClock)
-{
-    TestStateMachineFixture fixture;
-
-    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
-
-    bool callbackInvoked = false;
-    Api::ScenarioSwitch::Command cmd;
-    cmd.scenario_id = Scenario::EnumType::DuckTraining;
-    Api::ScenarioSwitch::Cwc cwc(cmd, [&](Api::ScenarioSwitch::Response&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
-    });
-
-    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
-    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
-
-    ASSERT_TRUE(callbackInvoked);
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
-
-    const ScenarioConfig config = simRunning.scenario->getConfig();
-    const auto* clockConfig = std::get_if<Config::Clock>(&config);
-    ASSERT_NE(clockConfig, nullptr);
 }

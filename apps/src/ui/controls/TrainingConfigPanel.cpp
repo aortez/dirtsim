@@ -126,13 +126,13 @@ void TrainingConfigPanel::setBestPlaybackIntervalMs(int value)
     }
 }
 
-void TrainingConfigPanel::addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId)
+void TrainingConfigPanel::addSeedGenome(const GenomeId& genomeId)
 {
     if (!trainingPopulationPanel_) {
         return;
     }
 
-    trainingPopulationPanel_->addSeedGenome(genomeId, scenarioId);
+    trainingPopulationPanel_->addSeedGenome(genomeId);
 }
 
 void TrainingConfigPanel::showView(View view)
@@ -401,11 +401,13 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                                  .callback(onTournamentSizeChanged, this)
                                  .buildOrLog();
 
+    const int32_t maxSimTimeValue = static_cast<int32_t>(evolutionConfig_.maxSimulationTime);
+    const int32_t maxSimTimeStep = maxSimTimeValue <= 60 ? 10 : 30;
     maxSimTimeStepper_ = LVGLBuilder::actionStepper(parent)
                              .label("Max Sim Time (s)")
                              .range(10, 1800)
-                             .step(30)
-                             .value(static_cast<int32_t>(evolutionConfig_.maxSimulationTime))
+                             .step(maxSimTimeStep)
+                             .value(maxSimTimeValue)
                              .valueFormat("%.0f")
                              .valueScale(1.0)
                              .width(LV_PCT(95))
@@ -461,6 +463,8 @@ void TrainingConfigPanel::createPopulationView(lv_obj_t* parent)
             LVGLBuilder::ActionStepperBuilder::setValue(populationStepper_, total);
         }
     });
+    trainingPopulationPanel_->setSpecUpdatedCallback(
+        [this]() { queueTrainingConfigUpdatedEvent(); });
 }
 
 void TrainingConfigPanel::setRightColumnVisible(bool visible)
@@ -582,6 +586,16 @@ void TrainingConfigPanel::updateGenerationsStep(int32_t value)
     LVGLBuilder::ActionStepperBuilder::setStep(generationsStepper_, step);
 }
 
+void TrainingConfigPanel::updateMaxSimTimeStep(int32_t value)
+{
+    if (!maxSimTimeStepper_) {
+        return;
+    }
+
+    const int32_t step = value <= 60 ? 10 : 30;
+    LVGLBuilder::ActionStepperBuilder::setStep(maxSimTimeStepper_, step);
+}
+
 void TrainingConfigPanel::updateStatusLabel(const char* text, lv_color_t color)
 {
     if (!statusLabel_) {
@@ -590,6 +604,16 @@ void TrainingConfigPanel::updateStatusLabel(const char* text, lv_color_t color)
 
     lv_label_set_text(statusLabel_, text);
     lv_obj_set_style_text_color(statusLabel_, color, 0);
+}
+
+void TrainingConfigPanel::queueTrainingConfigUpdatedEvent() const
+{
+    eventSink_.queueEvent(
+        TrainingConfigUpdatedEvent{
+            .evolution = evolutionConfig_,
+            .mutation = mutationConfig_,
+            .training = trainingSpec_,
+        });
 }
 
 void TrainingConfigPanel::onStartClicked(lv_event_t* e)
@@ -629,6 +653,7 @@ void TrainingConfigPanel::onPopulationChanged(lv_event_t* e)
     }
     else {
         self->evolutionConfig_.populationSize = value;
+        self->queueTrainingConfigUpdatedEvent();
     }
 }
 
@@ -640,6 +665,7 @@ void TrainingConfigPanel::onGenerationsChanged(lv_event_t* e)
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->generationsStepper_);
     self->evolutionConfig_.maxGenerations = value;
     self->updateGenerationsStep(value);
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onMutationBudgetToggled(lv_event_t* e)
@@ -650,6 +676,7 @@ void TrainingConfigPanel::onMutationBudgetToggled(lv_event_t* e)
     self->mutationConfig_.useBudget =
         LVGLBuilder::ActionButtonBuilder::isChecked(self->mutationBudgetToggle_);
     self->updateControlsEnabled();
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onMutationPerturbationsChanged(lv_event_t* e)
@@ -660,6 +687,7 @@ void TrainingConfigPanel::onMutationPerturbationsChanged(lv_event_t* e)
     const int32_t value =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationPerturbationsStepper_);
     self->mutationConfig_.perturbationsPerOffspring = value;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onMutationResetsChanged(lv_event_t* e)
@@ -669,6 +697,7 @@ void TrainingConfigPanel::onMutationResetsChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationResetsStepper_);
     self->mutationConfig_.resetsPerOffspring = value;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
@@ -678,6 +707,7 @@ void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRateStepper_);
     self->mutationConfig_.rate = value / 1000.0;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onResetRateChanged(lv_event_t* e)
@@ -687,6 +717,7 @@ void TrainingConfigPanel::onResetRateChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->resetRateStepper_);
     self->mutationConfig_.resetRate = value / 1'000'000.0;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onSigmaChanged(lv_event_t* e)
@@ -696,6 +727,7 @@ void TrainingConfigPanel::onSigmaChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->sigmaStepper_);
     self->mutationConfig_.sigma = value / 1000.0;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onTournamentSizeChanged(lv_event_t* e)
@@ -705,6 +737,7 @@ void TrainingConfigPanel::onTournamentSizeChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->tournamentSizeStepper_);
     self->evolutionConfig_.tournamentSize = value;
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
@@ -714,6 +747,8 @@ void TrainingConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->maxSimTimeStepper_);
     self->evolutionConfig_.maxSimulationTime = static_cast<double>(value);
+    self->updateMaxSimTimeStep(value);
+    self->queueTrainingConfigUpdatedEvent();
 }
 
 void TrainingConfigPanel::onStreamIntervalChanged(lv_event_t* e)

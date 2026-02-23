@@ -68,6 +68,7 @@ private:
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();
     void updateControlsEnabled();
+    void updateMaxSimTimeStep(int32_t value);
 
     static void onPopulationChanged(lv_event_t* e);
     static void onGenerationsChanged(lv_event_t* e);

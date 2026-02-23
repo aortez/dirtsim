@@ -13,6 +13,7 @@
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsSet.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
@@ -352,6 +353,46 @@ State::Any TrainingIdle::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachi
     return nextState;
 }
 
+State::Any TrainingIdle::onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm)
+{
+    auto& localSettings = sm.getUserSettings();
+    localSettings.trainingSpec = evt.training;
+    localSettings.evolutionConfig = evt.evolution;
+    localSettings.mutationConfig = evt.mutation;
+
+    if (!sm.hasWebSocketService()) {
+        return std::move(*this);
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return std::move(*this);
+    }
+
+    Api::UserSettingsPatch::Command patchCmd{
+        .trainingSpec = evt.training,
+        .evolutionConfig = evt.evolution,
+        .mutationConfig = evt.mutation,
+    };
+    const auto patchResult =
+        wsService.sendCommandAndGetResponse<Api::UserSettingsPatch::Okay>(patchCmd, 2000);
+    if (patchResult.isError()) {
+        LOG_WARN(
+            State, "UserSettingsPatch failed for training config: {}", patchResult.errorValue());
+        return std::move(*this);
+    }
+    if (patchResult.value().isError()) {
+        LOG_WARN(
+            State,
+            "UserSettingsPatch rejected for training config: {}",
+            patchResult.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    sm.syncTrainingUserSettings(patchResult.value().value().settings);
+    return std::move(*this);
+}
+
 State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
 {
     auto& settings = sm.getUserSettings();
@@ -461,7 +502,7 @@ State::Any TrainingIdle::onEvent(const GenomeAddToTrainingClickedEvent& evt, Sta
 {
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
-    view_->addGenomeToTraining(evt.genomeId, evt.scenarioId);
+    view_->addGenomeToTraining(evt.genomeId);
     return std::move(*this);
 }
 
