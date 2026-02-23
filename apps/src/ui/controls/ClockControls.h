@@ -74,6 +74,7 @@ private:
     lv_obj_t* marqueeTrigger_ = nullptr;
     lv_obj_t* meltdownTrigger_ = nullptr;
     lv_obj_t* rainTrigger_ = nullptr;
+    lv_obj_t* obstacleCourseSwitch_ = nullptr;
     lv_obj_t* meltdownSwitch_ = nullptr;
     lv_obj_t* colorCycleSwitch_ = nullptr;
     lv_obj_t* colorShowcaseSwitch_ = nullptr;
@@ -131,6 +132,7 @@ private:
     static void onMarqueeToggled(lv_event_t* e);
     static void onRainToggled(lv_event_t* e);
     static void onDuckToggled(lv_event_t* e);
+    static void onObstacleCourseToggled(lv_event_t* e);
 
     Config::Clock getCurrentConfig() const;
     void triggerEvent(ClockEventType type, const char* label);

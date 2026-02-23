@@ -22,7 +22,7 @@ enum class ClockFont : uint8_t {
 const char* getDisplayName(ClockFont font);
 
 struct Clock {
-    using serialize = zpp::bits::members<21>;
+    using serialize = zpp::bits::members<22>;
 
     bool autoScale = true;
     bool colorCycleEnabled = true;
@@ -31,6 +31,7 @@ struct Clock {
     bool duckEnabled = true;
     bool marqueeEnabled = true;
     bool meltdownEnabled = true;
+    bool obstacleCourseEnabled = false;
     bool rainEnabled = true;
     bool showSeconds = false;
     ClockFont font = ClockFont::Segment7Large;

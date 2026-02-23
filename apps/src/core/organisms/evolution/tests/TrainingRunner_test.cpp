@@ -1166,8 +1166,9 @@ TEST_F(TrainingRunnerTest, ClockDuckDisablesClockDuckEvent)
     const auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig);
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_FALSE(clockConfig->duckEnabled);
-    EXPECT_FALSE(clockConfig->meltdownEnabled);
-    EXPECT_FALSE(clockConfig->rainEnabled);
+    EXPECT_TRUE(clockConfig->meltdownEnabled);
+    EXPECT_FALSE(clockConfig->obstacleCourseEnabled);
+    EXPECT_TRUE(clockConfig->rainEnabled);
 }
 
 TEST_F(TrainingRunnerTest, ClockDuckRandomizesSpawnSide)

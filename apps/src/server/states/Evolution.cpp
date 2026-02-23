@@ -19,6 +19,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/ScenarioConfigSet.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
@@ -494,6 +495,7 @@ EvaluationPassResult runEvaluationPass(
     const EvolutionConfig& evolutionConfig,
     GenomeRepository& genomeRepository,
     const TrainingBrainRegistry& brainRegistry,
+    const std::optional<ScenarioConfig>& scenarioConfigOverride,
     std::optional<bool> duckClockSpawnLeftFirst,
     bool includeGenerationDetails,
     std::atomic<bool>* stopRequested)
@@ -502,6 +504,7 @@ EvaluationPassResult runEvaluationPass(
         .brainRegistry = brainRegistry,
         .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
         .duckClockSpawnRngSeed = std::nullopt,
+        .scenarioConfigOverride = scenarioConfigOverride,
     };
     TrainingRunner runner(
         trainingSpec, individual, evolutionConfig, genomeRepository, runnerConfig);
@@ -760,6 +763,7 @@ void Evolution::onEnter(StateMachine& dsm)
     pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
+    scenarioConfigOverride_.reset();
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
@@ -859,6 +863,51 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
+}
+
+Any Evolution::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::ScenarioConfigSet::Response;
+
+    const Scenario::EnumType configScenarioId = getScenarioId(cwc.command.config);
+    if (configScenarioId != trainingSpec.scenarioId) {
+        cwc.sendResponse(
+            Response::error(ApiError(
+                "ScenarioConfigSet scenario mismatch (training="
+                + std::string(toString(trainingSpec.scenarioId))
+                + ", config=" + std::string(toString(configScenarioId)) + ")")));
+        return std::move(*this);
+    }
+
+    scenarioConfigOverride_ = cwc.command.config;
+    if (workerState_) {
+        workerState_->scenarioConfigOverride = scenarioConfigOverride_;
+    }
+
+    if (visibleRunner_ && visibleScenarioId_ == configScenarioId) {
+        const auto visibleResult = visibleRunner_->setScenarioConfig(cwc.command.config);
+        if (visibleResult.isError()) {
+            cwc.sendResponse(Response::error(ApiError(visibleResult.errorValue())));
+            return std::move(*this);
+        }
+        visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+    }
+
+    if (bestPlaybackRunner_ && bestPlaybackIndividual_.has_value()
+        && bestPlaybackIndividual_.value().scenarioId == configScenarioId) {
+        const auto playbackResult = bestPlaybackRunner_->setScenarioConfig(cwc.command.config);
+        if (playbackResult.isError()) {
+            cwc.sendResponse(Response::error(ApiError(playbackResult.errorValue())));
+            return std::move(*this);
+        }
+    }
+
+    LOG_INFO(
+        State,
+        "Evolution: Applied ScenarioConfigSet override for '{}'",
+        toString(configScenarioId));
+    cwc.sendResponse(Response::okay({ true }));
+    return std::move(*this);
 }
 
 Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
@@ -1070,6 +1119,7 @@ void Evolution::startWorkers(StateMachine& dsm)
 
     workerState_->trainingSpec = trainingSpec;
     workerState_->evolutionConfig = evolutionConfig;
+    workerState_->scenarioConfigOverride = scenarioConfigOverride_;
     workerState_->brainRegistry = brainRegistry_;
     workerState_->genomeRepository = &dsm.getGenomeRepository();
 
@@ -1233,6 +1283,7 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
             .brainRegistry = brainRegistry_,
             .duckClockSpawnLeftFirst = spawnSideOverride,
             .duckClockSpawnRngSeed = std::nullopt,
+            .scenarioConfigOverride = scenarioConfigOverride_,
         };
         visibleRunner_ = std::make_unique<TrainingRunner>(
             trainingSpec,
@@ -1266,6 +1317,7 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
         .brainRegistry = brainRegistry_,
         .duckClockSpawnLeftFirst = spawnSideOverride,
         .duckClockSpawnRngSeed = std::nullopt,
+        .scenarioConfigOverride = scenarioConfigOverride_,
     };
 
     visibleRunner_ = std::make_unique<TrainingRunner>(
@@ -1349,6 +1401,7 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
                 .brainRegistry = brainRegistry_,
                 .duckClockSpawnLeftFirst = secondarySpawnSide,
                 .duckClockSpawnRngSeed = std::nullopt,
+                .scenarioConfigOverride = scenarioConfigOverride_,
             };
             visibleRunner_ = std::make_unique<TrainingRunner>(
                 trainingSpec,
@@ -1407,6 +1460,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
         state.evolutionConfig,
         *state.genomeRepository,
         state.brainRegistry,
+        state.scenarioConfigOverride,
         primarySpawnSide,
         includeGenerationDetails,
         &state.stopRequested);
@@ -1429,6 +1483,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
             state.evolutionConfig,
             *state.genomeRepository,
             state.brainRegistry,
+            state.scenarioConfigOverride,
             secondarySpawnSide,
             includeGenerationDetails,
             &state.stopRequested);
@@ -2281,6 +2336,7 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
             .brainRegistry = brainRegistry_,
             .duckClockSpawnLeftFirst = spawnSideOverride,
             .duckClockSpawnRngSeed = std::nullopt,
+            .scenarioConfigOverride = scenarioConfigOverride_,
         };
         bestPlaybackRunner_ = std::make_unique<TrainingRunner>(
             trainingSpec,

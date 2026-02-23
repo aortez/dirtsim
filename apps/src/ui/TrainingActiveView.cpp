@@ -1,5 +1,6 @@
 #include "TrainingActiveView.h"
 #include "UiComponentManager.h"
+#include "controls/ScenarioControlsFactory.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
@@ -504,6 +505,7 @@ void TrainingActiveView::destroyUI()
     cpuCorePlot_.reset();
     bestFitnessPlot_.reset();
     lastGenerationDistributionPlot_.reset();
+    scenarioControls_.reset();
 
     starfield_.reset();
     if (container_) {
@@ -537,12 +539,21 @@ void TrainingActiveView::destroyUI()
     bestPlaybackIntervalStepper_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
+    scenarioControlsButton_ = nullptr;
+    scenarioControlsOverlay_ = nullptr;
+    scenarioControlsOverlayTitle_ = nullptr;
+    scenarioControlsOverlayContent_ = nullptr;
     stopTrainingButton_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
+    currentScenarioConfig_ = Config::Empty{};
+    currentScenarioId_ = Scenario::EnumType::Empty;
+    scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
+    hasScenarioState_ = false;
+    scenarioControlsOverlayVisible_ = false;
 }
 
 void TrainingActiveView::renderWorld(const WorldData& worldData)
@@ -729,6 +740,180 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
         LVGLBuilder::ActionStepperBuilder::setValue(
             bestPlaybackIntervalStepper_, userSettings_.bestPlaybackIntervalMs);
     }
+}
+
+void TrainingActiveView::updateScenarioConfig(
+    Scenario::EnumType scenarioId, const ScenarioConfig& config)
+{
+    currentScenarioId_ = scenarioId;
+    currentScenarioConfig_ = config;
+    hasScenarioState_ = true;
+
+    if (scenarioControlsOverlayVisible_) {
+        refreshScenarioControlsOverlay();
+    }
+    else {
+        updateScenarioButtonState();
+    }
+}
+
+void TrainingActiveView::createScenarioControlsOverlay()
+{
+    if (!contentRow_ || scenarioControlsOverlay_) {
+        return;
+    }
+
+    scenarioControlsOverlay_ = lv_obj_create(contentRow_);
+    lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(scenarioControlsOverlay_, 320, 420);
+    lv_obj_set_style_bg_color(scenarioControlsOverlay_, lv_color_hex(0x111728), 0);
+    lv_obj_set_style_bg_opa(scenarioControlsOverlay_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(scenarioControlsOverlay_, 8, 0);
+    lv_obj_set_style_border_width(scenarioControlsOverlay_, 1, 0);
+    lv_obj_set_style_border_color(scenarioControlsOverlay_, lv_color_hex(0x4A5A80), 0);
+    lv_obj_set_style_pad_all(scenarioControlsOverlay_, 10, 0);
+    lv_obj_set_style_pad_row(scenarioControlsOverlay_, 8, 0);
+    lv_obj_set_flex_flow(scenarioControlsOverlay_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        scenarioControlsOverlay_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_scrollbar_mode(scenarioControlsOverlay_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+
+    scenarioControlsOverlayTitle_ = lv_label_create(scenarioControlsOverlay_);
+    lv_label_set_text(scenarioControlsOverlayTitle_, "Scenario Controls");
+    lv_obj_set_style_text_color(scenarioControlsOverlayTitle_, lv_color_hex(0xDCE6FF), 0);
+    lv_obj_set_style_text_font(scenarioControlsOverlayTitle_, &lv_font_montserrat_14, 0);
+
+    scenarioControlsOverlayContent_ = lv_obj_create(scenarioControlsOverlay_);
+    lv_obj_set_size(scenarioControlsOverlayContent_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(scenarioControlsOverlayContent_, 1);
+    lv_obj_set_style_bg_opa(scenarioControlsOverlayContent_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scenarioControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_all(scenarioControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_row(scenarioControlsOverlayContent_, 8, 0);
+    lv_obj_set_flex_flow(scenarioControlsOverlayContent_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        scenarioControlsOverlayContent_,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START);
+    lv_obj_set_scroll_dir(scenarioControlsOverlayContent_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scenarioControlsOverlayContent_, LV_SCROLLBAR_MODE_AUTO);
+}
+
+void TrainingActiveView::hideScenarioControlsOverlay()
+{
+    scenarioControlsOverlayVisible_ = false;
+    if (scenarioControlsOverlay_) {
+        lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateScenarioButtonState();
+}
+
+void TrainingActiveView::refreshScenarioControlsOverlay()
+{
+    if (!scenarioControlsOverlay_ || !scenarioControlsOverlayContent_ || !contentRow_) {
+        return;
+    }
+
+    if (!hasScenarioState_) {
+        hideScenarioControlsOverlay();
+        return;
+    }
+
+    if (!scenarioControlsOverlayVisible_) {
+        updateScenarioButtonState();
+        return;
+    }
+
+    constexpr int panelGapPx = 8;
+    constexpr int panelPreferredWidthPx = 340;
+    constexpr int panelMinWidthPx = 240;
+    constexpr int panelMinHeightPx = 220;
+    constexpr int panelMaxHeightPx = 560;
+
+    const int contentWidth = lv_obj_get_width(contentRow_);
+    const int contentHeight = lv_obj_get_height(contentRow_);
+
+    int panelX = panelGapPx;
+    int panelY = panelGapPx;
+    if (streamPanel_ && scenarioControlsButton_) {
+        panelX = lv_obj_get_x(streamPanel_) + lv_obj_get_x(scenarioControlsButton_)
+            + lv_obj_get_width(scenarioControlsButton_) + panelGapPx;
+        panelY = lv_obj_get_y(streamPanel_) + lv_obj_get_y(scenarioControlsButton_);
+    }
+
+    const int availableWidth = std::max(panelMinWidthPx, contentWidth - panelX - panelGapPx);
+    const int panelWidth = std::clamp(panelPreferredWidthPx, panelMinWidthPx, availableWidth);
+    const int panelHeight =
+        std::clamp(contentHeight - panelY - panelGapPx, panelMinHeightPx, panelMaxHeightPx);
+
+    lv_obj_set_size(scenarioControlsOverlay_, panelWidth, panelHeight);
+    lv_obj_set_pos(scenarioControlsOverlay_, panelX, panelY);
+
+    if (scenarioControlsOverlayTitle_) {
+        std::string title = std::string("Scenario Controls: ")
+            + std::string(Scenario::toString(currentScenarioId_));
+        lv_label_set_text(scenarioControlsOverlayTitle_, title.c_str());
+    }
+
+    if (!scenarioControls_ || scenarioControlsScenarioId_ != currentScenarioId_) {
+        scenarioControls_.reset();
+        lv_obj_clean(scenarioControlsOverlayContent_);
+
+        scenarioControls_ = ScenarioControlsFactory::create(
+            scenarioControlsOverlayContent_,
+            wsService_,
+            &eventSink_,
+            currentScenarioId_,
+            currentScenarioConfig_,
+            nullptr);
+        scenarioControlsScenarioId_ = currentScenarioId_;
+
+        if (!scenarioControls_) {
+            lv_obj_t* placeholder = lv_label_create(scenarioControlsOverlayContent_);
+            lv_obj_set_width(placeholder, LV_PCT(100));
+            lv_label_set_long_mode(placeholder, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_color(placeholder, lv_color_hex(0xAAAAAA), 0);
+            lv_label_set_text_fmt(
+                placeholder,
+                "No controls available for %s.",
+                Scenario::toString(currentScenarioId_).c_str());
+        }
+    }
+
+    if (scenarioControls_) {
+        scenarioControls_->updateFromConfig(currentScenarioConfig_);
+    }
+
+    lv_obj_remove_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(scenarioControlsOverlay_);
+    updateScenarioButtonState();
+}
+
+void TrainingActiveView::updateScenarioButtonState()
+{
+    if (!scenarioControlsButton_) {
+        return;
+    }
+
+    if (!hasScenarioState_) {
+        scenarioControlsOverlayVisible_ = false;
+        if (scenarioControlsOverlay_) {
+            lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_add_state(scenarioControlsButton_, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(scenarioControlsButton_, LV_OPA_50, 0);
+        LVGLBuilder::ActionButtonBuilder::setIcon(scenarioControlsButton_, LV_SYMBOL_RIGHT);
+        return;
+    }
+
+    lv_obj_clear_state(scenarioControlsButton_, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(scenarioControlsButton_, LV_OPA_COVER, 0);
+    LVGLBuilder::ActionButtonBuilder::setIcon(
+        scenarioControlsButton_,
+        scenarioControlsOverlayVisible_ ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
 }
 
 void TrainingActiveView::updateBestPlaybackFrame(
@@ -1017,6 +1202,12 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }
+        scenarioControls_.reset();
+        currentScenarioConfig_ = Config::Empty{};
+        currentScenarioId_ = Scenario::EnumType::Empty;
+        scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
+        hasScenarioState_ = false;
+        hideScenarioControlsOverlay();
     }
 
     if (statusLabel_) {
@@ -1194,6 +1385,17 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                                        .callback(onBestPlaybackIntervalChanged, this)
                                        .buildOrLog();
 
+    scenarioControlsButton_ = LVGLBuilder::actionButton(streamPanel_)
+                                  .text("Scenario Controls")
+                                  .icon(LV_SYMBOL_RIGHT)
+                                  .mode(LVGLBuilder::ActionMode::Push)
+                                  .width(LV_PCT(100))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .callback(onScenarioControlsClicked, this)
+                                  .buildOrLog();
+
     LVGLBuilder::ActionButtonBuilder stopBuilder(streamPanel_);
     stopBuilder.text("Stop Training")
         .icon(LV_SYMBOL_STOP)
@@ -1244,6 +1446,8 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
         cpuCorePlot_->clear();
     }
 
+    createScenarioControlsOverlay();
+    updateScenarioButtonState();
     setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
 }
@@ -1298,6 +1502,27 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
             .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
         });
+}
+
+void TrainingActiveView::onScenarioControlsClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    if (!self->hasScenarioState_) {
+        self->updateScenarioButtonState();
+        return;
+    }
+
+    if (self->scenarioControlsOverlayVisible_) {
+        self->hideScenarioControlsOverlay();
+        return;
+    }
+
+    self->scenarioControlsOverlayVisible_ = true;
+    self->refreshScenarioControlsOverlay();
 }
 
 void TrainingActiveView::onStopTrainingClicked(lv_event_t* e)

@@ -566,6 +566,7 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
         lastRenderRateLog_ = now;
     }
 
+    view_->updateScenarioConfig(evt.scenario_id, evt.scenario_config);
     view_->renderWorld(evt.worldData);
     return std::move(*this);
 }

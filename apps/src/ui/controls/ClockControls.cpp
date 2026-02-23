@@ -209,6 +209,14 @@ void ClockControls::createMainView(lv_obj_t* view)
                        .buildOrLog();
     rainSwitch_ = createEventToggle(rainRow, onRainToggled);
 
+    // Obstacle course controls.
+    lv_obj_t* obstacleRow = createEventRow(view);
+    lv_obj_t* obstacleLabel = lv_label_create(obstacleRow);
+    lv_label_set_text(obstacleLabel, "Obstacle Course");
+    lv_obj_set_style_text_color(obstacleLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_text_font(obstacleLabel, &lv_font_montserrat_14, 0);
+    obstacleCourseSwitch_ = createEventToggle(obstacleRow, onObstacleCourseToggled);
+
     // Duck event controls.
     lv_obj_t* duckRow = createEventRow(view);
     duckTrigger_ = LVGLBuilder::actionButton(duckRow)
@@ -518,6 +526,16 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated rain button to {}", config.rainEnabled);
     }
 
+    if (obstacleCourseSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(
+            obstacleCourseSwitch_, config.obstacleCourseEnabled);
+        updateEventToggleColor(obstacleCourseSwitch_, config.obstacleCourseEnabled);
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated obstacle course button to {}",
+            config.obstacleCourseEnabled);
+    }
+
     // Update duck button.
     if (duckSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(duckSwitch_, config.duckEnabled);
@@ -627,6 +645,11 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Get rain enabled from button.
     if (rainSwitch_) {
         config.rainEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(rainSwitch_);
+    }
+
+    if (obstacleCourseSwitch_) {
+        config.obstacleCourseEnabled =
+            LVGLBuilder::ActionButtonBuilder::isChecked(obstacleCourseSwitch_);
     }
 
     // Get duck enabled from button.
@@ -1183,6 +1206,27 @@ void ClockControls::onDuckToggled(lv_event_t* e)
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onObstacleCourseToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onObstacleCourseToggled called with null self");
+        return;
+    }
+
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring obstacle course toggle during initialization");
+        return;
+    }
+
+    const bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->obstacleCourseSwitch_);
+    spdlog::info("ClockControls: Obstacle course toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->obstacleCourseSwitch_, enabled);
+
+    const Config::Clock config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
 

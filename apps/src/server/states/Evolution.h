@@ -157,6 +157,7 @@ struct Evolution {
         std::atomic<int> activeEvaluations{ 0 };  // Currently running evaluations.
         TrainingSpec trainingSpec;
         EvolutionConfig evolutionConfig;
+        std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
         TrainingBrainRegistry brainRegistry;
         GenomeRepository* genomeRepository = nullptr;
     };
@@ -170,6 +171,7 @@ struct Evolution {
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
     std::deque<int> visibleQueue_;
+    std::optional<ScenarioConfig> scenarioConfigOverride_ = std::nullopt;
 
     std::unique_ptr<WorkerState> workerState_;
 
@@ -214,6 +216,7 @@ struct Evolution {
     std::optional<Any> tick(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
