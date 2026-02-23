@@ -65,4 +65,56 @@ private:
     std::optional<SmolnesRuntime::MemorySnapshot> lastMemorySnapshot_;
 };
 
+enum class FlappyParatroopaGamePhase : uint8_t {
+    Mode0 = 0,
+    Mode1 = 1,
+    Playing = 2,
+    Dying = 3,
+    Mode4 = 4,
+    Mode5 = 5,
+    Mode6 = 6,
+    GameOver = 7,
+    Attract = 8,
+    StartTransition = 9,
+    Unknown = 255,
+};
+
+const char* toString(FlappyParatroopaGamePhase phase);
+FlappyParatroopaGamePhase flappyParatroopaGamePhaseFromByte(uint8_t value);
+
+struct FlappyParatroopaGameState {
+    FlappyParatroopaGamePhase gamePhase = FlappyParatroopaGamePhase::Unknown;
+    uint8_t gamePhaseRaw = 0;
+    uint8_t birdX = 0;
+    uint8_t birdY = 0;
+    uint8_t birdVelocityHigh = 0;
+    uint8_t scrollX = 0;
+    uint8_t scrollNt = 0;
+    uint8_t scoreOnes = 0;
+    uint8_t scoreTens = 0;
+    uint8_t scoreHundreds = 0;
+    uint8_t nt0Pipe0Gap = 0;
+    uint8_t nt0Pipe1Gap = 0;
+    uint8_t nt1Pipe0Gap = 0;
+    uint8_t nt1Pipe1Gap = 0;
+};
+
+class FlappyParatroopaProbeStepper {
+public:
+    FlappyParatroopaProbeStepper(
+        NesFlappyParatroopaScenario& scenario, World& world, double deltaTimeSeconds);
+
+    FlappyParatroopaProbeStepper(const FlappyParatroopaProbeStepper&) = delete;
+    FlappyParatroopaProbeStepper& operator=(const FlappyParatroopaProbeStepper&) = delete;
+
+    uint8_t getControllerMask() const;
+    const SmolnesRuntime::MemorySnapshot* getLastMemorySnapshot() const;
+
+    std::optional<FlappyParatroopaGameState> step(
+        std::optional<uint8_t> controllerMask = std::nullopt);
+
+private:
+    NesRamProbeStepper stepper_;
+};
+
 } // namespace DirtSim

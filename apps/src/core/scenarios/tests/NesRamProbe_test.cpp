@@ -307,34 +307,38 @@ TEST(NesRamProbeTest, ManualStep_BirdStartAndFlapSequence_PrintsTrace)
     ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
     ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
 
-    const std::vector<NesRamProbeAddress> addresses{
-        NesRamProbeAddress{ .label = "game_state", .address = kGameStateAddr },
-        NesRamProbeAddress{ .label = "bird_x", .address = kBirdXAddr },
-    };
-
-    NesRamProbeStepper stepper{ *scenario, world, addresses, kFrameDeltaSeconds };
+    FlappyParatroopaProbeStepper stepper{ *scenario, world, kFrameDeltaSeconds };
 
     bool startPressed = false;
-
-    uint8_t birdX = 0;
-    uint8_t gameState = 0;
-    for (size_t frameIndex = 0; frameIndex < 100; ++frameIndex) {
+    std::optional<FlappyParatroopaGameState> state;
+    for (size_t frameIndex = 0; frameIndex < 200; ++frameIndex) {
         uint8_t controllerMask = 0u;
-        if (!startPressed && birdX > 5u) {
+        if (!startPressed && state.has_value() && state->birdX > 5u) {
             controllerMask = SMOLNES_RUNTIME_BUTTON_START;
             startPressed = true;
         }
+        else if (frameIndex % 1 == 0) {
+            controllerMask = SMOLNES_RUNTIME_BUTTON_A;
+        }
 
-        const NesRamProbeFrame frame = stepper.step(controllerMask);
-        ASSERT_EQ(frame.cpuRamValues.size(), addresses.size());
+        state = stepper.step(controllerMask);
+        ASSERT_TRUE(state.has_value());
 
-        gameState = frame.cpuRamValues[0];
-        birdX = frame.cpuRamValues[1];
-
-        std::cout << "frameIndex: " << frame.frame
-                  << ", controllerMask: " << static_cast<uint32_t>(frame.controllerMask)
-                  << ", birdX: " << static_cast<uint32_t>(birdX)
-                  << ", gameState: " << static_cast<uint32_t>(gameState) << '\n';
+        std::cout << "frameIndex: " << frameIndex
+                  << ", controllerMask: " << static_cast<uint32_t>(stepper.getControllerMask())
+                  << ", birdX: " << static_cast<uint32_t>(state->birdX)
+                  << ", birdY: " << static_cast<uint32_t>(state->birdY)
+                  << ", birdVelHi: " << static_cast<uint32_t>(state->birdVelocityHigh)
+                  << ", scrollX: " << static_cast<uint32_t>(state->scrollX)
+                  << ", scrollNt: " << static_cast<uint32_t>(state->scrollNt)
+                  << ", score: " << static_cast<uint32_t>(state->scoreHundreds)
+                  << static_cast<uint32_t>(state->scoreTens)
+                  << static_cast<uint32_t>(state->scoreOnes)
+                  << ", nt0Pipe0Gap: " << static_cast<uint32_t>(state->nt0Pipe0Gap)
+                  << ", nt0Pipe1Gap: " << static_cast<uint32_t>(state->nt0Pipe1Gap)
+                  << ", nt1Pipe0Gap: " << static_cast<uint32_t>(state->nt1Pipe0Gap)
+                  << ", nt1Pipe1Gap: " << static_cast<uint32_t>(state->nt1Pipe1Gap)
+                  << ", gamePhase: " << toString(state->gamePhase) << '\n';
     }
 
     EXPECT_TRUE(startPressed) << "Expected a Start press after the first bird_x > 0.";
