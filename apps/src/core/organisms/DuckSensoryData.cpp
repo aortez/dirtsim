@@ -13,6 +13,7 @@ void to_json(nlohmann::json& j, const DuckSensoryData& data)
                         { "velocity", data.velocity },
                         { "on_ground", data.on_ground },
                         { "facing_x", data.facing_x },
+                        { "special_senses", data.special_senses },
                         { "delta_time_seconds", data.delta_time_seconds } };
 }
 
@@ -27,6 +28,7 @@ void from_json(const nlohmann::json& j, DuckSensoryData& data)
     j.at("velocity").get_to(data.velocity);
     j.at("on_ground").get_to(data.on_ground);
     j.at("facing_x").get_to(data.facing_x);
+    j.at("special_senses").get_to(data.special_senses);
     j.at("delta_time_seconds").get_to(data.delta_time_seconds);
 }
 

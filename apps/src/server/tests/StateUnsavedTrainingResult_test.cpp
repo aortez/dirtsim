@@ -104,7 +104,6 @@ TEST(StateUnsavedTrainingResultTest, TrainingResultSaveRestartsEvolutionWhenRequ
     spec.scenarioId = Scenario::EnumType::TreeGermination;
     spec.organismType = OrganismType::TREE;
     PopulationSpec populationSpec;
-    populationSpec.scenarioId = Scenario::EnumType::TreeGermination;
     populationSpec.brainKind = TrainingBrainKind::NeuralNet;
     populationSpec.count = 2;
     populationSpec.randomCount = 2;

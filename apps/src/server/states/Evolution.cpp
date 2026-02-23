@@ -339,16 +339,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
-bool hasNesFlappyPopulation(const TrainingSpec& spec)
-{
-    for (const auto& entry : spec.population) {
-        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
-            return true;
-        }
-    }
-    return false;
-}
-
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
@@ -375,7 +365,8 @@ double computeFitnessForRunner(
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
-    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+    (void)brainKind;
+    if (organismType == OrganismType::NES_FLAPPY_BIRD) {
         if (breakdownOut) {
             breakdownOut->reset();
         }
@@ -421,14 +412,6 @@ double computeFitnessForRunner(
     }
 
     return computeFitnessForOrganism(context);
-}
-
-Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
-{
-    if (!spec.population.empty()) {
-        return spec.population.front().scenarioId;
-    }
-    return spec.scenarioId;
 }
 
 std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
@@ -663,6 +646,7 @@ void broadcastTrainingBestSnapshot(
                 .count = count,
             });
     }
+    bestSnapshot.scenarioVideoFrame = bestSnapshot.worldData.scenario_video_frame;
 
     dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
     dsm.broadcastEventData(
@@ -681,6 +665,7 @@ void broadcastTrainingBestPlaybackFrame(
     frame.organismIds = std::move(organismIds);
     frame.fitness = fitness;
     frame.generation = generation;
+    frame.scenarioVideoFrame = frame.worldData.scenario_video_frame;
 
     dsm.broadcastEventData(
         Api::TrainingBestPlaybackFrame::name(), Network::serialize_payload(frame));
@@ -732,7 +717,7 @@ void Evolution::onEnter(StateMachine& dsm)
         "Evolution: Starting with population={}, generations={}, scenario={}, organism_type={}",
         evolutionConfig.populationSize,
         evolutionConfig.maxGenerations,
-        toString(getPrimaryScenarioId(trainingSpec)),
+        toString(trainingSpec.scenarioId),
         static_cast<int>(trainingSpec.organismType));
 
     // Record training start time.
@@ -799,13 +784,6 @@ void Evolution::onEnter(StateMachine& dsm)
 
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
-    if (hasNesFlappyPopulation(trainingSpec) && evolutionConfig.maxParallelEvaluations > 1) {
-        LOG_WARN(
-            State,
-            "Evolution: forcing max parallel evaluations to 1 for NES training "
-            "(smolnes runtime is process-global)");
-        evolutionConfig.maxParallelEvaluations = 1;
-    }
 
     // Initialize CPU telemetry.
     cpuMetrics_ = std::make_unique<SystemMetrics>();
@@ -887,8 +865,16 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
 {
     using Response = Api::TimerStatsGet::Response;
 
+    // Include in-flight visible runner timers so callers can profile active evaluations.
+    std::unordered_map<std::string, TimerAggregate> mergedStats = timerStatsAggregate_;
+    if (visibleRunner_) {
+        if (const World* world = visibleRunner_->getWorld()) {
+            mergeTimerStats(mergedStats, collectTimerStats(world->getTimers()));
+        }
+    }
+
     Api::TimerStatsGet::Okay okay;
-    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+    for (const auto& [name, aggregate] : mergedStats) {
         Api::TimerStatsGet::TimerEntry entry;
         entry.total_ms = aggregate.totalMs;
         entry.calls = aggregate.calls;
@@ -978,7 +964,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = genome.value(),
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -992,7 +978,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = entry->createRandomGenome(rng),
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -1011,7 +997,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
-                                .scenarioId = spec.scenarioId,
+                                .scenarioId = trainingSpec.scenarioId,
                                 .genome = std::nullopt,
                                 .allowsMutation = entry->allowsMutation,
                                 .parentFitness = std::nullopt });
@@ -1068,7 +1054,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
     visibleScenarioConfig_ = Config::Empty{};
-    visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
+    visibleScenarioId_ = trainingSpec.scenarioId;
     bestPlaybackIndividual_.reset();
     clearBestPlaybackRunner();
     bestPlaybackFitness_ = 0.0;
@@ -2530,7 +2516,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .robustFitnessSamples = {},
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-        .scenarioId = population[bestIdx].scenarioId,
+        .scenarioId = trainingSpec.scenarioId,
         .notes = "",
         .organismType = trainingSpec.organismType,
         .brainKind = population[bestIdx].brainKind,
@@ -2558,7 +2544,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
     result.evolutionConfig = evolutionConfig;
     result.mutationConfig = mutationConfig;
     result.trainingSpec = trainingSpec;
-    result.summary.scenarioId = getPrimaryScenarioId(trainingSpec);
+    result.summary.scenarioId = trainingSpec.scenarioId;
     result.summary.organismType = trainingSpec.organismType;
     result.summary.populationSize = evolutionConfig.populationSize;
     result.summary.maxGenerations = evolutionConfig.maxGenerations;
@@ -2606,7 +2592,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
             .robustFitnessSamples = { candidate.fitness },
             .generation = generationIndex,
             .createdTimestamp = now,
-            .scenarioId = population[i].scenarioId,
+            .scenarioId = trainingSpec.scenarioId,
             .notes = "",
             .organismType = trainingSpec.organismType,
             .brainKind = candidate.brainKind,

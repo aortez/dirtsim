@@ -55,7 +55,9 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
                            .fps = static_cast<uint32_t>(worldData.fps_server),
                            .stepCount = stepCount,
                            .isPaused = false,
-                           .timestamp = std::chrono::steady_clock::now() };
+                           .timestamp = std::chrono::steady_clock::now(),
+                           .scenario_id = Scenario::EnumType::Empty,
+                           .scenario_config = Config::Empty{} };
 
         return evt;
     }

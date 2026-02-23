@@ -195,29 +195,3 @@ TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_EQ(clockConfig->timezoneIndex, 8);
 }
-
-TEST(StateIdleTest, SimRunWithLegacyDuckTrainingScenarioUsesClock)
-{
-    TestStateMachineFixture fixture;
-
-    Idle idleState;
-
-    bool callbackInvoked = false;
-    Api::SimRun::Command cmd;
-    cmd.timestep = 0.016;
-    cmd.max_steps = -1;
-    cmd.scenario_id = Scenario::EnumType::DuckTraining;
-
-    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
-
-    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
-    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
-    ASSERT_TRUE(callbackInvoked);
-
-    SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
-
-    const ScenarioConfig config = simRunning.scenario->getConfig();
-    const auto* clockConfig = std::get_if<Config::Clock>(&config);
-    ASSERT_NE(clockConfig, nullptr);
-}

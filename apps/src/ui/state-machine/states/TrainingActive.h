@@ -38,6 +38,7 @@ struct TrainingActive {
     Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingPauseResumeClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);

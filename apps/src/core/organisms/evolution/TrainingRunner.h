@@ -2,17 +2,22 @@
 
 #include "core/ScenarioConfig.h"
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/organisms/evolution/OrganismTracker.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include "core/scenarios/nes/NesRomProfileExtractor.h"
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -113,21 +118,10 @@ public:
     bool isOrganismAlive() const;
 
 private:
-    static constexpr int NES_POLICY_DOWNSAMPLED_WIDTH = 8;
-    static constexpr int NES_POLICY_DOWNSAMPLED_HEIGHT = 8;
-    static constexpr int NES_POLICY_EXTRA_FEATURE_COUNT = 2;
-    static constexpr int NES_POLICY_INPUT_COUNT =
-        (NES_POLICY_DOWNSAMPLED_WIDTH * NES_POLICY_DOWNSAMPLED_HEIGHT)
-        + NES_POLICY_EXTRA_FEATURE_COUNT;
-    static constexpr int NES_POLICY_OUTPUT_COUNT = 8;
-    static constexpr size_t NES_POLICY_WEIGHT_COUNT =
-        static_cast<size_t>(NES_POLICY_INPUT_COUNT) * static_cast<size_t>(NES_POLICY_OUTPUT_COUNT)
-        + static_cast<size_t>(NES_POLICY_OUTPUT_COUNT);
-
     void resolveBrainEntry();
-    void applyNesBrainDefaults();
     void runScenarioDrivenStep();
-    uint8_t inferNesControllerMask() const;
+    DuckSensoryData makeNesDuckSensoryData() const;
+    uint8_t inferNesControllerMask();
     void spawnEvaluationOrganism();
     static Config makeDefaultConfig();
 
@@ -149,6 +143,16 @@ private:
     EvolutionConfig evolutionConfig_;
     BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
     uint8_t nesControllerMask_ = 0;
+    std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
+    std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
+    std::string nesRuntimeRomId_;
+    std::optional<uint8_t> nesLastGameState_ = std::nullopt;
+    std::optional<NesRomProfileExtractor> nesRomExtractor_ = std::nullopt;
+    std::optional<NesFlappyBirdEvaluator> nesFlappyEvaluator_ = std::nullopt;
+    std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
+    std::unordered_map<std::string, int> nesCommandSignatureCounts_;
+    uint32_t nesStartPulseFrameCounter_ = 0;
+    uint32_t nesWaitingFlapPulseFrameCounter_ = 0;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 

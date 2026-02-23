@@ -12,39 +12,6 @@
 
 namespace DirtSim {
 
-namespace {
-constexpr size_t kNesFlappyObservationCount = 66;
-constexpr size_t kNesFlappyButtonCount = 8;
-constexpr size_t kNesFlappyGenomeWeightCount =
-    (kNesFlappyObservationCount * kNesFlappyButtonCount) + kNesFlappyButtonCount;
-} // namespace
-
-std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind)
-{
-    if (brainKind == TrainingBrainKind::NeuralNet) {
-        return TrainingBrainDefaults{
-            .defaultScenarioId = Scenario::EnumType::TreeGermination,
-            .defaultNesRomId = std::nullopt,
-        };
-    }
-    if (brainKind == TrainingBrainKind::DuckNeuralNetRecurrent
-        || brainKind == TrainingBrainKind::Random || brainKind == TrainingBrainKind::WallBouncing
-        || brainKind == TrainingBrainKind::DuckBrain2) {
-        return TrainingBrainDefaults{
-            .defaultScenarioId = Scenario::EnumType::Clock,
-            .defaultNesRomId = std::nullopt,
-        };
-    }
-    if (brainKind == TrainingBrainKind::NesFlappyBird) {
-        return TrainingBrainDefaults{
-            .defaultScenarioId = Scenario::EnumType::Nes,
-            .defaultNesRomId = std::string{ "flappy-paratroopa-world-unl" },
-        };
-    }
-
-    return std::nullopt;
-}
-
 void TrainingBrainRegistry::registerBrain(
     OrganismType organismType,
     const std::string& brainKind,
@@ -254,7 +221,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
 
     registry.registerBrain(
         OrganismType::NES_FLAPPY_BIRD,
-        TrainingBrainKind::NesFlappyBird,
+        TrainingBrainKind::DuckNeuralNetRecurrent,
         "",
         BrainRegistryEntry{
             .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
@@ -262,17 +229,10 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .allowsMutation = true,
             .spawn = nullptr,
             .createRandomGenome =
-                [](std::mt19937& rng) {
-                    Genome genome(kNesFlappyGenomeWeightCount);
-                    std::normal_distribution<WeightType> dist(0.0f, 0.15f);
-                    for (auto& weight : genome.weights) {
-                        weight = dist(rng);
-                    }
-                    return genome;
-                },
+                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrain::randomGenome(rng); },
             .isGenomeCompatible =
                 [](const Genome& genome) {
-                    return genome.weights.size() == kNesFlappyGenomeWeightCount;
+                    return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
                 },
         });
 

@@ -1,6 +1,8 @@
 #include "core/Cell.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageUtils.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include <gtest/gtest.h>
 #include <zpp_bits.h>
 
@@ -82,4 +84,60 @@ TEST(CellSerializationTest, RenderMessageSerializationIncludesScenarioVideoFrame
     EXPECT_EQ(decoded.scenario_video_frame->height, frame.height);
     EXPECT_EQ(decoded.scenario_video_frame->frame_id, frame.frame_id);
     EXPECT_EQ(decoded.scenario_video_frame->pixels, frame.pixels);
+}
+
+TEST(CellSerializationTest, TrainingBestSnapshotSerializationIncludesScenarioVideoFrame)
+{
+    Api::TrainingBestSnapshot original;
+    original.fitness = 1.5;
+    original.generation = 12;
+
+    ScenarioVideoFrame frame;
+    frame.width = 256;
+    frame.height = 224;
+    frame.frame_id = 99;
+    frame.pixels = { std::byte{ 0xBE }, std::byte{ 0xEF }, std::byte{ 0xCA }, std::byte{ 0xFE } };
+    original.scenarioVideoFrame = frame;
+
+    std::vector<std::byte> buffer;
+    auto out = zpp::bits::out(buffer);
+    out(original).or_throw();
+
+    Api::TrainingBestSnapshot decoded;
+    auto in = zpp::bits::in(buffer);
+    in(decoded).or_throw();
+
+    ASSERT_TRUE(decoded.scenarioVideoFrame.has_value());
+    EXPECT_EQ(decoded.scenarioVideoFrame->width, frame.width);
+    EXPECT_EQ(decoded.scenarioVideoFrame->height, frame.height);
+    EXPECT_EQ(decoded.scenarioVideoFrame->frame_id, frame.frame_id);
+    EXPECT_EQ(decoded.scenarioVideoFrame->pixels, frame.pixels);
+}
+
+TEST(CellSerializationTest, TrainingBestPlaybackFrameSerializationIncludesScenarioVideoFrame)
+{
+    Api::TrainingBestPlaybackFrame original;
+    original.fitness = 3.2;
+    original.generation = 7;
+
+    ScenarioVideoFrame frame;
+    frame.width = 256;
+    frame.height = 224;
+    frame.frame_id = 123;
+    frame.pixels = { std::byte{ 0xAA }, std::byte{ 0x55 }, std::byte{ 0x12 }, std::byte{ 0x34 } };
+    original.scenarioVideoFrame = frame;
+
+    std::vector<std::byte> buffer;
+    auto out = zpp::bits::out(buffer);
+    out(original).or_throw();
+
+    Api::TrainingBestPlaybackFrame decoded;
+    auto in = zpp::bits::in(buffer);
+    in(decoded).or_throw();
+
+    ASSERT_TRUE(decoded.scenarioVideoFrame.has_value());
+    EXPECT_EQ(decoded.scenarioVideoFrame->width, frame.width);
+    EXPECT_EQ(decoded.scenarioVideoFrame->height, frame.height);
+    EXPECT_EQ(decoded.scenarioVideoFrame->frame_id, frame.frame_id);
+    EXPECT_EQ(decoded.scenarioVideoFrame->pixels, frame.pixels);
 }

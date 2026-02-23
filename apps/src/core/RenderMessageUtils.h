@@ -174,19 +174,21 @@ inline RenderMessage packRenderMessage(
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
     msg.tree_vision = data.tree_vision;
+    msg.scenario_video_frame = data.scenario_video_frame;
 
-    // Pack cells based on format.
-    if (format == RenderFormat::EnumType::Basic) {
-        msg.payload = packBasicCells(data);
-    }
-    else if (format == RenderFormat::EnumType::Debug) {
-        msg.payload = packDebugCells(data);
+    if (!msg.scenario_video_frame.has_value()) {
+        // Pack cells based on format.
+        if (format == RenderFormat::EnumType::Basic) {
+            msg.payload = packBasicCells(data);
+        }
+        else if (format == RenderFormat::EnumType::Debug) {
+            msg.payload = packDebugCells(data);
+        }
     }
 
     msg.organisms = extractOrganisms(organism_grid);
     msg.bones = {};
     msg.entities = data.entities;
-    msg.scenario_video_frame = data.scenario_video_frame;
 
     return msg;
 }

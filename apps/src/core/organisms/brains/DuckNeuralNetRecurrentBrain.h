@@ -18,6 +18,7 @@ public:
     ~DuckNeuralNetRecurrentBrain() override;
 
     void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
+    DuckInput inferInput(const DuckSensoryData& sensory);
 
     Genome getGenome() const;
     void setGenome(const Genome& genome);

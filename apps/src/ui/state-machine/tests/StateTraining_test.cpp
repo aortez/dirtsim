@@ -11,6 +11,7 @@
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsSet.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
@@ -516,7 +517,7 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     evt.evolution.populationSize = 10;
     evt.evolution.maxGenerations = 0;
     evt.mutation.rate = 0.1;
-    evt.training.scenarioId = Scenario::EnumType::Nes;
+    evt.training.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     evt.training.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
@@ -533,6 +534,106 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
 
     trainingState.view_.reset();
     fixture.stateMachine->uiManager_.reset();
+}
+
+TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesServerUserSettings)
+{
+    TestStateMachineFixture fixture;
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getServerUserSettings(),
+    };
+    settingsOkay.settings.evolutionConfig.maxSimulationTime = 40.0;
+    settingsOkay.settings.evolutionConfig.populationSize = 37;
+    settingsOkay.settings.mutationConfig.rate = 0.123;
+    settingsOkay.settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    settingsOkay.settings.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    TrainingIdle trainingState;
+    TrainingConfigUpdatedEvent evt{
+        .evolution = settingsOkay.settings.evolutionConfig,
+        .mutation = settingsOkay.settings.mutationConfig,
+        .training = settingsOkay.settings.trainingSpec,
+    };
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingIdle>(newState.getVariant()));
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "UserSettingsPatch");
+
+    const auto& local = fixture.stateMachine->getUserSettings();
+    EXPECT_EQ(
+        local.evolutionConfig.populationSize, settingsOkay.settings.evolutionConfig.populationSize);
+    EXPECT_DOUBLE_EQ(
+        local.evolutionConfig.maxSimulationTime,
+        settingsOkay.settings.evolutionConfig.maxSimulationTime);
+    EXPECT_DOUBLE_EQ(local.mutationConfig.rate, settingsOkay.settings.mutationConfig.rate);
+    EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
+    EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+
+    const auto& server = fixture.stateMachine->getServerUserSettings();
+    EXPECT_EQ(
+        server.evolutionConfig.populationSize,
+        settingsOkay.settings.evolutionConfig.populationSize);
+    EXPECT_DOUBLE_EQ(
+        server.evolutionConfig.maxSimulationTime,
+        settingsOkay.settings.evolutionConfig.maxSimulationTime);
+    EXPECT_DOUBLE_EQ(server.mutationConfig.rate, settingsOkay.settings.mutationConfig.rate);
+    EXPECT_EQ(server.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
+    EXPECT_EQ(server.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+}
+
+TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesServerUserSettings)
+{
+    TestStateMachineFixture fixture;
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getServerUserSettings(),
+    };
+    settingsOkay.settings.evolutionConfig.maxSimulationTime = 55.0;
+    settingsOkay.settings.evolutionConfig.populationSize = 19;
+    settingsOkay.settings.mutationConfig.sigma = 0.222;
+    settingsOkay.settings.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    settingsOkay.settings.trainingSpec.organismType = OrganismType::TREE;
+
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    TrainingActive trainingState;
+    TrainingConfigUpdatedEvent evt{
+        .evolution = settingsOkay.settings.evolutionConfig,
+        .mutation = settingsOkay.settings.mutationConfig,
+        .training = settingsOkay.settings.trainingSpec,
+    };
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(newState.getVariant()));
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "UserSettingsPatch");
+
+    const auto& local = fixture.stateMachine->getUserSettings();
+    EXPECT_EQ(
+        local.evolutionConfig.populationSize, settingsOkay.settings.evolutionConfig.populationSize);
+    EXPECT_DOUBLE_EQ(
+        local.evolutionConfig.maxSimulationTime,
+        settingsOkay.settings.evolutionConfig.maxSimulationTime);
+    EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
+    EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
+    EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+
+    const auto& server = fixture.stateMachine->getServerUserSettings();
+    EXPECT_EQ(
+        server.evolutionConfig.populationSize,
+        settingsOkay.settings.evolutionConfig.populationSize);
+    EXPECT_DOUBLE_EQ(
+        server.evolutionConfig.maxSimulationTime,
+        settingsOkay.settings.evolutionConfig.maxSimulationTime);
+    EXPECT_DOUBLE_EQ(server.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
+    EXPECT_EQ(server.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
+    EXPECT_EQ(server.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
 }
 
 TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)

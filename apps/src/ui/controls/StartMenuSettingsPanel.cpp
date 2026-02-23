@@ -493,7 +493,7 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
     }
 
     uint16_t index = 0;
-    if (settings_.trainingSpec.scenarioId == Scenario::EnumType::Nes
+    if (settings_.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
         || settings_.trainingSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
         index = 2;
     }
@@ -579,7 +579,7 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
             break;
         case 2:
             self->settings_.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Nes;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
             break;
         case 0:
         default:

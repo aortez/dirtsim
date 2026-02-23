@@ -426,7 +426,7 @@ void ControlPanel::onSandboxRainSliderChanged(lv_event_t* e)
 // Command Sending
 // ============================================================================
 
-void ControlPanel::sendConfigUpdate([[maybe_unused]] const ScenarioConfig& config)
+void ControlPanel::sendConfigUpdate([[maybe_unused]] const Config::Sandbox& config)
 {
     // DISABLED: ControlPanel is unused dead code.
     spdlog::warn("ControlPanel: sendConfigUpdate disabled (ControlPanel is deprecated)");

@@ -46,7 +46,7 @@ public:
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
     void showView(View view);
-    void addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId);
+    void addSeedGenome(const GenomeId& genomeId);
 
 private:
     lv_obj_t* container_ = nullptr;
@@ -104,8 +104,10 @@ private:
     void setRightColumnVisible(bool visible);
     void updateControlsEnabled();
     void updateGenerationsStep(int32_t value);
+    void updateMaxSimTimeStep(int32_t value);
     void updateStatusLabel(const char* text, lv_color_t color);
     void updateToggleLabels();
+    void queueTrainingConfigUpdatedEvent() const;
 
     static void onStartClicked(lv_event_t* e);
     static void onEvolutionSelected(lv_event_t* e);

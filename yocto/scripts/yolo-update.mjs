@@ -16,6 +16,7 @@
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
  *   npm run yolo -- --docker                  # Build with Docker image
  *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
+ *   npm run yolo -- --wipe-genome-db          # Stop services and wipe genomes/training DBs before restart
  *   npm run yolo -- --dry-run                 # Show what would happen
  *   npm run yolo -- --help                    # Show help
  */
@@ -102,6 +103,15 @@ const DEFAULT_HOST = 'dirtsim.local';
 const REMOTE_USER = 'dirtsim';
 const REMOTE_DEVICE = '/dev/sda';
 const REMOTE_TMP = '/tmp';
+const WIPE_DB_SERVICE_NAMES = 'dirtsim-server dirtsim-ui';
+const WIPE_DB_PATTERNS = [
+  '/data/dirtsim/genomes.db*',
+  '/data/dirtsim/training_results.db*',
+];
+
+function buildDatabaseWipeCommand() {
+  return `sudo rm -f ${WIPE_DB_PATTERNS.join(' ')}`;
+}
 
 function unique(items) {
   const seen = new Set();
@@ -630,12 +640,15 @@ function runFastDeployFunctionalTest(remoteTarget, testName, timeoutMs) {
  * Fast deploy: ninja build + scp binaries + restart services.
  * Skips rootfs regeneration, image creation, and flash/reboot.
  */
-async function fastDeploy(remoteHost, remoteTarget, dryRun) {
+async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false) {
   const startTime = Date.now();
 
   log('');
   log(`${colors.bold}${colors.cyan}Sparkle Duck Fast Deploy${colors.reset}`);
   log(`${colors.dim}(ninja build + scp + restart)${colors.reset}`);
+  if (wipeGenomeDb) {
+    log(`${colors.yellow}(will wipe genome/training databases before services start)${colors.reset}`);
+  }
   if (dryRun) {
     log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
   }
@@ -1019,6 +1032,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       info('Stopping services...');
       execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl stop ${serviceNames}"`, { stdio: 'pipe' });
 
+      if (wipeGenomeDb) {
+        info('Wiping genome and training databases...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${buildDatabaseWipeCommand()}"`, { stdio: 'pipe' });
+      }
+
       info('Removing old binaries...');
       execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${deleteCommands}"`, { stdio: 'pipe' });
 
@@ -1050,6 +1068,9 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       process.exit(1);
     }
   } else {
+    if (wipeGenomeDb) {
+      info(`Would run on Pi after service stop: ${buildDatabaseWipeCommand()}`);
+    }
     info(`Would run on Pi: ${deleteCommands} && ${remoteCmd}`);
   }
 
@@ -1099,6 +1120,8 @@ async function main() {
   const forceCleanAll = args.includes('--clean-all');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
+  const wipeGenomeDb = args.includes('--wipe-genome-db');
+  let skipFlashConfirm = holdMyMead;
   let fastMode = args.includes('--fast');
   const fastModeRequested = fastMode;
   const docker =
@@ -1134,6 +1157,7 @@ async function main() {
     log('                     Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean            Force rebuild by cleaning image sstate first');
     log('  --clean-all        Force full rebuild (cleans app + image + mesa/wayland-protocols sstate)');
+    log('  --wipe-genome-db   Stop services and wipe /data/dirtsim/{genomes,training_results}.db*');
     log('  --dry-run          Show what would happen without doing it');
     log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
     log('  -h, --help         Show this help');
@@ -1165,13 +1189,16 @@ async function main() {
   }
 
   if (fastMode) {
-    await fastDeploy(remoteHost, remoteTarget, dryRun);
+    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb);
     return;
   }
 
   log('');
   log(`${colors.bold}${colors.cyan}Sparkle Duck YOLO Update${colors.reset}`);
   log(`${colors.dim}(no local sudo required)${colors.reset}`);
+  if (wipeGenomeDb) {
+    log(`${colors.yellow}(will wipe genome/training databases before reboot)${colors.reset}`);
+  }
   if (dryRun) {
     log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
   }
@@ -1217,7 +1244,7 @@ async function main() {
       await buildX86ForFastDeploy(forceClean, forceCleanAll);
     }
 
-    await fastDeploy(remoteHost, remoteTarget, dryRun);
+    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb);
     return;
   }
 
@@ -1355,13 +1382,46 @@ async function main() {
     }
   }
 
+  if (wipeGenomeDb) {
+    if (!dryRun && !skipFlashConfirm) {
+      const { prompt } = await import('../pi-base/scripts/lib/cli-utils.mjs');
+      const confirm = await prompt('Type "yolo" to stop services, wipe DBs, and flash: ');
+      if (confirm.toLowerCase() !== 'yolo') {
+        error('Aborted.');
+        process.exit(1);
+      }
+      skipFlashConfirm = true;
+    }
+
+    banner('Stopping services and wiping databases...', consola);
+    if (!dryRun) {
+      try {
+        info('Stopping services...');
+        execSync(
+          `ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl stop ${WIPE_DB_SERVICE_NAMES}"`,
+          { stdio: 'pipe' },
+        );
+        info('Wiping genome and training databases...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${buildDatabaseWipeCommand()}"`, { stdio: 'pipe' });
+        success('Genome and training databases wiped');
+      } catch (err) {
+        error('Failed to wipe genome and training databases');
+        error(err.message);
+        process.exit(1);
+      }
+    } else {
+      info(`Would stop services: ${WIPE_DB_SERVICE_NAMES}`);
+      info(`Would run on Pi: ${buildDatabaseWipeCommand()}`);
+    }
+  }
+
   // Get boot time before flash for reboot verification.
   const originalBootTime = getRemoteBootTime(remoteTarget);
 
   // Flash with key injection on the Pi (no local sudo needed!).
   banner('Flashing image on Pi...', consola);
   cleanup.enterCriticalSection();
-  await remoteFlashWithKey(remoteImagePath, remoteKeyPath, REMOTE_USER, remoteTarget, dryRun, holdMyMead, remoteUpdateScript);
+  await remoteFlashWithKey(remoteImagePath, remoteKeyPath, REMOTE_USER, remoteTarget, dryRun, skipFlashConfirm, remoteUpdateScript);
 
   if (!dryRun) {
     // Wait for reboot.

@@ -31,6 +31,7 @@ public:
         bool requiresGenome = false;
     };
     using PopulationTotalChangedCallback = std::function<void(int)>;
+    using SpecUpdatedCallback = std::function<void()>;
 
     TrainingPopulationPanel(
         lv_obj_t* container,
@@ -45,11 +46,11 @@ public:
     void setEvolutionCompleted();
     void setPopulationTotal(int total);
     void setPopulationTotalChangedCallback(const PopulationTotalChangedCallback& callback);
-    void addSeedGenome(const GenomeId& id, Scenario::EnumType scenarioId);
+    void setSpecUpdatedCallback(const SpecUpdatedCallback& callback);
+    void addSeedGenome(const GenomeId& id);
 
 private:
     struct PopulationEntry {
-        Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         std::optional<GenomeId> genomeId;
         bool isRandom = false;
     };
@@ -109,6 +110,7 @@ private:
     std::vector<std::unique_ptr<EntryContext>> entryContexts_;
 
     PopulationTotalChangedCallback populationTotalChangedCallback_;
+    SpecUpdatedCallback specUpdatedCallback_;
 
     void createLayout();
     void createMainColumn(lv_obj_t* parent);
@@ -122,7 +124,6 @@ private:
     void setBrainOptionsForOrganism(OrganismType organismType);
     void syncUiFromState();
     void updateCountsLabel();
-    void updatePrimaryScenario();
     void rebuildPopulationList();
     void closeDetailModal();
     void openDetailModal(size_t index);
@@ -131,8 +132,8 @@ private:
     void setControlEnabled(lv_obj_t* control, bool enabled);
     void setScenarioColumnVisible(bool visible);
     void setOrganismListVisible(bool visible);
-    PopulationSpec* findPopulationSpec(Scenario::EnumType scenarioId);
-    PopulationSpec& ensurePopulationSpec(Scenario::EnumType scenarioId);
+    PopulationSpec* findPopulationSpec();
+    PopulationSpec& ensurePopulationSpec();
     void pruneEmptySpecs();
     void removeEntry(size_t index);
     int computeTotalPopulation() const;

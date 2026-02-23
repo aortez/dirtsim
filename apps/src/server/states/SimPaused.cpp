@@ -2,7 +2,6 @@
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/Timers.h"
-#include "core/scenarios/NesScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/ScenarioConfigSet.h"
@@ -66,22 +65,6 @@ State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachi
 
     DIRTSIM_ASSERT(previousState.world, "World must exist in SimPaused");
     DIRTSIM_ASSERT(previousState.scenario, "Scenario must exist in SimPaused");
-
-    if (previousState.scenario_id == Scenario::EnumType::Nes) {
-        const auto* nesConfig = std::get_if<Config::Nes>(&cwc.command.config);
-        if (!nesConfig) {
-            cwc.sendResponse(
-                Response::error(ApiError("Nes scenario requires Config::Nes payload")));
-            return std::move(*this);
-        }
-
-        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
-        if (!validation.valid) {
-            cwc.sendResponse(
-                Response::error(ApiError("Invalid NES config: " + validation.message)));
-            return std::move(*this);
-        }
-    }
 
     // Update scenario's config.
     previousState.scenario->setConfig(cwc.command.config, *previousState.world);

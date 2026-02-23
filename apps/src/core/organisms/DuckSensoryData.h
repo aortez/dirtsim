@@ -20,6 +20,7 @@ namespace DirtSim {
 struct DuckSensoryData {
     static constexpr int GRID_SIZE = 15;
     static constexpr int NUM_MATERIALS = 10;
+    static constexpr int SPECIAL_SENSE_COUNT = 32;
 
     // Material histogram grid: [y][x][material] = fill contribution.
     std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
@@ -41,9 +42,12 @@ struct DuckSensoryData {
     // Facing direction (-1 = left, +1 = right).
     float facing_x = 1.0f;
 
+    // Scenario-provided special senses. Unused slots stay at zero.
+    std::array<double, SPECIAL_SENSE_COUNT> special_senses{};
+
     double delta_time_seconds = 0.0;
 
-    using serialize = zpp::bits::members<12>;
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const DuckSensoryData& data);

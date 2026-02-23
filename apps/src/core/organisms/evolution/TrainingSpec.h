@@ -17,14 +17,13 @@ namespace DirtSim {
  * Population entry describing one brain kind/variant and its counts.
  */
 struct PopulationSpec {
-    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
     std::string brainKind;
     std::optional<std::string> brainVariant;
     int count = 0;
     std::vector<GenomeId> seedGenomes;
     int randomCount = 0;
 
-    using serialize = zpp::bits::members<6>;
+    using serialize = zpp::bits::members<5>;
 };
 
 /**

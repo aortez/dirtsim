@@ -17,6 +17,9 @@ public:
     // Stop a timer with the given name and return elapsed time in milliseconds
     double stopTimer(const std::string& name);
 
+    // Add externally measured elapsed time and call count.
+    void addSample(const std::string& name, double elapsedMs, uint32_t calls = 1);
+
     // Check if a timer exists
     bool hasTimer(const std::string& name) const;
 
