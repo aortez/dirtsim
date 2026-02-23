@@ -285,7 +285,7 @@ TEST(NesRamProbeTest, DISABLED_ProbeCaptureIsDeterministicAndWritesCsvTrace)
     EXPECT_GT(std::filesystem::file_size(tracePath), 0u);
 }
 
-TEST(NesRamProbeTest, ManualStep_StartAfterFirstBirdXNonZero_PrintsTrace)
+TEST(NesRamProbeTest, ManualStep_BirdStartAndFlapSequence_PrintsTrace)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -307,7 +307,6 @@ TEST(NesRamProbeTest, ManualStep_StartAfterFirstBirdXNonZero_PrintsTrace)
     ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
     ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
 
-    constexpr uint32_t kFrameCount = 1000;
     const std::vector<NesRamProbeAddress> addresses{
         NesRamProbeAddress{ .label = "game_state", .address = kGameStateAddr },
         NesRamProbeAddress{ .label = "bird_x", .address = kBirdXAddr },
@@ -315,31 +314,27 @@ TEST(NesRamProbeTest, ManualStep_StartAfterFirstBirdXNonZero_PrintsTrace)
 
     NesRamProbeStepper stepper{ *scenario, world, addresses, kFrameDeltaSeconds };
 
-    bool queuedStartPress = false;
     bool startPressed = false;
 
-    for (size_t frameIndex = 0; frameIndex < kFrameCount; ++frameIndex) {
+    uint8_t birdX = 0;
+    uint8_t gameState = 0;
+    for (size_t frameIndex = 0; frameIndex < 100; ++frameIndex) {
         uint8_t controllerMask = 0u;
-        if (queuedStartPress) {
+        if (!startPressed && birdX > 5u) {
             controllerMask = SMOLNES_RUNTIME_BUTTON_START;
-            queuedStartPress = false;
             startPressed = true;
         }
 
         const NesRamProbeFrame frame = stepper.step(controllerMask);
         ASSERT_EQ(frame.cpuRamValues.size(), addresses.size());
 
-        const uint8_t gameState = frame.cpuRamValues[0];
-        const uint8_t birdX = frame.cpuRamValues[1];
+        gameState = frame.cpuRamValues[0];
+        birdX = frame.cpuRamValues[1];
 
         std::cout << "frameIndex: " << frame.frame
                   << ", controllerMask: " << static_cast<uint32_t>(frame.controllerMask)
                   << ", birdX: " << static_cast<uint32_t>(birdX)
                   << ", gameState: " << static_cast<uint32_t>(gameState) << '\n';
-
-        if (!startPressed && !queuedStartPress && birdX > 0u) {
-            queuedStartPress = true;
-        }
     }
 
     EXPECT_TRUE(startPressed) << "Expected a Start press after the first bird_x > 0.";

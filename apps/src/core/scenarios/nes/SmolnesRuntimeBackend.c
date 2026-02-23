@@ -143,6 +143,19 @@ static void mapController1StateToKeyboard(uint8_t controller1State, uint8_t* key
     keyboardState[SDL_SCANCODE_RIGHT] = (controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
 }
 
+static void refreshThreadKeyboardStateFromRuntime(SmolnesRuntimeHandle* runtime)
+{
+    if (runtime == NULL) {
+        memset(gThreadKeyboardState, 0, SDL_NUM_SCANCODES * sizeof(uint8_t));
+        return;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    const uint8_t controller1State = runtime->controller1State;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+    mapController1StateToKeyboard(controller1State, gThreadKeyboardState);
+}
+
 static struct timespec buildDeadline(uint32_t timeoutMs)
 {
     struct timespec deadline;
@@ -432,6 +445,7 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
         return;
     }
 
+    refreshThreadKeyboardStateFromRuntime(runtime);
     gFrameExecutionStartMs = monotonicNowMs();
     gFrameExecutionActive = true;
 }
