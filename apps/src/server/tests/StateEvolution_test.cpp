@@ -118,7 +118,7 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NesFlappyBird;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     population.count = 4;
     population.randomCount = 4;
     cmd.population.push_back(population);
@@ -138,7 +138,7 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     ASSERT_TRUE(capturedResponse.isValue());
 }
 
-TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrganism)
+TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyOrganism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -163,7 +163,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrgan
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
     const PopulationSpec& population = evolution.trainingSpec.population.front();
-    EXPECT_EQ(population.brainKind, TrainingBrainKind::NesFlappyBird);
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
     EXPECT_EQ(population.count, 3);
     EXPECT_EQ(population.randomCount, 3);
 }
@@ -213,7 +213,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
     cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NesFlappyBird;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     population.count = 2;
     population.randomCount = 2;
     cmd.population.push_back(population);

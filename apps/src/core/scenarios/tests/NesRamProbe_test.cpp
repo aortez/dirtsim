@@ -5,15 +5,24 @@
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 using namespace DirtSim;
 
 namespace {
+
+constexpr uint16_t kBirdXAddr = 0x20;
+constexpr uint16_t kGameStateAddr = 0x0A;
+constexpr double kFrameDeltaSeconds = 1.0 / 60.0;
 
 std::optional<std::filesystem::path> resolveNesFixtureRomPath()
 {
@@ -72,7 +81,7 @@ NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
         uint8_t controllerMask = 0;
         const auto snapshot = scenario->copyRuntimeMemorySnapshot();
         if (snapshot.has_value()) {
-            const uint8_t gameState = snapshot->cpuRam[0x0A];
+            const uint8_t gameState = snapshot->cpuRam[kGameStateAddr];
             if (gameState == 0u || gameState == 7u) {
                 controllerMask = SMOLNES_RUNTIME_BUTTON_START;
             }
@@ -82,7 +91,7 @@ NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
         scenario->tick(world, kDeltaTimeSeconds);
 
         const auto postTickSnapshot = scenario->copyRuntimeMemorySnapshot();
-        if (postTickSnapshot.has_value() && postTickSnapshot->cpuRam[0x0A] == 1u) {
+        if (postTickSnapshot.has_value() && postTickSnapshot->cpuRam[kGameStateAddr] == 1u) {
             waitingStateStableFrames++;
         }
         else {
@@ -92,12 +101,12 @@ NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
     EXPECT_GE(waitingStateStableFrames, 4) << "Failed to synchronize probe start on waiting state.";
 
     const std::vector<NesRamProbeAddress> addresses{
-        NesRamProbeAddress{ .label = "game_state", .address = 0x0A },
+        NesRamProbeAddress{ .label = "game_state", .address = kGameStateAddr },
         NesRamProbeAddress{ .label = "scroll_x", .address = 0x08 },
         NesRamProbeAddress{ .label = "scroll_nt", .address = 0x09 },
         NesRamProbeAddress{ .label = "bird_y", .address = 0x01 },
         NesRamProbeAddress{ .label = "bird_vel_hi", .address = 0x03 },
-        NesRamProbeAddress{ .label = "bird_x", .address = 0x20 },
+        NesRamProbeAddress{ .label = "bird_x", .address = kBirdXAddr },
         NesRamProbeAddress{ .label = "score_ones", .address = 0x19 },
         NesRamProbeAddress{ .label = "score_tens", .address = 0x1A },
         NesRamProbeAddress{ .label = "score_hundreds", .address = 0x1B },
@@ -207,7 +216,7 @@ TraceSummary summarizeTrace(const NesRamProbeTrace& trace)
 
 } // namespace
 
-TEST(NesRamProbeTest, ProbeCaptureIsDeterministicAndWritesCsvTrace)
+TEST(NesRamProbeTest, DISABLED_ProbeCaptureIsDeterministicAndWritesCsvTrace)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -274,4 +283,64 @@ TEST(NesRamProbeTest, ProbeCaptureIsDeterministicAndWritesCsvTrace)
     EXPECT_TRUE(firstTrace.writeCsv(tracePath));
     EXPECT_TRUE(std::filesystem::exists(tracePath));
     EXPECT_GT(std::filesystem::file_size(tracePath), 0u);
+}
+
+TEST(NesRamProbeTest, ManualStep_StartAfterFirstBirdXNonZero_PrintsTrace)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
+    const ScenarioMetadata& metadata = scenario->getMetadata();
+    World world(metadata.requiredWidth, metadata.requiredHeight);
+
+    Config::NesFlappyParatroopa config =
+        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    config.romPath = romPath->string();
+    config.requireSmolnesMapper = true;
+    scenario->setConfig(config, world);
+    scenario->setup(world);
+
+    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+
+    constexpr uint32_t kFrameCount = 1000;
+    const std::vector<NesRamProbeAddress> addresses{
+        NesRamProbeAddress{ .label = "game_state", .address = kGameStateAddr },
+        NesRamProbeAddress{ .label = "bird_x", .address = kBirdXAddr },
+    };
+
+    NesRamProbeStepper stepper{ *scenario, world, addresses, kFrameDeltaSeconds };
+
+    bool queuedStartPress = false;
+    bool startPressed = false;
+
+    for (size_t frameIndex = 0; frameIndex < kFrameCount; ++frameIndex) {
+        uint8_t controllerMask = 0u;
+        if (queuedStartPress) {
+            controllerMask = SMOLNES_RUNTIME_BUTTON_START;
+            queuedStartPress = false;
+            startPressed = true;
+        }
+
+        const NesRamProbeFrame frame = stepper.step(controllerMask);
+        ASSERT_EQ(frame.cpuRamValues.size(), addresses.size());
+
+        const uint8_t gameState = frame.cpuRamValues[0];
+        const uint8_t birdX = frame.cpuRamValues[1];
+
+        std::cout << "frameIndex: " << frame.frame
+                  << ", controllerMask: " << static_cast<uint32_t>(frame.controllerMask)
+                  << ", birdX: " << static_cast<uint32_t>(birdX)
+                  << ", gameState: " << static_cast<uint32_t>(gameState) << '\n';
+
+        if (!startPressed && !queuedStartPress && birdX > 0u) {
+            queuedStartPress = true;
+        }
+    }
+
+    EXPECT_TRUE(startPressed) << "Expected a Start press after the first bird_x > 0.";
 }

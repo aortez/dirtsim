@@ -30,6 +30,8 @@ public:
         uint64_t runtimeThreadPpuStepCalls = 0;
         double runtimeThreadPpuVisiblePixelsMs = 0.0;
         uint64_t runtimeThreadPpuVisiblePixelsCalls = 0;
+        double runtimeThreadPpuSpriteEvalMs = 0.0;
+        uint64_t runtimeThreadPpuSpriteEvalCalls = 0;
         double runtimeThreadPpuPrefetchMs = 0.0;
         uint64_t runtimeThreadPpuPrefetchCalls = 0;
         double runtimeThreadPpuOtherMs = 0.0;

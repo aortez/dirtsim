@@ -40,8 +40,13 @@ public:
 
 private:
     bool didApplyDeathPenalty_ = false;
+    bool hasLastBirdCenterPx_ = false;
     bool hasLastScore_ = false;
+    bool hasLastScrollPosition_ = false;
+    float lastBirdCenterPx_ = 0.0f;
     int lastScore_ = 0;
+    int lastScrollPosition_ = 0;
+    double cumulativeForwardProgressPx_ = 0.0;
 };
 
 } // namespace DirtSim

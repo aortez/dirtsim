@@ -7,6 +7,7 @@ namespace DirtSim {
 
 namespace {
 constexpr uint8_t kStateDying = 3;
+constexpr uint8_t kStatePlaying = 2;
 constexpr uint8_t kStateGameOver = 7;
 
 constexpr float kBirdCenterYOffsetPx = 8.0f;
@@ -14,9 +15,13 @@ constexpr float kBirdLeftPx = 56.0f;
 constexpr float kCeilingY = 8.0f;
 constexpr float kGapHeightPx = 64.0f;
 constexpr float kGroundY = 184.0f;
+constexpr float kMovementEpsilonPx = 0.01f;
 constexpr float kPipeWidthPx = 32.0f;
 constexpr float kVelocityScale = 6.0f;
 constexpr float kVisiblePipeDistancePx = 256.0f;
+constexpr double kMovementReward = 0.0005;
+constexpr double kProgressRewardPerPixel = 0.0005;
+constexpr double kProgressRewardGrowthWindowPx = 512.0;
 constexpr double kDeathPenalty = -1.0;
 
 enum class FeatureIndex : int {
@@ -52,6 +57,36 @@ float clampSigned1(float value)
 bool isDoneState(uint8_t gameState)
 {
     return gameState >= kStateDying && gameState <= kStateGameOver;
+}
+
+bool isPlayingState(uint8_t gameState)
+{
+    return gameState == kStatePlaying;
+}
+
+float computeBirdCenterPx(const NesFlappyBirdState& state)
+{
+    return state.birdY + kBirdCenterYOffsetPx + (state.birdYFraction / 256.0f);
+}
+
+int computeScrollPosition(const NesFlappyBirdState& state)
+{
+    return static_cast<int>(state.scrollX) + (static_cast<int>(state.scrollNt & 0x01u) * 256);
+}
+
+int computeWrappedScrollDelta(int currentScrollPosition, int previousScrollPosition)
+{
+    constexpr int kScrollWrapPx = 512;
+    constexpr int kHalfWrapPx = kScrollWrapPx / 2;
+
+    int delta = currentScrollPosition - previousScrollPosition;
+    if (delta < -kHalfWrapPx) {
+        delta += kScrollWrapPx;
+    }
+    else if (delta > kHalfWrapPx) {
+        delta -= kScrollWrapPx;
+    }
+    return delta;
 }
 
 PipeSample selectUpcomingPipe(const NesFlappyBirdState& state)
@@ -90,8 +125,7 @@ NesFlappyBirdEvaluatorOutput evaluateState(const NesFlappyBirdEvaluatorInput& in
     const float nextPipeTopPx = static_cast<float>(nextPipe.gapRow) * 8.0f;
     const float nextPipeBottomPx = nextPipeTopPx + kGapHeightPx;
     const float nextPipeCenterPx = (nextPipeTopPx + nextPipeBottomPx) * 0.5f;
-    const float birdCenterPx =
-        input.state.birdY + kBirdCenterYOffsetPx + (input.state.birdYFraction / 256.0f);
+    const float birdCenterPx = computeBirdCenterPx(input.state);
 
     output.features.at(static_cast<size_t>(FeatureIndex::Bias)) = 1.0f;
     output.features.at(static_cast<size_t>(FeatureIndex::BirdYNormalized)) =
@@ -123,15 +157,22 @@ NesFlappyBirdEvaluatorOutput evaluateState(const NesFlappyBirdEvaluatorInput& in
 
 void NesFlappyBirdEvaluator::reset()
 {
+    cumulativeForwardProgressPx_ = 0.0;
     didApplyDeathPenalty_ = false;
+    hasLastBirdCenterPx_ = false;
     hasLastScore_ = false;
+    hasLastScrollPosition_ = false;
+    lastBirdCenterPx_ = 0.0f;
     lastScore_ = 0;
+    lastScrollPosition_ = 0;
 }
 
 NesFlappyBirdEvaluatorOutput NesFlappyBirdEvaluator::evaluate(
     const NesFlappyBirdEvaluatorInput& input)
 {
     NesFlappyBirdEvaluatorOutput output = evaluateState(input);
+    const float birdCenterPx = computeBirdCenterPx(input.state);
+    const int scrollPosition = computeScrollPosition(input.state);
 
     const int score = input.state.score;
     if (hasLastScore_ && score > lastScore_) {
@@ -147,6 +188,29 @@ NesFlappyBirdEvaluatorOutput NesFlappyBirdEvaluator::evaluate(
         output.rewardDelta += kDeathPenalty;
         didApplyDeathPenalty_ = true;
     }
+
+    if (isPlayingState(output.gameState) && !output.done) {
+        if (hasLastBirdCenterPx_
+            && std::fabs(birdCenterPx - lastBirdCenterPx_) >= kMovementEpsilonPx) {
+            output.rewardDelta += kMovementReward;
+        }
+
+        if (hasLastScrollPosition_) {
+            const int scrollDelta = computeWrappedScrollDelta(scrollPosition, lastScrollPosition_);
+            if (scrollDelta > 0) {
+                cumulativeForwardProgressPx_ += static_cast<double>(scrollDelta);
+                const double progressScale = 1.0
+                    + std::min(1.0, cumulativeForwardProgressPx_ / kProgressRewardGrowthWindowPx);
+                output.rewardDelta +=
+                    static_cast<double>(scrollDelta) * kProgressRewardPerPixel * progressScale;
+            }
+        }
+    }
+
+    lastBirdCenterPx_ = birdCenterPx;
+    hasLastBirdCenterPx_ = true;
+    lastScrollPosition_ = scrollPosition;
+    hasLastScrollPosition_ = true;
 
     return output;
 }

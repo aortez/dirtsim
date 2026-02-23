@@ -95,7 +95,7 @@ TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
     EXPECT_TRUE(diskPopulation.seedGenomes.empty());
 }
 
-TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
+TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesOrganismWithoutBrainRewrite)
 {
     TestStateMachineFixture fixture("dirtsim-user-settings-sanitize-nes-target");
     fixture.stateMachine.reset();
@@ -128,7 +128,7 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
     EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(inMemory.trainingSpec.population.size(), 1u);
     const PopulationSpec& inMemoryPopulation = inMemory.trainingSpec.population.front();
-    EXPECT_EQ(inMemoryPopulation.brainKind, TrainingBrainKind::NesFlappyBird);
+    EXPECT_EQ(inMemoryPopulation.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
     EXPECT_EQ(inMemoryPopulation.count, 2);
     EXPECT_EQ(inMemoryPopulation.randomCount, 2);
 
@@ -137,7 +137,7 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesFlappyBird)
     EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(fromDisk.trainingSpec.population.size(), 1u);
     const PopulationSpec& diskPopulation = fromDisk.trainingSpec.population.front();
-    EXPECT_EQ(diskPopulation.brainKind, TrainingBrainKind::NesFlappyBird);
+    EXPECT_EQ(diskPopulation.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
     EXPECT_EQ(diskPopulation.count, 2);
     EXPECT_EQ(diskPopulation.randomCount, 2);
 }

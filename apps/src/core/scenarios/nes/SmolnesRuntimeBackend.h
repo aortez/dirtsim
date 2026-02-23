@@ -22,6 +22,8 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t runtime_thread_ppu_step_calls;
     double runtime_thread_ppu_visible_pixels_ms;
     uint64_t runtime_thread_ppu_visible_pixels_calls;
+    double runtime_thread_ppu_sprite_eval_ms;
+    uint64_t runtime_thread_ppu_sprite_eval_calls;
     double runtime_thread_ppu_prefetch_ms;
     uint64_t runtime_thread_ppu_prefetch_calls;
     double runtime_thread_ppu_other_ms;

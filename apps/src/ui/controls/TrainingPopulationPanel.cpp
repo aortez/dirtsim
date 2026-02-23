@@ -45,7 +45,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             };
         case OrganismType::NES_FLAPPY_BIRD:
             return {
-                { TrainingBrainKind::NesFlappyBird, true },
+                { TrainingBrainKind::DuckNeuralNetRecurrent, true },
             };
         case OrganismType::GOOSE:
             return {

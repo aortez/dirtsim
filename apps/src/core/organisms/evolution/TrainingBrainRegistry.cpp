@@ -9,7 +9,6 @@
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
-#include "core/organisms/evolution/NesPolicyLayout.h"
 
 namespace DirtSim {
 
@@ -222,7 +221,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
 
     registry.registerBrain(
         OrganismType::NES_FLAPPY_BIRD,
-        TrainingBrainKind::NesFlappyBird,
+        TrainingBrainKind::DuckNeuralNetRecurrent,
         "",
         BrainRegistryEntry{
             .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
@@ -230,17 +229,10 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .allowsMutation = true,
             .spawn = nullptr,
             .createRandomGenome =
-                [](std::mt19937& rng) {
-                    Genome genome(NesPolicyLayout::WeightCount);
-                    std::normal_distribution<WeightType> dist(0.0f, 0.15f);
-                    for (auto& weight : genome.weights) {
-                        weight = dist(rng);
-                    }
-                    return genome;
-                },
+                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrain::randomGenome(rng); },
             .isGenomeCompatible =
                 [](const Genome& genome) {
-                    return genome.weights.size() == NesPolicyLayout::WeightCount;
+                    return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
                 },
         });
 

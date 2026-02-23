@@ -3,8 +3,63 @@
 #include "core/World.h"
 
 #include <fstream>
+#include <utility>
 
 namespace DirtSim {
+
+NesRamProbeStepper::NesRamProbeStepper(
+    NesFlappyParatroopaScenario& scenario,
+    World& world,
+    std::vector<NesRamProbeAddress> cpuAddresses,
+    double deltaTimeSeconds)
+    : scenario_(scenario),
+      world_(world),
+      cpuAddresses_(std::move(cpuAddresses)),
+      deltaTimeSeconds_(deltaTimeSeconds)
+{}
+
+const std::vector<NesRamProbeAddress>& NesRamProbeStepper::getCpuAddresses() const
+{
+    return cpuAddresses_;
+}
+
+uint8_t NesRamProbeStepper::getControllerMask() const
+{
+    return controllerMask_;
+}
+
+const SmolnesRuntime::MemorySnapshot* NesRamProbeStepper::getLastMemorySnapshot() const
+{
+    return lastMemorySnapshot_.has_value() ? &lastMemorySnapshot_.value() : nullptr;
+}
+
+NesRamProbeFrame NesRamProbeStepper::step(std::optional<uint8_t> controllerMask)
+{
+    if (controllerMask.has_value()) {
+        controllerMask_ = controllerMask.value();
+    }
+
+    scenario_.setController1State(controllerMask_);
+    scenario_.tick(world_, deltaTimeSeconds_);
+
+    NesRamProbeFrame frame;
+    frame.frame = frameIndex_;
+    frame.controllerMask = controllerMask_;
+    frame.cpuRamValues.resize(cpuAddresses_.size(), 0u);
+
+    lastMemorySnapshot_ = scenario_.copyRuntimeMemorySnapshot();
+    if (lastMemorySnapshot_.has_value()) {
+        for (size_t addrIndex = 0; addrIndex < cpuAddresses_.size(); ++addrIndex) {
+            const uint16_t address = cpuAddresses_[addrIndex].address;
+            if (address < lastMemorySnapshot_->cpuRam.size()) {
+                frame.cpuRamValues[addrIndex] = lastMemorySnapshot_->cpuRam[address];
+            }
+        }
+    }
+
+    frameIndex_++;
+    return frame;
+}
 
 bool NesRamProbeTrace::writeCsv(const std::filesystem::path& path) const
 {
@@ -43,27 +98,9 @@ NesRamProbeTrace captureNesRamProbeTrace(
     trace.cpuAddresses = cpuAddresses;
     trace.frames.reserve(controllerScript.size());
 
-    for (size_t i = 0; i < controllerScript.size(); ++i) {
-        const uint8_t controllerMask = controllerScript[i];
-        scenario.setController1State(controllerMask);
-        scenario.tick(world, deltaTimeSeconds);
-
-        NesRamProbeFrame frame;
-        frame.frame = i;
-        frame.controllerMask = controllerMask;
-        frame.cpuRamValues.resize(cpuAddresses.size(), 0u);
-
-        const auto snapshot = scenario.copyRuntimeMemorySnapshot();
-        if (snapshot.has_value()) {
-            for (size_t addrIndex = 0; addrIndex < cpuAddresses.size(); ++addrIndex) {
-                const uint16_t address = cpuAddresses[addrIndex].address;
-                if (address < snapshot->cpuRam.size()) {
-                    frame.cpuRamValues[addrIndex] = snapshot->cpuRam[address];
-                }
-            }
-        }
-
-        trace.frames.push_back(frame);
+    NesRamProbeStepper stepper{ scenario, world, cpuAddresses, deltaTimeSeconds };
+    for (uint8_t controllerMask : controllerScript) {
+        trace.frames.push_back(stepper.step(controllerMask));
     }
 
     return trace;

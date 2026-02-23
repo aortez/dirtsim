@@ -44,6 +44,8 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadPpuStepCalls;
     double runtimeThreadPpuVisiblePixelsMs;
     uint64_t runtimeThreadPpuVisiblePixelsCalls;
+    double runtimeThreadPpuSpriteEvalMs;
+    uint64_t runtimeThreadPpuSpriteEvalCalls;
     double runtimeThreadPpuPrefetchMs;
     uint64_t runtimeThreadPpuPrefetchCalls;
     double runtimeThreadPpuOtherMs;
@@ -84,12 +86,15 @@ typedef enum SmolnesPpuPhaseBucket {
     SmolnesPpuPhaseBucketNone = 0,
     SmolnesPpuPhaseBucketVisiblePixels = 1,
     SmolnesPpuPhaseBucketPrefetch = 2,
-    SmolnesPpuPhaseBucketOther = 3
+    SmolnesPpuPhaseBucketOther = 3,
+    SmolnesPpuPhaseBucketSpriteEval = 4
 } SmolnesPpuPhaseBucket;
 static SMOLNES_THREAD_LOCAL SmolnesPpuPhaseBucket gPpuPhaseBucket = SmolnesPpuPhaseBucketNone;
 static SMOLNES_THREAD_LOCAL double gPpuPhaseBucketStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL double gPpuVisiblePixelsAccumMs = 0.0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuVisiblePixelsAccumCalls = 0;
+static SMOLNES_THREAD_LOCAL double gPpuSpriteEvalAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuSpriteEvalAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL double gPpuPrefetchAccumMs = 0.0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuPrefetchAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL double gPpuOtherAccumMs = 0.0;
@@ -165,6 +170,8 @@ static void resetPpuPhaseBreakdown(void)
     gPpuPhaseBucketStartMs = 0.0;
     gPpuVisiblePixelsAccumMs = 0.0;
     gPpuVisiblePixelsAccumCalls = 0;
+    gPpuSpriteEvalAccumMs = 0.0;
+    gPpuSpriteEvalAccumCalls = 0;
     gPpuPrefetchAccumMs = 0.0;
     gPpuPrefetchAccumCalls = 0;
     gPpuOtherAccumMs = 0.0;
@@ -181,6 +188,10 @@ static void accumulatePpuPhaseDuration(SmolnesPpuPhaseBucket phase, double durat
     case SmolnesPpuPhaseBucketVisiblePixels:
         gPpuVisiblePixelsAccumMs += durationMs;
         gPpuVisiblePixelsAccumCalls++;
+        break;
+    case SmolnesPpuPhaseBucketSpriteEval:
+        gPpuSpriteEvalAccumMs += durationMs;
+        gPpuSpriteEvalAccumCalls++;
         break;
     case SmolnesPpuPhaseBucketPrefetch:
         gPpuPrefetchAccumMs += durationMs;
@@ -477,6 +488,8 @@ void smolnesRuntimeWrappedPpuStepEnd(void)
     runtime->runtimeThreadPpuStepCalls++;
     runtime->runtimeThreadPpuVisiblePixelsMs += gPpuVisiblePixelsAccumMs;
     runtime->runtimeThreadPpuVisiblePixelsCalls += gPpuVisiblePixelsAccumCalls;
+    runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
+    runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
     runtime->runtimeThreadPpuPrefetchMs += gPpuPrefetchAccumMs;
     runtime->runtimeThreadPpuPrefetchCalls += gPpuPrefetchAccumCalls;
     runtime->runtimeThreadPpuOtherMs += gPpuOtherAccumMs;
@@ -502,6 +515,9 @@ void smolnesRuntimeWrappedPpuPhaseSet(uint32_t phaseId)
         break;
     case 3u:
         nextPhase = SmolnesPpuPhaseBucketOther;
+        break;
+    case 4u:
+        nextPhase = SmolnesPpuPhaseBucketSpriteEval;
         break;
     default:
         nextPhase = SmolnesPpuPhaseBucketNone;
@@ -776,6 +792,8 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runtimeThreadPpuStepCalls = 0;
     runtime->runtimeThreadPpuVisiblePixelsMs = 0.0;
     runtime->runtimeThreadPpuVisiblePixelsCalls = 0;
+    runtime->runtimeThreadPpuSpriteEvalMs = 0.0;
+    runtime->runtimeThreadPpuSpriteEvalCalls = 0;
     runtime->runtimeThreadPpuPrefetchMs = 0.0;
     runtime->runtimeThreadPpuPrefetchCalls = 0;
     runtime->runtimeThreadPpuOtherMs = 0.0;
@@ -1015,6 +1033,8 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->runtime_thread_ppu_step_calls = mutableRuntime->runtimeThreadPpuStepCalls;
     snapshotOut->runtime_thread_ppu_visible_pixels_ms = mutableRuntime->runtimeThreadPpuVisiblePixelsMs;
     snapshotOut->runtime_thread_ppu_visible_pixels_calls = mutableRuntime->runtimeThreadPpuVisiblePixelsCalls;
+    snapshotOut->runtime_thread_ppu_sprite_eval_ms = mutableRuntime->runtimeThreadPpuSpriteEvalMs;
+    snapshotOut->runtime_thread_ppu_sprite_eval_calls = mutableRuntime->runtimeThreadPpuSpriteEvalCalls;
     snapshotOut->runtime_thread_ppu_prefetch_ms = mutableRuntime->runtimeThreadPpuPrefetchMs;
     snapshotOut->runtime_thread_ppu_prefetch_calls = mutableRuntime->runtimeThreadPpuPrefetchCalls;
     snapshotOut->runtime_thread_ppu_other_ms = mutableRuntime->runtimeThreadPpuOtherMs;

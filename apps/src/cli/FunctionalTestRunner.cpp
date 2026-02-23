@@ -1262,7 +1262,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
         trainCmd.training.organismType = OrganismType::NES_FLAPPY_BIRD;
 
         PopulationSpec population;
-        population.brainKind = TrainingBrainKind::NesFlappyBird;
+        population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
         population.count = trainCmd.evolution.populationSize;
         population.randomCount = trainCmd.evolution.populationSize;
         trainCmd.training.population = { population };
@@ -1278,9 +1278,10 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
             return Result<std::monostate, std::string>::error(
                 "Expected NES scenario summary, got " + summary.scenario_id);
         }
-        if (summary.primary_brain_kind != TrainingBrainKind::NesFlappyBird) {
+        if (summary.primary_brain_kind != TrainingBrainKind::DuckNeuralNetRecurrent) {
             return Result<std::monostate, std::string>::error(
-                "Expected primary brain kind NesFlappyBird, got " + summary.primary_brain_kind);
+                "Expected primary brain kind DuckNeuralNetRecurrent, got "
+                + summary.primary_brain_kind);
         }
         if (summary.organism_type != static_cast<int>(OrganismType::NES_FLAPPY_BIRD)) {
             return Result<std::monostate, std::string>::error(

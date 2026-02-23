@@ -639,6 +639,7 @@ loop:
 
             // If sprites are enabled.
             if (ppumask & 16) {
+              SMOLNES_PPU_PHASE_SET(4);
               // Loop through all sprites.
               for (uint8_t *sprite = oam; sprite < oam + 256; sprite += 4) {
                 uint16_t sprite_h = ppuctrl & 32 ? 16 : 8,
@@ -673,6 +674,7 @@ loop:
                   }
                 }
               }
+              SMOLNES_PPU_PHASE_SET(1);
             }
 
             // Write pixel to framebuffer. Always use palette 0 for color 0.

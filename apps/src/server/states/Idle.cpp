@@ -345,7 +345,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_FLAPPY_BIRD:
-                defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
+                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:

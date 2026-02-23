@@ -2,6 +2,7 @@
 
 #include "core/ScenarioConfig.h"
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
@@ -16,6 +17,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -118,7 +120,8 @@ public:
 private:
     void resolveBrainEntry();
     void runScenarioDrivenStep();
-    uint8_t inferNesControllerMask() const;
+    DuckSensoryData makeNesDuckSensoryData() const;
+    uint8_t inferNesControllerMask();
     void spawnEvaluationOrganism();
     static Config makeDefaultConfig();
 
@@ -141,9 +144,15 @@ private:
     BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
     uint8_t nesControllerMask_ = 0;
     std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
+    std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
+    std::string nesRuntimeRomId_;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::optional<NesRomProfileExtractor> nesRomExtractor_ = std::nullopt;
     std::optional<NesFlappyBirdEvaluator> nesFlappyEvaluator_ = std::nullopt;
+    std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
+    std::unordered_map<std::string, int> nesCommandSignatureCounts_;
+    uint32_t nesStartPulseFrameCounter_ = 0;
+    uint32_t nesWaitingFlapPulseFrameCounter_ = 0;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 

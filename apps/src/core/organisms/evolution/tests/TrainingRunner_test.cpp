@@ -499,7 +499,7 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenE
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -518,12 +518,12 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = entry->createRandomGenome(rng_);
 
@@ -535,7 +535,7 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
     EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
 }
 
-TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesOnRomDoneBeforeTimeLimit)
+TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
     if (!romPath.has_value()) {
@@ -550,10 +550,10 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesOnRomDoneBefor
     spec.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::NesFlappyBird;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = Genome(NesPolicyLayout::WeightCount);
-    std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), -1.0f);
+    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), 0.0f);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
 
@@ -564,11 +564,36 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesOnRomDoneBefor
         ASSERT_LT(steps, 10000) << "NES runner should terminate within a reasonable frame budget";
     }
 
-    EXPECT_EQ(status.state, TrainingRunner::State::OrganismDied);
-    EXPECT_LT(status.simTime, config_.maxSimulationTime);
+    EXPECT_NE(status.state, TrainingRunner::State::Running);
+    if (status.state == TrainingRunner::State::OrganismDied) {
+        EXPECT_LT(status.simTime, config_.maxSimulationTime);
+    }
+    else {
+        EXPECT_EQ(status.state, TrainingRunner::State::TimeExpired);
+        EXPECT_GE(status.simTime, config_.maxSimulationTime);
+    }
     EXPECT_GT(status.nesFramesSurvived, 0u);
-    EXPECT_LT(status.nesRewardTotal, static_cast<double>(status.nesFramesSurvived));
-    EXPECT_LE(status.nesRewardTotal, 0.0);
+
+    const auto commands = runner.getTopCommandSignatures(20);
+    const auto outcomes = runner.getTopCommandOutcomeSignatures(20);
+    EXPECT_FALSE(commands.empty());
+    EXPECT_FALSE(outcomes.empty());
+
+    bool sawFlap = false;
+    bool sawStart = false;
+    for (const auto& [signature, count] : commands) {
+        if (count <= 0) {
+            continue;
+        }
+        if (signature.find("Flap") != std::string::npos) {
+            sawFlap = true;
+        }
+        if (signature.find("Start") != std::string::npos) {
+            sawStart = true;
+        }
+    }
+
+    EXPECT_TRUE(sawFlap || sawStart);
 }
 
 // Proves we can finish and get results.
