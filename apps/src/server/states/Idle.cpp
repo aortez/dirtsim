@@ -36,10 +36,7 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
     }
 
     if (auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig)) {
-        clockConfig->timezoneIndex = static_cast<uint8_t>(std::clamp(
-            dsm.getUserSettings().timezoneIndex,
-            0,
-            static_cast<int>(ClockScenario::TIMEZONES.size()) - 1));
+        *clockConfig = dsm.getUserSettings().clockScenarioConfig;
     }
 
     return scenarioConfig;

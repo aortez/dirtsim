@@ -202,13 +202,9 @@ UserSettings sanitizeUserSettings(
         changed = true;
     };
 
-    if (settings.timezoneIndex < 0) {
-        settings.timezoneIndex = 0;
-        recordUpdate("timezoneIndex clamped to 0");
-    }
-    else if (settings.timezoneIndex > getMaxTimezoneIndex()) {
-        settings.timezoneIndex = getMaxTimezoneIndex();
-        recordUpdate("timezoneIndex clamped to maximum timezone");
+    if (settings.clockScenarioConfig.timezoneIndex > getMaxTimezoneIndex()) {
+        settings.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(getMaxTimezoneIndex());
+        recordUpdate("clockScenarioConfig.timezoneIndex clamped to maximum timezone");
     }
 
     if (settings.volumePercent < 0) {
@@ -372,11 +368,22 @@ UserSettings loadUserSettingsFromDisk(
         nlohmann::json json;
         file >> json;
         UserSettings parsed = json.get<UserSettings>();
+        bool migratedLegacyTimezoneIndex = false;
+        if (json.contains("timezoneIndex") && json["timezoneIndex"].is_number_integer()) {
+            const int legacyTimezoneIndex = json["timezoneIndex"].get<int>();
+            parsed.clockScenarioConfig.timezoneIndex =
+                static_cast<uint8_t>(std::clamp(legacyTimezoneIndex, 0, getMaxTimezoneIndex()));
+            migratedLegacyTimezoneIndex = true;
+        }
 
         bool changed = false;
         std::vector<std::string> updates;
         UserSettings sanitized =
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
+        if (migratedLegacyTimezoneIndex) {
+            updates.push_back("migrated timezoneIndex to clockScenarioConfig.timezoneIndex");
+            changed = true;
+        }
         if (changed) {
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
@@ -1055,6 +1062,35 @@ const UserSettings& StateMachine::getUserSettings() const
     return pImpl->userSettings_;
 }
 
+Result<std::monostate, std::string> StateMachine::updateClockScenarioUserSettings(
+    const Config::Clock& config, bool persistToDisk)
+{
+    UserSettings updated = pImpl->userSettings_;
+    updated.clockScenarioConfig = config;
+
+    bool changed = false;
+    std::vector<std::string> updates;
+    const UserSettings sanitized = sanitizeUserSettings(
+        updated, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
+
+    if (persistToDisk && !persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
+        return Result<std::monostate, std::string>::error("Failed to persist user settings");
+    }
+
+    if (changed) {
+        for (const auto& update : updates) {
+            LOG_WARN(State, "Clock settings update: {}", update);
+        }
+    }
+
+    pImpl->userSettings_ = sanitized;
+
+    const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+    broadcastEventData(Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
 {
     std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
@@ -1556,8 +1592,8 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         UserSettings patched = pImpl->userSettings_;
-        if (cwc.command.timezoneIndex.has_value()) {
-            patched.timezoneIndex = *cwc.command.timezoneIndex;
+        if (cwc.command.clockScenarioConfig.has_value()) {
+            patched.clockScenarioConfig = *cwc.command.clockScenarioConfig;
         }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;

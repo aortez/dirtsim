@@ -18,7 +18,7 @@ DEFINE_API_NAME(UserSettingsPatch);
 struct Okay;
 
 struct Command {
-    std::optional<int> timezoneIndex = std::nullopt;
+    std::optional<Config::Clock> clockScenarioConfig = std::nullopt;
     std::optional<int> volumePercent = std::nullopt;
     std::optional<Scenario::EnumType> defaultScenario = std::nullopt;
     std::optional<StartMenuIdleAction> startMenuIdleAction = std::nullopt;
@@ -33,7 +33,7 @@ struct Command {
 
     bool isEmpty() const
     {
-        return !timezoneIndex.has_value() && !volumePercent.has_value()
+        return !clockScenarioConfig.has_value() && !volumePercent.has_value()
             && !defaultScenario.has_value() && !startMenuIdleAction.has_value()
             && !startMenuIdleTimeoutMs.has_value() && !trainingSpec.has_value()
             && !evolutionConfig.has_value() && !mutationConfig.has_value()

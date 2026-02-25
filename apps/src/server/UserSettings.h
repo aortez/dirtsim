@@ -4,6 +4,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingResumePolicy.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/ClockConfig.h"
 #include <nlohmann/json_fwd.hpp>
 #include <zpp_bits.h>
 
@@ -16,7 +17,7 @@ enum class StartMenuIdleAction : uint8_t {
 };
 
 struct UserSettings {
-    int timezoneIndex = 2;
+    Config::Clock clockScenarioConfig;
     int volumePercent = 20;
     Scenario::EnumType defaultScenario = Scenario::EnumType::Sandbox;
     StartMenuIdleAction startMenuIdleAction = StartMenuIdleAction::ClockScenario;

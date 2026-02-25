@@ -3,6 +3,7 @@
 #include "../MaterialType.h"
 #include "clock_scenario/GlowConfig.h"
 
+#include <nlohmann/json_fwd.hpp>
 #include <zpp_bits.h>
 
 namespace DirtSim::Config {
@@ -47,5 +48,8 @@ struct Clock {
     uint8_t targetDigitHeightPercent = 0;
     uint8_t timezoneIndex = 2;
 };
+
+void from_json(const nlohmann::json& j, Clock& config);
+void to_json(nlohmann::json& j, const Clock& config);
 
 } // namespace DirtSim::Config

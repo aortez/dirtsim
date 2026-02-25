@@ -471,7 +471,8 @@ void StartMenuSettingsPanel::updateResetButtonEnabled()
 void StartMenuSettingsPanel::updateTimezoneButtonText()
 {
     const int maxIndex = static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
-    const int clampedIndex = std::clamp(settings_.timezoneIndex, 0, maxIndex);
+    const int clampedIndex =
+        std::clamp(static_cast<int>(settings_.clockScenarioConfig.timezoneIndex), 0, maxIndex);
     const char* label = ClockScenario::TIMEZONES[clampedIndex].label;
     setActionButtonText(timezoneButton_, std::string("Timezone: ") + label);
 }
@@ -685,7 +686,7 @@ void StartMenuSettingsPanel::onTimezoneSelected(lv_event_t* e)
         return;
     }
 
-    self->settings_.timezoneIndex = it->second;
+    self->settings_.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(it->second);
     self->updateTimezoneButtonText();
 
     if (self->viewController_) {

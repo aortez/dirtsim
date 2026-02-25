@@ -764,6 +764,9 @@ void Evolution::onEnter(StateMachine& dsm)
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     scenarioConfigOverride_.reset();
+    if (trainingSpec.scenarioId == Scenario::EnumType::Clock) {
+        scenarioConfigOverride_ = dsm.getUserSettings().clockScenarioConfig;
+    }
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
@@ -865,7 +868,7 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     return Idle{};
 }
 
-Any Evolution::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
+Any Evolution::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::ScenarioConfigSet::Response;
 
@@ -899,6 +902,18 @@ Any Evolution::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& /*d
         if (playbackResult.isError()) {
             cwc.sendResponse(Response::error(ApiError(playbackResult.errorValue())));
             return std::move(*this);
+        }
+    }
+
+    if (configScenarioId == Scenario::EnumType::Clock) {
+        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
+            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig, true);
+            if (syncResult.isError()) {
+                LOG_WARN(
+                    State,
+                    "Evolution: Applied clock override, but failed to persist settings: {}",
+                    syncResult.errorValue());
+            }
         }
     }
 

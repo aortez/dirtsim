@@ -95,15 +95,14 @@ uint8_t mapGamepadStateToNesButtons(const GamepadState& state)
     return result;
 }
 
-void applyUserClockTimezoneToConfig(ScenarioConfig& config, const UserSettings& userSettings)
+void applyUserClockConfigToConfig(ScenarioConfig& config, const UserSettings& userSettings)
 {
     auto* clockConfig = std::get_if<Config::Clock>(&config);
     if (!clockConfig) {
         return;
     }
 
-    clockConfig->timezoneIndex = static_cast<uint8_t>(std::clamp(
-        userSettings.timezoneIndex, 0, static_cast<int>(ClockScenario::TIMEZONES.size()) - 1));
+    *clockConfig = userSettings.clockScenarioConfig;
 }
 
 Vector2i resolveSeedPlacement(World& world, Vector2i requested)
@@ -261,7 +260,7 @@ void SimRunning::onEnter(StateMachine& dsm)
             if (getScenarioId(dsm.serverConfig->startupConfig) == defaultScenarioId) {
                 scenarioConfig = dsm.serverConfig->startupConfig;
             }
-            applyUserClockTimezoneToConfig(scenarioConfig, dsm.getUserSettings());
+            applyUserClockConfigToConfig(scenarioConfig, dsm.getUserSettings());
             scenario->setConfig(scenarioConfig, *world);
 
             // Run scenario setup to initialize world.
@@ -918,7 +917,7 @@ State::Any SimRunning::onEvent(const Api::Reset::Cwc& cwc, StateMachine& /*dsm*/
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::ScenarioConfigSet::Response;
 
@@ -945,6 +944,18 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
 
     // Update scenario's config (scenario is source of truth).
     scenario->setConfig(cwc.command.config, *world);
+
+    if (scenario_id == Scenario::EnumType::Clock) {
+        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
+            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig, true);
+            if (syncResult.isError()) {
+                LOG_WARN(
+                    State,
+                    "Scenario config updated, but failed to persist clock settings: {}",
+                    syncResult.errorValue());
+            }
+        }
+    }
 
     LOG_INFO(State, "Scenario config updated for '{}'", toString(scenario_id));
 
@@ -989,7 +1000,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     // Get scenario's default config and apply it.
     ScenarioConfig defaultConfig = newScenario->getConfig();
-    applyUserClockTimezoneToConfig(defaultConfig, dsm.getUserSettings());
+    applyUserClockConfigToConfig(defaultConfig, dsm.getUserSettings());
     newScenario->setConfig(defaultConfig, *world);
 
     // Run scenario setup.

@@ -59,7 +59,7 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     return std::move(*this);
 }
 
-State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::ScenarioConfigSet::Response;
 
@@ -68,6 +68,18 @@ State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachi
 
     // Update scenario's config.
     previousState.scenario->setConfig(cwc.command.config, *previousState.world);
+
+    if (previousState.scenario_id == Scenario::EnumType::Clock) {
+        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
+            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig, true);
+            if (syncResult.isError()) {
+                LOG_WARN(
+                    State,
+                    "Scenario config updated, but failed to persist clock settings: {}",
+                    syncResult.errorValue());
+            }
+        }
+    }
 
     LOG_INFO(State, "Scenario config updated for '{}'", toString(previousState.scenario_id));
 

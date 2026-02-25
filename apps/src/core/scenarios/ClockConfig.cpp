@@ -1,4 +1,5 @@
 #include "ClockConfig.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim::Config {
 
@@ -23,6 +24,16 @@ const char* getDisplayName(ClockFont font)
             return "7-Seg Tall";
     }
     return "Unknown";
+}
+
+void from_json(const nlohmann::json& j, Clock& config)
+{
+    config = ReflectSerializer::from_json<Clock>(j);
+}
+
+void to_json(nlohmann::json& j, const Clock& config)
+{
+    j = ReflectSerializer::to_json(config);
 }
 
 } // namespace DirtSim::Config
