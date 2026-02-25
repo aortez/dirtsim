@@ -523,6 +523,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StopButtonPress.cpp
     src/ui/state-machine/api/StreamStart.cpp
     src/ui/state-machine/api/SynthKeyEvent.cpp
+    src/ui/state-machine/api/TrainingActiveScenarioControlsShow.cpp
     src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
     src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp

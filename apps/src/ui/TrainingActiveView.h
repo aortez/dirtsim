@@ -71,6 +71,7 @@ public:
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
     void updateScenarioConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config);
+    void showScenarioControlsOverlay();
 
     bool isTrainingResultModalVisible() const;
     Starfield::Snapshot captureStarfieldSnapshot() const;

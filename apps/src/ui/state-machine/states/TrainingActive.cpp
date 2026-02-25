@@ -540,6 +540,17 @@ State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, 
     return std::move(*this);
 }
 
+State::Any TrainingActive::onEvent(
+    const UiApi::TrainingActiveScenarioControlsShow::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::TrainingActiveScenarioControlsShow::Response;
+
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->showScenarioControlsOverlay();
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
 State::Any TrainingActive::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm)
 {
     auto nextState = onEvent(QuitTrainingClickedEvent{}, sm);

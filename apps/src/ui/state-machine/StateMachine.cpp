@@ -8,6 +8,7 @@
 #include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
 #include "api/SynthKeyEvent.h"
+#include "api/TrainingActiveScenarioControlsShow.h"
 #include "api/TrainingConfigShowEvolution.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
@@ -111,6 +112,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingStart::Cwc>(
         [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingActiveScenarioControlsShow::Cwc>(
+        [this](UiApi::TrainingActiveScenarioControlsShow::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingConfigShowEvolution::Cwc>(
         [this](UiApi::TrainingConfigShowEvolution::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
@@ -274,6 +277,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StopButtonPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SynthKeyEvent);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingActiveScenarioControlsShow);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingConfigShowEvolution);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingQuit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);

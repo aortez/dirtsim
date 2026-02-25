@@ -757,6 +757,17 @@ void TrainingActiveView::updateScenarioConfig(
     }
 }
 
+void TrainingActiveView::showScenarioControlsOverlay()
+{
+    if (!hasScenarioState_) {
+        updateScenarioButtonState();
+        return;
+    }
+
+    scenarioControlsOverlayVisible_ = true;
+    refreshScenarioControlsOverlay();
+}
+
 void TrainingActiveView::createScenarioControlsOverlay()
 {
     if (!contentRow_ || scenarioControlsOverlay_) {
@@ -828,26 +839,57 @@ void TrainingActiveView::refreshScenarioControlsOverlay()
     }
 
     constexpr int panelGapPx = 8;
-    constexpr int panelPreferredWidthPx = 340;
-    constexpr int panelMinWidthPx = 240;
-    constexpr int panelMinHeightPx = 220;
-    constexpr int panelMaxHeightPx = 560;
+    constexpr int panelDesiredWidthPx = 340;
+    constexpr int panelDesiredHeightPx = 420;
+    constexpr int panelMinWidthPx = 180;
+    constexpr int panelMinHeightPx = 140;
 
     const int contentWidth = lv_obj_get_width(contentRow_);
     const int contentHeight = lv_obj_get_height(contentRow_);
-
-    int panelX = panelGapPx;
-    int panelY = panelGapPx;
-    if (streamPanel_ && scenarioControlsButton_) {
-        panelX = lv_obj_get_x(streamPanel_) + lv_obj_get_x(scenarioControlsButton_)
-            + lv_obj_get_width(scenarioControlsButton_) + panelGapPx;
-        panelY = lv_obj_get_y(streamPanel_) + lv_obj_get_y(scenarioControlsButton_);
+    if (contentWidth <= (2 * panelGapPx) || contentHeight <= (2 * panelGapPx)) {
+        return;
     }
 
-    const int availableWidth = std::max(panelMinWidthPx, contentWidth - panelX - panelGapPx);
-    const int panelWidth = std::clamp(panelPreferredWidthPx, panelMinWidthPx, availableWidth);
-    const int panelHeight =
-        std::clamp(contentHeight - panelY - panelGapPx, panelMinHeightPx, panelMaxHeightPx);
+    int anchorX = panelGapPx;
+    int anchorRightX = panelGapPx;
+    if (streamPanel_ && scenarioControlsButton_) {
+        anchorX = lv_obj_get_x(streamPanel_) + lv_obj_get_x(scenarioControlsButton_);
+        anchorRightX = anchorX + lv_obj_get_width(scenarioControlsButton_);
+    }
+    else {
+        anchorRightX = anchorX;
+    }
+
+    const int maxPanelWidth = std::max(1, contentWidth - (2 * panelGapPx));
+    int panelWidth = std::min(panelDesiredWidthPx, maxPanelWidth);
+    if (maxPanelWidth >= panelMinWidthPx) {
+        panelWidth = std::max(panelWidth, panelMinWidthPx);
+    }
+
+    const int maxPanelHeight = std::max(1, contentHeight - (2 * panelGapPx));
+    int panelHeight = std::min(panelDesiredHeightPx, maxPanelHeight);
+    if (maxPanelHeight >= panelMinHeightPx) {
+        panelHeight = std::max(panelHeight, panelMinHeightPx);
+    }
+
+    const int rightX = anchorRightX + panelGapPx;
+    const int leftX = anchorX - panelGapPx - panelWidth;
+    const bool fitsRight = rightX + panelWidth + panelGapPx <= contentWidth;
+    const bool fitsLeft = leftX >= panelGapPx;
+
+    int panelX = panelGapPx;
+    if (fitsRight) {
+        panelX = rightX;
+    }
+    else if (fitsLeft) {
+        panelX = leftX;
+    }
+    else {
+        panelX = std::clamp(
+            rightX, panelGapPx, std::max(panelGapPx, contentWidth - panelWidth - panelGapPx));
+    }
+    // Keep the flyout pinned to the top edge so it doesn't drift down and clip off-screen.
+    const int panelY = panelGapPx;
 
     lv_obj_set_size(scenarioControlsOverlay_, panelWidth, panelHeight);
     lv_obj_set_pos(scenarioControlsOverlay_, panelX, panelY);
@@ -1521,8 +1563,7 @@ void TrainingActiveView::onScenarioControlsClicked(lv_event_t* e)
         return;
     }
 
-    self->scenarioControlsOverlayVisible_ = true;
-    self->refreshScenarioControlsOverlay();
+    self->showScenarioControlsOverlay();
 }
 
 void TrainingActiveView::onStopTrainingClicked(lv_event_t* e)
