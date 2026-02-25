@@ -102,7 +102,7 @@ public:
     UserSettings& getUserSettings();
     const UserSettings& getUserSettings() const;
     Result<std::monostate, std::string> updateClockScenarioUserSettings(
-        const Config::Clock& config, bool persistToDisk = true);
+        const Config::Clock& config);
 
     void storeTrainingResult(const Api::TrainingResult& result);
 

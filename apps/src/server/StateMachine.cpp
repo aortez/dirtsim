@@ -1063,7 +1063,7 @@ const UserSettings& StateMachine::getUserSettings() const
 }
 
 Result<std::monostate, std::string> StateMachine::updateClockScenarioUserSettings(
-    const Config::Clock& config, bool persistToDisk)
+    const Config::Clock& config)
 {
     UserSettings updated = pImpl->userSettings_;
     updated.clockScenarioConfig = config;
@@ -1073,7 +1073,7 @@ Result<std::monostate, std::string> StateMachine::updateClockScenarioUserSetting
     const UserSettings sanitized = sanitizeUserSettings(
         updated, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
 
-    if (persistToDisk && !persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
+    if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
         return Result<std::monostate, std::string>::error("Failed to persist user settings");
     }
 

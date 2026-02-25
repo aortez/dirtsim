@@ -71,7 +71,7 @@ State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachi
 
     if (previousState.scenario_id == Scenario::EnumType::Clock) {
         if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
-            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig, true);
+            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig);
             if (syncResult.isError()) {
                 LOG_WARN(
                     State,
