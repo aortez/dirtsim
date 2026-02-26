@@ -492,11 +492,13 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
         TimeSeriesPlotWidget::Config{
             .title = "Robust Evaluated",
             .lineColor = lv_color_hex(0x666666),
+            .secondaryLineColor = lv_color_hex(0x66BBFF),
             .highlightColor = lv_color_hex(0xFF4FA3),
             .defaultMinY = 0.0f,
             .defaultMaxY = 1.0f,
             .valueScale = 100.0f,
             .autoScaleY = true,
+            .showSecondarySeries = true,
             .showHighlights = true,
             .highlightMarkerSizePx = 8,
         });
@@ -1272,10 +1274,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 }
 
 void TrainingActiveView::updateFitnessPlots(
-    const std::vector<float>& robustFitnessSeries, const std::vector<uint8_t>& robustHighMask)
+    const std::vector<float>& robustFitnessSeries,
+    const std::vector<float>& averageFitnessSeries,
+    const std::vector<uint8_t>& robustHighMask)
 {
     if (bestFitnessPlot_) {
-        bestFitnessPlot_->setSamplesWithHighlights(robustFitnessSeries, robustHighMask);
+        bestFitnessPlot_->setSamplesWithSecondaryAndHighlights(
+            robustFitnessSeries, averageFitnessSeries, robustHighMask);
     }
     if (fitnessPlotsPanel_) {
         lv_obj_invalidate(fitnessPlotsPanel_);

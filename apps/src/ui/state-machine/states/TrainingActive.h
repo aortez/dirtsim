@@ -56,6 +56,7 @@ struct TrainingActive {
     bool trainingPaused_ = false;
     bool hasPlottedRobustBestFitness_ = false;
     float plottedRobustBestFitness_ = 0.0f;
+    std::vector<float> plotAverageSeries_;
     std::vector<float> plotBestSeries_;
     std::vector<uint8_t> plotBestSeriesRobustHighMask_;
     uint64_t lastPlottedRobustEvaluationCount_ = 0;

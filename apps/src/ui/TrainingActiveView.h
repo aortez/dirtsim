@@ -50,7 +50,9 @@ public:
 
     void updateProgress(const Api::EvolutionProgress& progress);
     void updateFitnessPlots(
-        const std::vector<float>& robustFitnessSeries, const std::vector<uint8_t>& robustHighMask);
+        const std::vector<float>& robustFitnessSeries,
+        const std::vector<float>& averageFitnessSeries,
+        const std::vector<uint8_t>& robustHighMask);
     void clearFitnessPlots();
     void updateAnimations();
 

@@ -79,9 +79,11 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
     state.hasPlottedRobustBestFitness_ = false;
     state.plottedRobustBestFitness_ = 0.0f;
+    state.plotAverageSeries_.clear();
     state.plotBestSeries_.clear();
     state.plotBestSeriesRobustHighMask_.clear();
 
+    state.plotAverageSeries_.push_back(0.0f);
     state.plotBestSeries_.push_back(0.0f);
     state.plotBestSeriesRobustHighMask_.push_back(0);
 
@@ -98,7 +100,8 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
-    state.view_->updateFitnessPlots(state.plotBestSeries_, state.plotBestSeriesRobustHighMask_);
+    state.view_->updateFitnessPlots(
+        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesRobustHighMask_);
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -293,6 +296,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 
     if (robustSampleAppended || nonRobustGenerationCompleted) {
         const float plottedValue = static_cast<float>(progress.bestFitnessThisGen);
+        const float averagePlottedValue = static_cast<float>(progress.averageFitness);
+        plotAverageSeries_.push_back(averagePlottedValue);
         plotBestSeries_.push_back(plottedValue);
 
         bool isNewRobustHigh = false;
@@ -308,6 +313,13 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
         plotBestSeriesRobustHighMask_.push_back(isNewRobustHigh ? 1 : 0);
         if (plotBestSeries_.size() > plotRefreshPointCount) {
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
+            if (plotAverageSeries_.size() > pruneCount) {
+                plotAverageSeries_.erase(
+                    plotAverageSeries_.begin(), plotAverageSeries_.begin() + pruneCount);
+            }
+            else {
+                plotAverageSeries_.clear();
+            }
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
             if (plotBestSeriesRobustHighMask_.size() > pruneCount) {
                 plotBestSeriesRobustHighMask_.erase(
@@ -319,7 +331,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
             }
         }
 
-        view_->updateFitnessPlots(plotBestSeries_, plotBestSeriesRobustHighMask_);
+        view_->updateFitnessPlots(
+            plotBestSeries_, plotAverageSeries_, plotBestSeriesRobustHighMask_);
     }
 
     return std::move(*this);
