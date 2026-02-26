@@ -296,7 +296,7 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 
     if (robustSampleAppended || nonRobustGenerationCompleted) {
         const float plottedValue = static_cast<float>(progress.bestFitnessThisGen);
-        const float averagePlottedValue = static_cast<float>(progress.averageFitness);
+        const float averagePlottedValue = static_cast<float>(progress.lastGenerationAverageFitness);
         plotAverageSeries_.push_back(averagePlottedValue);
         plotBestSeries_.push_back(plottedValue);
 

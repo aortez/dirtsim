@@ -310,7 +310,8 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     p0Complete.progress.lastCompletedGeneration = 5;
     p0Complete.progress.bestThisGenSource = "seed";
     p0Complete.progress.bestFitnessThisGen = 9.9;
-    p0Complete.progress.averageFitness = 5.5;
+    p0Complete.progress.averageFitness = 0.1;
+    p0Complete.progress.lastGenerationAverageFitness = 5.5;
     p0Complete.progress.robustEvaluationCount = 0;
     dispatchProgress(p0Complete);
     ASSERT_EQ(trainingState.plotAverageSeries_.size(), 2u);
@@ -321,6 +322,7 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     EvolutionProgressReceivedEvent p0CompleteRepeat = p0Complete;
     p0CompleteRepeat.progress.bestFitnessThisGen = 8.8;
     p0CompleteRepeat.progress.averageFitness = 2.2;
+    p0CompleteRepeat.progress.lastGenerationAverageFitness = 4.4;
     dispatchProgress(p0CompleteRepeat);
     EXPECT_EQ(trainingState.plotAverageSeries_.size(), 2u)
         << "Repeated completed generation should not append duplicate points";
@@ -332,7 +334,8 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     p1.progress.currentEval = 50;
     p1.progress.populationSize = 50;
     p1.progress.bestFitnessThisGen = 1.5;
-    p1.progress.averageFitness = 6.2;
+    p1.progress.averageFitness = 0.2;
+    p1.progress.lastGenerationAverageFitness = 6.2;
     p1.progress.robustEvaluationCount = 1;
     dispatchProgress(p1);
     ASSERT_EQ(trainingState.plotAverageSeries_.size(), 3u);
@@ -346,6 +349,7 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     p1Repeat.progress.populationSize = 50;
     p1Repeat.progress.bestFitnessThisGen = 1.4;
     p1Repeat.progress.averageFitness = 6.1;
+    p1Repeat.progress.lastGenerationAverageFitness = 6.0;
     p1Repeat.progress.robustEvaluationCount = 1;
     dispatchProgress(p1Repeat);
     EXPECT_EQ(trainingState.plotAverageSeries_.size(), 3u)
@@ -358,7 +362,8 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     p2.progress.currentEval = 50;
     p2.progress.populationSize = 50;
     p2.progress.bestFitnessThisGen = 0.8;
-    p2.progress.averageFitness = 6.0;
+    p2.progress.averageFitness = 0.3;
+    p2.progress.lastGenerationAverageFitness = 6.0;
     p2.progress.robustEvaluationCount = 2;
     dispatchProgress(p2);
     ASSERT_EQ(trainingState.plotAverageSeries_.size(), 4u);

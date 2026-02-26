@@ -106,6 +106,7 @@ struct Evolution {
     uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
     int lastCompletedGeneration_ = -1;
+    double lastGenerationAverageFitness_ = 0.0;
     double lastGenerationFitnessMin_ = 0.0;
     double lastGenerationFitnessMax_ = 0.0;
     std::vector<uint32_t> lastGenerationFitnessHistogram_;

@@ -1582,6 +1582,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     robustEvaluationCount_ = 0;
     bestThisGenOrigin_ = IndividualOrigin::Unknown;
     lastCompletedGeneration_ = -1;
+    lastGenerationAverageFitness_ = 0.0;
     lastGenerationFitnessMin_ = 0.0;
     lastGenerationFitnessMax_ = 0.0;
     lastGenerationFitnessHistogram_.clear();
@@ -2737,6 +2738,7 @@ void Evolution::captureLastGenerationFitnessDistribution()
     const int evaluatedCount = std::min(currentEval, static_cast<int>(fitnessScores.size()));
     if (evaluatedCount <= 0) {
         lastCompletedGeneration_ = -1;
+        lastGenerationAverageFitness_ = 0.0;
         lastGenerationFitnessMin_ = 0.0;
         lastGenerationFitnessMax_ = 0.0;
         lastGenerationFitnessHistogram_.clear();
@@ -2745,9 +2747,11 @@ void Evolution::captureLastGenerationFitnessDistribution()
 
     double minFitness = fitnessScores[0];
     double maxFitness = fitnessScores[0];
+    double sumFitness = fitnessScores[0];
     for (int i = 1; i < evaluatedCount; ++i) {
         minFitness = std::min(minFitness, fitnessScores[i]);
         maxFitness = std::max(maxFitness, fitnessScores[i]);
+        sumFitness += fitnessScores[i];
     }
 
     std::vector<uint32_t> bins(kFitnessDistributionBinCount, 0);
@@ -2767,6 +2771,7 @@ void Evolution::captureLastGenerationFitnessDistribution()
     }
 
     lastCompletedGeneration_ = generation;
+    lastGenerationAverageFitness_ = sumFitness / static_cast<double>(evaluatedCount);
     lastGenerationFitnessMin_ = minFitness;
     lastGenerationFitnessMax_ = maxFitness;
     lastGenerationFitnessHistogram_ = std::move(bins);
@@ -3003,6 +3008,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .robustEvaluationCount = robustEvaluationCount_,
         .averageFitness = avgFitness,
         .lastCompletedGeneration = lastCompletedGeneration_,
+        .lastGenerationAverageFitness = lastGenerationAverageFitness_,
         .lastGenerationFitnessMin = lastGenerationFitnessMin_,
         .lastGenerationFitnessMax = lastGenerationFitnessMax_,
         .lastGenerationFitnessHistogram = lastGenerationFitnessHistogram_,
