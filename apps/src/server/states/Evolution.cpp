@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/GenomeMetadataUtils.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
+#include "core/organisms/evolution/NesEvaluator.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
@@ -671,7 +672,7 @@ double computeFitnessForRunner(
         if (fitnessBreakdownOut) {
             fitnessBreakdownOut->reset();
         }
-        return status.nesRewardTotal;
+        return NesEvaluator::evaluateFromRewardTotal(status.nesRewardTotal);
     }
 
     const World* world = runner.getWorld();
@@ -683,6 +684,7 @@ double computeFitnessForRunner(
         .commandsAccepted = status.commandsAccepted,
         .commandsRejected = status.commandsRejected,
         .idleCancels = status.idleCancels,
+        .nesRewardTotal = status.nesRewardTotal,
     };
 
     const auto& treeResources = runner.getTreeResourceTotals();

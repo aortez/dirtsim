@@ -455,7 +455,10 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
+    src/core/organisms/evolution/GooseEvaluator.cpp
+    src/core/organisms/evolution/MovementScoring.cpp
     src/core/organisms/evolution/Mutation.cpp
+    src/core/organisms/evolution/NesEvaluator.cpp
     src/core/organisms/evolution/OrganismTracker.cpp
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
