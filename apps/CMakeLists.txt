@@ -339,6 +339,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
+    src/server/api/FitnessBreakdownReport.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp

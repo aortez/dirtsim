@@ -8,6 +8,7 @@
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/FitnessBreakdownReport.h"
 #include "state-machine/Event.h"
 #include "state-machine/EventSink.h"
 #include "ui_builders/LVGLBuilder.h"
@@ -209,6 +210,18 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_font(bestCommandSummaryLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(bestCommandSummaryLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
+
+    lv_obj_t* bestBreakdownTitle = lv_label_create(longTermPanel_);
+    lv_label_set_text(bestBreakdownTitle, "Best Fitness Breakdown");
+    lv_obj_set_style_text_color(bestBreakdownTitle, lv_color_hex(0x99DDFF), 0);
+    lv_obj_set_style_text_font(bestBreakdownTitle, &lv_font_montserrat_14, 0);
+
+    bestFitnessBreakdownLabel_ = lv_label_create(longTermPanel_);
+    lv_obj_set_width(bestFitnessBreakdownLabel_, LV_PCT(100));
+    lv_label_set_long_mode(bestFitnessBreakdownLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(bestFitnessBreakdownLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(bestFitnessBreakdownLabel_, lv_color_hex(0xBBD6E8), 0);
+    lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
 
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
@@ -515,6 +528,7 @@ void TrainingActiveView::destroyUI()
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
+    bestFitnessBreakdownLabel_ = nullptr;
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
@@ -572,7 +586,8 @@ void TrainingActiveView::updateBestSnapshot(
     int commandsAccepted,
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
-    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
+    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
+    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown)
 {
     bestSnapshotWorldData_ = std::make_unique<WorldData>(worldData);
     bestSnapshotFitness_ = fitness;
@@ -694,6 +709,76 @@ void TrainingActiveView::updateBestSnapshot(
             }
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
+    }
+    if (bestFitnessBreakdownLabel_) {
+        std::ostringstream summary;
+        summary << std::fixed << std::setprecision(4);
+        if (!fitnessBreakdown.has_value()) {
+            summary << "Not available.";
+        }
+        else {
+            const auto& breakdown = fitnessBreakdown.value();
+            const auto formatGroupLabel = [](std::string group) {
+                if (group.empty()) {
+                    return std::string("Other");
+                }
+                bool uppercaseNext = true;
+                for (char& c : group) {
+                    if (c == '_' || c == '-') {
+                        c = ' ';
+                        uppercaseNext = true;
+                        continue;
+                    }
+                    if (uppercaseNext && c >= 'a' && c <= 'z') {
+                        c = static_cast<char>(c - ('a' - 'A'));
+                    }
+                    uppercaseNext = false;
+                }
+                return group;
+            };
+            summary << "Model: " << breakdown.modelId << " v" << breakdown.modelVersion << "\n";
+            summary << "Formula: " << breakdown.totalFormula << "\n";
+            summary << "Total Fitness: " << breakdown.totalFitness;
+            if (!breakdown.metrics.empty()) {
+                summary << "\n\nMetrics:";
+                std::vector<std::string> groupOrder;
+                std::unordered_map<std::string, std::vector<const Api::FitnessMetric*>>
+                    metricsByGroup;
+                metricsByGroup.reserve(breakdown.metrics.size());
+                for (const auto& metric : breakdown.metrics) {
+                    const std::string group = metric.group.empty() ? "other" : metric.group;
+                    auto [it, inserted] =
+                        metricsByGroup.emplace(group, std::vector<const Api::FitnessMetric*>{});
+                    if (inserted) {
+                        groupOrder.push_back(group);
+                    }
+                    it->second.push_back(&metric);
+                }
+
+                for (size_t groupIndex = 0; groupIndex < groupOrder.size(); ++groupIndex) {
+                    const std::string& group = groupOrder[groupIndex];
+                    summary << "\n\n" << formatGroupLabel(group) << ":";
+                    const auto& metrics = metricsByGroup[group];
+                    for (const Api::FitnessMetric* metric : metrics) {
+                        summary << "\n- " << metric->label << ": raw=" << metric->raw
+                                << ", norm=" << metric->normalized;
+                        if (metric->reference.has_value()) {
+                            summary << ", ref=" << metric->reference.value();
+                        }
+                        if (metric->weight.has_value()) {
+                            summary << ", weight=" << metric->weight.value();
+                        }
+                        if (metric->contribution.has_value()) {
+                            summary << ", contrib=" << metric->contribution.value();
+                        }
+                        if (!metric->unit.empty()) {
+                            summary << " " << metric->unit;
+                        }
+                    }
+                }
+            }
+        }
+        lv_label_set_text(bestFitnessBreakdownLabel_, summary.str().c_str());
     }
     if (!userSettings_.bestPlaybackEnabled) {
         scheduleBestRender();
@@ -1243,6 +1328,9 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
+        }
+        if (bestFitnessBreakdownLabel_) {
+            lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
         }
         scenarioControls_.reset();
         currentScenarioConfig_ = Config::Empty{};

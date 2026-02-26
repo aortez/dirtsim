@@ -378,7 +378,8 @@ State::Any TrainingActive::onEvent(
         evt.snapshot.commandsAccepted,
         evt.snapshot.commandsRejected,
         topCommandSignatures,
-        topCommandOutcomeSignatures);
+        topCommandOutcomeSignatures,
+        evt.snapshot.fitnessBreakdown);
 
     return std::move(*this);
 }

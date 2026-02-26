@@ -22,7 +22,8 @@ struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
-}
+struct FitnessBreakdownReport;
+} // namespace Api
 
 namespace Network {
 class WebSocketServiceInterface;
@@ -61,7 +62,8 @@ public:
         int commandsAccepted,
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
-        const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures);
+        const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
+        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown);
     void updateBestPlaybackFrame(const WorldData& worldData, double fitness, int generation);
 
     void setEvolutionStarted(bool started);
@@ -147,6 +149,7 @@ private:
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
     lv_obj_t* bestCommandSummaryLabel_ = nullptr;
+    lv_obj_t* bestFitnessBreakdownLabel_ = nullptr;
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;

@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "server/Event.h"
+#include "server/api/FitnessBreakdownReport.h"
 
 #include <atomic>
 #include <chrono>
@@ -133,6 +134,7 @@ struct Evolution {
         std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
         std::optional<EvaluationSnapshot> snapshot;
         std::unordered_map<std::string, TimerAggregate> timerStats;
+        std::optional<Api::FitnessBreakdownReport> fitnessBreakdown;
         std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
     };
 
@@ -165,8 +167,8 @@ struct Evolution {
     std::unique_ptr<TrainingRunner> visibleRunner_;
     int visibleEvalIndex_ = -1;
     bool visibleEvalIsRobustness_ = false;
-    bool visibleDuckSecondPassActive_ = false;
-    std::optional<WorkerResult> visibleDuckPrimaryPassResult_;
+    std::vector<WorkerResult> visibleDuckPassResults_;
+    std::optional<bool> visibleDuckPrimarySpawnLeftFirst_ = std::nullopt;
     int visibleRobustSampleOrdinal_ = 0;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
@@ -291,6 +293,7 @@ private:
     int pendingBestRobustnessIndex_ = -1;
     double pendingBestRobustnessFirstSample_ = 0.0;
     std::optional<EvaluationSnapshot> pendingBestSnapshot_;
+    std::optional<Api::FitnessBreakdownReport> pendingBestSnapshotFitnessBreakdown_;
     int pendingBestSnapshotCommandsAccepted_ = 0;
     int pendingBestSnapshotCommandsRejected_ = 0;
     std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandSignatures_;
