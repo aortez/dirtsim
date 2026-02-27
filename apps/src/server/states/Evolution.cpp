@@ -43,7 +43,6 @@ constexpr size_t kTopCommandSignatureLimit = 20;
 constexpr size_t kTelemetrySignatureLimit = 6;
 constexpr size_t kFitnessDistributionBinCount = 16;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
-constexpr double kDuckClockGenerationSideImbalancePenalty = 0.25;
 constexpr size_t kRobustFitnessSampleWindow = 7;
 
 uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
@@ -122,9 +121,9 @@ std::optional<bool> resolvePrimaryDuckClockSpawnSide(
     return side;
 }
 
-int duckClockPassCountForTask(Evolution::WorkerResult::TaskType taskType)
+int duckClockPassCountForTask(Evolution::WorkerResult::TaskType /*taskType*/)
 {
-    return taskType == Evolution::WorkerResult::TaskType::GenerationEval ? 4 : 2;
+    return 4;
 }
 
 std::optional<bool> resolveDuckClockSpawnSideForPass(
@@ -892,41 +891,6 @@ Evolution::WorkerResult buildWorkerResultFromPass(
     return result;
 }
 
-void mergeDuckClockEvaluationPasses(
-    Evolution::WorkerResult& primaryResult,
-    Evolution::WorkerResult secondaryResult,
-    bool includeGenerationDetails)
-{
-    const double primaryFitness = primaryResult.fitness;
-    const bool secondaryIsWorse = secondaryResult.fitness < primaryFitness;
-
-    primaryResult.simTime += secondaryResult.simTime;
-    primaryResult.fitness = std::min(primaryFitness, secondaryResult.fitness);
-
-    if (!includeGenerationDetails) {
-        primaryResult.commandsAccepted += secondaryResult.commandsAccepted;
-        primaryResult.commandsRejected += secondaryResult.commandsRejected;
-        return;
-    }
-
-    if (secondaryIsWorse) {
-        primaryResult.commandsAccepted = secondaryResult.commandsAccepted;
-        primaryResult.commandsRejected = secondaryResult.commandsRejected;
-        primaryResult.topCommandSignatures = std::move(secondaryResult.topCommandSignatures);
-        primaryResult.topCommandOutcomeSignatures =
-            std::move(secondaryResult.topCommandOutcomeSignatures);
-        primaryResult.snapshot = std::move(secondaryResult.snapshot);
-        primaryResult.fitnessBreakdown = std::move(secondaryResult.fitnessBreakdown);
-        primaryResult.treeFitnessBreakdown = std::move(secondaryResult.treeFitnessBreakdown);
-        auto primaryTimerStats = std::move(primaryResult.timerStats);
-        primaryResult.timerStats = std::move(secondaryResult.timerStats);
-        mergeTimerStats(primaryResult.timerStats, primaryTimerStats);
-        return;
-    }
-
-    mergeTimerStats(primaryResult.timerStats, secondaryResult.timerStats);
-}
-
 std::optional<double> averageOptionalDouble(
     const std::optional<double>& first, const std::optional<double>& second)
 {
@@ -1057,11 +1021,8 @@ Evolution::WorkerResult mergeDuckClockGenerationPasses(
 {
     const double primarySideAverage = 0.5 * (primaryPassOne.fitness + primaryPassTwo.fitness);
     const double oppositeSideAverage = 0.5 * (oppositePassOne.fitness + oppositePassTwo.fitness);
-    const double sideMean = 0.5 * (primarySideAverage + oppositeSideAverage);
-    const double sideImbalance = std::abs(primarySideAverage - oppositeSideAverage);
     const bool usePrimarySide = primarySideAverage <= oppositeSideAverage;
-    const double finalFitness =
-        sideMean - (kDuckClockGenerationSideImbalancePenalty * sideImbalance);
+    const double finalFitness = std::min(primarySideAverage, oppositeSideAverage);
 
     const Evolution::WorkerResult& chosenFirst = usePrimarySide ? primaryPassOne : oppositePassOne;
     const Evolution::WorkerResult& chosenSecond = usePrimarySide ? primaryPassTwo : oppositePassTwo;
@@ -1933,25 +1894,14 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
                 return;
             }
 
-            WorkerResult result;
-            if (passCount == 2) {
-                DIRTSIM_ASSERT(
-                    visibleDuckPassResults_.size() == 2,
-                    "Evolution: duck clock robustness must complete 2 passes");
-                result = std::move(visibleDuckPassResults_[0]);
-                mergeDuckClockEvaluationPasses(
-                    result, std::move(visibleDuckPassResults_[1]), includeGenerationDetails);
-            }
-            else {
-                DIRTSIM_ASSERT(
-                    passCount == 4 && visibleDuckPassResults_.size() == 4,
-                    "Evolution: duck clock generation must complete 4 passes");
-                result = mergeDuckClockGenerationPasses(
-                    visibleDuckPassResults_[0],
-                    visibleDuckPassResults_[1],
-                    visibleDuckPassResults_[2],
-                    visibleDuckPassResults_[3]);
-            }
+            DIRTSIM_ASSERT(
+                passCount == 4 && visibleDuckPassResults_.size() == 4,
+                "Evolution: duck clock evaluation must complete 4 passes");
+            WorkerResult result = mergeDuckClockGenerationPasses(
+                visibleDuckPassResults_[0],
+                visibleDuckPassResults_[1],
+                visibleDuckPassResults_[2],
+                visibleDuckPassResults_[3]);
 
             processResult(dsm, std::move(result));
         }
@@ -2033,14 +1983,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
             includeGenerationDetails));
     }
 
-    if (passCount == 2) {
-        WorkerResult mergedResult = std::move(passResults[0]);
-        mergeDuckClockEvaluationPasses(
-            mergedResult, std::move(passResults[1]), includeGenerationDetails);
-        return mergedResult;
-    }
-
-    DIRTSIM_ASSERT(passCount == 4, "Evolution: duck clock generation pass count must be 4");
+    DIRTSIM_ASSERT(passCount == 4, "Evolution: duck clock pass count must be 4");
     return mergeDuckClockGenerationPasses(
         passResults[0], passResults[1], passResults[2], passResults[3]);
 }

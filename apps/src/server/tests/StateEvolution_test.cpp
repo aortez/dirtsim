@@ -888,6 +888,58 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
         << "Duck clock visible eval should advance only after all four side passes complete";
 }
 
+TEST(StateEvolutionTest, DuckClockRobustSampleWaitsForFourPassesBeforeFinalizing)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    for (int i = 0; i < 3; ++i) {
+        auto tickResult = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(tickResult.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 0)
+            << "Duck clock generation eval should still be in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Robust pass should not finalize before generation eval completes";
+    }
+
+    auto generationCompleteTick = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(generationCompleteTick.has_value());
+    EXPECT_EQ(evolutionState.currentEval, 1);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    for (int i = 0; i < 3; ++i) {
+        auto robustTick = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(robustTick.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 1)
+            << "Duck clock robust sample should stay in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Duck clock robust sample should wait for all four side passes";
+    }
+
+    auto robustFinalizeTick = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_TRUE(robustFinalizeTick.has_value());
+    EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(robustFinalizeTick->getVariant()));
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 1u)
+        << "Duck clock robust sample should finalize after four side passes";
+}
+
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 {
     TestStateMachineFixture fixture;
