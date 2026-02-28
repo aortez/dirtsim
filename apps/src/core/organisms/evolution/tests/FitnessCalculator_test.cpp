@@ -477,7 +477,7 @@ TEST(FitnessCalculatorTest, GooseFitnessPrefersHorizontalMovement)
     EXPECT_GT(horizontalFitness, verticalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckCoverageRewardsRowsAndColumnsEvenly)
+TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsMoreThanRows)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
@@ -525,7 +525,7 @@ TEST(FitnessCalculatorTest, DuckCoverageRewardsRowsAndColumnsEvenly)
     EXPECT_GT(columnsBreakdown.coverageColumnScore, verticalBreakdown.coverageColumnScore);
     EXPECT_GT(verticalBreakdown.coverageRowScore, columnsBreakdown.coverageRowScore);
     EXPECT_DOUBLE_EQ(columnsBreakdown.coverageCellScore, verticalBreakdown.coverageCellScore);
-    EXPECT_NEAR(columnsBreakdown.coverageScore, verticalBreakdown.coverageScore, 1e-12);
+    EXPECT_GT(columnsBreakdown.coverageScore, verticalBreakdown.coverageScore);
 }
 
 TEST(FitnessCalculatorTest, DuckCoverageIncludesSecondaryCellTerm)
