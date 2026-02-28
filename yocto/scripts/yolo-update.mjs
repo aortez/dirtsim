@@ -125,6 +125,15 @@ function unique(items) {
   return out;
 }
 
+function shellQuote(value) {
+  // POSIX shell single-quote escaping.
+  // Example: hello'world -> 'hello'\''world'
+  if (value === '') {
+    return "''";
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function buildYoctoNinjaEnv(buildDir) {
   // Yocto recipes set up PATH so CMake can find cross tools like *-gcc-ar.
   // Fast deploy runs outside bitbake, so we recreate the minimal PATH additions.
@@ -963,8 +972,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
           `scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:${remoteStageDir}/${fileName}"`,
           { stdio: 'pipe' },
         );
-        assetInstallCmds.push(`sudo mkdir -p ${remoteDir}`);
-        assetInstallCmds.push(`sudo cp ${remoteStageDir}/${fileName} ${asset.remote}`);
+        assetInstallCmds.push(`sudo mkdir -p ${shellQuote(remoteDir)}`);
+        assetInstallCmds.push(
+          `sudo cp ${shellQuote(`${remoteStageDir}/${fileName}`)} ${shellQuote(asset.remote)}`,
+        );
         success(`${fileName} transferred`);
       } catch (err) {
         error(`Failed to transfer ${fileName}`);
@@ -993,7 +1004,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
   if (romFixtures.length === 0) {
     info('No NES ROM fixtures found');
   } else {
-    romInstallCmds.push(`sudo mkdir -p ${NES_ROM_REMOTE_DIR}`);
+    romInstallCmds.push(`sudo mkdir -p ${shellQuote(NES_ROM_REMOTE_DIR)}`);
     for (const rom of romFixtures) {
       info(`${rom.name} → ${rom.remote}`);
       if (!dryRun) {
@@ -1002,8 +1013,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
             `scp ${buildScpOptions()} "${rom.local}" "${remoteTarget}:${remoteStageDir}/${rom.name}"`,
             { stdio: 'pipe' },
           );
-          romInstallCmds.push(`sudo cp ${remoteStageDir}/${rom.name} ${rom.remote}`);
-          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${rom.remote}`);
+          romInstallCmds.push(
+            `sudo cp ${shellQuote(`${remoteStageDir}/${rom.name}`)} ${shellQuote(rom.remote)}`,
+          );
+          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${shellQuote(rom.remote)}`);
           success(`${rom.name} transferred`);
         } catch (err) {
           error(`Failed to transfer ${rom.name}`);
