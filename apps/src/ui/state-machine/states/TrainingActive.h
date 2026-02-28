@@ -40,6 +40,7 @@ struct TrainingActive {
     Any onEvent(const TrainingPauseResumeClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm);
+    Any onEvent(const UiApi::TrainingActiveScenarioControlsShow::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
 
@@ -55,6 +56,7 @@ struct TrainingActive {
     bool trainingPaused_ = false;
     bool hasPlottedRobustBestFitness_ = false;
     float plottedRobustBestFitness_ = 0.0f;
+    std::vector<float> plotAverageSeries_;
     std::vector<float> plotBestSeries_;
     std::vector<uint8_t> plotBestSeriesRobustHighMask_;
     uint64_t lastPlottedRobustEvaluationCount_ = 0;

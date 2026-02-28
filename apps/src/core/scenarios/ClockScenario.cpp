@@ -342,6 +342,8 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             || (incoming.targetDisplayHeight != config_.targetDisplayHeight)
             || (incoming.targetDigitHeightPercent != config_.targetDigitHeightPercent)
             || (incoming.marginPixels != config_.marginPixels);
+        const bool obstacle_course_changed =
+            incoming.obstacleCourseEnabled != config_.obstacleCourseEnabled;
 
         auto resizeWorldToMetadata = [&](World& world_to_resize) {
             if (metadata_.requiredWidth == 0 || metadata_.requiredHeight == 0) {
@@ -427,6 +429,10 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             queued_events_.end());
 
         updateDigitMaterialOverride();
+        if (obstacle_course_changed && !config_.obstacleCourseEnabled) {
+            obstacleSpawnTimer_ = 0.0;
+            obstacle_manager_.clearAll(world);
+        }
 
         spdlog::info("ClockScenario: Config updated");
     }
@@ -487,6 +493,7 @@ void ClockScenario::reset(World& world)
 {
     spdlog::info("ClockScenario::reset");
     cancelAllEvents(world);
+    obstacleSpawnTimer_ = 0.0;
     setup(world);
 }
 
@@ -528,6 +535,7 @@ void ClockScenario::tick(World& world, double deltaTime)
         }
     }
     drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
+    updateFloorObstacles(world, deltaTime);
 
     // Manage storm lighting (lightning flashes based on water in top third).
     if (isEventActive(ClockEventType::RAIN)) {
@@ -1425,6 +1433,34 @@ void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, dou
     ClockEvents::updateRain(world, deltaTime, rng_, uniform_dist_);
 }
 
+void ClockScenario::updateFloorObstacles(World& world, double deltaTime)
+{
+    if (!config_.obstacleCourseEnabled) {
+        obstacleSpawnTimer_ = 0.0;
+        if (!obstacle_manager_.getObstacles().empty()) {
+            obstacle_manager_.clearAll(world);
+        }
+        return;
+    }
+
+    if (drain_manager_.isOpen()) {
+        obstacleSpawnTimer_ = 0.0;
+        if (!obstacle_manager_.getObstacles().empty()) {
+            obstacle_manager_.clearAll(world);
+        }
+        return;
+    }
+
+    constexpr double spawnIntervalSeconds = 3.0;
+    obstacleSpawnTimer_ += deltaTime;
+    if (obstacleSpawnTimer_ < spawnIntervalSeconds) {
+        return;
+    }
+
+    obstacleSpawnTimer_ = 0.0;
+    obstacle_manager_.spawnObstacle(world, rng_, uniform_dist_);
+}
+
 void ClockScenario::updateMarqueeEvent(
     World& world,
     MarqueeEventState& state,
@@ -1619,21 +1655,6 @@ void ClockScenario::updateDuckEvent(
 
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
-    // Floor obstacles: spawn when drain is closed and obstacles are enabled.
-    if (!drain_manager_.isOpen() && event_configs_.duck.floor_obstacles_enabled) {
-        constexpr double SPAWN_INTERVAL = 3.0;
-
-        state.obstacle_spawn_timer += deltaTime;
-        if (state.obstacle_spawn_timer >= SPAWN_INTERVAL) {
-            state.obstacle_spawn_timer = 0.0;
-            obstacle_manager_.spawnObstacle(world, rng_, uniform_dist_);
-        }
-    }
-    else if (drain_manager_.isOpen() && !obstacle_manager_.getObstacles().empty()) {
-        // Drain is open, clear any obstacles.
-        obstacle_manager_.clearAll(world);
-    }
-
     // Get duck's cell COM for sub-cell positioning.
     const WorldData& data = world.getData();
     LightManager& lights = world.getLightManager();
@@ -1737,9 +1758,6 @@ void ClockScenario::endEvent(
             world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
         }
 
-        // Clear any floor obstacles.
-        obstacle_manager_.clearAll(world);
-
         // Remove door lights (RAII handles auto-cleanup).
         state.entrance_light.reset();
         state.exit_light.reset();
@@ -1763,6 +1781,7 @@ void ClockScenario::endEvent(
 void ClockScenario::cancelAllEvents(World& world)
 {
     spdlog::info("ClockScenario: Canceling all events");
+    obstacleSpawnTimer_ = 0.0;
     digit_material_override_.reset();
     queued_events_.clear();
 

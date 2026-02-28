@@ -2,10 +2,12 @@
 
 #include "core/Pimpl.h"
 #include "core/RenderFormat.h"
+#include "core/Result.h"
 #include "core/ScenarioConfig.h"
 #include "core/StateMachineBase.h"
 #include "core/StateMachineInterface.h"
 #include "core/organisms/OrganismType.h"
+#include "core/scenarios/ClockConfig.h"
 #include "server/api/TrainingBestSnapshot.h"
 
 #include <filesystem>
@@ -13,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 // Forward declarations (global namespace).

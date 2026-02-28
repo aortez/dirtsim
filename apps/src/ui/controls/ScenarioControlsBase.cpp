@@ -1,9 +1,7 @@
 #include "ScenarioControlsBase.h"
-#include "core/network/BinaryProtocol.h"
-#include "core/network/WebSocketService.h"
-#include "server/api/ScenarioConfigSet.h"
-#include <atomic>
-#include <chrono>
+#include "core/Assert.h"
+#include "server/api/UserSettingsPatch.h"
+#include "ui/UserSettingsManager.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -12,8 +10,12 @@ namespace Ui {
 ScenarioControlsBase::ScenarioControlsBase(
     lv_obj_t* parentContainer,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     const std::string& scenarioId)
-    : parentContainer_(parentContainer), wsService_(wsService), scenarioId_(scenarioId)
+    : parentContainer_(parentContainer),
+      wsService_(wsService),
+      userSettingsManager_(userSettingsManager),
+      scenarioId_(scenarioId)
 {
     createContainer();
 }
@@ -44,39 +46,27 @@ void ScenarioControlsBase::createContainer()
 
 void ScenarioControlsBase::sendConfigUpdate(const ScenarioConfig& config)
 {
-    if (!wsService_ || !wsService_->isConnected()) return;
-
-    // Track rapid calls for loop detection.
-    static int updateCount = 0;
-    static auto lastUpdateTime = std::chrono::steady_clock::now();
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUpdateTime).count();
-
-    if (elapsed < 1000) { // Within 1 second.
-        updateCount++;
+    Api::UserSettingsPatch::Command patchCmd{};
+    if (const auto* clockConfig = std::get_if<Config::Clock>(&config)) {
+        patchCmd.clockScenarioConfig = *clockConfig;
+    }
+    else if (const auto* sandboxConfig = std::get_if<Config::Sandbox>(&config)) {
+        patchCmd.sandboxScenarioConfig = *sandboxConfig;
+    }
+    else if (const auto* rainingConfig = std::get_if<Config::Raining>(&config)) {
+        patchCmd.rainingScenarioConfig = *rainingConfig;
+    }
+    else if (const auto* treeGerminationConfig = std::get_if<Config::TreeGermination>(&config)) {
+        patchCmd.treeGerminationScenarioConfig = *treeGerminationConfig;
     }
     else {
-        updateCount = 1;
+        DIRTSIM_ASSERT(
+            false,
+            "ScenarioControlsBase missing UserSettingsPatch mapping for scenario config type");
     }
-    lastUpdateTime = now;
 
-    const Api::ScenarioConfigSet::Command cmd{ .config = config };
-
-    spdlog::info(
-        "ScenarioControlsBase: Sending config update for '{}' (update #{} in {}ms)",
-        scenarioId_,
-        updateCount,
-        elapsed);
-
-    // Send binary command.
-    static std::atomic<uint64_t> nextId{ 1 };
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
-    if (result.isError()) {
-        spdlog::error(
-            "ScenarioControlsBase: Failed to send ScenarioConfigSet: {}", result.errorValue());
-    }
+    spdlog::info("ScenarioControlsBase: Persisting scenario config update for '{}'", scenarioId_);
+    userSettingsManager_.patchOrAssert(patchCmd, 500);
 }
 
 } // namespace Ui

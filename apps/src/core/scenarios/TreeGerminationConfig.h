@@ -3,6 +3,7 @@
 #include "core/UUID.h"
 
 #include <cstdint>
+#include <nlohmann/json_fwd.hpp>
 #include <zpp_bits.h>
 
 namespace DirtSim::Config {
@@ -19,5 +20,8 @@ struct TreeGermination {
 
     using serialize = zpp::bits::members<3>;
 };
+
+void from_json(const nlohmann::json& j, TreeGermination& config);
+void to_json(nlohmann::json& j, const TreeGermination& config);
 
 } // namespace DirtSim::Config

@@ -8,7 +8,6 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
-#include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsPatch.h"
 #include "ui/TrainingActiveView.h"
 #include "ui/UiComponentManager.h"
@@ -23,44 +22,6 @@ namespace Ui {
 namespace State {
 namespace {
 constexpr size_t plotRefreshPointCount = 120;
-
-Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
-    StateMachine& sm,
-    int intervalMs,
-    bool bestPlaybackEnabled,
-    int bestPlaybackIntervalMs,
-    int timeoutMs = 2000)
-{
-    if (!sm.hasWebSocketService()) {
-        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
-            "No WebSocketService available");
-    }
-
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
-            "Not connected to server");
-    }
-
-    Api::TrainingStreamConfigSet::Command cmd{
-        .intervalMs = intervalMs,
-        .bestPlaybackEnabled = bestPlaybackEnabled,
-        .bestPlaybackIntervalMs = bestPlaybackIntervalMs,
-    };
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, timeoutMs);
-    if (result.isError()) {
-        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
-            result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
-            result.value().errorValue().message);
-    }
-
-    return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::okay(
-        result.value().value());
-}
 
 GenomeId getBestGenomeId(const std::vector<Api::TrainingResult::Candidate>& candidates)
 {
@@ -79,9 +40,11 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
     state.hasPlottedRobustBestFitness_ = false;
     state.plottedRobustBestFitness_ = 0.0f;
+    state.plotAverageSeries_.clear();
     state.plotBestSeries_.clear();
     state.plotBestSeriesRobustHighMask_.clear();
 
+    state.plotAverageSeries_.push_back(0.0f);
     state.plotBestSeries_.push_back(0.0f);
     state.plotBestSeriesRobustHighMask_.push_back(0);
 
@@ -98,7 +61,8 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
-    state.view_->updateFitnessPlots(state.plotBestSeries_, state.plotBestSeriesRobustHighMask_);
+    state.view_->updateFitnessPlots(
+        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesRobustHighMask_);
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -115,32 +79,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     }
 
     constexpr int startupStreamSetupTimeoutMs = 250;
-    const auto& settings = sm.getUserSettings();
-    const auto streamResult = sendTrainingStreamConfig(
-        sm,
-        settings.streamIntervalMs,
-        settings.bestPlaybackEnabled,
-        settings.bestPlaybackIntervalMs,
-        startupStreamSetupTimeoutMs);
-    if (streamResult.isError()) {
-        LOG_WARN(
-            State,
-            "TrainingStreamConfigSet failed (intervalMs={}, bestPlaybackEnabled={}, "
-            "bestPlaybackIntervalMs={}): {}",
-            settings.streamIntervalMs,
-            settings.bestPlaybackEnabled,
-            settings.bestPlaybackIntervalMs,
-            streamResult.errorValue());
-    }
-    else {
-        LOG_INFO(
-            State,
-            "Training stream config set (interval={}ms, bestPlaybackEnabled={}, "
-            "bestPlaybackInterval={}ms)",
-            streamResult.value().intervalMs,
-            streamResult.value().bestPlaybackEnabled,
-            streamResult.value().bestPlaybackIntervalMs);
-    }
 
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
@@ -195,6 +133,7 @@ void TrainingActive::onEnter(StateMachine& sm)
         uiManager,
         sm,
         wsService,
+        sm.getUserSettingsManager(),
         sm.getUserSettings(),
         starfieldSnapshot_ ? &starfieldSnapshot_.value() : nullptr);
     DIRTSIM_ASSERT(view_, "TrainingActiveView creation failed");
@@ -293,6 +232,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 
     if (robustSampleAppended || nonRobustGenerationCompleted) {
         const float plottedValue = static_cast<float>(progress.bestFitnessThisGen);
+        const float averagePlottedValue = static_cast<float>(progress.lastGenerationAverageFitness);
+        plotAverageSeries_.push_back(averagePlottedValue);
         plotBestSeries_.push_back(plottedValue);
 
         bool isNewRobustHigh = false;
@@ -308,6 +249,13 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
         plotBestSeriesRobustHighMask_.push_back(isNewRobustHigh ? 1 : 0);
         if (plotBestSeries_.size() > plotRefreshPointCount) {
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
+            if (plotAverageSeries_.size() > pruneCount) {
+                plotAverageSeries_.erase(
+                    plotAverageSeries_.begin(), plotAverageSeries_.begin() + pruneCount);
+            }
+            else {
+                plotAverageSeries_.clear();
+            }
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
             if (plotBestSeriesRobustHighMask_.size() > pruneCount) {
                 plotBestSeriesRobustHighMask_.erase(
@@ -319,7 +267,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
             }
         }
 
-        view_->updateFitnessPlots(plotBestSeries_, plotBestSeriesRobustHighMask_);
+        view_->updateFitnessPlots(
+            plotBestSeries_, plotAverageSeries_, plotBestSeriesRobustHighMask_);
     }
 
     return std::move(*this);
@@ -378,7 +327,8 @@ State::Any TrainingActive::onEvent(
         evt.snapshot.commandsAccepted,
         evt.snapshot.commandsRejected,
         topCommandSignatures,
-        topCommandOutcomeSignatures);
+        topCommandOutcomeSignatures,
+        evt.snapshot.fitnessBreakdown);
 
     return std::move(*this);
 }
@@ -463,80 +413,40 @@ State::Any TrainingActive::onEvent(
 
 State::Any TrainingActive::onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm)
 {
-    auto& localSettings = sm.getUserSettings();
-    localSettings.trainingSpec = evt.training;
-    localSettings.evolutionConfig = evt.evolution;
-    localSettings.mutationConfig = evt.mutation;
-
-    if (!sm.hasWebSocketService()) {
-        return std::move(*this);
-    }
-
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return std::move(*this);
-    }
-
     Api::UserSettingsPatch::Command patchCmd{
         .trainingSpec = evt.training,
         .evolutionConfig = evt.evolution,
         .mutationConfig = evt.mutation,
     };
-    const auto patchResult =
-        wsService.sendCommandAndGetResponse<Api::UserSettingsPatch::Okay>(patchCmd, 2000);
-    if (patchResult.isError()) {
-        LOG_WARN(
-            State, "UserSettingsPatch failed for training config: {}", patchResult.errorValue());
-        return std::move(*this);
-    }
-    if (patchResult.value().isError()) {
-        LOG_WARN(
-            State,
-            "UserSettingsPatch rejected for training config: {}",
-            patchResult.value().errorValue().message);
-        return std::move(*this);
-    }
-
-    sm.syncTrainingUserSettings(patchResult.value().value().settings);
+    sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
     return std::move(*this);
 }
 
 State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
 {
     auto& settings = sm.getUserSettings();
-    settings.streamIntervalMs = std::max(0, evt.intervalMs);
-    settings.bestPlaybackEnabled = evt.bestPlaybackEnabled;
-    settings.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
+    settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
+    settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
-    view_->setStreamIntervalMs(settings.streamIntervalMs);
-    view_->setBestPlaybackEnabled(settings.bestPlaybackEnabled);
-    view_->setBestPlaybackIntervalMs(settings.bestPlaybackIntervalMs);
+    view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
+    view_->setBestPlaybackEnabled(settings.uiTraining.bestPlaybackEnabled);
+    view_->setBestPlaybackIntervalMs(settings.uiTraining.bestPlaybackIntervalMs);
 
-    const auto result = sendTrainingStreamConfig(
-        sm,
-        settings.streamIntervalMs,
-        settings.bestPlaybackEnabled,
-        settings.bestPlaybackIntervalMs);
-    if (result.isError()) {
-        LOG_WARN(
-            State,
-            "TrainingStreamConfigSet failed (intervalMs={}, bestPlaybackEnabled={}, "
-            "bestPlaybackIntervalMs={}): {}",
-            settings.streamIntervalMs,
-            settings.bestPlaybackEnabled,
-            settings.bestPlaybackIntervalMs,
-            result.errorValue());
-        return std::move(*this);
-    }
+    Api::UserSettingsPatch::Command patchCmd{ .uiTraining = settings.uiTraining };
+    sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
+    return std::move(*this);
+}
 
-    LOG_INFO(
-        State,
-        "Training stream config set (interval={}ms, bestPlaybackEnabled={}, "
-        "bestPlaybackInterval={}ms)",
-        result.value().intervalMs,
-        result.value().bestPlaybackEnabled,
-        result.value().bestPlaybackIntervalMs);
+State::Any TrainingActive::onEvent(
+    const UiApi::TrainingActiveScenarioControlsShow::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::TrainingActiveScenarioControlsShow::Response;
+
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->showScenarioControlsOverlay();
+    cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
 }
 
@@ -566,6 +476,7 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
         lastRenderRateLog_ = now;
     }
 
+    view_->updateScenarioConfig(evt.scenario_id, evt.scenario_config);
     view_->renderWorld(evt.worldData);
     return std::move(*this);
 }

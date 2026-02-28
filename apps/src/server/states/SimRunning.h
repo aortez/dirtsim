@@ -90,7 +90,6 @@ struct SimRunning {
     Any onEvent(const DirtSim::Api::PhysicsSettingsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::PhysicsSettingsSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::Reset::Cwc& cwc, StateMachine& dsm);
-    Any onEvent(const DirtSim::Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::ScenarioSwitch::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::WorldResize::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::SeedAdd::Cwc& cwc, StateMachine& dsm);

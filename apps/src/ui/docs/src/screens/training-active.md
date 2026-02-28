@@ -23,7 +23,7 @@
 +------------------+  +------------------------------------------------------------------+  +------------------------+
 ```
 
-Full-screen training view. Icon rail hidden. The left stream column includes controls plus a per-core CPU bar chart, while the center section mirrors current and best cards and the right panel is reserved for long-term progress stats.
+Full-screen training view. Icon rail hidden. The left stream column includes controls plus a per-core CPU bar chart, while the center section mirrors current and best cards and the right panel is reserved for long-term progress stats. The `Scenario Controls` button in the stream column toggles a flyout overlay (documented separately in `training-active-scenario-controls`).
 
 ## States
 

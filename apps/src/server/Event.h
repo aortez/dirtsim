@@ -24,7 +24,6 @@
 #include "api/RenderFormatSet.h"
 #include "api/RenderStreamConfigSet.h"
 #include "api/Reset.h"
-#include "api/ScenarioConfigSet.h"
 #include "api/ScenarioListGet.h"
 #include "api/ScenarioSwitch.h"
 #include "api/SeedAdd.h"
@@ -38,7 +37,6 @@
 #include "api/TrainingResultDiscard.h"
 #include "api/TrainingResultSave.h"
 #include "api/TrainingResultSet.h"
-#include "api/TrainingStreamConfigSet.h"
 #include "api/UserSettingsGet.h"
 #include "api/UserSettingsPatch.h"
 #include "api/UserSettingsReset.h"
@@ -446,7 +444,6 @@ public:
         DirtSim::Api::RenderFormatSet::Cwc,
         DirtSim::Api::RenderStreamConfigSet::Cwc,
         DirtSim::Api::Reset::Cwc,
-        DirtSim::Api::ScenarioConfigSet::Cwc,
         DirtSim::Api::ScenarioListGet::Cwc,
         DirtSim::Api::ScenarioSwitch::Cwc,
         DirtSim::Api::SeedAdd::Cwc,
@@ -464,7 +461,6 @@ public:
         DirtSim::Api::TrainingResultDelete::Cwc,
         DirtSim::Api::TrainingResultSave::Cwc,
         DirtSim::Api::TrainingResultSet::Cwc,
-        DirtSim::Api::TrainingStreamConfigSet::Cwc,
         DirtSim::Api::WorldResize::Cwc,
 
         // State transitions.

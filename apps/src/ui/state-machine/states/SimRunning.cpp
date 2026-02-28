@@ -85,7 +85,11 @@ void SimRunning::onEnter(StateMachine& sm)
         uiManager->getSimulationContainer();
 
         playground_ = std::make_unique<SimPlayground>(
-            uiManager, &sm.getWebSocketService(), sm, &sm.getFractalAnimator());
+            uiManager,
+            &sm.getWebSocketService(),
+            sm.getUserSettingsManager(),
+            sm,
+            &sm.getFractalAnimator());
         DIRTSIM_ASSERT(playground_, "SimPlayground creation failed");
 
         IconRail* iconRail = uiManager->getIconRail();

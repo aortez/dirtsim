@@ -14,8 +14,10 @@
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
 #include "server/api/CellSet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <cstring>
 #include <spdlog/spdlog.h>
@@ -26,10 +28,12 @@ namespace Ui {
 SimPlayground::SimPlayground(
     UiComponentManager* uiManager,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     EventSink& eventSink,
     FractalAnimator* fractalAnimator)
     : uiManager_(uiManager),
       wsService_(wsService),
+      userSettingsManager_(userSettingsManager),
       eventSink_(eventSink),
       fractalAnimator_(fractalAnimator)
 {
@@ -189,6 +193,7 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     scenarioPanel_ = std::make_unique<ScenarioPanel>(
         container,
         wsService_,
+        userSettingsManager_,
         eventSink_,
         currentScenarioId_,
         currentScenarioConfig_,
@@ -343,10 +348,6 @@ void SimPlayground::sendDisplayResizeUpdate()
         return;
     }
 
-    if (!wsService_ || !wsService_->isConnected()) {
-        return;
-    }
-
     // Force layout update to get accurate dimensions after panel/rail changes.
     // Must update from parent level to recalculate flex layout after IconRail resize.
     lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
@@ -401,14 +402,10 @@ void SimPlayground::sendDisplayResizeUpdate()
     config.targetDisplayWidth = newWidth;
     config.targetDisplayHeight = newHeight;
 
-    // Send the updated config to the server.
-    const Api::ScenarioConfigSet::Command cmd{ .config = config };
-    static std::atomic<uint64_t> nextId{ 1 };
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
-    if (result.isError()) {
-        LOG_ERROR(Controls, "Failed to send display resize update: {}", result.errorValue());
-    }
+    // Persist the updated config to server UserSettings. The server applies it to the live
+    // scenario and it comes back in the render stream as scenario_config.
+    Api::UserSettingsPatch::Command patchCmd{ .clockScenarioConfig = config };
+    userSettingsManager_.patchOrAssert(patchCmd, 500);
 }
 
 void SimPlayground::setupCanvasEventHandlers(lv_obj_t* canvas)
