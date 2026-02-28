@@ -1,4 +1,5 @@
 #include "core/MaterialType.h"
+#include "core/organisms/Duck.h"
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeCommandProcessor.h"
 #include "core/organisms/TreeResourceTotals.h"
@@ -378,6 +379,26 @@ TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
     EXPECT_GT(fitness_moved, fitness_static);
 }
 
+TEST(FitnessCalculatorTest, NesFitnessUsesRewardTotal)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{
+        .lifespan = 0.0,
+        .maxEnergy = 0.0,
+        .nesRewardTotal = 123.5,
+    };
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::NES_FLAPPY_BIRD,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+    };
+
+    const double fitness = computeFitnessForOrganism(context);
+    EXPECT_DOUBLE_EQ(fitness, 123.5);
+}
+
 TEST(FitnessCalculatorTest, GooseFitnessPenalizesBackAndForthPath)
 {
     const EvolutionConfig config = makeConfig();
@@ -456,7 +477,7 @@ TEST(FitnessCalculatorTest, GooseFitnessPrefersHorizontalMovement)
     EXPECT_GT(horizontalFitness, verticalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsPrimarily)
+TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsMoreThanRows)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
@@ -502,6 +523,7 @@ TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsPrimarily)
         DuckEvaluator::evaluateWithBreakdown(verticalContext);
 
     EXPECT_GT(columnsBreakdown.coverageColumnScore, verticalBreakdown.coverageColumnScore);
+    EXPECT_GT(verticalBreakdown.coverageRowScore, columnsBreakdown.coverageRowScore);
     EXPECT_DOUBLE_EQ(columnsBreakdown.coverageCellScore, verticalBreakdown.coverageCellScore);
     EXPECT_GT(columnsBreakdown.coverageScore, verticalBreakdown.coverageScore);
 }
@@ -546,8 +568,57 @@ TEST(FitnessCalculatorTest, DuckCoverageIncludesSecondaryCellTerm)
         DuckEvaluator::evaluateWithBreakdown(cellRichContext);
 
     EXPECT_DOUBLE_EQ(baseBreakdown.coverageColumnScore, cellRichBreakdown.coverageColumnScore);
+    EXPECT_GT(cellRichBreakdown.coverageRowScore, baseBreakdown.coverageRowScore);
     EXPECT_GT(cellRichBreakdown.coverageCellScore, baseBreakdown.coverageCellScore);
     EXPECT_GT(cellRichBreakdown.coverageScore, baseBreakdown.coverageScore);
+}
+
+TEST(FitnessCalculatorTest, DuckEffortPenaltyMakesJumpCostlierThanFullRunInput)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 }, Vector2d{ 1.0, 0.0 }, Vector2d{ 2.0, 0.0 }, Vector2d{ 3.0, 0.0 },
+            Vector2d{ 4.0, 0.0 }, Vector2d{ 5.0, 0.0 }, Vector2d{ 6.0, 0.0 }, Vector2d{ 7.0, 0.0 },
+            Vector2d{ 8.0, 0.0 }, Vector2d{ 9.0, 0.0 }, Vector2d{ 9.0, 1.0 }, Vector2d{ 8.0, 1.0 },
+            Vector2d{ 7.0, 1.0 }, Vector2d{ 6.0, 1.0 }, Vector2d{ 5.0, 1.0 }, Vector2d{ 4.0, 1.0 },
+            Vector2d{ 3.0, 1.0 }, Vector2d{ 2.0, 1.0 }, Vector2d{ 1.0, 1.0 }, Vector2d{ 0.0, 1.0 },
+        });
+
+    auto runDuck = std::make_unique<Duck>(OrganismId{ 101 }, std::unique_ptr<DuckBrain>{});
+    auto jumpDuck = std::make_unique<Duck>(OrganismId{ 102 }, std::unique_ptr<DuckBrain>{});
+    for (int i = 0; i < 200; ++i) {
+        runDuck->setInput({ .move = { 1.0f, 0.0f }, .jump = false });
+        jumpDuck->setInput({ .move = { 0.0f, 0.0f }, .jump = true });
+    }
+
+    const FitnessContext runContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .finalOrganism = runDuck.get(),
+        .organismTrackingHistory = &history,
+    };
+    const FitnessContext jumpContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .finalOrganism = jumpDuck.get(),
+        .organismTrackingHistory = &history,
+    };
+
+    const DuckFitnessBreakdown runBreakdown = DuckEvaluator::evaluateWithBreakdown(runContext);
+    const DuckFitnessBreakdown jumpBreakdown = DuckEvaluator::evaluateWithBreakdown(jumpContext);
+
+    EXPECT_DOUBLE_EQ(runBreakdown.coverageScore, jumpBreakdown.coverageScore);
+    EXPECT_GT(jumpBreakdown.effortScore, runBreakdown.effortScore);
+    EXPECT_GT(jumpBreakdown.effortPenaltyScore, runBreakdown.effortPenaltyScore);
+    EXPECT_LT(jumpBreakdown.totalFitness, runBreakdown.totalFitness);
 }
 
 } // namespace DirtSim

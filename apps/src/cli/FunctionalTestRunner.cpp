@@ -2014,7 +2014,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         UserSettings expected = currentSettingsResult.value();
-        expected.timezoneIndex = 0;
+        expected.clockScenarioConfig.timezoneIndex = 0;
         expected.volumePercent = 67;
         expected.defaultScenario = Scenario::EnumType::Clock;
 
@@ -2026,7 +2026,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         const UserSettings& updated = setResult.value();
-        if (updated.timezoneIndex != expected.timezoneIndex
+        if (updated.clockScenarioConfig.timezoneIndex != expected.clockScenarioConfig.timezoneIndex
             || updated.volumePercent != expected.volumePercent
             || updated.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2043,7 +2043,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         const UserSettings& verified = verifyResult.value();
-        if (verified.timezoneIndex != expected.timezoneIndex
+        if (verified.clockScenarioConfig.timezoneIndex != expected.clockScenarioConfig.timezoneIndex
             || verified.volumePercent != expected.volumePercent
             || verified.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2123,7 +2123,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
         }
 
         UserSettings changedSettings{};
-        changedSettings.timezoneIndex = 0;
+        changedSettings.clockScenarioConfig.timezoneIndex = 0;
         changedSettings.volumePercent = 73;
         changedSettings.defaultScenario = Scenario::EnumType::Clock;
 
@@ -2143,7 +2143,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
 
         const UserSettings defaults{};
         const UserSettings& reset = resetResult.value();
-        if (reset.timezoneIndex != defaults.timezoneIndex
+        if (reset.clockScenarioConfig.timezoneIndex != defaults.clockScenarioConfig.timezoneIndex
             || reset.volumePercent != defaults.volumePercent
             || reset.defaultScenario != defaults.defaultScenario) {
             uiClient.disconnect();
@@ -2160,7 +2160,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
         }
 
         const UserSettings& verified = verifyResult.value();
-        if (verified.timezoneIndex != defaults.timezoneIndex
+        if (verified.clockScenarioConfig.timezoneIndex != defaults.clockScenarioConfig.timezoneIndex
             || verified.volumePercent != defaults.volumePercent
             || verified.defaultScenario != defaults.defaultScenario) {
             uiClient.disconnect();
@@ -2240,7 +2240,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         UserSettings expected{};
-        expected.timezoneIndex = 1;
+        expected.clockScenarioConfig.timezoneIndex = 1;
         expected.volumePercent = 33;
         expected.defaultScenario = Scenario::EnumType::TreeGermination;
 
@@ -2259,7 +2259,8 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         const UserSettings& beforeRestart = verifyBeforeRestart.value();
-        if (beforeRestart.timezoneIndex != expected.timezoneIndex
+        if (beforeRestart.clockScenarioConfig.timezoneIndex
+                != expected.clockScenarioConfig.timezoneIndex
             || beforeRestart.volumePercent != expected.volumePercent
             || beforeRestart.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2288,7 +2289,8 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         const UserSettings& afterRestart = verifyAfterRestart.value();
-        if (afterRestart.timezoneIndex != expected.timezoneIndex
+        if (afterRestart.clockScenarioConfig.timezoneIndex
+                != expected.clockScenarioConfig.timezoneIndex
             || afterRestart.volumePercent != expected.volumePercent
             || afterRestart.defaultScenario != expected.defaultScenario) {
             serverClient.disconnect();
@@ -2721,7 +2723,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanApplyClockTimezoneFromUserSett
         }
 
         UserSettings desired = currentSettingsResult.value();
-        desired.timezoneIndex = expectedTimezoneIndex;
+        desired.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(expectedTimezoneIndex);
 
         auto setResult = updateUserSettings(serverClient, desired, timeoutMs);
         if (setResult.isError()) {

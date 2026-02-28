@@ -311,8 +311,8 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             panel->clearContent();
             panel->resetWidth();
             settingsPanel_ = std::make_unique<StartMenuSettingsPanel>(
-                panel->getContentArea(), &sm.getWebSocketService(), sm);
-            settingsPanel_->refreshFromServer();
+                panel->getContentArea(), sm.getUserSettingsManager());
+            settingsPanel_->applySettings(sm.getUserSettings());
             panel->show();
         }
         return std::move(*this); // Don't deselect - panel should stay open.
@@ -363,14 +363,14 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
 
 State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMachine& sm)
 {
-    const auto action = sm.getServerUserSettings().startMenuIdleAction;
+    const auto action = sm.getUserSettings().startMenuIdleAction;
     if (action == StartMenuIdleAction::ClockScenario) {
         LOG_INFO(State, "StartMenu idle: launching clock scenario");
         return startSimulation(sm, Scenario::EnumType::Clock);
     }
     if (action == StartMenuIdleAction::TrainingSession) {
         LOG_INFO(State, "StartMenu idle: auto-starting training session");
-        const auto& settings = sm.getServerUserSettings();
+        const auto& settings = sm.getUserSettings();
         auto evolution = settings.evolutionConfig;
         // Training sessions run indefinitely by definition.
         evolution.maxGenerations = 0;

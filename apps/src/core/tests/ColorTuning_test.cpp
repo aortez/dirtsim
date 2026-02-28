@@ -115,7 +115,6 @@ protected:
             .sky_access_enabled = true,
             .sky_access_falloff = 0.5f,
             .sky_access_multi_directional = false,
-            .sky_probe_steps = 48,
             .sun_color = ColorNames::warmSunlight(),
             .sun_enabled = true,
             .sun_intensity = 1.0f,

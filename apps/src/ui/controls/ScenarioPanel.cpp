@@ -15,12 +15,14 @@ namespace Ui {
 ScenarioPanel::ScenarioPanel(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     EventSink& eventSink,
     Scenario::EnumType initialScenarioId,
     const ScenarioConfig& initialConfig,
     DisplayDimensionsGetter dimensionsGetter)
     : container_(container),
       wsService_(wsService),
+      userSettingsManager_(userSettingsManager),
       eventSink_(eventSink),
       dimensionsGetter_(dimensionsGetter),
       currentScenarioId_(initialScenarioId),
@@ -67,6 +69,7 @@ void ScenarioPanel::createMainView(lv_obj_t* view)
     scenarioControls_ = ScenarioControlsFactory::create(
         view,
         wsService_,
+        userSettingsManager_,
         &eventSink_,
         currentScenarioId_,
         currentScenarioConfig_,
@@ -152,6 +155,7 @@ void ScenarioPanel::updateFromConfig(Scenario::EnumType scenarioId, const Scenar
             scenarioControls_ = ScenarioControlsFactory::create(
                 mainView,
                 wsService_,
+                userSettingsManager_,
                 &eventSink_,
                 currentScenarioId_,
                 currentScenarioConfig_,

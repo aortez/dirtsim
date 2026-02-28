@@ -281,7 +281,7 @@ The `TreeGerminationConfig` includes a `genome_id` field. When set, `TreeGermina
 **Flow for "View Best" from Training state:**
 ```
 SimRun{scenario=TreeGermination}
-ScenarioConfigSet{config=TreeGermination{genome_id=<uuid>}}
+UserSettingsPatch{treeGerminationScenarioConfig=TreeGermination{genome_id=<uuid>}}
 Reset{}
 ```
 
@@ -289,7 +289,7 @@ The Reset re-runs `setup()` which now uses the genome_id from the updated config
 
 | Command | Description | Status |
 |---------|-------------|--------|
-| `ScenarioConfigSet` | Set scenario config (including genome_id) | ✅ Implemented |
+| `UserSettingsPatch` | Update user settings (including persisted scenario config) | ✅ Implemented |
 | `Reset` | Re-run scenario setup with current config | ✅ Implemented |
 
 ## Persistence
@@ -372,7 +372,7 @@ void Server::initialize() {
 7. User clicks "View Best"
    a. UI sends EvolutionStop (if still running)
    b. UI sends SimRun{scenario=TreeGermination}
-   c. UI sends ScenarioConfigSet{genome_id=best_genome_id}
+   c. UI sends UserSettingsPatch{treeGerminationScenarioConfig=TreeGermination{genome_id=best_genome_id}}
    d. UI sends Reset (re-runs setup with genome)
    e. UI transitions to SimRunning state
    f. User watches tree grow
@@ -670,14 +670,14 @@ Per genome: id(4) + metadata_len(4) + metadata(JSON) + weight_count(4) + weights
 
 **Work:**
 - TreeGerminationConfig includes genome_id field. ✅
-- ScenarioConfigSet API updates config at runtime. ✅
-- "View Best" flow: stop evolution → SimRun → ScenarioConfigSet → Reset. ✅
+- UserSettingsPatch persists scenario config (including genome_id). ✅
+- "View Best" flow: stop evolution → SimRun → UserSettingsPatch → Reset. ✅
 - Scenario selector for training (default: tree_germination). ✅
 - Resume training from saved population (optional, can defer). ❌
 - Error handling and edge cases. ❌
 
 **Tests:**
-- ScenarioConfigSet + Reset spawns tree with correct brain. (manual testing) ✅
+- UserSettingsPatch + Reset spawns tree with correct brain. (manual testing) ✅
 - Full training → view flow works end-to-end. (manual testing) ✅
 
 ### Dependencies

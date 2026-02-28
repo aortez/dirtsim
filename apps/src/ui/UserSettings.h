@@ -1,17 +1,9 @@
 #pragma once
 
-#include "core/organisms/evolution/EvolutionConfig.h"
-#include "core/organisms/evolution/TrainingSpec.h"
+#include "server/UserSettings.h"
 
 namespace DirtSim::Ui {
 
-struct UserSettings {
-    TrainingSpec trainingSpec;
-    EvolutionConfig evolutionConfig;
-    MutationConfig mutationConfig;
-    int streamIntervalMs = 16;
-    bool bestPlaybackEnabled = false;
-    int bestPlaybackIntervalMs = 16;
-};
+using UserSettings = DirtSim::UserSettings;
 
 } // namespace DirtSim::Ui

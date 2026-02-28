@@ -12,9 +12,7 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
-#include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsPatch.h"
-#include "server/api/UserSettingsSet.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -185,20 +183,9 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
         return std::move(*this);
     }
 
-    // Set up training streams BEFORE starting evolution. If evolution starts first, fast training
+    // Set up render streams BEFORE starting evolution. If evolution starts first, fast training
     // (e.g. 1 generation) can complete before stream setup finishes, deadlocking the server's
     // broadcastTrainingResult against the UI's pending RenderFormatSet request.
-    Api::TrainingStreamConfigSet::Command streamCmd{
-        .intervalMs = sm.getUserSettings().streamIntervalMs,
-        .bestPlaybackEnabled = sm.getUserSettings().bestPlaybackEnabled,
-        .bestPlaybackIntervalMs = sm.getUserSettings().bestPlaybackIntervalMs,
-    };
-    auto streamResult = wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(
-        streamCmd, 2000);
-    if (streamResult.isError()) {
-        LOG_WARN(State, "Pre-start TrainingStreamConfigSet failed: {}", streamResult.errorValue());
-    }
-
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
     auto renderEnvelope =
@@ -230,25 +217,6 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     LOG_INFO(State, "Evolution started on server");
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
-
-    // Persist training config to server UserSettings for auto-start and restart survival.
-    auto serverSettings = sm.getServerUserSettings();
-    serverSettings.trainingSpec = evt.training;
-    serverSettings.evolutionConfig = evt.evolution;
-    serverSettings.mutationConfig = evt.mutation;
-    serverSettings.trainingResumePolicy = evt.resumePolicy;
-    Api::UserSettingsSet::Command settingsCmd{ .settings = serverSettings };
-    auto settingsResult =
-        wsService.sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(settingsCmd, 2000);
-    if (settingsResult.isError()) {
-        LOG_WARN(State, "Failed to persist training config: {}", settingsResult.errorValue());
-    }
-    else if (settingsResult.value().isError()) {
-        LOG_WARN(
-            State,
-            "Server rejected training config: {}",
-            settingsResult.value().errorValue().message);
-    }
 
     starfieldSnapshot_ = view_->captureStarfieldSnapshot();
     return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
@@ -355,55 +323,29 @@ State::Any TrainingIdle::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachi
 
 State::Any TrainingIdle::onEvent(const TrainingConfigUpdatedEvent& evt, StateMachine& sm)
 {
-    auto& localSettings = sm.getUserSettings();
-    localSettings.trainingSpec = evt.training;
-    localSettings.evolutionConfig = evt.evolution;
-    localSettings.mutationConfig = evt.mutation;
-
-    if (!sm.hasWebSocketService()) {
-        return std::move(*this);
-    }
-
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return std::move(*this);
-    }
-
     Api::UserSettingsPatch::Command patchCmd{
         .trainingSpec = evt.training,
         .evolutionConfig = evt.evolution,
         .mutationConfig = evt.mutation,
     };
-    const auto patchResult =
-        wsService.sendCommandAndGetResponse<Api::UserSettingsPatch::Okay>(patchCmd, 2000);
-    if (patchResult.isError()) {
-        LOG_WARN(
-            State, "UserSettingsPatch failed for training config: {}", patchResult.errorValue());
-        return std::move(*this);
-    }
-    if (patchResult.value().isError()) {
-        LOG_WARN(
-            State,
-            "UserSettingsPatch rejected for training config: {}",
-            patchResult.value().errorValue().message);
-        return std::move(*this);
-    }
-
-    sm.syncTrainingUserSettings(patchResult.value().value().settings);
+    sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
     return std::move(*this);
 }
 
 State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
 {
     auto& settings = sm.getUserSettings();
-    settings.streamIntervalMs = std::max(0, evt.intervalMs);
-    settings.bestPlaybackEnabled = evt.bestPlaybackEnabled;
-    settings.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
+    settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
+    settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
-    view_->setStreamIntervalMs(settings.streamIntervalMs);
-    view_->setBestPlaybackEnabled(settings.bestPlaybackEnabled);
-    view_->setBestPlaybackIntervalMs(settings.bestPlaybackIntervalMs);
+    view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
+    view_->setBestPlaybackEnabled(settings.uiTraining.bestPlaybackEnabled);
+    view_->setBestPlaybackIntervalMs(settings.uiTraining.bestPlaybackIntervalMs);
+
+    Api::UserSettingsPatch::Command patchCmd{ .uiTraining = settings.uiTraining };
+    sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
 
     return std::move(*this);
 }

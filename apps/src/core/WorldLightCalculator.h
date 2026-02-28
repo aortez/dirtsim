@@ -52,11 +52,12 @@ private:
     void applyEmissiveCells(World& world);
     void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);
-    void applyPointLight(const PointLight& light, World& world, const GridOfCells& grid);
+    void applyPointLight(const PointLight& light, World& world);
     void applyPointLights(World& world, const GridOfCells& grid);
-    void applyRotatingLight(const RotatingLight& light, World& world, const GridOfCells& grid);
-    void applySpotLight(const SpotLight& light, World& world, const GridOfCells& grid);
+    void applyRotatingLight(const RotatingLight& light, World& world);
+    void applySpotLight(const SpotLight& light, World& world);
     void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
+    void buildOpticalBuffer(const WorldData& data);
     void clearLight(World& world);
     float getSpotAngularFactor(
         const Vector2f& light_pos,
@@ -66,8 +67,9 @@ private:
         const Vector2f& target_pos) const;
     void storeRawLight(World& world);
     ColorNames::RgbF traceRay(
-        const GridOfCells& grid,
-        const WorldData& data,
+        const ColorNames::RgbF* optical,
+        int width,
+        int height,
         float x0,
         float y0,
         int x1,
@@ -77,6 +79,7 @@ private:
     ColorNames::RgbF ambient_boost_{};
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
     std::vector<ColorNames::RgbF> light_buffer_;
+    GridBuffer<ColorNames::RgbF> optical_buffer_;
     LightBuffer raw_light_;
 };
 

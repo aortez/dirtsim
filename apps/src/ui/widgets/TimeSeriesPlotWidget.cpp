@@ -74,7 +74,14 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_chart_set_point_count(chart_, minPointCount_);
 
     series_ = lv_chart_add_series(chart_, config_.lineColor, LV_CHART_AXIS_PRIMARY_Y);
+    if (config_.showSecondarySeries) {
+        secondarySeries_ =
+            lv_chart_add_series(chart_, config_.secondaryLineColor, LV_CHART_AXIS_PRIMARY_Y);
+    }
     lv_chart_set_all_values(chart_, series_, 0);
+    if (secondarySeries_) {
+        lv_chart_set_all_values(chart_, secondarySeries_, LV_CHART_POINT_NONE);
+    }
 
     if (config_.showHighlights) {
         highlightChart_ = lv_chart_create(chart_);
@@ -183,6 +190,9 @@ void TimeSeriesPlotWidget::clear()
     chartValues_.assign(minPointCount_, 0);
     lv_chart_set_point_count(chart_, minPointCount_);
     lv_chart_set_all_values(chart_, series_, 0);
+    if (secondarySeries_) {
+        lv_chart_set_all_values(chart_, secondarySeries_, LV_CHART_POINT_NONE);
+    }
     if (highlightChart_ && highlightSeries_) {
         lv_chart_set_point_count(highlightChart_, minPointCount_);
         lv_chart_set_all_values(highlightChart_, highlightSeries_, LV_CHART_POINT_NONE);
@@ -225,30 +235,51 @@ void TimeSeriesPlotWidget::clearBottomLabels()
 
 void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
 {
-    setSamplesInternal(samples, nullptr);
+    setSamplesInternal(samples, nullptr, nullptr);
+}
+
+void TimeSeriesPlotWidget::setSamplesWithSecondary(
+    const std::vector<float>& samples, const std::vector<float>& secondarySamples)
+{
+    setSamplesInternal(samples, &secondarySamples, nullptr);
 }
 
 void TimeSeriesPlotWidget::setSamplesWithHighlights(
     const std::vector<float>& samples, const std::vector<uint8_t>& highlightMask)
 {
-    setSamplesInternal(samples, &highlightMask);
+    setSamplesInternal(samples, nullptr, &highlightMask);
+}
+
+void TimeSeriesPlotWidget::setSamplesWithSecondaryAndHighlights(
+    const std::vector<float>& samples,
+    const std::vector<float>& secondarySamples,
+    const std::vector<uint8_t>& highlightMask)
+{
+    setSamplesInternal(samples, &secondarySamples, &highlightMask);
 }
 
 void TimeSeriesPlotWidget::setSamplesInternal(
-    const std::vector<float>& samples, const std::vector<uint8_t>* highlightMask)
+    const std::vector<float>& samples,
+    const std::vector<float>* secondarySamples,
+    const std::vector<uint8_t>* highlightMask)
 {
     if (!chart_ || !series_) {
         return;
     }
 
-    if (samples.empty()) {
+    if (samples.empty() && (!secondarySamples || secondarySamples->empty())) {
         clear();
         return;
     }
 
-    updateYAxisRange(samples);
+    updateYAxisRange(samples, secondarySamples);
 
-    const uint32_t pointCount = std::max(minPointCount_, static_cast<uint32_t>(samples.size()));
+    const size_t secondarySampleCount = secondarySamples ? secondarySamples->size() : 0;
+    const size_t sampleCount = std::max(samples.size(), secondarySampleCount);
+    const uint32_t pointCount = std::max(
+        minPointCount_,
+        static_cast<uint32_t>(std::min<size_t>(
+            sampleCount, static_cast<size_t>(std::numeric_limits<uint32_t>::max()))));
     if (lv_chart_get_point_count(chart_) != pointCount) {
         lv_chart_set_point_count(chart_, pointCount);
     }
@@ -264,22 +295,39 @@ void TimeSeriesPlotWidget::setSamplesInternal(
         return toChartValue(value);
     };
 
-    chartValues_.assign(pointCount, 0);
-    if (samples.size() == 1 && pointCount > 1) {
-        const int32_t value = toPlotValue(samples.front());
-        chartValues_[0] = value;
-        for (uint32_t i = 1; i < pointCount; ++i) {
-            chartValues_[i] = value;
+    const auto buildSeriesValues = [&](const std::vector<float>* sourceSamples,
+                                       bool padWithNone) -> std::vector<int32_t> {
+        std::vector<int32_t> values(pointCount, padWithNone ? LV_CHART_POINT_NONE : 0);
+        if (!sourceSamples || sourceSamples->empty()) {
+            return values;
         }
-    }
-    else {
-        for (size_t i = 0; i < samples.size(); ++i) {
-            chartValues_[i] = toPlotValue(samples[i]);
+
+        if (sourceSamples->size() == 1 && pointCount > 1) {
+            const int32_t value = toPlotValue(sourceSamples->front());
+            values[0] = value;
+            for (uint32_t i = 1; i < pointCount; ++i) {
+                values[i] = value;
+            }
+            return values;
         }
-    }
+
+        for (size_t i = 0; i < sourceSamples->size(); ++i) {
+            values[i] = toPlotValue((*sourceSamples)[i]);
+        }
+        return values;
+    };
+
+    chartValues_ = buildSeriesValues(&samples, false);
+    const std::vector<int32_t> secondaryValues =
+        secondarySeries_ ? buildSeriesValues(secondarySamples, true) : std::vector<int32_t>{};
 
     for (uint32_t i = 0; i < pointCount; ++i) {
         lv_chart_set_series_value_by_id(chart_, series_, i, chartValues_[i]);
+    }
+    if (secondarySeries_) {
+        for (uint32_t i = 0; i < pointCount; ++i) {
+            lv_chart_set_series_value_by_id(chart_, secondarySeries_, i, secondaryValues[i]);
+        }
     }
 
     if (highlightChart_ && highlightSeries_) {
@@ -382,16 +430,33 @@ void TimeSeriesPlotWidget::setYAxisRange(float minValue, float maxValue)
     updateYAxisRangeLabels(minValue, maxValue);
 }
 
-void TimeSeriesPlotWidget::updateYAxisRange(const std::vector<float>& samples)
+void TimeSeriesPlotWidget::updateYAxisRange(
+    const std::vector<float>& samples, const std::vector<float>* secondarySamples)
 {
     if (!config_.autoScaleY) {
         setYAxisRange(config_.defaultMinY, config_.defaultMaxY);
         return;
     }
 
-    auto [minIt, maxIt] = std::minmax_element(samples.begin(), samples.end());
-    const float minValue = *minIt;
-    const float maxValue = *maxIt;
+    float minValue = 0.0f;
+    float maxValue = 0.0f;
+    if (!samples.empty()) {
+        auto [minIt, maxIt] = std::minmax_element(samples.begin(), samples.end());
+        minValue = *minIt;
+        maxValue = *maxIt;
+    }
+    if (secondarySamples && !secondarySamples->empty()) {
+        auto [secondaryMinIt, secondaryMaxIt] =
+            std::minmax_element(secondarySamples->begin(), secondarySamples->end());
+        if (samples.empty()) {
+            minValue = *secondaryMinIt;
+            maxValue = *secondaryMaxIt;
+        }
+        else {
+            minValue = std::min(minValue, *secondaryMinIt);
+            maxValue = std::max(maxValue, *secondaryMaxIt);
+        }
+    }
     const float range = std::max(maxValue - minValue, minAxisPadding);
     const float padding = std::max(range * axisPaddingRatio, minAxisPadding);
     setYAxisRange(minValue - padding, maxValue + padding);

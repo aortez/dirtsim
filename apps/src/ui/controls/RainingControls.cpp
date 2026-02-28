@@ -8,8 +8,9 @@ namespace Ui {
 RainingControls::RainingControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     const Config::Raining& config)
-    : ScenarioControlsBase(container, wsService, "raining")
+    : ScenarioControlsBase(container, wsService, userSettingsManager, "raining")
 {
     // Create widgets.
     createWidgets();

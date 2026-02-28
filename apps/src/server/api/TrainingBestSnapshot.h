@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FitnessBreakdownReport.h"
 #include "core/WorldData.h"
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -32,10 +33,11 @@ struct TrainingBestSnapshot {
     std::vector<CommandSignatureCount> topCommandSignatures;
     std::vector<CommandSignatureCount> topCommandOutcomeSignatures;
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;
+    std::optional<FitnessBreakdownReport> fitnessBreakdown;
 
     static constexpr const char* name() { return "TrainingBestSnapshot"; }
 
-    using serialize = zpp::bits::members<9>;
+    using serialize = zpp::bits::members<10>;
 };
 
 void to_json(nlohmann::json& j, const TrainingBestSnapshot::CommandSignatureCount& value);

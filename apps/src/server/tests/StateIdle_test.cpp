@@ -143,7 +143,7 @@ TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)
     TestStateMachineFixture fixture;
 
     fixture.stateMachine->getUserSettings().defaultScenario = Scenario::EnumType::Clock;
-    fixture.stateMachine->getUserSettings().timezoneIndex = 5;
+    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezoneIndex = 5;
 
     Idle idleState;
 
@@ -171,7 +171,7 @@ TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
 {
     TestStateMachineFixture fixture;
 
-    fixture.stateMachine->getUserSettings().timezoneIndex = 8;
+    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezoneIndex = 8;
 
     Idle idleState;
 

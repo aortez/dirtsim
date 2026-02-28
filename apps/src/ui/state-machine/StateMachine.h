@@ -95,8 +95,8 @@ public:
 
     UserSettings& getUserSettings() { return userSettingsManager_->get(); }
     const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
-    const DirtSim::UserSettings& getServerUserSettings() const { return serverUserSettings_; }
-    void syncTrainingUserSettings(const DirtSim::UserSettings& settings);
+    UserSettingsManager& getUserSettingsManager() { return *userSettingsManager_; }
+    const UserSettingsManager& getUserSettingsManager() const { return *userSettingsManager_; }
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
 
@@ -124,7 +124,6 @@ private:
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
     UserSettingsManager* userSettingsManager_ = nullptr;
-    DirtSim::UserSettings serverUserSettings_{};
     bool startMenuIdleActionTriggered_ = false;
     int synthVolumePercent_ = 20;
     bool audioVolumeWarningLogged_ = false;

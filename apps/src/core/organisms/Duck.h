@@ -4,6 +4,7 @@
 #include "DuckBrain.h"
 #include "DuckInput.h"
 #include "DuckSensoryData.h"
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <vector>
@@ -78,6 +79,10 @@ public:
     // Sparkle access for rendering.
     const std::vector<DuckSparkle>& getSparkles() const { return sparkles_; }
 
+    double getEffortAbsMoveInputTotal() const { return effortAbsMoveInputTotal_; }
+    double getEffortJumpHeldTotal() const { return effortJumpHeldTotal_; }
+    uint64_t getEffortSampleCount() const { return effortSampleCount_; }
+
     // Maximum sparkle count (used for emission ratio calculation).
     static constexpr int MAX_SPARKLES = 32;
 
@@ -104,6 +109,9 @@ private:
     double jump_release_cut_remaining_seconds_ = 0.0;
     bool jump_hold_boost_applied_this_jump_ = false;
     uint32_t frame_counter_ = 0;
+    double effortAbsMoveInputTotal_ = 0.0;
+    double effortJumpHeldTotal_ = 0.0;
+    uint64_t effortSampleCount_ = 0;
 
     static constexpr float GROUND_CONTACT_COM_THRESHOLD = 0.80f; // COM must be near cell bottom.
     static constexpr float GROUND_REST_VERTICAL_SPEED_THRESHOLD =

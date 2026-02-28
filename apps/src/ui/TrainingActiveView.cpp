@@ -1,5 +1,6 @@
 #include "TrainingActiveView.h"
 #include "UiComponentManager.h"
+#include "controls/ScenarioControlsFactory.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
@@ -7,6 +8,7 @@
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/FitnessBreakdownReport.h"
 #include "state-machine/Event.h"
 #include "state-machine/EventSink.h"
 #include "ui_builders/LVGLBuilder.h"
@@ -67,11 +69,13 @@ TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     UserSettings& userSettings,
     const Starfield::Snapshot* starfieldSnapshot)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
+      userSettingsManager_(userSettingsManager),
       userSettings_(userSettings),
       starfieldSnapshot_(starfieldSnapshot)
 {
@@ -208,6 +212,18 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_font(bestCommandSummaryLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(bestCommandSummaryLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
+
+    lv_obj_t* bestBreakdownTitle = lv_label_create(longTermPanel_);
+    lv_label_set_text(bestBreakdownTitle, "Best Fitness Breakdown");
+    lv_obj_set_style_text_color(bestBreakdownTitle, lv_color_hex(0x99DDFF), 0);
+    lv_obj_set_style_text_font(bestBreakdownTitle, &lv_font_montserrat_14, 0);
+
+    bestFitnessBreakdownLabel_ = lv_label_create(longTermPanel_);
+    lv_obj_set_width(bestFitnessBreakdownLabel_, LV_PCT(100));
+    lv_label_set_long_mode(bestFitnessBreakdownLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(bestFitnessBreakdownLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(bestFitnessBreakdownLabel_, lv_color_hex(0xBBD6E8), 0);
+    lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
 
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
@@ -478,11 +494,13 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
         TimeSeriesPlotWidget::Config{
             .title = "Robust Evaluated",
             .lineColor = lv_color_hex(0x666666),
+            .secondaryLineColor = lv_color_hex(0x66BBFF),
             .highlightColor = lv_color_hex(0xFF4FA3),
             .defaultMinY = 0.0f,
             .defaultMaxY = 1.0f,
             .valueScale = 100.0f,
             .autoScaleY = true,
+            .showSecondarySeries = true,
             .showHighlights = true,
             .highlightMarkerSizePx = 8,
         });
@@ -504,6 +522,7 @@ void TrainingActiveView::destroyUI()
     cpuCorePlot_.reset();
     bestFitnessPlot_.reset();
     lastGenerationDistributionPlot_.reset();
+    scenarioControls_.reset();
 
     starfield_.reset();
     if (container_) {
@@ -513,6 +532,7 @@ void TrainingActiveView::destroyUI()
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
+    bestFitnessBreakdownLabel_ = nullptr;
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
@@ -537,12 +557,21 @@ void TrainingActiveView::destroyUI()
     bestPlaybackIntervalStepper_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
+    scenarioControlsButton_ = nullptr;
+    scenarioControlsOverlay_ = nullptr;
+    scenarioControlsOverlayTitle_ = nullptr;
+    scenarioControlsOverlayContent_ = nullptr;
     stopTrainingButton_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
+    currentScenarioConfig_ = Config::Empty{};
+    currentScenarioId_ = Scenario::EnumType::Empty;
+    scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
+    hasScenarioState_ = false;
+    scenarioControlsOverlayVisible_ = false;
 }
 
 void TrainingActiveView::renderWorld(const WorldData& worldData)
@@ -561,13 +590,14 @@ void TrainingActiveView::updateBestSnapshot(
     int commandsAccepted,
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
-    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
+    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
+    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown)
 {
     bestSnapshotWorldData_ = std::make_unique<WorldData>(worldData);
     bestSnapshotFitness_ = fitness;
     bestSnapshotGeneration_ = generation;
     hasBestSnapshot_ = true;
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
         bestFitness_ = fitness;
         bestGeneration_ = generation;
@@ -684,14 +714,84 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (bestFitnessBreakdownLabel_) {
+        std::ostringstream summary;
+        summary << std::fixed << std::setprecision(4);
+        if (!fitnessBreakdown.has_value()) {
+            summary << "Not available.";
+        }
+        else {
+            const auto& breakdown = fitnessBreakdown.value();
+            const auto formatGroupLabel = [](std::string group) {
+                if (group.empty()) {
+                    return std::string("Other");
+                }
+                bool uppercaseNext = true;
+                for (char& c : group) {
+                    if (c == '_' || c == '-') {
+                        c = ' ';
+                        uppercaseNext = true;
+                        continue;
+                    }
+                    if (uppercaseNext && c >= 'a' && c <= 'z') {
+                        c = static_cast<char>(c - ('a' - 'A'));
+                    }
+                    uppercaseNext = false;
+                }
+                return group;
+            };
+            summary << "Model: " << breakdown.modelId << " v" << breakdown.modelVersion << "\n";
+            summary << "Formula: " << breakdown.totalFormula << "\n";
+            summary << "Total Fitness: " << breakdown.totalFitness;
+            if (!breakdown.metrics.empty()) {
+                summary << "\n\nMetrics:";
+                std::vector<std::string> groupOrder;
+                std::unordered_map<std::string, std::vector<const Api::FitnessMetric*>>
+                    metricsByGroup;
+                metricsByGroup.reserve(breakdown.metrics.size());
+                for (const auto& metric : breakdown.metrics) {
+                    const std::string group = metric.group.empty() ? "other" : metric.group;
+                    auto [it, inserted] =
+                        metricsByGroup.emplace(group, std::vector<const Api::FitnessMetric*>{});
+                    if (inserted) {
+                        groupOrder.push_back(group);
+                    }
+                    it->second.push_back(&metric);
+                }
+
+                for (size_t groupIndex = 0; groupIndex < groupOrder.size(); ++groupIndex) {
+                    const std::string& group = groupOrder[groupIndex];
+                    summary << "\n\n" << formatGroupLabel(group) << ":";
+                    const auto& metrics = metricsByGroup[group];
+                    for (const Api::FitnessMetric* metric : metrics) {
+                        summary << "\n- " << metric->label << ": raw=" << metric->raw
+                                << ", norm=" << metric->normalized;
+                        if (metric->reference.has_value()) {
+                            summary << ", ref=" << metric->reference.value();
+                        }
+                        if (metric->weight.has_value()) {
+                            summary << ", weight=" << metric->weight.value();
+                        }
+                        if (metric->contribution.has_value()) {
+                            summary << ", contrib=" << metric->contribution.value();
+                        }
+                        if (!metric->unit.empty()) {
+                            summary << " " << metric->unit;
+                        }
+                    }
+                }
+            }
+        }
+        lv_label_set_text(bestFitnessBreakdownLabel_, summary.str().c_str());
+    }
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         scheduleBestRender();
     }
 }
 
 void TrainingActiveView::setStreamIntervalMs(int value)
 {
-    userSettings_.streamIntervalMs = value;
+    userSettings_.uiTraining.streamIntervalMs = value;
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
@@ -699,7 +799,7 @@ void TrainingActiveView::setStreamIntervalMs(int value)
 
 void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
 {
-    userSettings_.bestPlaybackEnabled = enabled;
+    userSettings_.uiTraining.bestPlaybackEnabled = enabled;
     if (bestPlaybackToggle_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(bestPlaybackToggle_, enabled);
     }
@@ -724,17 +824,234 @@ void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
 
 void TrainingActiveView::setBestPlaybackIntervalMs(int value)
 {
-    userSettings_.bestPlaybackIntervalMs = std::max(1, value);
+    userSettings_.uiTraining.bestPlaybackIntervalMs = std::max(1, value);
     if (bestPlaybackIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
-            bestPlaybackIntervalStepper_, userSettings_.bestPlaybackIntervalMs);
+            bestPlaybackIntervalStepper_, userSettings_.uiTraining.bestPlaybackIntervalMs);
     }
+}
+
+void TrainingActiveView::updateScenarioConfig(
+    Scenario::EnumType scenarioId, const ScenarioConfig& config)
+{
+    currentScenarioId_ = scenarioId;
+    currentScenarioConfig_ = config;
+    hasScenarioState_ = true;
+
+    if (scenarioControlsOverlayVisible_) {
+        refreshScenarioControlsOverlay();
+    }
+    else {
+        updateScenarioButtonState();
+    }
+}
+
+void TrainingActiveView::showScenarioControlsOverlay()
+{
+    if (!hasScenarioState_) {
+        updateScenarioButtonState();
+        return;
+    }
+
+    scenarioControlsOverlayVisible_ = true;
+    refreshScenarioControlsOverlay();
+}
+
+void TrainingActiveView::createScenarioControlsOverlay()
+{
+    if (!contentRow_ || scenarioControlsOverlay_) {
+        return;
+    }
+
+    scenarioControlsOverlay_ = lv_obj_create(contentRow_);
+    lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(scenarioControlsOverlay_, 320, 420);
+    lv_obj_set_style_bg_color(scenarioControlsOverlay_, lv_color_hex(0x111728), 0);
+    lv_obj_set_style_bg_opa(scenarioControlsOverlay_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(scenarioControlsOverlay_, 8, 0);
+    lv_obj_set_style_border_width(scenarioControlsOverlay_, 1, 0);
+    lv_obj_set_style_border_color(scenarioControlsOverlay_, lv_color_hex(0x4A5A80), 0);
+    lv_obj_set_style_pad_all(scenarioControlsOverlay_, 10, 0);
+    lv_obj_set_style_pad_row(scenarioControlsOverlay_, 8, 0);
+    lv_obj_set_flex_flow(scenarioControlsOverlay_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        scenarioControlsOverlay_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_scrollbar_mode(scenarioControlsOverlay_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+
+    scenarioControlsOverlayTitle_ = lv_label_create(scenarioControlsOverlay_);
+    lv_label_set_text(scenarioControlsOverlayTitle_, "Scenario Controls");
+    lv_obj_set_style_text_color(scenarioControlsOverlayTitle_, lv_color_hex(0xDCE6FF), 0);
+    lv_obj_set_style_text_font(scenarioControlsOverlayTitle_, &lv_font_montserrat_14, 0);
+
+    scenarioControlsOverlayContent_ = lv_obj_create(scenarioControlsOverlay_);
+    lv_obj_set_size(scenarioControlsOverlayContent_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(scenarioControlsOverlayContent_, 1);
+    lv_obj_set_style_bg_opa(scenarioControlsOverlayContent_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scenarioControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_all(scenarioControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_row(scenarioControlsOverlayContent_, 8, 0);
+    lv_obj_set_flex_flow(scenarioControlsOverlayContent_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        scenarioControlsOverlayContent_,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START);
+    lv_obj_set_scroll_dir(scenarioControlsOverlayContent_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scenarioControlsOverlayContent_, LV_SCROLLBAR_MODE_AUTO);
+}
+
+void TrainingActiveView::hideScenarioControlsOverlay()
+{
+    scenarioControlsOverlayVisible_ = false;
+    if (scenarioControlsOverlay_) {
+        lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateScenarioButtonState();
+}
+
+void TrainingActiveView::refreshScenarioControlsOverlay()
+{
+    if (!scenarioControlsOverlay_ || !scenarioControlsOverlayContent_ || !contentRow_) {
+        return;
+    }
+
+    if (!hasScenarioState_) {
+        hideScenarioControlsOverlay();
+        return;
+    }
+
+    if (!scenarioControlsOverlayVisible_) {
+        updateScenarioButtonState();
+        return;
+    }
+
+    constexpr int panelGapPx = 8;
+    constexpr int panelDesiredWidthPx = 340;
+    constexpr int panelDesiredHeightPx = 420;
+    constexpr int panelMinWidthPx = 180;
+    constexpr int panelMinHeightPx = 140;
+
+    const int contentWidth = lv_obj_get_width(contentRow_);
+    const int contentHeight = lv_obj_get_height(contentRow_);
+    if (contentWidth <= (2 * panelGapPx) || contentHeight <= (2 * panelGapPx)) {
+        return;
+    }
+
+    int anchorX = panelGapPx;
+    int anchorRightX = panelGapPx;
+    if (streamPanel_ && scenarioControlsButton_) {
+        anchorX = lv_obj_get_x(streamPanel_) + lv_obj_get_x(scenarioControlsButton_);
+        anchorRightX = anchorX + lv_obj_get_width(scenarioControlsButton_);
+    }
+    else {
+        anchorRightX = anchorX;
+    }
+
+    const int maxPanelWidth = std::max(1, contentWidth - (2 * panelGapPx));
+    int panelWidth = std::min(panelDesiredWidthPx, maxPanelWidth);
+    if (maxPanelWidth >= panelMinWidthPx) {
+        panelWidth = std::max(panelWidth, panelMinWidthPx);
+    }
+
+    const int maxPanelHeight = std::max(1, contentHeight - (2 * panelGapPx));
+    int panelHeight = std::min(panelDesiredHeightPx, maxPanelHeight);
+    if (maxPanelHeight >= panelMinHeightPx) {
+        panelHeight = std::max(panelHeight, panelMinHeightPx);
+    }
+
+    const int rightX = anchorRightX + panelGapPx;
+    const int leftX = anchorX - panelGapPx - panelWidth;
+    const bool fitsRight = rightX + panelWidth + panelGapPx <= contentWidth;
+    const bool fitsLeft = leftX >= panelGapPx;
+
+    int panelX = panelGapPx;
+    if (fitsRight) {
+        panelX = rightX;
+    }
+    else if (fitsLeft) {
+        panelX = leftX;
+    }
+    else {
+        panelX = std::clamp(
+            rightX, panelGapPx, std::max(panelGapPx, contentWidth - panelWidth - panelGapPx));
+    }
+    // Keep the flyout pinned to the top edge so it doesn't drift down and clip off-screen.
+    const int panelY = panelGapPx;
+
+    lv_obj_set_size(scenarioControlsOverlay_, panelWidth, panelHeight);
+    lv_obj_set_pos(scenarioControlsOverlay_, panelX, panelY);
+
+    if (scenarioControlsOverlayTitle_) {
+        std::string title = std::string("Scenario Controls: ")
+            + std::string(Scenario::toString(currentScenarioId_));
+        lv_label_set_text(scenarioControlsOverlayTitle_, title.c_str());
+    }
+
+    if (!scenarioControls_ || scenarioControlsScenarioId_ != currentScenarioId_) {
+        scenarioControls_.reset();
+        lv_obj_clean(scenarioControlsOverlayContent_);
+
+        scenarioControls_ = ScenarioControlsFactory::create(
+            scenarioControlsOverlayContent_,
+            wsService_,
+            userSettingsManager_,
+            &eventSink_,
+            currentScenarioId_,
+            currentScenarioConfig_,
+            nullptr);
+        scenarioControlsScenarioId_ = currentScenarioId_;
+
+        if (!scenarioControls_) {
+            lv_obj_t* placeholder = lv_label_create(scenarioControlsOverlayContent_);
+            lv_obj_set_width(placeholder, LV_PCT(100));
+            lv_label_set_long_mode(placeholder, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_color(placeholder, lv_color_hex(0xAAAAAA), 0);
+            lv_label_set_text_fmt(
+                placeholder,
+                "No controls available for %s.",
+                Scenario::toString(currentScenarioId_).c_str());
+        }
+    }
+
+    if (scenarioControls_) {
+        scenarioControls_->updateFromConfig(currentScenarioConfig_);
+    }
+
+    lv_obj_remove_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(scenarioControlsOverlay_);
+    updateScenarioButtonState();
+}
+
+void TrainingActiveView::updateScenarioButtonState()
+{
+    if (!scenarioControlsButton_) {
+        return;
+    }
+
+    if (!hasScenarioState_) {
+        scenarioControlsOverlayVisible_ = false;
+        if (scenarioControlsOverlay_) {
+            lv_obj_add_flag(scenarioControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_add_state(scenarioControlsButton_, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(scenarioControlsButton_, LV_OPA_50, 0);
+        LVGLBuilder::ActionButtonBuilder::setIcon(scenarioControlsButton_, LV_SYMBOL_RIGHT);
+        return;
+    }
+
+    lv_obj_clear_state(scenarioControlsButton_, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(scenarioControlsButton_, LV_OPA_COVER, 0);
+    LVGLBuilder::ActionButtonBuilder::setIcon(
+        scenarioControlsButton_,
+        scenarioControlsOverlayVisible_ ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
 }
 
 void TrainingActiveView::updateBestPlaybackFrame(
     const WorldData& worldData, double fitness, int generation)
 {
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         return;
     }
 
@@ -960,10 +1277,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 }
 
 void TrainingActiveView::updateFitnessPlots(
-    const std::vector<float>& robustFitnessSeries, const std::vector<uint8_t>& robustHighMask)
+    const std::vector<float>& robustFitnessSeries,
+    const std::vector<float>& averageFitnessSeries,
+    const std::vector<uint8_t>& robustHighMask)
 {
     if (bestFitnessPlot_) {
-        bestFitnessPlot_->setSamplesWithHighlights(robustFitnessSeries, robustHighMask);
+        bestFitnessPlot_->setSamplesWithSecondaryAndHighlights(
+            robustFitnessSeries, averageFitnessSeries, robustHighMask);
     }
     if (fitnessPlotsPanel_) {
         lv_obj_invalidate(fitnessPlotsPanel_);
@@ -1017,6 +1337,15 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }
+        if (bestFitnessBreakdownLabel_) {
+            lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
+        }
+        scenarioControls_.reset();
+        currentScenarioConfig_ = Config::Empty{};
+        currentScenarioId_ = Scenario::EnumType::Empty;
+        scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
+        hasScenarioState_ = false;
+        hideScenarioControlsOverlay();
     }
 
     if (statusLabel_) {
@@ -1041,8 +1370,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
     }
     setTrainingPaused(false);
-    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
-    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
+    setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
@@ -1165,7 +1494,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                                  .label("Interval (ms)")
                                  .range(0, 5000)
                                  .step(100)
-                                 .value(userSettings_.streamIntervalMs)
+                                 .value(userSettings_.uiTraining.streamIntervalMs)
                                  .valueFormat("%.0f")
                                  .valueScale(1.0)
                                  .width(LV_PCT(100))
@@ -1175,7 +1504,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     bestPlaybackToggle_ = LVGLBuilder::actionButton(streamPanel_)
                               .text("Best Playback")
                               .mode(LVGLBuilder::ActionMode::Toggle)
-                              .checked(userSettings_.bestPlaybackEnabled)
+                              .checked(userSettings_.uiTraining.bestPlaybackEnabled)
                               .width(LV_PCT(100))
                               .height(LVGLBuilder::Style::ACTION_SIZE)
                               .layoutRow()
@@ -1183,16 +1512,28 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                               .callback(onBestPlaybackToggled, this)
                               .buildOrLog();
 
-    bestPlaybackIntervalStepper_ = LVGLBuilder::actionStepper(streamPanel_)
-                                       .label("Best Playback (ms)")
-                                       .range(1, 5000)
-                                       .step(1)
-                                       .value(std::max(1, userSettings_.bestPlaybackIntervalMs))
-                                       .valueFormat("%.0f")
-                                       .valueScale(1.0)
-                                       .width(LV_PCT(100))
-                                       .callback(onBestPlaybackIntervalChanged, this)
-                                       .buildOrLog();
+    bestPlaybackIntervalStepper_ =
+        LVGLBuilder::actionStepper(streamPanel_)
+            .label("Best Playback (ms)")
+            .range(1, 5000)
+            .step(1)
+            .value(std::max(1, userSettings_.uiTraining.bestPlaybackIntervalMs))
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(100))
+            .callback(onBestPlaybackIntervalChanged, this)
+            .buildOrLog();
+
+    scenarioControlsButton_ = LVGLBuilder::actionButton(streamPanel_)
+                                  .text("Scenario Controls")
+                                  .icon(LV_SYMBOL_RIGHT)
+                                  .mode(LVGLBuilder::ActionMode::Push)
+                                  .width(LV_PCT(100))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .callback(onScenarioControlsClicked, this)
+                                  .buildOrLog();
 
     LVGLBuilder::ActionButtonBuilder stopBuilder(streamPanel_);
     stopBuilder.text("Stop Training")
@@ -1244,8 +1585,10 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
         cpuCorePlot_->clear();
     }
 
-    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
-    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
+    createScenarioControlsOverlay();
+    updateScenarioButtonState();
+    setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
@@ -1260,8 +1603,8 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
             .intervalMs = value,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
 }
 
@@ -1276,9 +1619,9 @@ void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
     self->setBestPlaybackEnabled(enabled);
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
-            .intervalMs = self->userSettings_.streamIntervalMs,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
 }
 
@@ -1294,10 +1637,30 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
     self->setBestPlaybackIntervalMs(value);
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
-            .intervalMs = self->userSettings_.streamIntervalMs,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
+}
+
+void TrainingActiveView::onScenarioControlsClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    if (!self->hasScenarioState_) {
+        self->updateScenarioButtonState();
+        return;
+    }
+
+    if (self->scenarioControlsOverlayVisible_) {
+        self->hideScenarioControlsOverlay();
+        return;
+    }
+
+    self->showScenarioControlsOverlay();
 }
 
 void TrainingActiveView::onStopTrainingClicked(lv_event_t* e)

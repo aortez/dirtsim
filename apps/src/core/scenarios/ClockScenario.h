@@ -192,6 +192,7 @@ private:
     void updateMeltdownEvent(
         World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
+    void updateFloorObstacles(World& world, double deltaTime);
 
     bool isMeltdownActive() const;
     void convertStrayDigitMaterialToWater(World& world, Material::EnumType digit_material);
@@ -207,6 +208,7 @@ private:
     void redrawWalls(World& world);
 
     std::optional<Material::EnumType> digit_material_override_;
+    double obstacleSpawnTimer_ = 0.0;
     std::vector<ClockEventType> queued_events_;
 };
 

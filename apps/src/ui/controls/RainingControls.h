@@ -24,6 +24,7 @@ public:
     RainingControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         const Config::Raining& config);
     ~RainingControls() override;
 

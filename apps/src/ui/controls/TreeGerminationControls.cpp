@@ -14,9 +14,11 @@ namespace Ui {
 TreeGerminationControls::TreeGerminationControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     EventSink* eventSink,
     const Config::TreeGermination& config)
-    : ScenarioControlsBase(container, wsService, "tree_germination"), eventSink_(eventSink)
+    : ScenarioControlsBase(container, wsService, userSettingsManager, "tree_germination"),
+      eventSink_(eventSink)
 {
     createWidgets();
     updateFromConfig(config);

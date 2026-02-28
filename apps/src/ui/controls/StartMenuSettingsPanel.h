@@ -6,31 +6,21 @@
 #include <unordered_map>
 
 namespace DirtSim {
-namespace Network {
-class WebSocketServiceInterface;
-} // namespace Network
-
 namespace Ui {
-
-class EventSink;
 class PanelViewController;
+class UserSettingsManager;
 
 class StartMenuSettingsPanel {
 public:
-    StartMenuSettingsPanel(
-        lv_obj_t* container, Network::WebSocketServiceInterface* wsService, EventSink& eventSink);
+    StartMenuSettingsPanel(lv_obj_t* container, UserSettingsManager& userSettingsManager);
     ~StartMenuSettingsPanel();
 
     void applySettings(const DirtSim::UserSettings& settings);
-    void refreshFromServer();
 
 private:
     void createMainView(lv_obj_t* view);
     void createScenarioSelectionView(lv_obj_t* view);
     void createTimezoneSelectionView(lv_obj_t* view);
-
-    void sendSettingsUpdate();
-    void sendSettingsReset();
 
     void updateDefaultScenarioButtonText();
     void updateIdleTimeoutControl();
@@ -63,8 +53,7 @@ private:
     lv_obj_t* trainingTargetDropdown_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* volumeStepper_ = nullptr;
-    Network::WebSocketServiceInterface* wsService_ = nullptr;
-    EventSink& eventSink_;
+    UserSettingsManager& userSettingsManager_;
     std::unordered_map<lv_obj_t*, int> buttonToScenarioIndex_;
     std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
     std::unique_ptr<PanelViewController> viewController_;

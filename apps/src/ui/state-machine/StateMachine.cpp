@@ -8,6 +8,7 @@
 #include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
 #include "api/SynthKeyEvent.h"
+#include "api/TrainingActiveScenarioControlsShow.h"
 #include "api/TrainingConfigShowEvolution.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
@@ -22,7 +23,6 @@
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
 #include "server/api/EventSubscribe.h"
-#include "server/api/UserSettingsGet.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
@@ -111,6 +111,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingStart::Cwc>(
         [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingActiveScenarioControlsShow::Cwc>(
+        [this](UiApi::TrainingActiveScenarioControlsShow::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingConfigShowEvolution::Cwc>(
         [this](UiApi::TrainingConfigShowEvolution::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
@@ -274,6 +276,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StopButtonPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SynthKeyEvent);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingActiveScenarioControlsShow);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingConfigShowEvolution);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingQuit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
@@ -394,7 +397,7 @@ void StateMachine::autoShrinkIfIdle()
     lastInactiveMs_ = inactiveMs;
 
     const uint32_t startMenuIdleTimeoutMs = static_cast<uint32_t>(std::clamp(
-        serverUserSettings_.startMenuIdleTimeoutMs,
+        getUserSettings().startMenuIdleTimeoutMs,
         static_cast<int>(StartMenuIdleTimeoutMinMs),
         static_cast<int>(StartMenuIdleTimeoutMaxMs)));
 
@@ -481,28 +484,17 @@ void StateMachine::handleEvent(const Event& event)
                 "EventSubscribe rejected: " + result.value().errorValue().message);
             LOG_INFO(State, "Subscribed to server event stream");
 
-            Api::UserSettingsGet::Command settingsCmd{};
-            const auto settingsResult =
-                wsService_->sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(
-                    settingsCmd, 2000);
-            if (settingsResult.isError()) {
-                LOG_WARN(
-                    State, "UserSettingsGet failed after connect: {}", settingsResult.errorValue());
-            }
-            else if (settingsResult.value().isError()) {
-                LOG_WARN(
-                    State,
-                    "UserSettingsGet returned error: {}",
-                    settingsResult.value().errorValue().message);
-            }
-            else {
-                applyServerUserSettings(settingsResult.value().value().settings);
-            }
+            DIRTSIM_ASSERT(userSettingsManager_ != nullptr, "UserSettingsManager missing");
+            userSettingsManager_->setWebSocketService(wsService_.get());
+            userSettingsManager_->syncFromServerOrAssert(2000);
+            applyServerUserSettings(userSettingsManager_->get());
         }
     }
 
     if (std::holds_alternative<UserSettingsUpdatedEvent>(event)) {
         const auto& settingsEvent = std::get<UserSettingsUpdatedEvent>(event);
+        DIRTSIM_ASSERT(userSettingsManager_ != nullptr, "UserSettingsManager missing");
+        userSettingsManager_->applyServerUpdate(settingsEvent.settings);
         applyServerUserSettings(settingsEvent.settings);
     }
 
@@ -565,6 +557,10 @@ void StateMachine::handleEvent(const Event& event)
     if (std::holds_alternative<ServerDisconnectedEvent>(event)) {
         auto& evt = std::get<ServerDisconnectedEvent>(event);
         LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+
+        if (userSettingsManager_) {
+            userSettingsManager_->setWebSocketService(nullptr);
+        }
 
         if (std::holds_alternative<State::Shutdown>(fsmState.getVariant())) {
             LOG_INFO(State, "Ignoring disconnect while shutting down");
@@ -1085,26 +1081,10 @@ void StateMachine::handleEvent(const Event& event)
         event);
 }
 
-void StateMachine::syncTrainingUserSettings(const DirtSim::UserSettings& settings)
-{
-    serverUserSettings_.trainingSpec = settings.trainingSpec;
-    serverUserSettings_.evolutionConfig = settings.evolutionConfig;
-    serverUserSettings_.mutationConfig = settings.mutationConfig;
-    serverUserSettings_.trainingResumePolicy = settings.trainingResumePolicy;
-
-    auto& uiSettings = getUserSettings();
-    uiSettings.trainingSpec = settings.trainingSpec;
-    uiSettings.evolutionConfig = settings.evolutionConfig;
-    uiSettings.mutationConfig = settings.mutationConfig;
-}
-
 void StateMachine::applyServerUserSettings(const DirtSim::UserSettings& settings)
 {
-    serverUserSettings_ = settings;
     setSynthVolumePercent(settings.volumePercent);
     syncAudioMasterVolume(settings.volumePercent);
-
-    syncTrainingUserSettings(settings);
 }
 
 void StateMachine::syncAudioMasterVolume(int volumePercent)

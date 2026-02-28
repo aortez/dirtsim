@@ -13,6 +13,7 @@
 #include "WorldData.h"
 
 #include <cmath>
+#include <vector>
 
 namespace DirtSim {
 
@@ -122,80 +123,73 @@ void WorldLightCalculator::applyAmbient(
     const float falloff = config.sky_access_falloff;
 
     if (config.sky_access_multi_directional) {
-        struct SkyProbe {
-            int dx;
-            int dy;
-            float weight;
+        // Prefix-scan implementation: O(W×H) instead of O(W×H×3×ProbeSteps).
+        //
+        // For each probe direction, the transmittance at (x, y) is the product of
+        // per-cell attenuation factors along the probe path from row 0 down to row y.
+        // That product satisfies a prefix-product recurrence that propagates row by row:
+        //
+        //   attenuate(x, y) = clamp(1 - opacity(x,y) * fill(x,y) * falloff, 0, 1)
+        //
+        //   tV[x][y]   = tV[x][y-1]     * attenuate(x,   y-1)   // straight up
+        //   tUL[x][y]  = tUL[x-1][y-1]  * attenuate(x-1, y-1)   // upper-left diagonal
+        //   tUR[x][y]  = tUR[x+1][y-1]  * attenuate(x+1, y-1)   // upper-right diagonal
+        //
+        // Boundary conditions (probe exits the world = full sky):
+        //   tV[x][0] = tUL[x][0] = tUR[x][0] = 1.0  (top row: look up, exit immediately)
+        //   tUL[0][y] = 1.0  (left column: UL probe exits world left)
+        //   tUR[W-1][y] = 1.0  (right column: UR probe exits world right)
+        //
+        // Within each row, all x values are independent → safe to parallelize with OMP.
+
+        // Helper: single-cell attenuation factor used in the prefix scan.
+        auto attenuate = [falloff](const WorldData& d, int x, int y) -> float {
+            const Cell& cell = d.cells[static_cast<size_t>(y) * d.width + static_cast<size_t>(x)];
+            const float opacity = Material::getProperties(cell.material_type).light.opacity;
+            const float a = 1.0f - opacity * cell.fill_ratio * falloff;
+            return (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
         };
 
-        // Multi-directional sky probes to capture side occlusion from overhangs and caves.
-        constexpr SkyProbe probes[] = {
-            { 0, -1, 0.50f },
-            { -1, -1, 0.25f },
-            { 1, -1, 0.25f },
-        };
+        // Two rows of transmittance buffers (prev and curr), each holding tV/tUL/tUR.
+        std::vector<float> prev_tV(width, 1.0f);
+        std::vector<float> prev_tUL(width, 1.0f);
+        std::vector<float> prev_tUR(width, 1.0f);
+        std::vector<float> curr_tV(width);
+        std::vector<float> curr_tUL(width);
+        std::vector<float> curr_tUR(width);
 
-        const int max_steps = (config.sky_probe_steps > 0) ? config.sky_probe_steps : height;
-        auto traceSkyProbe =
-            [&data, width, height, falloff, max_steps](int x, int y, int dx, int dy) {
-                float transmittance = 1.0f;
-                int sample_x = x;
-                int sample_y = y;
-
-                for (int step = 0; step < max_steps; ++step) {
-                    sample_x += dx;
-                    sample_y += dy;
-
-                    if (sample_x < 0 || sample_x >= width || sample_y < 0 || sample_y >= height) {
-                        break;
-                    }
-
-                    const Cell& cell =
-                        data.cells
-                            [static_cast<size_t>(sample_y) * width + static_cast<size_t>(sample_x)];
-                    const float fill = cell.fill_ratio;
-                    const float base_opacity =
-                        Material::getProperties(cell.material_type).light.opacity;
-                    const float effective_opacity = base_opacity * fill;
-                    float step_transmittance = 1.0f - effective_opacity * falloff;
-
-                    if (step_transmittance < 0.0f) {
-                        step_transmittance = 0.0f;
-                    }
-                    if (step_transmittance > 1.0f) {
-                        step_transmittance = 1.0f;
-                    }
-
-                    transmittance *= step_transmittance;
-                    if (transmittance <= 0.001f) {
-                        return 0.0f;
-                    }
-                }
-
-                return transmittance;
-            };
-
-        // Cells are independent for probe-based ambient - parallelize over the whole grid.
+        // Row 0: all transmittances start at 1.0 (probes exit top immediately).
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) \
-    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
 #endif
-        for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.colors.at(x, 0) += base_ambient; // sky_factor = 1.0
+        }
+
+        // Rows 1 … height-1: propagate prefix products from the previous row.
+        for (int y = 1; y < height; ++y) {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
             for (int x = 0; x < width; ++x) {
-                float sky_factor = 0.0f;
-                for (const SkyProbe& probe : probes) {
-                    sky_factor += probe.weight * traceSkyProbe(x, y, probe.dx, probe.dy);
-                }
+                // tV: straight upward — depends on cell directly above.
+                curr_tV[x] = prev_tV[x] * attenuate(data, x, y - 1);
 
-                if (sky_factor < 0.0f) {
-                    sky_factor = 0.0f;
-                }
-                if (sky_factor > 1.0f) {
-                    sky_factor = 1.0f;
-                }
+                // tUL: upper-left diagonal — depends on cell at (x-1, y-1).
+                curr_tUL[x] = (x == 0) ? 1.0f : prev_tUL[x - 1] * attenuate(data, x - 1, y - 1);
 
+                // tUR: upper-right diagonal — depends on cell at (x+1, y-1).
+                curr_tUR[x] =
+                    (x == width - 1) ? 1.0f : prev_tUR[x + 1] * attenuate(data, x + 1, y - 1);
+
+                const float sky_factor =
+                    0.5f * curr_tV[x] + 0.25f * curr_tUL[x] + 0.25f * curr_tUR[x];
                 data.colors.at(x, y) += base_ambient * sky_factor;
             }
+
+            prev_tV.swap(curr_tV);
+            prev_tUL.swap(curr_tUL);
+            prev_tUR.swap(curr_tUR);
         }
         return;
     }
@@ -599,119 +593,75 @@ void WorldLightCalculator::applyEmissiveOverlay(World& world)
 }
 
 ColorNames::RgbF WorldLightCalculator::traceRay(
-    const GridOfCells& grid,
-    const WorldData& data,
+    const ColorNames::RgbF* optical,
+    int width,
+    int height,
     float x0,
     float y0,
     int x1,
     int y1,
     ColorNames::RgbF color) const
 {
-    // DDA-style grid traversal from sub-cell light position to target cell center.
-    // Accumulates opacity and tinting as light passes through materials.
-    const int width = grid.getWidth();
-    const int height = grid.getHeight();
-    const ColorNames::RgbF white{ 1.0f, 1.0f, 1.0f };
+    // DDA grid traversal using raw (unnormalized) direction — normalization is not
+    // required because only the tMaxX vs tMaxY comparison matters, and scaling both
+    // by the same factor preserves the ordering.
+    const float dx = (static_cast<float>(x1) + 0.5f) - x0;
+    const float dy = (static_cast<float>(y1) + 0.5f) - y0;
 
-    // Target is cell center.
-    const float target_x = static_cast<float>(x1) + 0.5f;
-    const float target_y = static_cast<float>(y1) + 0.5f;
-
-    // Ray direction.
-    const float dx = target_x - x0;
-    const float dy = target_y - y0;
-    const float dist = std::sqrt(dx * dx + dy * dy);
-
-    if (dist < 0.001f) {
-        return color; // Start and end are the same point.
+    // Degenerate: source is inside the target cell.
+    if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
+        return color;
     }
 
-    // Normalized direction.
-    const float dir_x = dx / dist;
-    const float dir_y = dy / dist;
-
-    // Offset start position by tiny epsilon to avoid exact-boundary edge cases.
-    // This ensures DDA algorithm traverses cells correctly regardless of start position.
+    // Nudge start off grid boundaries to avoid traversal artefacts.
     constexpr float EPSILON = 1e-5f;
-    const float x0_adj = x0 + dir_x * EPSILON;
-    const float y0_adj = y0 + dir_y * EPSILON;
+    const float x0_adj = x0 + (dx >= 0.0f ? EPSILON : -EPSILON);
+    const float y0_adj = y0 + (dy >= 0.0f ? EPSILON : -EPSILON);
 
-    // Current cell - must use adjusted position for consistency with tMax.
     int cell_x = static_cast<int>(std::floor(x0_adj));
     int cell_y = static_cast<int>(std::floor(y0_adj));
 
-    // Step direction.
-    const int step_x = (dir_x > 0) ? 1 : -1;
-    const int step_y = (dir_y > 0) ? 1 : -1;
+    const int step_x = (dx > 0.0f) ? 1 : -1;
+    const int step_y = (dy > 0.0f) ? 1 : -1;
 
-    // tDelta: how far along ray (in units of dist) to cross one cell.
-    const float tDeltaX = (dir_x != 0.0f) ? std::abs(1.0f / dir_x) : 1e9f;
-    const float tDeltaY = (dir_y != 0.0f) ? std::abs(1.0f / dir_y) : 1e9f;
+    const float tDeltaX = (dx != 0.0f) ? std::abs(1.0f / dx) : 1e9f;
+    const float tDeltaY = (dy != 0.0f) ? std::abs(1.0f / dy) : 1e9f;
 
-    // tMax: how far along ray to next grid line.
-    float tMaxX, tMaxY;
-    if (dir_x > 0) {
-        tMaxX = (std::floor(x0_adj) + 1.0f - x0_adj) / dir_x;
-    }
-    else if (dir_x < 0) {
-        tMaxX = (x0_adj - std::floor(x0_adj)) / -dir_x;
-    }
-    else {
-        tMaxX = 1e9f;
-    }
+    const float tMaxX = (dx > 0.0f) ? (std::floor(x0_adj) + 1.0f - x0_adj) / dx
+        : (dx < 0.0f)               ? (x0_adj - std::floor(x0_adj)) / -dx
+                                    : 1e9f;
+    const float tMaxY = (dy > 0.0f) ? (std::floor(y0_adj) + 1.0f - y0_adj) / dy
+        : (dy < 0.0f)               ? (y0_adj - std::floor(y0_adj)) / -dy
+                                    : 1e9f;
 
-    if (dir_y > 0) {
-        tMaxY = (std::floor(y0_adj) + 1.0f - y0_adj) / dir_y;
-    }
-    else if (dir_y < 0) {
-        tMaxY = (y0_adj - std::floor(y0_adj)) / -dir_y;
-    }
-    else {
-        tMaxY = 1e9f;
-    }
+    float tCurX = tMaxX;
+    float tCurY = tMaxY;
 
-    // Traverse grid cells along ray.
-    const int max_steps = width + height; // Safety limit.
+    // Geometric bound: at most |Δx|+|Δy|+2 cell crossings to reach target.
+    const int max_steps = std::abs(x1 - cell_x) + std::abs(y1 - cell_y) + 2;
     for (int step = 0; step < max_steps; ++step) {
-        // Check if we've reached the target cell.
         if (cell_x == x1 && cell_y == y1) {
             break;
         }
 
-        // Bounds check.
         if (cell_x < 0 || cell_x >= width || cell_y < 0 || cell_y >= height) {
             return ColorNames::RgbF{};
         }
 
-        // Get material and fill ratio at this cell.
-        const uint64_t packed = grid.getMaterialNeighborhood(cell_x, cell_y).raw();
-        const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-        const auto& light_props = Material::getProperties(mat).light;
-        const Cell& cell = data.cells[static_cast<size_t>(cell_y) * width + cell_x];
-        const float fill = cell.fill_ratio;
+        // Single multiply from precomputed optical buffer replaces material lookup,
+        // opacity/fill math, tint decode, and lerp.
+        color *= optical[static_cast<size_t>(cell_y) * width + cell_x];
 
-        // Scale opacity by fill ratio - partially filled cells are more transparent.
-        const float effective_opacity = light_props.opacity * fill;
-        const float transmittance = 1.0f - effective_opacity;
-        color *= transmittance;
-
-        // Scale tinting by fill ratio - partially filled cells tint less.
-        const ColorNames::RgbF base_tint = ColorNames::toRgbF(light_props.tint);
-        const ColorNames::RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
-        color *= effective_tint;
-
-        // Early exit if light is fully absorbed.
         if (color.r < 0.001f && color.g < 0.001f && color.b < 0.001f) {
             return ColorNames::RgbF{};
         }
 
-        // Step to next cell.
-        if (tMaxX < tMaxY) {
-            tMaxX += tDeltaX;
+        if (tCurX < tCurY) {
+            tCurX += tDeltaX;
             cell_x += step_x;
         }
         else {
-            tMaxY += tDeltaY;
+            tCurY += tDeltaY;
             cell_y += step_y;
         }
     }
@@ -719,8 +669,7 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
     return color;
 }
 
-void WorldLightCalculator::applyPointLight(
-    const PointLight& light, World& world, const GridOfCells& grid)
+void WorldLightCalculator::applyPointLight(const PointLight& light, World& world)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -741,7 +690,9 @@ void WorldLightCalculator::applyPointLight(
     }
 
     const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const float radius_sq = light.radius * light.radius;
     const RgbF light_color = toRgbF(light.color) * light.intensity;
+    const RgbF* optical = optical_buffer_.data.data();
 
     const int min_x = std::max(0, light_cell_x - radius_int);
     const int max_x = std::min(width - 1, light_cell_x + radius_int);
@@ -750,24 +701,23 @@ void WorldLightCalculator::applyPointLight(
 
     for (int y = min_y; y <= max_y; ++y) {
         for (int x = min_x; x <= max_x; ++x) {
-            // Distance from sub-cell light position to cell center.
             const float dx = (static_cast<float>(x) + 0.5f) - light_x;
             const float dy = (static_cast<float>(y) + 0.5f) - light_y;
-            const float dist = std::sqrt(dx * dx + dy * dy);
+            const float dist_sq = dx * dx + dy * dy;
 
-            if (dist > light.radius) {
+            if (dist_sq > radius_sq) {
                 continue;
             }
 
-            const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
-            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            const float falloff = 1.0f / (1.0f + dist_sq * light.attenuation);
+            const RgbF received =
+                traceRay(optical, width, height, light_x, light_y, x, y, light_color);
             data.colors.at(x, y) += received * falloff;
         }
     }
 }
 
-void WorldLightCalculator::applySpotLight(
-    const SpotLight& light, World& world, const GridOfCells& grid)
+void WorldLightCalculator::applySpotLight(const SpotLight& light, World& world)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -788,7 +738,9 @@ void WorldLightCalculator::applySpotLight(
     }
 
     const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const float radius_sq = light.radius * light.radius;
     const RgbF light_color = toRgbF(light.color) * light.intensity;
+    const RgbF* optical = optical_buffer_.data.data();
 
     const int min_x = std::max(0, light_cell_x - radius_int);
     const int max_x = std::min(width - 1, light_cell_x + radius_int);
@@ -797,12 +749,11 @@ void WorldLightCalculator::applySpotLight(
 
     for (int y = min_y; y <= max_y; ++y) {
         for (int x = min_x; x <= max_x; ++x) {
-            // Distance from sub-cell light position to cell center.
             const float dx = (static_cast<float>(x) + 0.5f) - light_x;
             const float dy = (static_cast<float>(y) + 0.5f) - light_y;
-            const float dist = std::sqrt(dx * dx + dy * dy);
+            const float dist_sq = dx * dx + dy * dy;
 
-            if (dist > light.radius) {
+            if (dist_sq > radius_sq) {
                 continue;
             }
 
@@ -817,15 +768,15 @@ void WorldLightCalculator::applySpotLight(
                 continue;
             }
 
-            const float falloff = angular_factor / (1.0f + dist * dist * light.attenuation);
-            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            const float falloff = angular_factor / (1.0f + dist_sq * light.attenuation);
+            const RgbF received =
+                traceRay(optical, width, height, light_x, light_y, x, y, light_color);
             data.colors.at(x, y) += received * falloff;
         }
     }
 }
 
-void WorldLightCalculator::applyRotatingLight(
-    const RotatingLight& light, World& world, const GridOfCells& grid)
+void WorldLightCalculator::applyRotatingLight(const RotatingLight& light, World& world)
 {
     applySpotLight(
         SpotLight{ .position = light.position,
@@ -836,8 +787,7 @@ void WorldLightCalculator::applyRotatingLight(
                    .direction = light.direction,
                    .arc_width = light.arc_width,
                    .focus = light.focus },
-        world,
-        grid);
+        world);
 }
 
 float WorldLightCalculator::getSpotAngularFactor(
@@ -870,25 +820,51 @@ float WorldLightCalculator::getSpotAngularFactor(
     return std::pow(1.0f - norm_angle, focus);
 }
 
-void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& grid)
+void WorldLightCalculator::buildOpticalBuffer(const WorldData& data)
+{
+    using ColorNames::lerp;
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    if (optical_buffer_.width != data.width || optical_buffer_.height != data.height) {
+        optical_buffer_.resize(data.width, data.height);
+    }
+
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
+    const size_t count = static_cast<size_t>(data.width) * data.height;
+
+    for (size_t i = 0; i < count; ++i) {
+        const Cell& cell = data.cells[i];
+        const auto& lp = Material::getProperties(cell.material_type).light;
+        const float fill = cell.fill_ratio;
+        // Combine transmittance and tint into a single per-cell RgbF multiplier.
+        // Ray steps reduce to: color *= optical[idx].
+        optical_buffer_.data[i] = lerp(white, toRgbF(lp.tint), fill) * (1.0f - lp.opacity * fill);
+    }
+}
+
+void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& /*grid*/)
 {
     const LightManager& lights = world.getLightManager();
     if (lights.count() == 0) {
         return;
     }
 
+    // Build per-cell optical multiplier once for all ray traces this frame.
+    buildOpticalBuffer(world.getData());
+
     lights.forEachLight([&](LightId, const Light& light) {
         std::visit(
             [&](const auto& typed_light) {
                 using T = std::decay_t<decltype(typed_light)>;
                 if constexpr (std::is_same_v<T, PointLight>) {
-                    applyPointLight(typed_light, world, grid);
+                    applyPointLight(typed_light, world);
                 }
                 else if constexpr (std::is_same_v<T, SpotLight>) {
-                    applySpotLight(typed_light, world, grid);
+                    applySpotLight(typed_light, world);
                 }
                 else if constexpr (std::is_same_v<T, RotatingLight>) {
-                    applyRotatingLight(typed_light, world, grid);
+                    applyRotatingLight(typed_light, world);
                 }
             },
             light.getVariant());

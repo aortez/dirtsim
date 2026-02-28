@@ -1,5 +1,6 @@
 #include "core/UUID.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/scenarios/ClockScenario.h"
 #include "server/Event.h"
 #include "server/UserSettings.h"
 #include "server/api/TrainingResult.h"
@@ -37,14 +38,14 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     ASSERT_TRUE(std::filesystem::exists(settingsPath));
 
     const UserSettings& inMemory = fixture.stateMachine->getUserSettings();
-    EXPECT_EQ(inMemory.timezoneIndex, 2);
+    EXPECT_EQ(inMemory.clockScenarioConfig.timezoneIndex, 2);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.timezoneIndex, 2);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -145,32 +146,28 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesOrganismWithoutB
 TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
 {
     TestStateMachineFixture fixture("dirtsim-user-settings-set");
+    const uint8_t maxTimezoneIndex = static_cast<uint8_t>(ClockScenario::TIMEZONES.size() - 1);
 
     bool callbackInvoked = false;
     Api::UserSettingsSet::Response response;
 
-    Api::UserSettingsSet::Command command{
-        .settings =
-            UserSettings{
-                .timezoneIndex = -50,
-                .volumePercent = 999,
-                .defaultScenario = Scenario::EnumType::Clock,
-                .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
-                .startMenuIdleTimeoutMs = 99999999,
-                .trainingSpec = {},
-                .evolutionConfig =
-                    EvolutionConfig{
-                        .genomeArchiveMaxSize = 50000,
-                        .diversityEliteCount = -5,
-                        .diversityEliteFitnessEpsilon = -0.5,
-                        .warmStartSeedPercent = 999.0,
-                        .warmStartNoveltyWeight = -0.5,
-                        .warmStartFitnessFloorPercentile = 999.0,
-                    },
-                .mutationConfig = {},
-                .trainingResumePolicy = static_cast<TrainingResumePolicy>(99),
-            },
+    UserSettings requestedSettings{};
+    requestedSettings.clockScenarioConfig.timezoneIndex = 255;
+    requestedSettings.volumePercent = 999;
+    requestedSettings.defaultScenario = Scenario::EnumType::Clock;
+    requestedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+    requestedSettings.startMenuIdleTimeoutMs = 99999999;
+    requestedSettings.evolutionConfig = EvolutionConfig{
+        .genomeArchiveMaxSize = 50000,
+        .diversityEliteCount = -5,
+        .diversityEliteFitnessEpsilon = -0.5,
+        .warmStartSeedPercent = 999.0,
+        .warmStartNoveltyWeight = -0.5,
+        .warmStartFitnessFloorPercentile = 999.0,
     };
+    requestedSettings.trainingResumePolicy = static_cast<TrainingResumePolicy>(99);
+
+    Api::UserSettingsSet::Command command{ .settings = requestedSettings };
     Api::UserSettingsSet::Cwc cwc(command, [&](Api::UserSettingsSet::Response&& result) {
         callbackInvoked = true;
         response = std::move(result);
@@ -180,7 +177,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
 
     ASSERT_TRUE(callbackInvoked);
     ASSERT_TRUE(response.isValue());
-    EXPECT_EQ(response.value().settings.timezoneIndex, 0);
+    EXPECT_EQ(response.value().settings.clockScenarioConfig.timezoneIndex, maxTimezoneIndex);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
@@ -195,7 +192,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.timezoneIndex, 0);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezoneIndex, maxTimezoneIndex);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
@@ -212,19 +209,14 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
 {
     TestStateMachineFixture fixture("dirtsim-user-settings-reset");
 
-    Api::UserSettingsSet::Command setCommand{
-        .settings =
-            UserSettings{
-                .timezoneIndex = 7,
-                .volumePercent = 65,
-                .defaultScenario = Scenario::EnumType::Clock,
-                .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
-                .startMenuIdleTimeoutMs = 90000,
-                .trainingSpec = {},
-                .evolutionConfig = {},
-                .mutationConfig = {},
-            },
-    };
+    UserSettings changedSettings{};
+    changedSettings.clockScenarioConfig.timezoneIndex = 7;
+    changedSettings.volumePercent = 65;
+    changedSettings.defaultScenario = Scenario::EnumType::Clock;
+    changedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+    changedSettings.startMenuIdleTimeoutMs = 90000;
+
+    Api::UserSettingsSet::Command setCommand{ .settings = changedSettings };
     Api::UserSettingsSet::Cwc setCwc(setCommand, [](Api::UserSettingsSet::Response&&) {});
     fixture.stateMachine->handleEvent(Event{ setCwc });
 
@@ -241,7 +233,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
 
     ASSERT_TRUE(callbackInvoked);
     ASSERT_TRUE(response.isValue());
-    EXPECT_EQ(response.value().settings.timezoneIndex, 2);
+    EXPECT_EQ(response.value().settings.clockScenarioConfig.timezoneIndex, 2);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 60000);
@@ -249,7 +241,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.timezoneIndex, 2);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -261,7 +253,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     TestStateMachineFixture fixture("dirtsim-user-settings-patch");
 
     UserSettings baseSettings = fixture.stateMachine->getUserSettings();
-    baseSettings.timezoneIndex = 7;
+    baseSettings.clockScenarioConfig.timezoneIndex = 7;
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
     baseSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
@@ -296,7 +288,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     ASSERT_TRUE(response.isValue());
 
     const UserSettings& inMemory = response.value().settings;
-    EXPECT_EQ(inMemory.timezoneIndex, 7);
+    EXPECT_EQ(inMemory.clockScenarioConfig.timezoneIndex, 7);
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
@@ -306,7 +298,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.timezoneIndex, 7);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezoneIndex, 7);
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);

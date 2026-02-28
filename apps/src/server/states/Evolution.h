@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "server/Event.h"
+#include "server/api/FitnessBreakdownReport.h"
 
 #include <atomic>
 #include <chrono>
@@ -105,6 +106,7 @@ struct Evolution {
     uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
     int lastCompletedGeneration_ = -1;
+    double lastGenerationAverageFitness_ = 0.0;
     double lastGenerationFitnessMin_ = 0.0;
     double lastGenerationFitnessMax_ = 0.0;
     std::vector<uint32_t> lastGenerationFitnessHistogram_;
@@ -133,6 +135,7 @@ struct Evolution {
         std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
         std::optional<EvaluationSnapshot> snapshot;
         std::unordered_map<std::string, TimerAggregate> timerStats;
+        std::optional<Api::FitnessBreakdownReport> fitnessBreakdown;
         std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
     };
 
@@ -157,6 +160,7 @@ struct Evolution {
         std::atomic<int> activeEvaluations{ 0 };  // Currently running evaluations.
         TrainingSpec trainingSpec;
         EvolutionConfig evolutionConfig;
+        std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
         TrainingBrainRegistry brainRegistry;
         GenomeRepository* genomeRepository = nullptr;
     };
@@ -164,12 +168,13 @@ struct Evolution {
     std::unique_ptr<TrainingRunner> visibleRunner_;
     int visibleEvalIndex_ = -1;
     bool visibleEvalIsRobustness_ = false;
-    bool visibleDuckSecondPassActive_ = false;
-    std::optional<WorkerResult> visibleDuckPrimaryPassResult_;
+    std::vector<WorkerResult> visibleDuckPassResults_;
+    std::optional<bool> visibleDuckPrimarySpawnLeftFirst_ = std::nullopt;
     int visibleRobustSampleOrdinal_ = 0;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
     std::deque<int> visibleQueue_;
+    std::optional<ScenarioConfig> scenarioConfigOverride_ = std::nullopt;
 
     std::unique_ptr<WorkerState> workerState_;
 
@@ -180,9 +185,6 @@ struct Evolution {
     double finalAverageFitness_ = 0.0;
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
-    int streamIntervalMs_ = 16;
-    bool bestPlaybackEnabled_ = false;
-    int bestPlaybackIntervalMs_ = 16;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackBroadcastTime_{};
@@ -215,7 +217,6 @@ struct Evolution {
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
-    Any onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
 
     static constexpr const char* name() { return "Evolution"; }
@@ -288,6 +289,7 @@ private:
     int pendingBestRobustnessIndex_ = -1;
     double pendingBestRobustnessFirstSample_ = 0.0;
     std::optional<EvaluationSnapshot> pendingBestSnapshot_;
+    std::optional<Api::FitnessBreakdownReport> pendingBestSnapshotFitnessBreakdown_;
     int pendingBestSnapshotCommandsAccepted_ = 0;
     int pendingBestSnapshotCommandsRejected_ = 0;
     std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandSignatures_;

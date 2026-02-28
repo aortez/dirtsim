@@ -9,6 +9,7 @@ TestStateMachineFixture::TestStateMachineFixture()
     auto mockWs = std::make_unique<MockWebSocketService>();
     mockWebSocketService = mockWs.get();
     stateMachine->wsService_ = std::move(mockWs);
+    userSettingsManager.setWebSocketService(stateMachine->wsService_.get());
 }
 
 } // namespace DirtSim::Ui::Tests

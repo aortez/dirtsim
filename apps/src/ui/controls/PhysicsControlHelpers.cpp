@@ -359,22 +359,6 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return s.light.sky_access_multi_directional;
                             } },
-                      { .label = "Sky Steps",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 200,
-                        .defaultValue = 48,
-                        .valueScale = 1.0,
-                        .valueFormat = "%.0f",
-                        .step = 1,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.sky_probe_steps = static_cast<int>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.sky_probe_steps);
-                            } },
                       { .label = "D Iters",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,

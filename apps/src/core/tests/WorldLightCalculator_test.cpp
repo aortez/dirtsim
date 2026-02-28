@@ -46,7 +46,6 @@ protected:
             .sky_access_enabled = false,
             .sky_access_falloff = 0.0f,
             .sky_access_multi_directional = false,
-            .sky_probe_steps = 48,
             .sun_color = ColorNames::white(),
             .sun_enabled = true,
             .sun_intensity = 1.0f,
@@ -417,7 +416,6 @@ TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalCreatesAtoBtoCFalloff)
     config.sky_access_enabled = true;
     config.sky_access_falloff = 1.0f;
     config.sky_access_multi_directional = true;
-    config.sky_probe_steps = 64;
     calc.calculate(world, world.getGrid(), config, timers);
 
     // Print lightmap with sample points for debugging.
@@ -452,6 +450,118 @@ TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalCreatesAtoBtoCFalloff)
     EXPECT_GT(b, 0.20f) << "b should receive measurable diagonal ambient";
     EXPECT_LT(b, 0.30f) << "b should be dimmer than direct-lit cells";
     EXPECT_LT(c, 0.05f) << "c should be near dark with no probe path";
+}
+
+TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalNumericalAccuracy)
+{
+    // Verify exact sky_factor values for two hand-calculable scenarios.
+    //
+    // Part 1 – All-AIR world: every cell has sky_factor = 1.0, so the result must
+    // match uniform ambient (sky_access_enabled=false) for every cell.
+    //
+    // Part 2 – Opaque wall at row 1, world 5 wide × 4 tall:
+    //   Probe weights: 0.5 vertical (V), 0.25 upper-left (UL), 0.25 upper-right (UR).
+    //   Row 0 (above wall): all probes exit the top → sky_factor = 1.0.
+    //   Row 2+ interior (0 < x < 4): V hits wall, UL hits wall, UR hits wall → 0.0.
+    //   Row 2+ left edge (x=0): V hits wall, UL exits world left (=1.0), UR hits wall
+    //     → sky_factor = 0.5×0 + 0.25×1 + 0.25×0 = 0.25.
+    //   Row 2+ right edge (x=4): symmetric → sky_factor = 0.25.
+
+    // --- Part 1: all-AIR world ---
+    {
+        World world(6, 5);
+        WorldData& data = world.getData();
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
+                data.at(x, y).clear();
+            }
+        }
+
+        config.sun_enabled = false;
+        config.ambient_color = ColorNames::white();
+        config.ambient_intensity = 1.0f;
+        config.sky_access_falloff = 1.0f;
+        config.diffusion_iterations = 0;
+        config.diffusion_rate = 0.0f;
+
+        // Uniform ambient (no sky access).
+        config.sky_access_enabled = false;
+        calc.calculate(world, world.getGrid(), config, timers);
+        const float uniform_brightness = ColorNames::brightness(data.colors.at(3, 2));
+
+        // Multi-directional sky access on all-AIR world should give identical brightness.
+        config.sky_access_enabled = true;
+        config.sky_access_multi_directional = true;
+        calc.calculate(world, world.getGrid(), config, timers);
+        const float sky_brightness = ColorNames::brightness(data.colors.at(3, 2));
+
+        ASSERT_GT(uniform_brightness, 0.0f) << "Uniform ambient should light the cell.";
+        EXPECT_NEAR(sky_brightness, uniform_brightness, uniform_brightness * 0.01f)
+            << "All-AIR world: multi-directional sky access should equal uniform ambient "
+               "(sky_factor=1.0 everywhere).";
+    }
+
+    // --- Part 2: opaque wall at row 1 ---
+    {
+        World world(5, 4);
+        WorldData& data = world.getData();
+
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
+                data.at(x, y).clear();
+            }
+        }
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, 1).replaceMaterial(Material::EnumType::Wall, 1.0f);
+        }
+        world.advanceTime(0.0001);
+
+        config.sun_enabled = false;
+        config.ambient_color = ColorNames::white();
+        config.ambient_intensity = 1.0f;
+        config.sky_access_enabled = true;
+        config.sky_access_falloff = 1.0f;
+        config.sky_access_multi_directional = true;
+        config.diffusion_iterations = 0;
+        config.diffusion_rate = 0.0f;
+        calc.calculate(world, world.getGrid(), config, timers);
+
+        // Reference brightness for cells with full sky access (row 0, all same material).
+        const float ref = ColorNames::brightness(data.colors.at(2, 0));
+        ASSERT_GT(ref, 0.0f) << "Row-0 cells must be lit (sky_factor=1.0).";
+
+        // Row 2 (immediately below the wall): all three probes hit the wall before
+        // exiting the world for every interior cell → sky_factor = 0.0.
+        // At deeper rows the diagonal probes can escape around the wall edges, so
+        // only row 2 is guaranteed to be fully blocked for interior cells.
+        {
+            constexpr int y = 2;
+            for (int x = 1; x < data.width - 1; ++x) {
+                const float b = ColorNames::brightness(data.colors.at(x, y));
+                EXPECT_LT(b, ref * 0.01f)
+                    << "Interior cell (" << x << "," << y
+                    << ") immediately below opaque wall must be dark (sky_factor=0).";
+            }
+        }
+
+        // Left-edge cells (x=0): UL probe exits world left → sky_factor = 0.25.
+        for (int y = 2; y < data.height; ++y) {
+            const float b = ColorNames::brightness(data.colors.at(0, y));
+            EXPECT_NEAR(b, ref * 0.25f, ref * 0.02f)
+                << "Left-edge cell (0," << y
+                << ") below opaque wall must have sky_factor ≈ 0.25 "
+                   "(UL probe exits world, V and UR blocked by wall).";
+        }
+
+        // Right-edge cells (x=W-1): UR probe exits world right → sky_factor = 0.25.
+        for (int y = 2; y < data.height; ++y) {
+            const float b = ColorNames::brightness(data.colors.at(data.width - 1, y));
+            EXPECT_NEAR(b, ref * 0.25f, ref * 0.02f)
+                << "Right-edge cell (" << (data.width - 1) << "," << y
+                << ") below opaque wall must have sky_factor ≈ 0.25 "
+                   "(UR probe exits world, V and UL blocked by wall).";
+        }
+    }
 }
 
 // =============================================================================
@@ -867,7 +977,6 @@ protected:
             .sky_access_enabled = false,
             .sky_access_falloff = 0.0f,
             .sky_access_multi_directional = false,
-            .sky_probe_steps = 48,
             .sun_color = ColorNames::white(),
             .sun_enabled = false,
             .sun_intensity = 0.0f,

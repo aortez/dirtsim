@@ -10,7 +10,7 @@ namespace UserSettingsSet {
 namespace {
 
 constexpr std::array<const char*, 3> kRequiredSettingsFields = {
-    "timezoneIndex",
+    "clockScenarioConfig",
     "volumePercent",
     "defaultScenario",
 };

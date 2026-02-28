@@ -124,6 +124,8 @@ Start Menu variants:
 - `network`: Network screen with the full NetworkDiagnosticsPanel.
 - `synth`: Synth screen with the keyboard row.
 - `synth-config`: Synth screen with the expanded volume panel.
+- `training-active`: TrainingActive baseline view.
+- `training-active-scenario-controls`: TrainingActive with scenario controls flyout open.
 
 ## Stack real and markdown screenshots
 
@@ -144,7 +146,7 @@ DIRTSIM_SSH_HOST=dirtsim2.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
 DIRTSIM_SSH_CONTROL_PATH=~/.ssh/cm-%r@%h:%p
-DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,network,synth,synth-config,training-active,training-config,training-config-evolution
+DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,network,synth,synth-config,training-active,training-active-scenario-controls,training-config,training-config-evolution
 DOCS_SCREENSHOT_MIN_BYTES=2048
 ```
 

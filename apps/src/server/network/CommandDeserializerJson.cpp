@@ -17,7 +17,6 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/RenderStreamConfigSet.h"
 #include "server/api/Reset.h"
-#include "server/api/ScenarioConfigSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
 #include "server/api/SimStop.h"
@@ -31,7 +30,6 @@
 #include "server/api/TrainingResultList.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingResultSet.h"
-#include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsGet.h"
 #include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsReset.h"
@@ -128,10 +126,6 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::Reset::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Reset::Command::fromJson(cmd));
         }
-        else if (commandName == Api::ScenarioConfigSet::Command::name()) {
-            return Result<ApiCommand, ApiError>::okay(
-                Api::ScenarioConfigSet::Command::fromJson(cmd));
-        }
         else if (commandName == Api::SeedAdd::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SeedAdd::Command::fromJson(cmd));
         }
@@ -194,10 +188,6 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TrainingBestSnapshotGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingBestSnapshotGet::Command::fromJson(cmd));
-        }
-        else if (commandName == Api::TrainingStreamConfigSet::Command::name()) {
-            return Result<ApiCommand, ApiError>::okay(
-                Api::TrainingStreamConfigSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::WebSocketAccessSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(

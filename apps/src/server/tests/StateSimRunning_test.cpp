@@ -37,7 +37,7 @@ SimRunning createSimRunningWithWorld(StateMachine& stateMachine)
     return simRunning;
 }
 
-void applyCleanScenario(StateMachine& stateMachine, SimRunning& simRunning)
+void applyCleanScenario(SimRunning& simRunning)
 {
     Config::Sandbox cleanConfig;
     cleanConfig.quadrantEnabled = false;
@@ -45,12 +45,10 @@ void applyCleanScenario(StateMachine& stateMachine, SimRunning& simRunning)
     cleanConfig.rightThrowEnabled = false;
     cleanConfig.rainRate = 0.0;
 
-    Api::ScenarioConfigSet::Command cmd;
-    cmd.config = cleanConfig;
-    Api::ScenarioConfigSet::Cwc cwc(cmd, [](auto&&) {});
-
-    State::Any newState = simRunning.onEvent(cwc, stateMachine);
-    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_NE(simRunning.world, nullptr);
+    ASSERT_NE(simRunning.scenario, nullptr);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
+    simRunning.scenario->setConfig(cleanConfig, *simRunning.world);
 }
 
 } // namespace
@@ -97,7 +95,7 @@ TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 
     // Setup: Create initialized SimRunning with clean scenario (no features).
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
+    applyCleanScenario(simRunning);
 
     // Setup: Manually add dirt at top center.
     const uint32_t testX = 14;
@@ -235,9 +233,9 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
 }
 
 /**
- * @brief Test that ScenarioConfigSet toggles water column off and on.
+ * @brief Test that Sandbox config toggles water column off and on.
  */
-TEST(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
+TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
 {
     TestStateMachineFixture fixture;
 
@@ -258,19 +256,12 @@ TEST(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     configOff.rightThrowEnabled = false;
     configOff.rainRate = 0.0;
 
-    bool callbackInvoked = false;
-    Api::ScenarioConfigSet::Command cmdOff;
-    cmdOff.config = configOff;
-    Api::ScenarioConfigSet::Cwc cwcOff(cmdOff, [&](auto&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue()) << "ScenarioConfigSet should succeed";
-    });
-
-    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *fixture.stateMachine);
-    simRunning = std::move(std::get<SimRunning>(stateAfterOff.getVariant()));
+    ASSERT_NE(simRunning.world, nullptr);
+    ASSERT_NE(simRunning.scenario, nullptr);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
+    simRunning.scenario->setConfig(configOff, *simRunning.world);
 
     // Verify: Water column removed.
-    ASSERT_TRUE(callbackInvoked) << "Callback should be invoked";
     for (uint32_t y = 0; y < 20; ++y) {
         for (uint32_t x = 1; x <= 5; ++x) {
             const Cell& cell = simRunning.world->getData().at(x, y);
@@ -280,22 +271,11 @@ TEST(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     }
 
     // Execute: Toggle water column back ON.
-    callbackInvoked = false;
     Config::Sandbox configOn = configOff;
     configOn.waterColumnEnabled = true;
-
-    Api::ScenarioConfigSet::Command cmdOn;
-    cmdOn.config = configOn;
-    Api::ScenarioConfigSet::Cwc cwcOn(cmdOn, [&](auto&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue());
-    });
-
-    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *fixture.stateMachine);
-    simRunning = std::move(std::get<SimRunning>(stateAfterOn.getVariant()));
+    simRunning.scenario->setConfig(configOn, *simRunning.world);
 
     // Verify: Water column restored.
-    ASSERT_TRUE(callbackInvoked);
     const Cell& restoredWaterCell = simRunning.world->getData().at(3, 5);
     EXPECT_EQ(restoredWaterCell.material_type, Material::EnumType::Water)
         << "Water column should be restored";
@@ -303,9 +283,9 @@ TEST(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
 }
 
 /**
- * @brief Test that ScenarioConfigSet toggles dirt quadrant off and on.
+ * @brief Test that Sandbox config toggles dirt quadrant off and on.
  */
-TEST(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
+TEST(StateSimRunningTest, SandboxConfig_TogglesDirtQuadrant)
 {
     TestStateMachineFixture fixture;
 
@@ -327,84 +307,27 @@ TEST(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     configOff.rightThrowEnabled = false;
     configOff.rainRate = 0.0;
 
-    bool callbackInvoked = false;
-    Api::ScenarioConfigSet::Command cmdOff;
-    cmdOff.config = configOff;
-    Api::ScenarioConfigSet::Cwc cwcOff(cmdOff, [&](auto&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue());
-    });
-
-    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *fixture.stateMachine);
-    simRunning = std::move(std::get<SimRunning>(stateAfterOff.getVariant()));
+    ASSERT_NE(simRunning.world, nullptr);
+    ASSERT_NE(simRunning.scenario, nullptr);
+    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
+    simRunning.scenario->setConfig(configOff, *simRunning.world);
 
     // Verify: Quadrant removed.
-    ASSERT_TRUE(callbackInvoked);
     const Cell& clearedCell = simRunning.world->getData().at(quadX, quadY);
     EXPECT_TRUE(
         clearedCell.material_type != Material::EnumType::Dirt || clearedCell.fill_ratio < 0.1)
         << "Quadrant should be cleared";
 
     // Execute: Toggle quadrant back ON.
-    callbackInvoked = false;
     Config::Sandbox configOn = configOff;
     configOn.quadrantEnabled = true;
-
-    Api::ScenarioConfigSet::Command cmdOn;
-    cmdOn.config = configOn;
-    Api::ScenarioConfigSet::Cwc cwcOn(cmdOn, [&](auto&& response) {
-        callbackInvoked = true;
-        EXPECT_TRUE(response.isValue());
-    });
-
-    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *fixture.stateMachine);
-    simRunning = std::move(std::get<SimRunning>(stateAfterOn.getVariant()));
+    simRunning.scenario->setConfig(configOn, *simRunning.world);
 
     // Verify: Quadrant restored.
-    ASSERT_TRUE(callbackInvoked);
     const Cell& restoredCell = simRunning.world->getData().at(quadX, quadY);
     EXPECT_EQ(restoredCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should be restored";
     EXPECT_GT(restoredCell.fill_ratio, 0.9) << "Quadrant cells should be filled";
-}
-
-TEST(StateSimRunningTest, ScenarioConfigSetRejectsInvalidNesRom)
-{
-    TestStateMachineFixture fixture;
-    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-
-    bool switchCallbackInvoked = false;
-    Api::ScenarioSwitch::Command switchCmd{
-        .scenario_id = Scenario::EnumType::NesFlappyParatroopa,
-    };
-    Api::ScenarioSwitch::Cwc switchCwc(switchCmd, [&](Api::ScenarioSwitch::Response&& response) {
-        switchCallbackInvoked = true;
-        EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
-    });
-
-    State::Any switchedState = simRunning.onEvent(switchCwc, *fixture.stateMachine);
-    ASSERT_TRUE(std::holds_alternative<SimRunning>(switchedState.getVariant()));
-    simRunning = std::move(std::get<SimRunning>(switchedState.getVariant()));
-    ASSERT_TRUE(switchCallbackInvoked);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::NesFlappyParatroopa);
-
-    Api::ScenarioConfigSet::Response configResponse;
-    Config::NesFlappyParatroopa invalidConfig{};
-    invalidConfig.romId = "missing-rom-id";
-    invalidConfig.romDirectory = std::filesystem::path(::testing::TempDir()).string();
-    invalidConfig.romPath = "";
-
-    Api::ScenarioConfigSet::Command configCmd{
-        .config = invalidConfig,
-    };
-    Api::ScenarioConfigSet::Cwc configCwc(
-        configCmd,
-        [&](Api::ScenarioConfigSet::Response&& response) { configResponse = std::move(response); });
-
-    State::Any updatedState = simRunning.onEvent(configCwc, *fixture.stateMachine);
-    ASSERT_TRUE(std::holds_alternative<SimRunning>(updatedState.getVariant()));
-    ASSERT_TRUE(configResponse.isError());
-    EXPECT_NE(configResponse.errorValue().message.find("Invalid NES config"), std::string::npos);
 }
 
 /**
@@ -481,7 +404,7 @@ TEST(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 
     // Setup: Create initialized SimRunning with clean scenario.
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
+    applyCleanScenario(simRunning);
 
     // Setup: Choose test coordinates (world is 28x28, avoid walls at boundaries).
     const uint32_t testX = 14;
@@ -536,7 +459,7 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
     TestStateMachineFixture fixture;
 
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
+    applyCleanScenario(simRunning);
 
     const int testX = 14;
     const int testY = 14;
@@ -601,7 +524,7 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
     TestStateMachineFixture fixture;
 
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
+    applyCleanScenario(simRunning);
 
     const int testX = 14;
     const int testY = 14;
@@ -784,7 +707,7 @@ TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
 
     // Setup: Create initialized SimRunning with Sandbox scenario.
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
-    applyCleanScenario(*fixture.stateMachine, simRunning);
+    applyCleanScenario(simRunning);
 
     // Add a duck organism.
     const uint32_t duckX = 10;

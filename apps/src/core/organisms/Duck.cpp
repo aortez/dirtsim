@@ -206,6 +206,10 @@ DuckAction Duck::getCurrentAction() const
 
 void Duck::setInput(DuckInput input)
 {
+    const float clampedMoveX = std::clamp(input.move.x, -1.0f, 1.0f);
+    effortAbsMoveInputTotal_ += std::abs(static_cast<double>(clampedMoveX));
+    effortJumpHeldTotal_ += input.jump ? 1.0 : 0.0;
+    ++effortSampleCount_;
     current_input_ = input;
 }
 

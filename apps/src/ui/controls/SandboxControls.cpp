@@ -1,7 +1,6 @@
 #include "SandboxControls.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/ScenarioConfigSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SpawnDirtBall.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -16,8 +15,9 @@ namespace Ui {
 SandboxControls::SandboxControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     const Config::Sandbox& config)
-    : ScenarioControlsBase(container, wsService, "sandbox")
+    : ScenarioControlsBase(container, wsService, userSettingsManager, "sandbox")
 {
     // Create widgets with initial config.
     createWidgets();
