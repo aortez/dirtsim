@@ -124,7 +124,7 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesOrganismWithoutB
     fixture.stateMachine = std::make_unique<StateMachine>(std::move(mockWs), fixture.testDataDir);
 
     const UserSettings& inMemory = fixture.stateMachine->getUserSettings();
-    EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::NES_FLAPPY_BIRD);
+    EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::NES_DUCK);
     EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(inMemory.trainingSpec.population.size(), 1u);
     const PopulationSpec& inMemoryPopulation = inMemory.trainingSpec.population.front();
@@ -133,7 +133,7 @@ TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesOrganismWithoutB
     EXPECT_EQ(inMemoryPopulation.randomCount, 2);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::NES_FLAPPY_BIRD);
+    EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::NES_DUCK);
     EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_EQ(fromDisk.trainingSpec.population.size(), 1u);
     const PopulationSpec& diskPopulation = fromDisk.trainingSpec.population.front();

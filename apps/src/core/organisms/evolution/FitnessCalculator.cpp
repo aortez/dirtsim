@@ -37,7 +37,7 @@ double computeFitnessForOrganism(const FitnessContext& context)
 
     switch (context.organismType) {
         case OrganismType::DUCK:
-        case OrganismType::NES_FLAPPY_BIRD:
+        case OrganismType::NES_DUCK:
         case OrganismType::GOOSE: {
             return DuckEvaluator::evaluate(context);
         }

@@ -1,13 +1,9 @@
 #include "core/scenarios/nes/NesGameAdapter.h"
 
-#include "core/Assert.h"
-#include "core/MaterialType.h"
-#include "core/organisms/evolution/NesDuckSpecialSenseLayout.h"
+#include "core/scenarios/nes/NesDuckSensoryBuilder.h"
 #include "core/scenarios/nes/NesFlappyBirdEvaluator.h"
+#include "core/scenarios/nes/NesPaletteClusterer.h"
 #include "core/scenarios/nes/NesRomProfileExtractor.h"
-
-#include <algorithm>
-#include <cmath>
 
 namespace DirtSim {
 
@@ -21,56 +17,11 @@ constexpr uint32_t kNesStartPulsePeriodFrames = 12;
 constexpr uint32_t kNesStartPulseWidthFrames = 2;
 constexpr uint32_t kNesWaitingFlapPulsePeriodFrames = 8;
 constexpr uint32_t kNesWaitingFlapPulseWidthFrames = 1;
-constexpr float kNesDuckVelocityScale = 10.0f;
-
-static_assert(
-    NesPolicyLayout::InputCount == NesDuckSpecialSenseLayout::FlappyMappedCount,
-    "NesGameAdapter: Flappy feature count must match special-sense mapping");
 
 bool isTitleLikeNesState(uint8_t gameState)
 {
     return gameState == kNesStateTitle || gameState == kNesStateGameOver
         || gameState == kNesStateFadeIn || gameState == kNesStateTitleFade;
-}
-
-void mapFlappyParatroopaFeaturesToSpecialSenses(
-    const std::array<float, NesPolicyLayout::InputCount>& features,
-    std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
-{
-    const auto writeSense =
-        [&features, &specialSenses](NesDuckSpecialSenseLayout::Slot slot, int featureIndex) {
-            specialSenses[static_cast<size_t>(slot)] =
-                static_cast<double>(features[static_cast<size_t>(featureIndex)]);
-        };
-
-    writeSense(NesDuckSpecialSenseLayout::Bias, NesDuckSpecialSenseLayout::Bias);
-    writeSense(
-        NesDuckSpecialSenseLayout::BirdYNormalized, NesDuckSpecialSenseLayout::BirdYNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::BirdVelocityNormalized,
-        NesDuckSpecialSenseLayout::BirdVelocityNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::NextPipeDistanceNormalized,
-        NesDuckSpecialSenseLayout::NextPipeDistanceNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::NextPipeTopNormalized,
-        NesDuckSpecialSenseLayout::NextPipeTopNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::NextPipeBottomNormalized,
-        NesDuckSpecialSenseLayout::NextPipeBottomNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::BirdGapOffsetNormalized,
-        NesDuckSpecialSenseLayout::BirdGapOffsetNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::ScrollXNormalized, NesDuckSpecialSenseLayout::ScrollXNormalized);
-    writeSense(NesDuckSpecialSenseLayout::ScrollNt, NesDuckSpecialSenseLayout::ScrollNt);
-    writeSense(
-        NesDuckSpecialSenseLayout::GameStateNormalized,
-        NesDuckSpecialSenseLayout::GameStateNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::ScoreNormalized, NesDuckSpecialSenseLayout::ScoreNormalized);
-    writeSense(
-        NesDuckSpecialSenseLayout::PrevFlapPressed, NesDuckSpecialSenseLayout::PrevFlapPressed);
 }
 
 class NesFlappyParatroopaGameAdapter final : public NesGameAdapter {
@@ -80,6 +31,7 @@ public:
         extractor_.emplace(runtimeRomId);
         evaluator_.emplace();
         evaluator_->reset();
+        paletteClusterer_.reset(runtimeRomId);
         startPulseFrameCounter_ = 0;
         waitingFlapPulseFrameCounter_ = 0;
     }
@@ -113,6 +65,10 @@ public:
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
     {
+        if (input.paletteFrame != nullptr) {
+            paletteClusterer_.observeFrame(*input.paletteFrame);
+        }
+
         NesGameAdapterFrameOutput output;
         if (!extractor_.has_value() || !evaluator_.has_value() || !extractor_->isSupported()) {
             output.rewardDelta += static_cast<double>(input.advancedFrames);
@@ -140,125 +96,115 @@ public:
 
     DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
     {
-        DuckSensoryData sensory{};
-        sensory.actual_width = DuckSensoryData::GRID_SIZE;
-        sensory.actual_height = DuckSensoryData::GRID_SIZE;
-        sensory.scale_factor = 1.0;
-        sensory.world_offset = { 0, 0 };
-        sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
-        sensory.delta_time_seconds = input.deltaTimeSeconds;
-
-        const auto setDominantMaterial = [&sensory](int x, int y, Material::EnumType materialType) {
-            if (x < 0 || x >= DuckSensoryData::GRID_SIZE || y < 0
-                || y >= DuckSensoryData::GRID_SIZE) {
-                return;
-            }
-            auto& histogram =
-                sensory.material_histograms[static_cast<size_t>(y)][static_cast<size_t>(x)];
-            histogram.fill(0.0);
-            const size_t materialIndex = static_cast<size_t>(materialType);
-            DIRTSIM_ASSERT(
-                materialIndex < histogram.size(),
-                "NesGameAdapter: Material index out of range for duck sensory histogram");
-            histogram[materialIndex] = 1.0;
-        };
-
-        for (int y = 0; y < DuckSensoryData::GRID_SIZE; ++y) {
-            for (int x = 0; x < DuckSensoryData::GRID_SIZE; ++x) {
-                setDominantMaterial(x, y, Material::EnumType::Air);
-            }
+        if (input.paletteFrame == nullptr) {
+            DuckSensoryData sensory{};
+            sensory.delta_time_seconds = input.deltaTimeSeconds;
+            return sensory;
         }
 
-        const int birdX = 3;
-        const float birdYNormalized = std::clamp(
-            input.policyInputs[static_cast<size_t>(NesDuckSpecialSenseLayout::BirdYNormalized)],
-            0.0f,
-            1.0f);
-        const int birdY = std::clamp(
-            static_cast<int>(
-                std::lround(birdYNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
-            0,
-            DuckSensoryData::GRID_SIZE - 1);
-        setDominantMaterial(birdX, birdY, Material::EnumType::Wood);
-
-        const float pipeDistanceNormalized = std::clamp(
-            input.policyInputs[static_cast<size_t>(
-                NesDuckSpecialSenseLayout::NextPipeDistanceNormalized)],
-            0.0f,
-            1.0f);
-        const float pipeTopNormalized = std::clamp(
-            input.policyInputs[static_cast<size_t>(
-                NesDuckSpecialSenseLayout::NextPipeTopNormalized)],
-            0.0f,
-            1.0f);
-        const float pipeBottomNormalized = std::clamp(
-            input.policyInputs[static_cast<size_t>(
-                NesDuckSpecialSenseLayout::NextPipeBottomNormalized)],
-            0.0f,
-            1.0f);
-        const int pipeX = std::clamp(
-            birdX
-                + static_cast<int>(std::lround(
-                    pipeDistanceNormalized
-                    * static_cast<float>(DuckSensoryData::GRID_SIZE - 1 - birdX))),
-            birdX + 1,
-            DuckSensoryData::GRID_SIZE - 1);
-        const int gapTop = std::clamp(
-            static_cast<int>(std::lround(
-                pipeTopNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
-            0,
-            DuckSensoryData::GRID_SIZE - 1);
-        const int gapBottom = std::clamp(
-            static_cast<int>(std::lround(
-                pipeBottomNormalized * static_cast<float>(DuckSensoryData::GRID_SIZE - 1))),
-            gapTop,
-            DuckSensoryData::GRID_SIZE - 1);
-        for (int pipeColumn = pipeX;
-             pipeColumn <= std::min(pipeX + 1, DuckSensoryData::GRID_SIZE - 1);
-             ++pipeColumn) {
-            for (int y = 0; y < DuckSensoryData::GRID_SIZE; ++y) {
-                if (y >= gapTop && y <= gapBottom) {
-                    continue;
-                }
-                setDominantMaterial(pipeColumn, y, Material::EnumType::Wall);
-            }
-        }
-
-        const float birdVelocityNormalized = std::clamp(
-            input.policyInputs[static_cast<size_t>(
-                NesDuckSpecialSenseLayout::BirdVelocityNormalized)],
-            -1.0f,
-            1.0f);
-        sensory.velocity.x = 0.0;
-        sensory.velocity.y = static_cast<double>(birdVelocityNormalized * kNesDuckVelocityScale);
-
-        sensory.special_senses.fill(0.0);
-        if (extractor_.has_value() && extractor_->isSupported()) {
-            mapFlappyParatroopaFeaturesToSpecialSenses(input.policyInputs, sensory.special_senses);
-        }
-
+        DuckSensoryData sensory = makeNesDuckSensoryDataFromPaletteFrame(
+            paletteClusterer_, *input.paletteFrame, input.deltaTimeSeconds);
         if ((input.controllerMask & NesPolicyLayout::ButtonLeft) != 0u) {
             sensory.facing_x = -1.0f;
-            sensory.velocity.x = -1.0;
         }
         else if ((input.controllerMask & NesPolicyLayout::ButtonRight) != 0u) {
             sensory.facing_x = 1.0f;
-            sensory.velocity.x = 1.0;
         }
         else {
             sensory.facing_x = 1.0f;
         }
-
-        sensory.on_ground =
-            input.lastGameState.has_value() && input.lastGameState.value() == kNesStateWaiting;
         return sensory;
     }
 
 private:
     std::optional<NesRomProfileExtractor> extractor_ = std::nullopt;
     std::optional<NesFlappyBirdEvaluator> evaluator_ = std::nullopt;
+    NesPaletteClusterer paletteClusterer_;
     uint32_t startPulseFrameCounter_ = 0;
     uint32_t waitingFlapPulseFrameCounter_ = 0;
+};
+
+class NesSuperTiltBroGameAdapter final : public NesGameAdapter {
+public:
+    void reset(const std::string& runtimeRomId) override
+    {
+        paletteClusterer_.reset(runtimeRomId);
+        advancedFrameCount_ = 0;
+    }
+
+    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    {
+        if (advancedFrameCount_ < kSetupScriptEndFrame) {
+            return scriptedSetupMaskForFrame(advancedFrameCount_);
+        }
+
+        return input.inferredControllerMask;
+    }
+
+    NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
+    {
+        if (input.paletteFrame != nullptr) {
+            paletteClusterer_.observeFrame(*input.paletteFrame);
+        }
+
+        advancedFrameCount_ += input.advancedFrames;
+
+        NesGameAdapterFrameOutput output;
+        output.rewardDelta += static_cast<double>(input.advancedFrames);
+        return output;
+    }
+
+    DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
+    {
+        if (input.paletteFrame == nullptr) {
+            DuckSensoryData sensory{};
+            sensory.delta_time_seconds = input.deltaTimeSeconds;
+            return sensory;
+        }
+
+        DuckSensoryData sensory = makeNesDuckSensoryDataFromPaletteFrame(
+            paletteClusterer_, *input.paletteFrame, input.deltaTimeSeconds);
+        if ((input.controllerMask & NesPolicyLayout::ButtonLeft) != 0u) {
+            sensory.facing_x = -1.0f;
+        }
+        else if ((input.controllerMask & NesPolicyLayout::ButtonRight) != 0u) {
+            sensory.facing_x = 1.0f;
+        }
+        else {
+            sensory.facing_x = 1.0f;
+        }
+        return sensory;
+    }
+
+private:
+    static constexpr uint64_t kSetupScriptEndFrame = 540;
+
+    static uint8_t scriptedSetupMaskForFrame(uint64_t frameIndex)
+    {
+        constexpr uint64_t kBootWaitFrames = 120;
+        if (frameIndex < kBootWaitFrames) {
+            return 0u;
+        }
+
+        const uint64_t phase = (frameIndex - kBootWaitFrames) / 60;
+        const uint64_t withinPhase = (frameIndex - kBootWaitFrames) % 60;
+
+        if (withinPhase < 2) {
+            return NesPolicyLayout::ButtonStart;
+        }
+        if (withinPhase >= 10 && withinPhase < 12) {
+            return NesPolicyLayout::ButtonA;
+        }
+
+        if (phase % 2 == 1 && withinPhase >= 20 && withinPhase < 34) {
+            return NesPolicyLayout::ButtonRight;
+        }
+
+        return 0u;
+    }
+
+    NesPaletteClusterer paletteClusterer_;
+    uint64_t advancedFrameCount_ = 0;
 };
 
 } // namespace
@@ -266,6 +212,11 @@ private:
 std::unique_ptr<NesGameAdapter> createNesFlappyParatroopaGameAdapter()
 {
     return std::make_unique<NesFlappyParatroopaGameAdapter>();
+}
+
+std::unique_ptr<NesGameAdapter> createNesSuperTiltBroGameAdapter()
+{
+    return std::make_unique<NesSuperTiltBroGameAdapter>();
 }
 
 } // namespace DirtSim

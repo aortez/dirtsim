@@ -27,6 +27,8 @@ NesGameAdapterRegistry NesGameAdapterRegistry::createDefault()
     registry.registerAdapter(Scenario::EnumType::NesFlappyParatroopa, []() {
         return createNesFlappyParatroopaGameAdapter();
     });
+    registry.registerAdapter(
+        Scenario::EnumType::NesSuperTiltBro, []() { return createNesSuperTiltBroGameAdapter(); });
     return registry;
 }
 

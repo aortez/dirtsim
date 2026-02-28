@@ -91,8 +91,9 @@ constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 
 bool isNesTrainingTarget(const TrainingSpec& spec)
 {
-    return spec.organismType == OrganismType::NES_FLAPPY_BIRD
-        || spec.scenarioId == Scenario::EnumType::NesFlappyParatroopa;
+    const bool isNesScenario = spec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
+        || spec.scenarioId == Scenario::EnumType::NesSuperTiltBro;
+    return spec.organismType == OrganismType::NES_DUCK || isNesScenario;
 }
 
 template <typename RecordUpdateFn>
@@ -102,14 +103,17 @@ void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& reco
         return;
     }
 
-    if (settings.trainingSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
-        settings.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-        recordUpdate("trainingSpec.organismType promoted to NES_FLAPPY_BIRD for NES training");
+    if (settings.trainingSpec.organismType != OrganismType::NES_DUCK) {
+        settings.trainingSpec.organismType = OrganismType::NES_DUCK;
+        recordUpdate("trainingSpec.organismType promoted to NES_DUCK for NES training");
     }
 
-    if (settings.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
+    const bool isNesScenario =
+        settings.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
+        || settings.trainingSpec.scenarioId == Scenario::EnumType::NesSuperTiltBro;
+    if (!isNesScenario) {
         settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-        recordUpdate("trainingSpec.scenarioId forced to NesFlappyParatroopa for NES training");
+        recordUpdate("trainingSpec.scenarioId set to default NES scenario for NES training");
     }
 }
 

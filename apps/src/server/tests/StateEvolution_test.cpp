@@ -115,7 +115,7 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
+    cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
@@ -149,7 +149,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyO
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
+    cmd.organismType = OrganismType::NES_DUCK;
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
         capturedResponse = std::move(response);
@@ -210,7 +210,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
+    cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;

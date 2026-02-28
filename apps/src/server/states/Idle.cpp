@@ -9,6 +9,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/NesFlappyParatroopaScenario.h"
+#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -344,7 +345,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
-            case OrganismType::NES_FLAPPY_BIRD:
+            case OrganismType::NES_DUCK:
                 defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
@@ -696,6 +697,23 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         }
         const NesConfigValidationResult validation =
             NesFlappyParatroopaScenario::validateConfig(*nesConfig);
+        if (!validation.valid) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Invalid NES config: " + validation.message)));
+            return Idle{};
+        }
+    }
+    else if (scenarioId == Scenario::EnumType::NesSuperTiltBro) {
+        const auto* nesConfig = std::get_if<Config::NesSuperTiltBro>(&scenarioConfig);
+        if (!nesConfig) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Scenario config mismatch for NES scenario")));
+            return Idle{};
+        }
+        const NesConfigValidationResult validation =
+            NesSuperTiltBroScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(

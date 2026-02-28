@@ -215,6 +215,7 @@ TrainingRunner::TrainingRunner(
     world_->setScenario(scenario_.get());
 
     nesPolicyInputs_.fill(0.0f);
+    nesPaletteFrame_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven
         && individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
         DIRTSIM_ASSERT(
@@ -463,16 +464,15 @@ void TrainingRunner::runScenarioDrivenStep()
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
         nesFramesSurvived_ += advancedFrames;
 
+        nesPaletteFrame_ = nesRuntime_->copyRuntimePaletteFrame();
         const NesGameAdapterFrameInput frameInput{
             .advancedFrames = advancedFrames,
             .controllerMask = nesControllerMask_,
+            .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
             .memorySnapshot = nesRuntime_->copyRuntimeMemorySnapshot(),
         };
         const NesGameAdapterFrameOutput evaluation = nesGameAdapter_->evaluateFrame(frameInput);
         nesRewardTotal_ += evaluation.rewardDelta;
-        if (evaluation.features.has_value()) {
-            nesPolicyInputs_ = evaluation.features.value();
-        }
         if (evaluation.gameState.has_value()) {
             nesLastGameState_ = evaluation.gameState;
         }
@@ -504,6 +504,7 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
     const NesGameAdapterSensoryInput sensoryInput{
         .policyInputs = nesPolicyInputs_,
         .controllerMask = nesControllerMask_,
+        .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
         .lastGameState = nesLastGameState_,
         .deltaTimeSeconds = TIMESTEP,
     };

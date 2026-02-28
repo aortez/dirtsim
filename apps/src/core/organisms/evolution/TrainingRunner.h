@@ -11,6 +11,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
+#include "core/scenarios/nes/NesPaletteFrame.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -150,6 +151,7 @@ private:
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
+    std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
     std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;

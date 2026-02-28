@@ -538,11 +538,11 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
-TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenEntry)
+TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -557,11 +557,11 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+    spec.organismType = OrganismType::NES_DUCK;
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 
@@ -590,7 +590,7 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfinite
 
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+    spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
@@ -651,7 +651,7 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRe
 
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
+    spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;

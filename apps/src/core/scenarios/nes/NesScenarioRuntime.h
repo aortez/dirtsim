@@ -19,6 +19,7 @@ public:
     virtual bool isRuntimeRunning() const = 0;
     virtual uint64_t getRuntimeRenderedFrameCount() const = 0;
     virtual std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const = 0;
+    virtual std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const = 0;
     virtual std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const = 0;
     virtual std::string getRuntimeResolvedRomId() const = 0;
     virtual std::string getRuntimeLastError() const = 0;

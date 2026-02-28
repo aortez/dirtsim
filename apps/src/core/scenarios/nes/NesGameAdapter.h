@@ -2,6 +2,7 @@
 
 #include "core/organisms/DuckSensoryData.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
+#include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <array>
@@ -20,6 +21,7 @@ struct NesGameAdapterControllerInput {
 struct NesGameAdapterFrameInput {
     uint64_t advancedFrames = 0;
     uint8_t controllerMask = 0;
+    const NesPaletteFrame* paletteFrame = nullptr;
     std::optional<SmolnesRuntime::MemorySnapshot> memorySnapshot = std::nullopt;
 };
 
@@ -33,6 +35,7 @@ struct NesGameAdapterFrameOutput {
 struct NesGameAdapterSensoryInput {
     std::array<float, NesPolicyLayout::InputCount> policyInputs{};
     uint8_t controllerMask = 0;
+    const NesPaletteFrame* paletteFrame = nullptr;
     std::optional<uint8_t> lastGameState = std::nullopt;
     double deltaTimeSeconds = 0.0;
 };
@@ -51,5 +54,6 @@ public:
 };
 
 std::unique_ptr<NesGameAdapter> createNesFlappyParatroopaGameAdapter();
+std::unique_ptr<NesGameAdapter> createNesSuperTiltBroGameAdapter();
 
 } // namespace DirtSim

@@ -1,4 +1,4 @@
-#include "NesFlappyParatroopaScenario.h"
+#include "NesSuperTiltBroScenario.h"
 
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
@@ -10,9 +10,7 @@
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <algorithm>
-#include <cctype>
 #include <limits>
-#include <system_error>
 #include <utility>
 
 namespace {
@@ -42,7 +40,7 @@ uint32_t saturateCallCount(uint64_t count)
     return static_cast<uint32_t>(count);
 }
 
-std::string describeRomSource(const DirtSim::Config::NesFlappyParatroopa& config)
+std::string describeRomSource(const DirtSim::Config::NesSuperTiltBro& config)
 {
     if (!config.romId.empty()) {
         return "romId '" + config.romId + "'";
@@ -54,43 +52,43 @@ std::string describeRomSource(const DirtSim::Config::NesFlappyParatroopa& config
 
 namespace DirtSim {
 
-NesFlappyParatroopaScenario::NesFlappyParatroopaScenario()
+NesSuperTiltBroScenario::NesSuperTiltBroScenario()
 {
-    metadata_.name = "NES Flappy Paratroopa";
-    metadata_.description = "NES Flappy Paratroopa World training scenario";
+    metadata_.name = "NES Super Tilt Bro";
+    metadata_.description = "NES Super Tilt Bro (UNROM no-network) training scenario";
     metadata_.category = "organisms";
     metadata_.requiredWidth = 47;
     metadata_.requiredHeight = 30;
     runtime_ = std::make_unique<SmolnesRuntime>();
 }
 
-NesFlappyParatroopaScenario::~NesFlappyParatroopaScenario()
+NesSuperTiltBroScenario::~NesSuperTiltBroScenario()
 {
     stopRuntime();
 }
 
-const ScenarioMetadata& NesFlappyParatroopaScenario::getMetadata() const
+const ScenarioMetadata& NesSuperTiltBroScenario::getMetadata() const
 {
     return metadata_;
 }
 
-ScenarioConfig NesFlappyParatroopaScenario::getConfig() const
+ScenarioConfig NesSuperTiltBroScenario::getConfig() const
 {
     return config_;
 }
 
-void NesFlappyParatroopaScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+void NesSuperTiltBroScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
-    if (!std::holds_alternative<Config::NesFlappyParatroopa>(newConfig)) {
-        LOG_ERROR(Scenario, "NesFlappyParatroopaScenario: Invalid config type provided");
+    if (!std::holds_alternative<Config::NesSuperTiltBro>(newConfig)) {
+        LOG_ERROR(Scenario, "NesSuperTiltBroScenario: Invalid config type provided");
         return;
     }
 
-    config_ = std::get<Config::NesFlappyParatroopa>(newConfig);
-    LOG_INFO(Scenario, "NesFlappyParatroopaScenario: Config updated");
+    config_ = std::get<Config::NesSuperTiltBro>(newConfig);
+    LOG_INFO(Scenario, "NesSuperTiltBroScenario: Config updated");
 }
 
-void NesFlappyParatroopaScenario::setup(World& world)
+void NesSuperTiltBroScenario::setup(World& world)
 {
     stopRuntime();
     world.getData().scenario_video_frame.reset();
@@ -123,7 +121,7 @@ void NesFlappyParatroopaScenario::setup(World& world)
         const char* statusText = romCheckStatusToString(lastRomCheck_.status);
         LOG_ERROR(
             Scenario,
-            "NesFlappyParatroopaScenario: {} invalid ({}, mapper={}): {}",
+            "NesSuperTiltBroScenario: {} invalid ({}, mapper={}): {}",
             describeRomSource(config_),
             statusText,
             lastRomCheck_.mapper,
@@ -133,8 +131,7 @@ void NesFlappyParatroopaScenario::setup(World& world)
 
     LOG_INFO(
         Scenario,
-        "NesFlappyParatroopaScenario: ROM '{}' compatible (id='{}', mapper={}, prg16k={}, "
-        "chr8k={})",
+        "NesSuperTiltBroScenario: ROM '{}' compatible (id='{}', mapper={}, prg16k={}, chr8k={})",
         validation.resolvedRomPath.string(),
         validation.resolvedRomId,
         lastRomCheck_.mapper,
@@ -148,7 +145,7 @@ void NesFlappyParatroopaScenario::setup(World& world)
     if (!runtime_->start(validation.resolvedRomPath.string())) {
         LOG_ERROR(
             Scenario,
-            "NesFlappyParatroopaScenario: Failed to start smolnes runtime: {}",
+            "NesSuperTiltBroScenario: Failed to start smolnes runtime: {}",
             runtime_->getLastError());
     }
     else {
@@ -157,12 +154,12 @@ void NesFlappyParatroopaScenario::setup(World& world)
     }
 }
 
-void NesFlappyParatroopaScenario::reset(World& world)
+void NesSuperTiltBroScenario::reset(World& world)
 {
     setup(world);
 }
 
-void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
+void NesSuperTiltBroScenario::tick(World& world, double /*deltaTime*/)
 {
     if (!runtime_ || !runtime_->isRunning()) {
         return;
@@ -178,7 +175,7 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     if (!runtimeHealthy) {
         LOG_ERROR(
             Scenario,
-            "NesFlappyParatroopaScenario: smolnes runtime unhealthy: {}",
+            "NesSuperTiltBroScenario: smolnes runtime unhealthy: {}",
             runtime_->getLastError());
         stopRuntime();
         return;
@@ -216,7 +213,7 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
         }
         LOG_ERROR(
             Scenario,
-            "NesFlappyParatroopaScenario: smolnes frame step failed after {} frames: {}",
+            "NesSuperTiltBroScenario: smolnes frame step failed after {} frames: {}",
             failureRenderedFrameCount,
             runtime_->getLastError());
         world.getData().scenario_video_frame.reset();
@@ -241,22 +238,22 @@ void NesFlappyParatroopaScenario::tick(World& world, double /*deltaTime*/)
     updateRuntimeProfilingTimers(timers);
 }
 
-const NesRomCheckResult& NesFlappyParatroopaScenario::getLastRomCheck() const
+const NesRomCheckResult& NesSuperTiltBroScenario::getLastRomCheck() const
 {
     return lastRomCheck_;
 }
 
-bool NesFlappyParatroopaScenario::isRuntimeHealthy() const
+bool NesSuperTiltBroScenario::isRuntimeHealthy() const
 {
     return runtime_ && runtime_->isHealthy();
 }
 
-bool NesFlappyParatroopaScenario::isRuntimeRunning() const
+bool NesSuperTiltBroScenario::isRuntimeRunning() const
 {
     return runtime_ && runtime_->isRunning();
 }
 
-uint64_t NesFlappyParatroopaScenario::getRuntimeRenderedFrameCount() const
+uint64_t NesSuperTiltBroScenario::getRuntimeRenderedFrameCount() const
 {
     if (!runtime_) {
         return 0;
@@ -264,7 +261,7 @@ uint64_t NesFlappyParatroopaScenario::getRuntimeRenderedFrameCount() const
     return runtime_->getRenderedFrameCount();
 }
 
-std::optional<ScenarioVideoFrame> NesFlappyParatroopaScenario::copyRuntimeFrameSnapshot() const
+std::optional<ScenarioVideoFrame> NesSuperTiltBroScenario::copyRuntimeFrameSnapshot() const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
         return std::nullopt;
@@ -272,7 +269,7 @@ std::optional<ScenarioVideoFrame> NesFlappyParatroopaScenario::copyRuntimeFrameS
     return runtime_->copyLatestFrame();
 }
 
-std::optional<NesPaletteFrame> NesFlappyParatroopaScenario::copyRuntimePaletteFrame() const
+std::optional<NesPaletteFrame> NesSuperTiltBroScenario::copyRuntimePaletteFrame() const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
         return std::nullopt;
@@ -280,12 +277,12 @@ std::optional<NesPaletteFrame> NesFlappyParatroopaScenario::copyRuntimePaletteFr
     return runtime_->copyLatestPaletteFrame();
 }
 
-std::string NesFlappyParatroopaScenario::getRuntimeResolvedRomId() const
+std::string NesSuperTiltBroScenario::getRuntimeResolvedRomId() const
 {
     return runtimeResolvedRomId_;
 }
 
-std::string NesFlappyParatroopaScenario::getRuntimeLastError() const
+std::string NesSuperTiltBroScenario::getRuntimeLastError() const
 {
     if (!runtime_) {
         return {};
@@ -293,8 +290,8 @@ std::string NesFlappyParatroopaScenario::getRuntimeLastError() const
     return runtime_->getLastError();
 }
 
-std::optional<SmolnesRuntime::MemorySnapshot> NesFlappyParatroopaScenario::
-    copyRuntimeMemorySnapshot() const
+std::optional<SmolnesRuntime::MemorySnapshot> NesSuperTiltBroScenario::copyRuntimeMemorySnapshot()
+    const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
         return std::nullopt;
@@ -302,7 +299,7 @@ std::optional<SmolnesRuntime::MemorySnapshot> NesFlappyParatroopaScenario::
     return runtime_->copyMemorySnapshot();
 }
 
-void NesFlappyParatroopaScenario::setController1State(uint8_t buttonMask)
+void NesSuperTiltBroScenario::setController1State(uint8_t buttonMask)
 {
     controller1State_ = buttonMask;
     if (runtime_ && runtime_->isRunning()) {
@@ -310,34 +307,34 @@ void NesFlappyParatroopaScenario::setController1State(uint8_t buttonMask)
     }
 }
 
-std::vector<NesRomCatalogEntry> NesFlappyParatroopaScenario::scanRomCatalog(
+NesRomCheckResult NesSuperTiltBroScenario::inspectRom(const std::filesystem::path& romPath)
+{
+    return inspectNesRom(romPath);
+}
+
+std::vector<NesRomCatalogEntry> NesSuperTiltBroScenario::scanRomCatalog(
     const std::filesystem::path& romDir)
 {
     return scanNesRomCatalog(romDir);
 }
 
-std::string NesFlappyParatroopaScenario::makeRomId(const std::string& rawName)
+std::string NesSuperTiltBroScenario::makeRomId(const std::string& rawName)
 {
     return makeNesRomId(rawName);
 }
 
-NesConfigValidationResult NesFlappyParatroopaScenario::validateConfig(
-    const Config::NesFlappyParatroopa& config)
+NesConfigValidationResult NesSuperTiltBroScenario::validateConfig(
+    const Config::NesSuperTiltBro& config)
 {
     return validateNesRomSelection(config.romId, config.romDirectory, config.romPath);
 }
 
-NesRomCheckResult NesFlappyParatroopaScenario::inspectRom(const std::filesystem::path& romPath)
-{
-    return inspectNesRom(romPath);
-}
-
-bool NesFlappyParatroopaScenario::isMapperSupportedBySmolnes(uint16_t mapper)
+bool NesSuperTiltBroScenario::isMapperSupportedBySmolnes(uint16_t mapper)
 {
     return isNesMapperSupportedBySmolnes(mapper);
 }
 
-void NesFlappyParatroopaScenario::stopRuntime()
+void NesSuperTiltBroScenario::stopRuntime()
 {
     if (!runtime_) {
         return;
@@ -346,7 +343,7 @@ void NesFlappyParatroopaScenario::stopRuntime()
     lastRuntimeProfilingSnapshot_.reset();
 }
 
-void NesFlappyParatroopaScenario::updateRuntimeProfilingTimers(Timers& timers)
+void NesSuperTiltBroScenario::updateRuntimeProfilingTimers(Timers& timers)
 {
     if (!runtime_) {
         return;
@@ -407,66 +404,6 @@ void NesFlappyParatroopaScenario::updateRuntimeProfilingTimers(Timers& timers)
         previous.runtimeThreadFrameExecutionMs,
         current.runtimeThreadFrameExecutionCalls,
         previous.runtimeThreadFrameExecutionCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_step",
-        current.runtimeThreadPpuStepMs,
-        previous.runtimeThreadPpuStepMs,
-        current.runtimeThreadPpuStepCalls,
-        previous.runtimeThreadPpuStepCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_visible_pixels",
-        current.runtimeThreadPpuVisiblePixelsMs,
-        previous.runtimeThreadPpuVisiblePixelsMs,
-        current.runtimeThreadPpuVisiblePixelsCalls,
-        previous.runtimeThreadPpuVisiblePixelsCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_sprite_eval",
-        current.runtimeThreadPpuSpriteEvalMs,
-        previous.runtimeThreadPpuSpriteEvalMs,
-        current.runtimeThreadPpuSpriteEvalCalls,
-        previous.runtimeThreadPpuSpriteEvalCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_background_pipeline",
-        current.runtimeThreadPpuVisiblePixelsMs,
-        previous.runtimeThreadPpuVisiblePixelsMs,
-        current.runtimeThreadPpuVisiblePixelsCalls,
-        previous.runtimeThreadPpuVisiblePixelsCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_prefetch",
-        current.runtimeThreadPpuPrefetchMs,
-        previous.runtimeThreadPpuPrefetchMs,
-        current.runtimeThreadPpuPrefetchCalls,
-        previous.runtimeThreadPpuPrefetchCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_other",
-        current.runtimeThreadPpuOtherMs,
-        previous.runtimeThreadPpuOtherMs,
-        current.runtimeThreadPpuOtherCalls,
-        previous.runtimeThreadPpuOtherCalls);
-    addDelta(
-        "nes_runtime_thread_frame_submit",
-        current.runtimeThreadFrameSubmitMs,
-        previous.runtimeThreadFrameSubmitMs,
-        current.runtimeThreadFrameSubmitCalls,
-        previous.runtimeThreadFrameSubmitCalls);
-    addDelta(
-        "nes_runtime_thread_event_poll",
-        current.runtimeThreadEventPollMs,
-        previous.runtimeThreadEventPollMs,
-        current.runtimeThreadEventPollCalls,
-        previous.runtimeThreadEventPollCalls);
-    addDelta(
-        "nes_runtime_thread_present",
-        current.runtimeThreadPresentMs,
-        previous.runtimeThreadPresentMs,
-        current.runtimeThreadPresentCalls,
-        previous.runtimeThreadPresentCalls);
-    addDelta(
-        "nes_runtime_memory_snapshot_copy",
-        current.memorySnapshotCopyMs,
-        previous.memorySnapshotCopyMs,
-        current.memorySnapshotCopyCalls,
-        previous.memorySnapshotCopyCalls);
 
     lastRuntimeProfilingSnapshot_ = snapshot;
 }

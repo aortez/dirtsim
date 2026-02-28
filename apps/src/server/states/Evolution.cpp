@@ -366,7 +366,7 @@ double computeFitnessForRunner(
     std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
     (void)brainKind;
-    if (organismType == OrganismType::NES_FLAPPY_BIRD) {
+    if (organismType == OrganismType::NES_DUCK) {
         if (breakdownOut) {
             breakdownOut->reset();
         }

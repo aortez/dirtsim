@@ -39,13 +39,17 @@ private:
 
 } // namespace
 
-TEST(NesGameAdapterRegistryTest, DefaultRegistryRegistersFlappyAdapter)
+TEST(NesGameAdapterRegistryTest, DefaultRegistryRegistersAdaptersForNesScenarios)
 {
     NesGameAdapterRegistry registry = NesGameAdapterRegistry::createDefault();
 
     std::unique_ptr<NesGameAdapter> adapter =
         registry.createAdapter(Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_NE(adapter, nullptr);
+
+    std::unique_ptr<NesGameAdapter> stbAdapter =
+        registry.createAdapter(Scenario::EnumType::NesSuperTiltBro);
+    ASSERT_NE(stbAdapter, nullptr);
 }
 
 TEST(NesGameAdapterRegistryTest, CreateAdapterReturnsNullForUnregisteredScenario)

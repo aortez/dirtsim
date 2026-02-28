@@ -14,10 +14,10 @@
 
 namespace DirtSim {
 
-class NesFlappyParatroopaScenario : public ScenarioRunner, public NesScenarioRuntime {
+class NesSuperTiltBroScenario : public ScenarioRunner, public NesScenarioRuntime {
 public:
-    NesFlappyParatroopaScenario();
-    ~NesFlappyParatroopaScenario() override;
+    NesSuperTiltBroScenario();
+    ~NesSuperTiltBroScenario() override;
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -40,7 +40,7 @@ public:
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
     static std::vector<NesRomCatalogEntry> scanRomCatalog(const std::filesystem::path& romDir);
     static std::string makeRomId(const std::string& rawName);
-    static NesConfigValidationResult validateConfig(const Config::NesFlappyParatroopa& config);
+    static NesConfigValidationResult validateConfig(const Config::NesSuperTiltBro& config);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:
@@ -48,7 +48,7 @@ private:
     void updateRuntimeProfilingTimers(Timers& timers);
 
     ScenarioMetadata metadata_;
-    Config::NesFlappyParatroopa config_;
+    Config::NesSuperTiltBro config_;
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;

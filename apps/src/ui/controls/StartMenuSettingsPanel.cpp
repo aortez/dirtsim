@@ -228,14 +228,13 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_RELEASED, this);
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_PRESS_LOST, this);
 
-    trainingTargetDropdown_ =
-        LVGLBuilder::actionDropdown(view)
-            .label("Trainer Target:")
-            .options("Trees (Germination)\nDucks (Clock Scenario)\nNes Flappy Bird")
-            .selected(0)
-            .width(LV_PCT(95))
-            .callback(onTrainingTargetChanged, this)
-            .buildOrLog();
+    trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
+                                  .label("Trainer Target:")
+                                  .options("Trees (Germination)\nDucks (Clock Scenario)\nNES Duck")
+                                  .selected(0)
+                                  .width(LV_PCT(95))
+                                  .callback(onTrainingTargetChanged, this)
+                                  .buildOrLog();
 
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
@@ -493,8 +492,9 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
     }
 
     uint16_t index = 0;
-    if (settings_.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
-        || settings_.trainingSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
+    if (settings_.trainingSpec.organismType == OrganismType::NES_DUCK
+        || settings_.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
+        || settings_.trainingSpec.scenarioId == Scenario::EnumType::NesSuperTiltBro) {
         index = 2;
     }
     else if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
@@ -578,8 +578,11 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
             self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Clock;
             break;
         case 2:
-            self->settings_.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+            self->settings_.trainingSpec.organismType = OrganismType::NES_DUCK;
+            if (self->settings_.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa
+                && self->settings_.trainingSpec.scenarioId != Scenario::EnumType::NesSuperTiltBro) {
+                self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+            }
             break;
         case 0:
         default:
