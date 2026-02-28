@@ -150,7 +150,6 @@ private:
     NesScenarioRuntime* nesRuntime_ = nullptr;
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
-    std::array<float, NesPolicyLayout::InputCount> nesPolicyInputs_{};
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
     std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;

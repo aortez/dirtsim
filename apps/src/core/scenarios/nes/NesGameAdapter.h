@@ -29,11 +29,9 @@ struct NesGameAdapterFrameOutput {
     bool done = false;
     double rewardDelta = 0.0;
     std::optional<uint8_t> gameState = std::nullopt;
-    std::optional<std::array<float, NesPolicyLayout::InputCount>> features = std::nullopt;
 };
 
 struct NesGameAdapterSensoryInput {
-    std::array<float, NesPolicyLayout::InputCount> policyInputs{};
     uint8_t controllerMask = 0;
     const NesPaletteFrame* paletteFrame = nullptr;
     std::optional<uint8_t> lastGameState = std::nullopt;

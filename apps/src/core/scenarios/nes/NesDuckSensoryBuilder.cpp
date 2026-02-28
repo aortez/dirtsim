@@ -78,4 +78,21 @@ DuckSensoryData makeNesDuckSensoryDataFromPaletteFrame(
     return sensory;
 }
 
+DuckSensoryData makeNesDuckSensoryData(
+    const NesPaletteClusterer& clusterer,
+    const NesPaletteFrame* frame,
+    double deltaTimeSeconds,
+    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
+{
+    DuckSensoryData sensory{};
+    sensory.delta_time_seconds = deltaTimeSeconds;
+    if (frame != nullptr) {
+        sensory = makeNesDuckSensoryDataFromPaletteFrame(clusterer, *frame, deltaTimeSeconds);
+    }
+
+    sensory.facing_x = 0.0f;
+    sensory.special_senses = specialSenses;
+    return sensory;
+}
+
 } // namespace DirtSim

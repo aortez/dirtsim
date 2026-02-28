@@ -214,7 +214,6 @@ TrainingRunner::TrainingRunner(
     scenario_->setup(*world_);
     world_->setScenario(scenario_.get());
 
-    nesPolicyInputs_.fill(0.0f);
     nesPaletteFrame_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven
         && individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
@@ -502,7 +501,6 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
     }
 
     const NesGameAdapterSensoryInput sensoryInput{
-        .policyInputs = nesPolicyInputs_,
         .controllerMask = nesControllerMask_,
         .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
         .lastGameState = nesLastGameState_,
