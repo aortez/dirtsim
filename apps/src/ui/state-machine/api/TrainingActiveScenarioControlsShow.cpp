@@ -1,10 +1,9 @@
-#include "ScenarioConfigSet.h"
+#include "TrainingActiveScenarioControlsShow.h"
 #include "core/ReflectSerializer.h"
-#include "core/VariantSerializer.h"
 
 namespace DirtSim {
-namespace Api {
-namespace ScenarioConfigSet {
+namespace UiApi {
+namespace TrainingActiveScenarioControlsShow {
 
 nlohmann::json Command::toJson() const
 {
@@ -16,11 +15,6 @@ Command Command::fromJson(const nlohmann::json& j)
     return ReflectSerializer::from_json<Command>(j);
 }
 
-nlohmann::json Okay::toJson() const
-{
-    return ReflectSerializer::to_json(*this);
-}
-
-} // namespace ScenarioConfigSet
-} // namespace Api
+} // namespace TrainingActiveScenarioControlsShow
+} // namespace UiApi
 } // namespace DirtSim

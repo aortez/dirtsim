@@ -15,6 +15,7 @@ class WebSocketServiceInterface;
 namespace Ui {
 
 class EventSink;
+class UserSettingsManager;
 /**
  * @brief Factory for creating scenario-specific controls.
  *
@@ -35,6 +36,7 @@ public:
     static std::unique_ptr<ScenarioControlsBase> create(
         lv_obj_t* parent,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         EventSink* eventSink,
         Scenario::EnumType scenarioId,
         const ScenarioConfig& config,

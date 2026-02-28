@@ -3,6 +3,7 @@
 #include "../MaterialType.h"
 #include "clock_scenario/GlowConfig.h"
 
+#include <nlohmann/json_fwd.hpp>
 #include <zpp_bits.h>
 
 namespace DirtSim::Config {
@@ -22,7 +23,7 @@ enum class ClockFont : uint8_t {
 const char* getDisplayName(ClockFont font);
 
 struct Clock {
-    using serialize = zpp::bits::members<21>;
+    using serialize = zpp::bits::members<22>;
 
     bool autoScale = true;
     bool colorCycleEnabled = true;
@@ -31,6 +32,7 @@ struct Clock {
     bool duckEnabled = true;
     bool marqueeEnabled = true;
     bool meltdownEnabled = true;
+    bool obstacleCourseEnabled = false;
     bool rainEnabled = true;
     bool showSeconds = false;
     ClockFont font = ClockFont::Segment7Large;
@@ -46,5 +48,8 @@ struct Clock {
     uint8_t targetDigitHeightPercent = 0;
     uint8_t timezoneIndex = 2;
 };
+
+void from_json(const nlohmann::json& j, Clock& config);
+void to_json(nlohmann::json& j, const Clock& config);
 
 } // namespace DirtSim::Config

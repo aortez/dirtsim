@@ -19,6 +19,7 @@ class WebSocketServiceInterface;
 namespace Ui {
 
 class EventSink;
+class UserSettingsManager;
 /**
  * @brief Scenario panel with modal navigation.
  *
@@ -30,6 +31,7 @@ public:
     ScenarioPanel(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         EventSink& eventSink,
         Scenario::EnumType initialScenarioId,
         const ScenarioConfig& initialConfig,
@@ -41,6 +43,7 @@ public:
 private:
     lv_obj_t* container_;
     Network::WebSocketServiceInterface* wsService_;
+    UserSettingsManager& userSettingsManager_;
     EventSink& eventSink_;
     DisplayDimensionsGetter dimensionsGetter_;
 

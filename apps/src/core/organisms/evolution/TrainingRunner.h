@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Result.h"
 #include "core/ScenarioConfig.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
@@ -20,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace DirtSim {
@@ -78,6 +80,7 @@ public:
         NesGameAdapterRegistry nesGameAdapterRegistry = NesGameAdapterRegistry::createDefault();
         std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
+        std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
     };
 
     TrainingRunner(
@@ -106,6 +109,7 @@ public:
     const World* getWorld() const { return world_.get(); }
     World* getWorld() { return world_.get(); }
     ScenarioConfig getScenarioConfig() const;
+    Result<std::monostate, std::string> setScenarioConfig(const ScenarioConfig& config);
 
     const Organism::Body* getOrganism() const;
     const OrganismTrackingHistory& getOrganismTrackingHistory() const;
@@ -128,6 +132,7 @@ private:
     uint8_t inferNesControllerMask();
     void spawnEvaluationOrganism();
     static Config makeDefaultConfig();
+    ScenarioConfig buildEffectiveScenarioConfig(const ScenarioConfig& config) const;
 
     TrainingSpec trainingSpec_;
     Individual individual_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Result.h"
+#include "core/ScenarioConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/UserSettings.h"
 #include "ui/rendering/Starfield.h"
@@ -21,7 +22,8 @@ struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
-}
+struct FitnessBreakdownReport;
+} // namespace Api
 
 namespace Network {
 class WebSocketServiceInterface;
@@ -31,9 +33,11 @@ namespace Ui {
 
 class CellRenderer;
 class EventSink;
+class ScenarioControlsBase;
 class Starfield;
 class TimeSeriesPlotWidget;
 class UiComponentManager;
+class UserSettingsManager;
 
 class TrainingActiveView {
 public:
@@ -41,13 +45,16 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         UserSettings& userSettings,
         const Starfield::Snapshot* starfieldSnapshot = nullptr);
     ~TrainingActiveView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
     void updateFitnessPlots(
-        const std::vector<float>& robustFitnessSeries, const std::vector<uint8_t>& robustHighMask);
+        const std::vector<float>& robustFitnessSeries,
+        const std::vector<float>& averageFitnessSeries,
+        const std::vector<uint8_t>& robustHighMask);
     void clearFitnessPlots();
     void updateAnimations();
 
@@ -59,7 +66,8 @@ public:
         int commandsAccepted,
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
-        const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures);
+        const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
+        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown);
     void updateBestPlaybackFrame(const WorldData& worldData, double fitness, int generation);
 
     void setEvolutionStarted(bool started);
@@ -68,6 +76,8 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void updateScenarioConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config);
+    void showScenarioControlsOverlay();
 
     bool isTrainingResultModalVisible() const;
     Starfield::Snapshot captureStarfieldSnapshot() const;
@@ -83,17 +93,23 @@ private:
     void scheduleBestRender();
     static void renderBestWorldAsync(void* data);
     void createStreamPanel(lv_obj_t* parent);
+    void createScenarioControlsOverlay();
+    void hideScenarioControlsOverlay();
+    void refreshScenarioControlsOverlay();
+    void updateScenarioButtonState();
 
     static void onStreamIntervalChanged(lv_event_t* e);
     static void onBestPlaybackToggled(lv_event_t* e);
     static void onBestPlaybackIntervalChanged(lv_event_t* e);
     static void onStopTrainingClicked(lv_event_t* e);
     static void onPauseResumeClicked(lv_event_t* e);
+    static void onScenarioControlsClicked(lv_event_t* e);
 
     bool evolutionStarted_ = false;
     UiComponentManager* uiManager_ = nullptr;
     EventSink& eventSink_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
+    UserSettingsManager& userSettingsManager_;
     UserSettings& userSettings_;
 
     lv_obj_t* bestAllTimeLabel_ = nullptr;
@@ -129,14 +145,20 @@ private:
     lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
     lv_obj_t* pauseResumeButton_ = nullptr;
     lv_obj_t* pauseResumeLabel_ = nullptr;
+    lv_obj_t* scenarioControlsButton_ = nullptr;
+    lv_obj_t* scenarioControlsOverlay_ = nullptr;
+    lv_obj_t* scenarioControlsOverlayTitle_ = nullptr;
+    lv_obj_t* scenarioControlsOverlayContent_ = nullptr;
     lv_obj_t* stopTrainingButton_ = nullptr;
 
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
     lv_obj_t* bestCommandSummaryLabel_ = nullptr;
+    lv_obj_t* bestFitnessBreakdownLabel_ = nullptr;
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
+    std::unique_ptr<ScenarioControlsBase> scenarioControls_;
     std::unique_ptr<TimeSeriesPlotWidget> cpuCorePlot_;
     std::unique_ptr<Starfield> starfield_;
     std::unique_ptr<TimeSeriesPlotWidget> bestFitnessPlot_;
@@ -145,6 +167,11 @@ private:
 
     std::unique_ptr<WorldData> bestWorldData_;
     std::unique_ptr<WorldData> bestSnapshotWorldData_;
+    ScenarioConfig currentScenarioConfig_ = Config::Empty{};
+    Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;
+    Scenario::EnumType scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
+    bool hasScenarioState_ = false;
+    bool scenarioControlsOverlayVisible_ = false;
     double bestFitness_ = 0.0;
     int bestGeneration_ = 0;
     double bestSnapshotFitness_ = 0.0;

@@ -14,6 +14,7 @@ namespace Ui {
 std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
     lv_obj_t* parent,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     EventSink* eventSink,
     Scenario::EnumType scenarioId,
     const ScenarioConfig& config,
@@ -25,19 +26,23 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
 
             if constexpr (std::is_same_v<T, Config::Sandbox>) {
                 spdlog::debug("ScenarioControlsFactory: Creating SandboxControls");
-                return std::make_unique<SandboxControls>(parent, wsService, cfg);
+                return std::make_unique<SandboxControls>(
+                    parent, wsService, userSettingsManager, cfg);
             }
             else if constexpr (std::is_same_v<T, Config::Clock>) {
                 spdlog::debug("ScenarioControlsFactory: Creating ClockControls");
-                return std::make_unique<ClockControls>(parent, wsService, cfg, dimensionsGetter);
+                return std::make_unique<ClockControls>(
+                    parent, wsService, userSettingsManager, cfg, dimensionsGetter);
             }
             else if constexpr (std::is_same_v<T, Config::Raining>) {
                 spdlog::debug("ScenarioControlsFactory: Creating RainingControls");
-                return std::make_unique<RainingControls>(parent, wsService, cfg);
+                return std::make_unique<RainingControls>(
+                    parent, wsService, userSettingsManager, cfg);
             }
             else if constexpr (std::is_same_v<T, Config::TreeGermination>) {
                 spdlog::debug("ScenarioControlsFactory: Creating TreeGerminationControls");
-                return std::make_unique<TreeGerminationControls>(parent, wsService, eventSink, cfg);
+                return std::make_unique<TreeGerminationControls>(
+                    parent, wsService, userSettingsManager, eventSink, cfg);
             }
             else {
                 // Config::Empty, Config::Benchmark, Config::DamBreak, Config::FallingDirt,

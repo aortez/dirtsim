@@ -11,6 +11,7 @@ class WebSocketServiceInterface;
 }
 
 namespace Ui {
+class UserSettingsManager;
 
 /**
  * @brief Base class for scenario-specific controls.
@@ -26,6 +27,7 @@ public:
     ScenarioControlsBase(
         lv_obj_t* parentContainer,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         const std::string& scenarioId);
 
     virtual ~ScenarioControlsBase();
@@ -49,6 +51,7 @@ protected:
     lv_obj_t* parentContainer_;
     lv_obj_t* controlsContainer_; // Our container, deleted in destructor.
     Network::WebSocketServiceInterface* wsService_;
+    UserSettingsManager& userSettingsManager_;
     std::string scenarioId_;
 
     // Flag to prevent update loops during UI sync.
@@ -68,7 +71,7 @@ protected:
 
     /**
      * @brief Send config update to server.
-     * Handles rate limiting and WebSocket communication.
+     * Persists config to server UserSettings and relies on server-side application.
      */
     void sendConfigUpdate(const ScenarioConfig& config);
 

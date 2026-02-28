@@ -26,7 +26,6 @@ LightConfig getDefaultLightConfig()
         .sky_access_enabled = true,
         .sky_access_falloff = 0.03f,
         .sky_access_multi_directional = true,
-        .sky_probe_steps = 48,
         .sun_color = ColorNames::warmSunlight(),
         .sun_enabled = true,
         .sun_intensity = 0.8f,

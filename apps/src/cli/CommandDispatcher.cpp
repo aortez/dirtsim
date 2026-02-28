@@ -65,7 +65,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::RenderFormatSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::RenderStreamConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::Reset::Cwc>(serverHandlers_, serverExampleHandlers_);
-    registerCommand<Api::ScenarioConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SeedAdd::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SimRun::Cwc>(serverHandlers_, serverExampleHandlers_);
@@ -84,7 +83,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::TrainingResultList::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_, serverExampleHandlers_);
-    registerCommand<Api::TrainingStreamConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingBestSnapshotGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::WebSocketAccessSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::WebUiAccessSet::Cwc>(serverHandlers_, serverExampleHandlers_);

@@ -27,11 +27,11 @@
 #include "ui/controls/IconRail.h"
 #include "ui/state-machine/api/IconRailShowIcons.h"
 #include "ui/state-machine/api/IconSelect.h"
-#include "ui/state-machine/api/MouseMove.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
 #include "ui/state-machine/api/StopButtonPress.h"
+#include "ui/state-machine/api/TrainingActiveScenarioControlsShow.h"
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
@@ -1568,6 +1568,17 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
+        auto showTrainingActiveScenarioControls = [&]() -> Result<std::monostate, std::string> {
+            UiApi::TrainingActiveScenarioControlsShow::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::TrainingActiveScenarioControlsShow::Command,
+                UiApi::TrainingActiveScenarioControlsShow::OkayType>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
         auto navigateToStartMenu = [&]() -> Result<std::monostate, std::string> {
             std::string state;
             auto stateResult = getUiState(state);
@@ -1964,76 +1975,92 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("training-active", [&]() {
-            auto nav = navigateToTraining();
-            if (nav.isError()) {
-                return nav;
-            }
+        const bool captureTrainingActive = shouldRun("training-active");
+        const bool captureTrainingActiveScenarioControls =
+            shouldRun("training-active-scenario-controls");
+        if (captureTrainingActive || captureTrainingActiveScenarioControls) {
+            result = [&]() -> Result<std::monostate, std::string> {
+                auto nav = navigateToTraining();
+                if (nav.isError()) {
+                    return nav;
+                }
 
-            Api::UserSettingsGet::Command settingsCmd{};
-            auto settingsResult =
-                sendBinaryCommand<Api::UserSettingsGet::Command, Api::UserSettingsGet::Okay>(
-                    serverClient, settingsCmd, timeoutMs);
-            if (settingsResult.isError()) {
-                return Result<std::monostate, std::string>::error(settingsResult.errorValue());
-            }
+                Api::UserSettingsGet::Command settingsCmd{};
+                auto settingsResult =
+                    sendBinaryCommand<Api::UserSettingsGet::Command, Api::UserSettingsGet::Okay>(
+                        serverClient, settingsCmd, timeoutMs);
+                if (settingsResult.isError()) {
+                    return Result<std::monostate, std::string>::error(settingsResult.errorValue());
+                }
 
-            UiApi::TrainingStart::Command trainCmd{};
-            trainCmd.evolution = settingsResult.value().settings.evolutionConfig;
-            trainCmd.mutation = settingsResult.value().settings.mutationConfig;
-            trainCmd.training = settingsResult.value().settings.trainingSpec;
-            trainCmd.resumePolicy = settingsResult.value().settings.trainingResumePolicy;
+                UiApi::TrainingStart::Command trainCmd{};
+                trainCmd.evolution = settingsResult.value().settings.evolutionConfig;
+                trainCmd.mutation = settingsResult.value().settings.mutationConfig;
+                trainCmd.training = settingsResult.value().settings.trainingSpec;
+                trainCmd.resumePolicy = settingsResult.value().settings.trainingResumePolicy;
 
-            auto trainResult =
-                sendBinaryCommand<UiApi::TrainingStart::Command, UiApi::TrainingStart::Okay>(
-                    uiClient, trainCmd, timeoutMs);
-            if (trainResult.isError()) {
-                return Result<std::monostate, std::string>::error(trainResult.errorValue());
-            }
+                auto trainResult =
+                    sendBinaryCommand<UiApi::TrainingStart::Command, UiApi::TrainingStart::Okay>(
+                        uiClient, trainCmd, timeoutMs);
+                if (trainResult.isError()) {
+                    return Result<std::monostate, std::string>::error(trainResult.errorValue());
+                }
 
-            auto waitTraining =
-                waitForUiState({ "TrainingActive", "TrainingUnsavedResult" }, 12000);
-            if (waitTraining.isError()) {
-                return Result<std::monostate, std::string>::error(
-                    waitTraining.errorValue().message);
-            }
-            if (waitTraining.value() != "TrainingActive") {
-                return Result<std::monostate, std::string>::error(
-                    "Training did not remain active long enough for screenshot");
-            }
+                auto waitTraining =
+                    waitForUiState({ "TrainingActive", "TrainingUnsavedResult" }, 12000);
+                if (waitTraining.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitTraining.errorValue().message);
+                }
+                if (waitTraining.value() != "TrainingActive") {
+                    return Result<std::monostate, std::string>::error(
+                        "Training did not remain active long enough for screenshot");
+                }
 
-            auto deselect = selectIcon(Ui::IconId::NONE);
-            if (deselect.isError()) {
-                return deselect;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1200));
 
-            auto captureResult = captureScreen("training-active");
-            if (captureResult.isError()) {
-                return captureResult;
-            }
+                if (captureTrainingActive) {
+                    auto captureResult = captureScreen("training-active");
+                    if (captureResult.isError()) {
+                        return captureResult;
+                    }
+                }
 
-            UiApi::TrainingQuit::Command quitCmd{};
-            auto quitResult =
-                sendBinaryCommand<UiApi::TrainingQuit::Command, UiApi::TrainingQuit::Okay>(
-                    uiClient, quitCmd, timeoutMs);
-            if (quitResult.isError()) {
-                return Result<std::monostate, std::string>::error(quitResult.errorValue());
-            }
+                if (captureTrainingActiveScenarioControls) {
+                    auto showResult = showTrainingActiveScenarioControls();
+                    if (showResult.isError()) {
+                        return showResult;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(700));
 
-            auto waitStartMenu = waitForUiState({ "StartMenu" }, 8000);
-            if (waitStartMenu.isError()) {
-                return Result<std::monostate, std::string>::error(
-                    waitStartMenu.errorValue().message);
-            }
+                    auto captureResult = captureScreen("training-active-scenario-controls");
+                    if (captureResult.isError()) {
+                        return captureResult;
+                    }
+                }
 
-            return ensureIconRailVisible();
-        });
-        if (result.isError()) {
-            std::cerr << result.errorValue() << std::endl;
-            uiClient.disconnect();
-            serverClient.disconnect();
-            return 1;
+                UiApi::TrainingQuit::Command quitCmd{};
+                auto quitResult =
+                    sendBinaryCommand<UiApi::TrainingQuit::Command, UiApi::TrainingQuit::Okay>(
+                        uiClient, quitCmd, timeoutMs);
+                if (quitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(quitResult.errorValue());
+                }
+
+                auto waitStartMenu = waitForUiState({ "StartMenu" }, 8000);
+                if (waitStartMenu.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitStartMenu.errorValue().message);
+                }
+
+                return ensureIconRailVisible();
+            }();
+            if (result.isError()) {
+                std::cerr << "training-active capture: " << result.errorValue() << std::endl;
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return 1;
+            }
         }
 
         result = runScreen("training-config", [&]() {
@@ -2067,13 +2094,6 @@ int main(int argc, char** argv)
             auto showView = showTrainingConfigEvolution();
             if (showView.isError()) {
                 return showView;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            UiApi::MouseMove::Command move{ .pixelX = 200, .pixelY = 170 };
-            auto moveResult = sendBinaryCommand<UiApi::MouseMove::Command, std::monostate>(
-                uiClient, move, timeoutMs);
-            if (moveResult.isError()) {
-                return Result<std::monostate, std::string>::error(moveResult.errorValue());
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             return captureScreen("training-config-evolution");

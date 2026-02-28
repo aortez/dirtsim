@@ -26,6 +26,7 @@ public:
     TreeGerminationControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         EventSink* eventSink,
         const Config::TreeGermination& config);
     ~TreeGerminationControls() override;

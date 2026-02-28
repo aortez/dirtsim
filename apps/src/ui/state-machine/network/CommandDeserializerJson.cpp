@@ -21,6 +21,7 @@
 #include "ui/state-machine/api/StopButtonPress.h"
 #include "ui/state-machine/api/StreamStart.h"
 #include "ui/state-machine/api/SynthKeyEvent.h"
+#include "ui/state-machine/api/TrainingActiveScenarioControlsShow.h"
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
@@ -152,6 +153,10 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         else if (commandName == UiApi::TrainingStart::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::TrainingStart::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::TrainingActiveScenarioControlsShow::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::TrainingActiveScenarioControlsShow::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::TrainingConfigShowEvolution::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(

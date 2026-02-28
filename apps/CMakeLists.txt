@@ -339,6 +339,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
+    src/server/api/FitnessBreakdownReport.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
@@ -354,7 +355,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/RenderFormatSet.cpp
     src/server/api/RenderStreamConfigSet.cpp
     src/server/api/Reset.cpp
-    src/server/api/ScenarioConfigSet.cpp
     src/server/api/ScenarioListGet.cpp
     src/server/api/SeedAdd.cpp
     src/server/api/SimRun.cpp
@@ -370,7 +370,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
-    src/server/api/TrainingStreamConfigSet.cpp
     src/server/api/UserSettingsUpdated.cpp
     src/server/api/WorldResize.cpp
 
@@ -383,6 +382,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/RainingConfig.cpp
+    src/core/scenarios/SandboxConfig.cpp
+    src/core/scenarios/TreeGerminationConfig.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
@@ -460,7 +462,10 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
+    src/core/organisms/evolution/GooseEvaluator.cpp
+    src/core/organisms/evolution/MovementScoring.cpp
     src/core/organisms/evolution/Mutation.cpp
+    src/core/organisms/evolution/NesEvaluator.cpp
     src/core/organisms/evolution/OrganismTracker.cpp
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
@@ -529,6 +534,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StopButtonPress.cpp
     src/ui/state-machine/api/StreamStart.cpp
     src/ui/state-machine/api/SynthKeyEvent.cpp
+    src/ui/state-machine/api/TrainingActiveScenarioControlsShow.cpp
     src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
     src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp
@@ -548,6 +554,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
+    src/ui/UserSettingsManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/TrainingActiveView.cpp
     src/ui/TrainingIdleView.cpp
