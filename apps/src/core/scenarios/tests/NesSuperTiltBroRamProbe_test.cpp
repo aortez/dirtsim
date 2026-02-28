@@ -125,31 +125,12 @@ uint8_t scriptedMatchMaskForFrame(uint64_t frameIndex)
     if (frameIndex < kMatchStartFrame) {
         return 0u;
     }
-
     const uint64_t matchFrame = frameIndex - kMatchStartFrame;
-    if (matchFrame < 60) {
-        return 0u;
+    if (matchFrame < 120) {
+        return SMOLNES_RUNTIME_BUTTON_RIGHT;
     }
 
-    const uint64_t t = matchFrame - 60;
-
-    uint8_t mask = 0u;
-    if (((t / 180) % 2) == 0) {
-        mask |= SMOLNES_RUNTIME_BUTTON_RIGHT;
-    }
-    else {
-        mask |= SMOLNES_RUNTIME_BUTTON_LEFT;
-    }
-
-    if ((t % 10) == 0) {
-        mask |= SMOLNES_RUNTIME_BUTTON_B;
-    }
-
-    if ((t % 60) == 30) {
-        mask |= SMOLNES_RUNTIME_BUTTON_A;
-    }
-
-    return mask;
+    return 0u;
 }
 
 uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
@@ -193,9 +174,9 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
 
     constexpr uint64_t kCaptureFrames = 1801;
-    const std::array<uint64_t, 19> screenshotFrames = {
-        0u,    120u,  240u,  360u,  480u,  600u,  720u,  1000u, 1040u, 1100u,
-        1120u, 1200u, 1320u, 1380u, 1440u, 1560u, 1680u, 1740u, 1800u,
+    const std::array<uint64_t, 21> screenshotFrames = {
+        0u,    120u,  240u,  360u,  400u,  420u,  480u,  600u,  720u,  1000u, 1040u,
+        1100u, 1120u, 1200u, 1320u, 1380u, 1440u, 1560u, 1680u, 1740u, 1800u,
     };
 
     const std::filesystem::path tempDir = ::testing::TempDir();
@@ -250,22 +231,79 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     ASSERT_FALSE(frames.empty());
     ASSERT_EQ(frames.front().cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
 
-    std::vector<uint32_t> changeCounts(frames.front().cpuRam.size(), 0);
     constexpr uint64_t kMatchAnalysisStartFrame = 1200;
     const size_t analysisStartIndex = kMatchAnalysisStartFrame < frames.size()
         ? static_cast<size_t>(kMatchAnalysisStartFrame)
         : (frames.size() - 1u);
 
+    struct AddrStats {
+        uint32_t changes = 0;
+        uint32_t nonzeroFrames = 0;
+        uint8_t minValue = 255;
+        uint8_t maxValue = 0;
+        uint64_t absDiffSum = 0;
+        uint32_t smallDiffChanges = 0;
+    };
+
+    std::vector<AddrStats> stats(frames.front().cpuRam.size());
+    for (size_t frameIndex = analysisStartIndex; frameIndex < frames.size(); ++frameIndex) {
+        const std::vector<uint8_t>& current = frames[frameIndex].cpuRam;
+        for (size_t addr = 0; addr < current.size(); ++addr) {
+            AddrStats& st = stats[addr];
+            const uint8_t value = current[addr];
+            if (value != 0) {
+                st.nonzeroFrames++;
+            }
+            st.minValue = std::min(st.minValue, value);
+            st.maxValue = std::max(st.maxValue, value);
+        }
+    }
+
+    std::vector<uint32_t> changeCounts(frames.front().cpuRam.size(), 0);
     for (size_t frameIndex = analysisStartIndex + 1u; frameIndex < frames.size(); ++frameIndex) {
         const std::vector<uint8_t>& previous = frames[frameIndex - 1].cpuRam;
         const std::vector<uint8_t>& current = frames[frameIndex].cpuRam;
         ASSERT_EQ(previous.size(), current.size());
         for (size_t addr = 0; addr < current.size(); ++addr) {
-            if (current[addr] != previous[addr]) {
+            const uint8_t cur = current[addr];
+            const uint8_t prev = previous[addr];
+            if (cur != prev) {
                 changeCounts[addr]++;
+
+                AddrStats& st = stats[addr];
+                st.changes++;
+
+                const uint8_t diff = cur > prev ? static_cast<uint8_t>(cur - prev)
+                                                : static_cast<uint8_t>(prev - cur);
+                st.absDiffSum += diff;
+                if (diff <= 10) {
+                    st.smallDiffChanges++;
+                }
             }
         }
     }
+
+    const std::filesystem::path statsPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_stb_ram_probe_stats.csv";
+    std::ofstream statsStream(statsPath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(statsStream.is_open()) << "Failed to open probe stats: " << statsPath.string();
+
+    statsStream << "addr,changes,nonzero_frames,min,max,range,abs_diff_sum,small_diff_changes\n";
+    for (size_t addr = 0; addr < stats.size(); ++addr) {
+        const AddrStats& st = stats[addr];
+        const uint32_t range =
+            static_cast<uint32_t>(st.maxValue) - static_cast<uint32_t>(st.minValue);
+        statsStream << addr << "," << st.changes << "," << st.nonzeroFrames << ","
+                    << static_cast<uint32_t>(st.minValue) << ","
+                    << static_cast<uint32_t>(st.maxValue) << "," << range << "," << st.absDiffSum
+                    << "," << st.smallDiffChanges << "\n";
+    }
+
+    statsStream.close();
+    ASSERT_TRUE(statsStream.good());
+    EXPECT_TRUE(std::filesystem::exists(statsPath));
+    EXPECT_GT(std::filesystem::file_size(statsPath), 0u);
+    std::cout << "Wrote STB RAM probe stats: " << statsPath.string() << "\n";
 
     std::vector<size_t> rankedAddresses(changeCounts.size(), 0);
     std::iota(rankedAddresses.begin(), rankedAddresses.end(), 0);
