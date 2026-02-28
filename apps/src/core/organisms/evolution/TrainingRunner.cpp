@@ -199,16 +199,12 @@ TrainingRunner::TrainingRunner(
     int height = metadata.requiredHeight > 0 ? metadata.requiredHeight : 9;
     world_ = std::make_unique<World>(width, height);
 
-    if (trainingSpec_.organismType == OrganismType::DUCK
-        && individual_.scenarioId == Scenario::EnumType::Clock) {
-        ScenarioConfig scenarioConfig = scenario_->getConfig();
-        if (auto* clockConfig = std::get_if<DirtSim::Config::Clock>(&scenarioConfig)) {
-            clockConfig->duckEnabled = false;
-            clockConfig->meltdownEnabled = false;
-            clockConfig->rainEnabled = false;
-            scenario_->setConfig(scenarioConfig, *world_);
-        }
+    ScenarioConfig scenarioConfig = scenario_->getConfig();
+    if (runnerConfig.scenarioConfigOverride.has_value()) {
+        scenarioConfig = runnerConfig.scenarioConfigOverride.value();
     }
+    scenarioConfig = buildEffectiveScenarioConfig(scenarioConfig);
+    scenario_->setConfig(scenarioConfig, *world_);
 
     // Setup scenario.
     scenario_->setup(*world_);
@@ -399,12 +395,38 @@ ScenarioConfig TrainingRunner::getScenarioConfig() const
     return scenario_->getConfig();
 }
 
+Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const ScenarioConfig& config)
+{
+    if (!scenario_ || !world_) {
+        return Result<std::monostate, std::string>::error(
+            "TrainingRunner: Scenario config update requires active scenario and world");
+    }
+
+    const ScenarioConfig effectiveConfig = buildEffectiveScenarioConfig(config);
+    scenario_->setConfig(effectiveConfig, *world_);
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 bool TrainingRunner::isOrganismAlive() const
 {
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
         return state_ == State::Running;
     }
     return getOrganism() != nullptr;
+}
+
+ScenarioConfig TrainingRunner::buildEffectiveScenarioConfig(const ScenarioConfig& config) const
+{
+    ScenarioConfig effectiveConfig = config;
+    if (trainingSpec_.organismType != OrganismType::DUCK
+        || individual_.scenarioId != Scenario::EnumType::Clock) {
+        return effectiveConfig;
+    }
+
+    if (auto* clockConfig = std::get_if<DirtSim::Config::Clock>(&effectiveConfig)) {
+        clockConfig->duckEnabled = false;
+    }
+    return effectiveConfig;
 }
 
 void TrainingRunner::resolveBrainEntry()

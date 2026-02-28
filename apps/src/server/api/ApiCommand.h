@@ -25,7 +25,6 @@
 #include "RenderFormatSet.h"
 #include "RenderStreamConfigSet.h"
 #include "Reset.h"
-#include "ScenarioConfigSet.h"
 #include "ScenarioListGet.h"
 #include "SeedAdd.h"
 #include "SimRun.h"
@@ -41,7 +40,6 @@
 #include "TrainingResultList.h"
 #include "TrainingResultSave.h"
 #include "TrainingResultSet.h"
-#include "TrainingStreamConfigSet.h"
 #include "UserSettingsGet.h"
 #include "UserSettingsPatch.h"
 #include "UserSettingsReset.h"
@@ -100,7 +98,6 @@ using ApiCommand = std::variant<
     Api::RenderFormatSet::Command,
     Api::RenderStreamConfigSet::Command,
     Api::Reset::Command,
-    Api::ScenarioConfigSet::Command,
     Api::ScenarioListGet::Command,
     Api::SeedAdd::Command,
     Api::SimRun::Command,
@@ -120,7 +117,6 @@ using ApiCommand = std::variant<
     Api::TrainingResultList::Command,
     Api::TrainingResultSave::Command,
     Api::TrainingResultSet::Command,
-    Api::TrainingStreamConfigSet::Command,
     Api::WebSocketAccessSet::Command,
     Api::WebUiAccessSet::Command,
     Api::WorldResize::Command>;

@@ -304,7 +304,26 @@ uint8_t read_pc() {
 uint8_t set_nz(uint8_t val) { return P = P & 125 | val & 128 | !val * 2; }
 
 int main(int argc, char **argv) {
-  SDL_RWread(SDL_RWFromFile(argv[1], "rb"), rombuf, 1024 * 1024, 1);
+  SDL_RWops *rom_file;
+  size_t rom_bytes;
+
+  if (argc < 2 || argv[1] == 0 || !argv[1][0]) {
+    return 1;
+  }
+
+  rom_file = SDL_RWFromFile(argv[1], "rb");
+  if (rom_file == 0) {
+    return 1;
+  }
+
+  // Zero-fill so short reads do not reuse stale bytes from prior runs.
+  SDL_memset(rombuf, 0, sizeof(rombuf));
+  rom_bytes = SDL_RWread(rom_file, rombuf, 1, sizeof(rombuf));
+  SDL_RWclose(rom_file);
+  if (rom_bytes < 16) {
+    return 1;
+  }
+
   // Start PRG0 after 16-byte header.
   rom = rombuf + 16;
   // PRG1 is the last bank. `rombuf[4]` is the number of 16k PRG banks.

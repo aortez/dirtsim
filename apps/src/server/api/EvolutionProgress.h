@@ -26,8 +26,11 @@ struct EvolutionProgress {
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     uint64_t robustEvaluationCount = 0;
+    // Running average fitness for the currently evaluated generation.
     double averageFitness = 0.0;
     int lastCompletedGeneration = -1;
+    // Final average fitness for lastCompletedGeneration.
+    double lastGenerationAverageFitness = 0.0;
     double lastGenerationFitnessMin = 0.0;
     double lastGenerationFitnessMax = 0.0;
     std::vector<uint32_t> lastGenerationFitnessHistogram;
@@ -66,7 +69,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<41>;
+    using serialize = zpp::bits::members<42>;
 };
 
 } // namespace Api

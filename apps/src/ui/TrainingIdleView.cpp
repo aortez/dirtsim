@@ -215,9 +215,9 @@ void TrainingIdleView::createTrainingConfigPanel()
         userSettings_.evolutionConfig,
         userSettings_.mutationConfig,
         userSettings_.trainingSpec,
-        userSettings_.streamIntervalMs,
-        userSettings_.bestPlaybackEnabled,
-        userSettings_.bestPlaybackIntervalMs);
+        userSettings_.uiTraining.streamIntervalMs,
+        userSettings_.uiTraining.bestPlaybackEnabled,
+        userSettings_.uiTraining.bestPlaybackIntervalMs);
     LOG_INFO(Controls, "TrainingIdleView: Created Training config panel");
 }
 
@@ -265,7 +265,7 @@ void TrainingIdleView::createTrainingResultBrowserPanel()
 
 void TrainingIdleView::setStreamIntervalMs(int value)
 {
-    userSettings_.streamIntervalMs = value;
+    userSettings_.uiTraining.streamIntervalMs = value;
     if (trainingConfigPanel_) {
         trainingConfigPanel_->setStreamIntervalMs(value);
     }
@@ -273,7 +273,7 @@ void TrainingIdleView::setStreamIntervalMs(int value)
 
 void TrainingIdleView::setBestPlaybackEnabled(bool enabled)
 {
-    userSettings_.bestPlaybackEnabled = enabled;
+    userSettings_.uiTraining.bestPlaybackEnabled = enabled;
     if (trainingConfigPanel_) {
         trainingConfigPanel_->setBestPlaybackEnabled(enabled);
     }
@@ -281,9 +281,10 @@ void TrainingIdleView::setBestPlaybackEnabled(bool enabled)
 
 void TrainingIdleView::setBestPlaybackIntervalMs(int value)
 {
-    userSettings_.bestPlaybackIntervalMs = std::max(1, value);
+    userSettings_.uiTraining.bestPlaybackIntervalMs = std::max(1, value);
     if (trainingConfigPanel_) {
-        trainingConfigPanel_->setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
+        trainingConfigPanel_->setBestPlaybackIntervalMs(
+            userSettings_.uiTraining.bestPlaybackIntervalMs);
     }
 }
 

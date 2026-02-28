@@ -23,6 +23,7 @@
 #include "StopButtonPress.h"
 #include "StreamStart.h"
 #include "SynthKeyEvent.h"
+#include "TrainingActiveScenarioControlsShow.h"
 #include "TrainingConfigShowEvolution.h"
 #include "TrainingQuit.h"
 #include "TrainingResultDiscard.h"
@@ -63,6 +64,7 @@ using UiApiCommand = std::variant<
     UiApi::StopButtonPress::Command,
     UiApi::StreamStart::Command,
     UiApi::SynthKeyEvent::Command,
+    UiApi::TrainingActiveScenarioControlsShow::Command,
     UiApi::TrainingConfigShowEvolution::Command,
     UiApi::TrainingQuit::Command,
     UiApi::TrainingResultDiscard::Command,
