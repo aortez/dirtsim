@@ -16,12 +16,12 @@ namespace {
 struct DuckMovementScoringConfig {
     double cellCoverageWeight = 0.10;
     double columnCoverageReferenceWidthScale = 0.40;
-    double columnCoverageWeight = 0.45;
+    double columnCoverageWeight = 0.65;
     double effortPenaltyWeight = 0.50;
     double effortReference = 1.0;
     double jumpHeldEffortWeight = 25;
     double rowCoverageReferenceHeightScale = 0.40;
-    double rowCoverageWeight = 0.45;
+    double rowCoverageWeight = 0.25;
     double cellCoverageReferenceDiagonalScale = 0.75;
 };
 
