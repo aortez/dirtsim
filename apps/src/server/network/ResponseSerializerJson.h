@@ -10,7 +10,6 @@
 #include "server/api/PhysicsSettingsGet.h"
 #include "server/api/PhysicsSettingsSet.h"
 #include "server/api/Reset.h"
-#include "server/api/ScenarioConfigSet.h"
 #include "server/api/SimRun.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"

@@ -4,7 +4,6 @@
 #include "core/Timers.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
-#include "server/api/ScenarioConfigSet.h"
 #include "server/api/TimerStatsGet.h"
 #include <spdlog/spdlog.h>
 
@@ -56,34 +55,6 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
         responseData.worldData = previousState.world->getData();
         cwc.sendResponse(Response::okay(std::move(responseData)));
     }
-    return std::move(*this);
-}
-
-State::Any SimPaused::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
-{
-    using Response = Api::ScenarioConfigSet::Response;
-
-    DIRTSIM_ASSERT(previousState.world, "World must exist in SimPaused");
-    DIRTSIM_ASSERT(previousState.scenario, "Scenario must exist in SimPaused");
-
-    // Update scenario's config.
-    previousState.scenario->setConfig(cwc.command.config, *previousState.world);
-
-    if (previousState.scenario_id == Scenario::EnumType::Clock) {
-        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
-            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig);
-            if (syncResult.isError()) {
-                LOG_WARN(
-                    State,
-                    "Scenario config updated, but failed to persist clock settings: {}",
-                    syncResult.errorValue());
-            }
-        }
-    }
-
-    LOG_INFO(State, "Scenario config updated for '{}'", toString(previousState.scenario_id));
-
-    cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
 }
 

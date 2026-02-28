@@ -22,6 +22,7 @@ public:
     SandboxControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         const Config::Sandbox& config);
     ~SandboxControls() override;
 

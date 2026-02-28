@@ -41,6 +41,7 @@ public:
     ClockControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         const Config::Clock& config,
         DisplayDimensionsGetter dimensionsGetter = nullptr);
     ~ClockControls() override;

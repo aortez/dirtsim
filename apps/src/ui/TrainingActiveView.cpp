@@ -69,11 +69,13 @@ TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     UserSettings& userSettings,
     const Starfield::Snapshot* starfieldSnapshot)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
+      userSettingsManager_(userSettingsManager),
       userSettings_(userSettings),
       starfieldSnapshot_(starfieldSnapshot)
 {
@@ -595,7 +597,7 @@ void TrainingActiveView::updateBestSnapshot(
     bestSnapshotFitness_ = fitness;
     bestSnapshotGeneration_ = generation;
     hasBestSnapshot_ = true;
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
         bestFitness_ = fitness;
         bestGeneration_ = generation;
@@ -782,14 +784,14 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestFitnessBreakdownLabel_, summary.str().c_str());
     }
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         scheduleBestRender();
     }
 }
 
 void TrainingActiveView::setStreamIntervalMs(int value)
 {
-    userSettings_.streamIntervalMs = value;
+    userSettings_.uiTraining.streamIntervalMs = value;
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
@@ -797,7 +799,7 @@ void TrainingActiveView::setStreamIntervalMs(int value)
 
 void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
 {
-    userSettings_.bestPlaybackEnabled = enabled;
+    userSettings_.uiTraining.bestPlaybackEnabled = enabled;
     if (bestPlaybackToggle_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(bestPlaybackToggle_, enabled);
     }
@@ -822,10 +824,10 @@ void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
 
 void TrainingActiveView::setBestPlaybackIntervalMs(int value)
 {
-    userSettings_.bestPlaybackIntervalMs = std::max(1, value);
+    userSettings_.uiTraining.bestPlaybackIntervalMs = std::max(1, value);
     if (bestPlaybackIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
-            bestPlaybackIntervalStepper_, userSettings_.bestPlaybackIntervalMs);
+            bestPlaybackIntervalStepper_, userSettings_.uiTraining.bestPlaybackIntervalMs);
     }
 }
 
@@ -994,6 +996,7 @@ void TrainingActiveView::refreshScenarioControlsOverlay()
         scenarioControls_ = ScenarioControlsFactory::create(
             scenarioControlsOverlayContent_,
             wsService_,
+            userSettingsManager_,
             &eventSink_,
             currentScenarioId_,
             currentScenarioConfig_,
@@ -1048,7 +1051,7 @@ void TrainingActiveView::updateScenarioButtonState()
 void TrainingActiveView::updateBestPlaybackFrame(
     const WorldData& worldData, double fitness, int generation)
 {
-    if (!userSettings_.bestPlaybackEnabled) {
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         return;
     }
 
@@ -1367,8 +1370,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
     }
     setTrainingPaused(false);
-    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
-    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
+    setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
@@ -1491,7 +1494,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                                  .label("Interval (ms)")
                                  .range(0, 5000)
                                  .step(100)
-                                 .value(userSettings_.streamIntervalMs)
+                                 .value(userSettings_.uiTraining.streamIntervalMs)
                                  .valueFormat("%.0f")
                                  .valueScale(1.0)
                                  .width(LV_PCT(100))
@@ -1501,7 +1504,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     bestPlaybackToggle_ = LVGLBuilder::actionButton(streamPanel_)
                               .text("Best Playback")
                               .mode(LVGLBuilder::ActionMode::Toggle)
-                              .checked(userSettings_.bestPlaybackEnabled)
+                              .checked(userSettings_.uiTraining.bestPlaybackEnabled)
                               .width(LV_PCT(100))
                               .height(LVGLBuilder::Style::ACTION_SIZE)
                               .layoutRow()
@@ -1509,16 +1512,17 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                               .callback(onBestPlaybackToggled, this)
                               .buildOrLog();
 
-    bestPlaybackIntervalStepper_ = LVGLBuilder::actionStepper(streamPanel_)
-                                       .label("Best Playback (ms)")
-                                       .range(1, 5000)
-                                       .step(1)
-                                       .value(std::max(1, userSettings_.bestPlaybackIntervalMs))
-                                       .valueFormat("%.0f")
-                                       .valueScale(1.0)
-                                       .width(LV_PCT(100))
-                                       .callback(onBestPlaybackIntervalChanged, this)
-                                       .buildOrLog();
+    bestPlaybackIntervalStepper_ =
+        LVGLBuilder::actionStepper(streamPanel_)
+            .label("Best Playback (ms)")
+            .range(1, 5000)
+            .step(1)
+            .value(std::max(1, userSettings_.uiTraining.bestPlaybackIntervalMs))
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(100))
+            .callback(onBestPlaybackIntervalChanged, this)
+            .buildOrLog();
 
     scenarioControlsButton_ = LVGLBuilder::actionButton(streamPanel_)
                                   .text("Scenario Controls")
@@ -1583,8 +1587,8 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
 
     createScenarioControlsOverlay();
     updateScenarioButtonState();
-    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
-    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
+    setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
@@ -1599,8 +1603,8 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
             .intervalMs = value,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
 }
 
@@ -1615,9 +1619,9 @@ void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
     self->setBestPlaybackEnabled(enabled);
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
-            .intervalMs = self->userSettings_.streamIntervalMs,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
 }
 
@@ -1633,9 +1637,9 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
     self->setBestPlaybackIntervalMs(value);
     self->eventSink_.queueEvent(
         TrainingStreamConfigChangedEvent{
-            .intervalMs = self->userSettings_.streamIntervalMs,
-            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
-            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
         });
 }
 

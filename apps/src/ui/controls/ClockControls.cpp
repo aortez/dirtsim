@@ -52,9 +52,10 @@ void updateEventToggleColor(lv_obj_t* toggle, bool enabled)
 ClockControls::ClockControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    UserSettingsManager& userSettingsManager,
     const Config::Clock& config,
     DisplayDimensionsGetter dimensionsGetter)
-    : ScenarioControlsBase(container, wsService, "clock"),
+    : ScenarioControlsBase(container, wsService, userSettingsManager, "clock"),
       dimensionsGetter_(std::move(dimensionsGetter))
 {
     // Create widgets.

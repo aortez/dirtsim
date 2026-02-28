@@ -10,9 +10,7 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultSave.h"
-#include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsPatch.h"
-#include "server/api/UserSettingsSet.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
@@ -223,9 +221,6 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
-          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
 
@@ -270,9 +265,6 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
-          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
 
@@ -476,14 +468,9 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
-          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
-    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
-        { .settings = fixture.stateMachine->getServerUserSettings() });
 
     TrainingIdle trainingState;
     trainingState.onEnter(*fixture.stateMachine);
@@ -505,13 +492,10 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     // Stream setup happens in TrainingIdle (before EvolutionStart) to prevent a deadlock, then
     // again in TrainingActive::onEnter for the restart-from-unsaved-result path.
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
-    ASSERT_GE(sentCommands.size(), 6u);
-    EXPECT_EQ(sentCommands[0], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
-    EXPECT_EQ(sentCommands[2], "EvolutionStart");
-    EXPECT_EQ(sentCommands[3], "UserSettingsSet");
-    EXPECT_EQ(sentCommands[4], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[5], "RenderFormatSet");
+    ASSERT_GE(sentCommands.size(), 3u);
+    EXPECT_EQ(sentCommands[0], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[1], "EvolutionStart");
+    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
 
     trainingState.view_.reset();
     activeState->view_.reset();
@@ -526,14 +510,9 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
-          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
-    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
-        { .settings = fixture.stateMachine->getServerUserSettings() });
 
     TrainingIdle trainingState;
     trainingState.onEnter(*fixture.stateMachine);
@@ -551,22 +530,20 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     ASSERT_NE(activeState, nullptr);
 
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
-    ASSERT_GE(sentCommands.size(), 4u);
-    EXPECT_EQ(sentCommands[0], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
-    EXPECT_EQ(sentCommands[2], "EvolutionStart");
-    EXPECT_EQ(sentCommands[3], "UserSettingsSet");
+    ASSERT_GE(sentCommands.size(), 2u);
+    EXPECT_EQ(sentCommands[0], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[1], "EvolutionStart");
 
     trainingState.view_.reset();
     fixture.stateMachine->uiManager_.reset();
 }
 
-TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesServerUserSettings)
+TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
 {
     TestStateMachineFixture fixture;
 
     Api::UserSettingsPatch::Okay settingsOkay{
-        .settings = fixture.stateMachine->getServerUserSettings(),
+        .settings = fixture.stateMachine->getUserSettings(),
     };
     settingsOkay.settings.evolutionConfig.maxSimulationTime = 40.0;
     settingsOkay.settings.evolutionConfig.populationSize = 37;
@@ -598,25 +575,14 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesServerUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.rate, settingsOkay.settings.mutationConfig.rate);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
-
-    const auto& server = fixture.stateMachine->getServerUserSettings();
-    EXPECT_EQ(
-        server.evolutionConfig.populationSize,
-        settingsOkay.settings.evolutionConfig.populationSize);
-    EXPECT_DOUBLE_EQ(
-        server.evolutionConfig.maxSimulationTime,
-        settingsOkay.settings.evolutionConfig.maxSimulationTime);
-    EXPECT_DOUBLE_EQ(server.mutationConfig.rate, settingsOkay.settings.mutationConfig.rate);
-    EXPECT_EQ(server.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
-    EXPECT_EQ(server.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
 }
 
-TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesServerUserSettings)
+TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)
 {
     TestStateMachineFixture fixture;
 
     Api::UserSettingsPatch::Okay settingsOkay{
-        .settings = fixture.stateMachine->getServerUserSettings(),
+        .settings = fixture.stateMachine->getUserSettings(),
     };
     settingsOkay.settings.evolutionConfig.maxSimulationTime = 55.0;
     settingsOkay.settings.evolutionConfig.populationSize = 19;
@@ -648,17 +614,6 @@ TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesServerUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
-
-    const auto& server = fixture.stateMachine->getServerUserSettings();
-    EXPECT_EQ(
-        server.evolutionConfig.populationSize,
-        settingsOkay.settings.evolutionConfig.populationSize);
-    EXPECT_DOUBLE_EQ(
-        server.evolutionConfig.maxSimulationTime,
-        settingsOkay.settings.evolutionConfig.maxSimulationTime);
-    EXPECT_DOUBLE_EQ(server.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
-    EXPECT_EQ(server.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
-    EXPECT_EQ(server.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
 }
 
 TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
@@ -757,9 +712,6 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     saveOkay.discardedCount = 0;
     saveOkay.savedIds = { candidate.id };
     fixture.mockWebSocketService->expectSuccess<Api::TrainingResultSave::Command>(saveOkay);
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
-          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
     fixture.mockWebSocketService->clearSentCommands();
@@ -789,10 +741,9 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     EXPECT_FALSE(updatedState->isTrainingResultModalVisible());
 
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
-    ASSERT_GE(sentCommands.size(), 3u);
+    ASSERT_GE(sentCommands.size(), 2u);
     EXPECT_EQ(sentCommands[0], "TrainingResultSave");
-    EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
 
     updatedState->view_.reset();
     fixture.stateMachine->uiManager_.reset();

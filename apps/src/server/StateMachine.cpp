@@ -10,7 +10,6 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
-#include "api/TrainingStreamConfigSet.h"
 #include "api/UserSettingsGet.h"
 #include "api/UserSettingsPatch.h"
 #include "api/UserSettingsReset.h"
@@ -235,6 +234,16 @@ UserSettings sanitizeUserSettings(
         recordUpdate("startMenuIdleTimeoutMs clamped to maximum timeout");
     }
 
+    if (settings.uiTraining.streamIntervalMs < 0) {
+        settings.uiTraining.streamIntervalMs = 0;
+        recordUpdate("uiTraining.streamIntervalMs clamped to 0");
+    }
+
+    if (settings.uiTraining.bestPlaybackIntervalMs < 1) {
+        settings.uiTraining.bestPlaybackIntervalMs = 1;
+        recordUpdate("uiTraining.bestPlaybackIntervalMs clamped to 1");
+    }
+
     if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
         settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
         recordUpdate("trainingResumePolicy reset to WarmFromBest");
@@ -367,23 +376,12 @@ UserSettings loadUserSettingsFromDisk(
 
         nlohmann::json json;
         file >> json;
-        UserSettings parsed = json.get<UserSettings>();
-        bool migratedLegacyTimezoneIndex = false;
-        if (json.contains("timezoneIndex") && json["timezoneIndex"].is_number_integer()) {
-            const int legacyTimezoneIndex = json["timezoneIndex"].get<int>();
-            parsed.clockScenarioConfig.timezoneIndex =
-                static_cast<uint8_t>(std::clamp(legacyTimezoneIndex, 0, getMaxTimezoneIndex()));
-            migratedLegacyTimezoneIndex = true;
-        }
+        const UserSettings parsed = json.get<UserSettings>();
 
         bool changed = false;
         std::vector<std::string> updates;
-        UserSettings sanitized =
+        const UserSettings sanitized =
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
-        if (migratedLegacyTimezoneIndex) {
-            updates.push_back("migrated timezoneIndex to clockScenarioConfig.timezoneIndex");
-            changed = true;
-        }
         if (changed) {
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
@@ -402,6 +400,186 @@ UserSettings loadUserSettingsFromDisk(
         persistUserSettingsToDisk(filePath, defaults);
         return defaults;
     }
+}
+
+std::optional<ScenarioConfig> makeScenarioConfigFromUserSettings(
+    const UserSettings& settings, Scenario::EnumType scenarioId)
+{
+    switch (scenarioId) {
+        case Scenario::EnumType::Benchmark:
+            return std::nullopt;
+        case Scenario::EnumType::Clock:
+            return settings.clockScenarioConfig;
+        case Scenario::EnumType::DamBreak:
+            return std::nullopt;
+        case Scenario::EnumType::Empty:
+            return std::nullopt;
+        case Scenario::EnumType::GooseTest:
+            return std::nullopt;
+        case Scenario::EnumType::Lights:
+            return std::nullopt;
+        case Scenario::EnumType::NesFlappyParatroopa:
+            return std::nullopt;
+        case Scenario::EnumType::Sandbox:
+            return settings.sandboxScenarioConfig;
+        case Scenario::EnumType::Raining:
+            return settings.rainingScenarioConfig;
+        case Scenario::EnumType::TreeGermination:
+            return settings.treeGerminationScenarioConfig;
+        case Scenario::EnumType::WaterEqualization:
+            return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+bool isScenarioConfigTouched(
+    Scenario::EnumType scenarioId,
+    bool clockTouched,
+    bool sandboxTouched,
+    bool rainingTouched,
+    bool treeGerminationTouched)
+{
+    switch (scenarioId) {
+        case Scenario::EnumType::Benchmark:
+            return false;
+        case Scenario::EnumType::Clock:
+            return clockTouched;
+        case Scenario::EnumType::DamBreak:
+            return false;
+        case Scenario::EnumType::Empty:
+            return false;
+        case Scenario::EnumType::GooseTest:
+            return false;
+        case Scenario::EnumType::Lights:
+            return false;
+        case Scenario::EnumType::NesFlappyParatroopa:
+            return false;
+        case Scenario::EnumType::Sandbox:
+            return sandboxTouched;
+        case Scenario::EnumType::Raining:
+            return rainingTouched;
+        case Scenario::EnumType::TreeGermination:
+            return treeGerminationTouched;
+        case Scenario::EnumType::WaterEqualization:
+            return false;
+    }
+
+    return false;
+}
+
+void applyScenarioConfigUpdatesToActiveState(
+    State::Any& fsmState,
+    const UserSettings& settings,
+    bool clockTouched,
+    bool sandboxTouched,
+    bool rainingTouched,
+    bool treeGerminationTouched)
+{
+    std::visit(
+        [&](auto& state) {
+            using StateType = std::decay_t<decltype(state)>;
+
+            if constexpr (std::is_same_v<StateType, State::SimRunning>) {
+                if (!state.world || !state.scenario) {
+                    return;
+                }
+
+                if (!isScenarioConfigTouched(
+                        state.scenario_id,
+                        clockTouched,
+                        sandboxTouched,
+                        rainingTouched,
+                        treeGerminationTouched)) {
+                    return;
+                }
+
+                const auto config = makeScenarioConfigFromUserSettings(settings, state.scenario_id);
+                if (!config.has_value()) {
+                    return;
+                }
+
+                state.scenario->setConfig(*config, *state.world);
+                return;
+            }
+
+            if constexpr (std::is_same_v<StateType, State::SimPaused>) {
+                auto& running = state.previousState;
+                if (!running.world || !running.scenario) {
+                    return;
+                }
+
+                if (!isScenarioConfigTouched(
+                        running.scenario_id,
+                        clockTouched,
+                        sandboxTouched,
+                        rainingTouched,
+                        treeGerminationTouched)) {
+                    return;
+                }
+
+                const auto config =
+                    makeScenarioConfigFromUserSettings(settings, running.scenario_id);
+                if (!config.has_value()) {
+                    return;
+                }
+
+                running.scenario->setConfig(*config, *running.world);
+                return;
+            }
+
+            if constexpr (std::is_same_v<StateType, State::Evolution>) {
+                if (!isScenarioConfigTouched(
+                        state.trainingSpec.scenarioId,
+                        clockTouched,
+                        sandboxTouched,
+                        rainingTouched,
+                        treeGerminationTouched)) {
+                    return;
+                }
+
+                const auto config =
+                    makeScenarioConfigFromUserSettings(settings, state.trainingSpec.scenarioId);
+                if (!config.has_value()) {
+                    return;
+                }
+
+                state.scenarioConfigOverride_ = *config;
+                if (state.workerState_) {
+                    state.workerState_->scenarioConfigOverride = state.scenarioConfigOverride_;
+                }
+
+                if (state.visibleRunner_
+                    && state.visibleScenarioId_ == state.trainingSpec.scenarioId) {
+                    const auto result = state.visibleRunner_->setScenarioConfig(*config);
+                    if (result.isError()) {
+                        LOG_WARN(
+                            State,
+                            "Failed to apply scenario config override to visible runner: {}",
+                            result.errorValue());
+                    }
+                    else {
+                        state.visibleScenarioConfig_ = state.visibleRunner_->getScenarioConfig();
+                    }
+                }
+
+                if (state.bestPlaybackRunner_ && state.bestPlaybackIndividual_.has_value()
+                    && state.bestPlaybackIndividual_.value().scenarioId
+                        == state.trainingSpec.scenarioId) {
+                    const auto result = state.bestPlaybackRunner_->setScenarioConfig(*config);
+                    if (result.isError()) {
+                        LOG_WARN(
+                            State,
+                            "Failed to apply scenario config override to best playback runner: {}",
+                            result.errorValue());
+                    }
+                }
+                return;
+            }
+
+            // Other states don't have a live scenario to apply configs to.
+        },
+        fsmState.getVariant());
 }
 
 bool isMissingTimestamp(uint64_t timestamp)
@@ -691,7 +869,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::RenderFormatSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::RenderStreamConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::Reset);
-        DISPATCH_JSON_CMD_WITH_RESP(Api::ScenarioConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::SeedAdd);
         DISPATCH_JSON_CMD_WITH_RESP(Api::SimRun);
         DISPATCH_JSON_CMD_EMPTY(Api::SimStop);
@@ -895,8 +1072,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::RenderFormatSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::RenderStreamConfigSet::Cwc>(
         [this](Api::RenderStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
-    service.registerHandler<Api::TrainingStreamConfigSet::Cwc>(
-        [this](Api::TrainingStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
 
     // =========================================================================
     // Queued handlers - queue to state machine for processing.
@@ -941,8 +1116,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     service.registerHandler<Api::PhysicsSettingsSet::Cwc>(
         [this](Api::PhysicsSettingsSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::Reset::Cwc>([this](Api::Reset::Cwc cwc) { queueEvent(cwc); });
-    service.registerHandler<Api::ScenarioConfigSet::Cwc>(
-        [this](Api::ScenarioConfigSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ScenarioListGet::Cwc>(
         [this](Api::ScenarioListGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ScenarioSwitch::Cwc>(
@@ -1060,35 +1233,6 @@ UserSettings& StateMachine::getUserSettings()
 const UserSettings& StateMachine::getUserSettings() const
 {
     return pImpl->userSettings_;
-}
-
-Result<std::monostate, std::string> StateMachine::updateClockScenarioUserSettings(
-    const Config::Clock& config)
-{
-    UserSettings updated = pImpl->userSettings_;
-    updated.clockScenarioConfig = config;
-
-    bool changed = false;
-    std::vector<std::string> updates;
-    const UserSettings sanitized = sanitizeUserSettings(
-        updated, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
-
-    if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
-        return Result<std::monostate, std::string>::error("Failed to persist user settings");
-    }
-
-    if (changed) {
-        for (const auto& update : updates) {
-            LOG_WARN(State, "Clock settings update: {}", update);
-        }
-    }
-
-    pImpl->userSettings_ = sanitized;
-
-    const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
-    broadcastEventData(Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
@@ -1595,6 +1739,15 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.clockScenarioConfig.has_value()) {
             patched.clockScenarioConfig = *cwc.command.clockScenarioConfig;
         }
+        if (cwc.command.sandboxScenarioConfig.has_value()) {
+            patched.sandboxScenarioConfig = *cwc.command.sandboxScenarioConfig;
+        }
+        if (cwc.command.rainingScenarioConfig.has_value()) {
+            patched.rainingScenarioConfig = *cwc.command.rainingScenarioConfig;
+        }
+        if (cwc.command.treeGerminationScenarioConfig.has_value()) {
+            patched.treeGerminationScenarioConfig = *cwc.command.treeGerminationScenarioConfig;
+        }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;
         }
@@ -1619,6 +1772,9 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.trainingResumePolicy.has_value()) {
             patched.trainingResumePolicy = *cwc.command.trainingResumePolicy;
         }
+        if (cwc.command.uiTraining.has_value()) {
+            patched.uiTraining = *cwc.command.uiTraining;
+        }
 
         bool changed = false;
         std::vector<std::string> updates;
@@ -1639,6 +1795,13 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyScenarioConfigUpdatesToActiveState(
+            pImpl->fsmState_,
+            pImpl->userSettings_,
+            cwc.command.clockScenarioConfig.has_value(),
+            cwc.command.sandboxScenarioConfig.has_value(),
+            cwc.command.rainingScenarioConfig.has_value(),
+            cwc.command.treeGerminationScenarioConfig.has_value());
 
         Api::UserSettingsPatch::Okay response{ .settings = pImpl->userSettings_ };
         cwc.sendResponse(Api::UserSettingsPatch::Response::okay(std::move(response)));
@@ -1674,6 +1837,8 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyScenarioConfigUpdatesToActiveState(
+            pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
 
         Api::UserSettingsSet::Okay response{ .settings = pImpl->userSettings_ };
         cwc.sendResponse(Api::UserSettingsSet::Response::okay(std::move(response)));
@@ -1696,6 +1861,8 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = defaults;
+        applyScenarioConfigUpdatesToActiveState(
+            pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
         Api::UserSettingsReset::Okay response{ .settings = pImpl->userSettings_ };
         cwc.sendResponse(Api::UserSettingsReset::Response::okay(std::move(response)));
 

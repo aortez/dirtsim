@@ -37,6 +37,7 @@ class ScenarioControlsBase;
 class Starfield;
 class TimeSeriesPlotWidget;
 class UiComponentManager;
+class UserSettingsManager;
 
 class TrainingActiveView {
 public:
@@ -44,6 +45,7 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
+        UserSettingsManager& userSettingsManager,
         UserSettings& userSettings,
         const Starfield::Snapshot* starfieldSnapshot = nullptr);
     ~TrainingActiveView();
@@ -107,6 +109,7 @@ private:
     UiComponentManager* uiManager_ = nullptr;
     EventSink& eventSink_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
+    UserSettingsManager& userSettingsManager_;
     UserSettings& userSettings_;
 
     lv_obj_t* bestAllTimeLabel_ = nullptr;

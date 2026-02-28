@@ -1,14 +1,10 @@
 #include "StartMenuSettingsPanel.h"
 #include "core/LoggingChannels.h"
-#include "core/network/WebSocketServiceInterface.h"
 #include "core/scenarios/ClockScenario.h"
-#include "server/api/UserSettingsGet.h"
-#include "server/api/UserSettingsReset.h"
-#include "server/api/UserSettingsSet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "ui/PanelViewController.h"
 #include "ui/ScenarioMetadataCache.h"
-#include "ui/state-machine/Event.h"
-#include "ui/state-machine/EventSink.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
 #include <string>
@@ -72,8 +68,8 @@ void setControlEnabled(lv_obj_t* control, bool enabled)
 } // namespace
 
 StartMenuSettingsPanel::StartMenuSettingsPanel(
-    lv_obj_t* container, Network::WebSocketServiceInterface* wsService, EventSink& eventSink)
-    : container_(container), wsService_(wsService), eventSink_(eventSink)
+    lv_obj_t* container, UserSettingsManager& userSettingsManager)
+    : container_(container), userSettingsManager_(userSettingsManager)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -347,29 +343,6 @@ void StartMenuSettingsPanel::createTimezoneSelectionView(lv_obj_t* view)
     }
 }
 
-void StartMenuSettingsPanel::refreshFromServer()
-{
-    if (!wsService_ || !wsService_->isConnected()) {
-        LOG_WARN(Controls, "StartMenuSettingsPanel: Cannot refresh settings, server disconnected");
-        return;
-    }
-
-    Api::UserSettingsGet::Command cmd{};
-    const auto result =
-        wsService_->sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(cmd, 1000);
-    if (result.isError()) {
-        LOG_WARN(Controls, "UserSettingsGet failed: {}", result.errorValue());
-        return;
-    }
-
-    if (result.value().isError()) {
-        LOG_WARN(Controls, "UserSettingsGet error: {}", result.value().errorValue().message);
-        return;
-    }
-
-    eventSink_.queueEvent(UserSettingsUpdatedEvent{ .settings = result.value().value().settings });
-}
-
 void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings)
 {
     updatingUi_ = true;
@@ -391,49 +364,6 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
     updateResetButtonEnabled();
 
     updatingUi_ = false;
-}
-
-void StartMenuSettingsPanel::sendSettingsUpdate()
-{
-    if (!wsService_ || !wsService_->isConnected()) {
-        LOG_WARN(
-            Controls, "StartMenuSettingsPanel: Cannot send settings update, server disconnected");
-        return;
-    }
-
-    Api::UserSettingsSet::Command cmd{ .settings = settings_ };
-    const auto result =
-        wsService_->sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(cmd, 1000);
-    if (result.isError()) {
-        LOG_WARN(Controls, "UserSettingsSet failed: {}", result.errorValue());
-        return;
-    }
-
-    if (result.value().isError()) {
-        LOG_WARN(Controls, "UserSettingsSet error: {}", result.value().errorValue().message);
-        return;
-    }
-}
-
-void StartMenuSettingsPanel::sendSettingsReset()
-{
-    if (!wsService_ || !wsService_->isConnected()) {
-        LOG_WARN(Controls, "StartMenuSettingsPanel: Cannot reset settings, server disconnected");
-        return;
-    }
-
-    Api::UserSettingsReset::Command cmd{};
-    const auto result =
-        wsService_->sendCommandAndGetResponse<Api::UserSettingsReset::Okay>(cmd, 1000);
-    if (result.isError()) {
-        LOG_WARN(Controls, "UserSettingsReset failed: {}", result.errorValue());
-        return;
-    }
-
-    if (result.value().isError()) {
-        LOG_WARN(Controls, "UserSettingsReset error: {}", result.value().errorValue().message);
-        return;
-    }
 }
 
 void StartMenuSettingsPanel::updateDefaultScenarioButtonText()
@@ -531,7 +461,10 @@ void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
 
     self->updateIdleTimeoutControl();
     self->updateTrainingTargetDropdown();
-    self->sendSettingsUpdate();
+
+    Api::UserSettingsPatch::Command patchCmd{ .startMenuIdleAction =
+                                                  self->settings_.startMenuIdleAction };
+    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onIdleTimeoutChanged(lv_event_t* e)
@@ -555,7 +488,10 @@ void StartMenuSettingsPanel::onIdleTimeoutChanged(lv_event_t* e)
 
     const auto code = lv_event_get_code(e);
     if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-        self->sendSettingsUpdate();
+        Api::UserSettingsPatch::Command patchCmd{
+            .startMenuIdleTimeoutMs = self->settings_.startMenuIdleTimeoutMs,
+        };
+        self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
     }
 }
 
@@ -590,7 +526,9 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
     }
 
     self->settings_.trainingSpec.population.clear();
-    self->sendSettingsUpdate();
+
+    Api::UserSettingsPatch::Command patchCmd{ .trainingSpec = self->settings_.trainingSpec };
+    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onBackToMainClicked(lv_event_t* e)
@@ -635,7 +573,8 @@ void StartMenuSettingsPanel::onDefaultScenarioSelected(lv_event_t* e)
         self->viewController_->showView("main");
     }
 
-    self->sendSettingsUpdate();
+    Api::UserSettingsPatch::Command patchCmd{ .defaultScenario = self->settings_.defaultScenario };
+    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onResetConfirmToggled(lv_event_t* e)
@@ -659,7 +598,7 @@ void StartMenuSettingsPanel::onResetClicked(lv_event_t* e)
         return;
     }
 
-    self->sendSettingsReset();
+    self->userSettingsManager_.resetOrAssert(1000);
 }
 
 void StartMenuSettingsPanel::onTimezoneButtonClicked(lv_event_t* e)
@@ -693,7 +632,9 @@ void StartMenuSettingsPanel::onTimezoneSelected(lv_event_t* e)
         self->viewController_->showView("main");
     }
 
-    self->sendSettingsUpdate();
+    Api::UserSettingsPatch::Command patchCmd{ .clockScenarioConfig =
+                                                  self->settings_.clockScenarioConfig };
+    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onVolumeChanged(lv_event_t* e)
@@ -709,7 +650,9 @@ void StartMenuSettingsPanel::onVolumeChanged(lv_event_t* e)
 
     const int value = LVGLBuilder::ActionStepperBuilder::getValue(self->volumeStepper_);
     self->settings_.volumePercent = std::clamp(value, 0, 100);
-    self->sendSettingsUpdate();
+
+    Api::UserSettingsPatch::Command patchCmd{ .volumePercent = self->settings_.volumePercent };
+    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
 }
 
 } // namespace Ui

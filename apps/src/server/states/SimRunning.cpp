@@ -95,14 +95,27 @@ uint8_t mapGamepadStateToNesButtons(const GamepadState& state)
     return result;
 }
 
-void applyUserClockConfigToConfig(ScenarioConfig& config, const UserSettings& userSettings)
+void applyUserScenarioConfigToConfig(ScenarioConfig& config, const UserSettings& userSettings)
 {
-    auto* clockConfig = std::get_if<Config::Clock>(&config);
-    if (!clockConfig) {
+    if (auto* clockConfig = std::get_if<Config::Clock>(&config)) {
+        *clockConfig = userSettings.clockScenarioConfig;
         return;
     }
 
-    *clockConfig = userSettings.clockScenarioConfig;
+    if (auto* sandboxConfig = std::get_if<Config::Sandbox>(&config)) {
+        *sandboxConfig = userSettings.sandboxScenarioConfig;
+        return;
+    }
+
+    if (auto* rainingConfig = std::get_if<Config::Raining>(&config)) {
+        *rainingConfig = userSettings.rainingScenarioConfig;
+        return;
+    }
+
+    if (auto* treeConfig = std::get_if<Config::TreeGermination>(&config)) {
+        *treeConfig = userSettings.treeGerminationScenarioConfig;
+        return;
+    }
 }
 
 Vector2i resolveSeedPlacement(World& world, Vector2i requested)
@@ -260,7 +273,7 @@ void SimRunning::onEnter(StateMachine& dsm)
             if (getScenarioId(dsm.serverConfig->startupConfig) == defaultScenarioId) {
                 scenarioConfig = dsm.serverConfig->startupConfig;
             }
-            applyUserClockConfigToConfig(scenarioConfig, dsm.getUserSettings());
+            applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
             scenario->setConfig(scenarioConfig, *world);
 
             // Run scenario setup to initialize world.
@@ -917,52 +930,6 @@ State::Any SimRunning::onEvent(const Api::Reset::Cwc& cwc, StateMachine& /*dsm*/
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
-{
-    using Response = Api::ScenarioConfigSet::Response;
-
-    assert(world && "World must exist in SimRunning");
-    assert(scenario && "Scenario must exist in SimRunning");
-
-    if (scenario_id == Scenario::EnumType::NesFlappyParatroopa) {
-        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&cwc.command.config);
-        if (!nesConfig) {
-            cwc.sendResponse(
-                Response::error(
-                    ApiError("Nes scenario requires Config::NesFlappyParatroopa payload")));
-            return std::move(*this);
-        }
-
-        const NesConfigValidationResult validation =
-            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
-        if (!validation.valid) {
-            cwc.sendResponse(
-                Response::error(ApiError("Invalid NES config: " + validation.message)));
-            return std::move(*this);
-        }
-    }
-
-    // Update scenario's config (scenario is source of truth).
-    scenario->setConfig(cwc.command.config, *world);
-
-    if (scenario_id == Scenario::EnumType::Clock) {
-        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
-            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig);
-            if (syncResult.isError()) {
-                LOG_WARN(
-                    State,
-                    "Scenario config updated, but failed to persist clock settings: {}",
-                    syncResult.errorValue());
-            }
-        }
-    }
-
-    LOG_INFO(State, "Scenario config updated for '{}'", toString(scenario_id));
-
-    cwc.sendResponse(Response::okay({ true }));
-    return std::move(*this);
-}
-
 State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::ScenarioSwitch::Response;
@@ -1000,7 +967,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     // Get scenario's default config and apply it.
     ScenarioConfig defaultConfig = newScenario->getConfig();
-    applyUserClockConfigToConfig(defaultConfig, dsm.getUserSettings());
+    applyUserScenarioConfigToConfig(defaultConfig, dsm.getUserSettings());
     newScenario->setConfig(defaultConfig, *world);
 
     // Run scenario setup.
@@ -1526,7 +1493,7 @@ State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMac
 State::Any SimRunning::onEvent(const ToggleLeftThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
     // Note: Left throw is not currently in Config::Sandbox - this command is deprecated.
-    // Use ScenarioConfigSet API to modify scenario configs directly.
+    // Use UserSettingsPatch to modify scenario configs instead.
     spdlog::warn("SimRunning: ToggleLeftThrowCommand is deprecated - left throw not in config");
     return std::move(*this);
 }

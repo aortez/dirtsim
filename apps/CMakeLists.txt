@@ -355,7 +355,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/RenderFormatSet.cpp
     src/server/api/RenderStreamConfigSet.cpp
     src/server/api/Reset.cpp
-    src/server/api/ScenarioConfigSet.cpp
     src/server/api/ScenarioListGet.cpp
     src/server/api/SeedAdd.cpp
     src/server/api/SimRun.cpp
@@ -371,7 +370,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
-    src/server/api/TrainingStreamConfigSet.cpp
     src/server/api/UserSettingsUpdated.cpp
     src/server/api/WorldResize.cpp
 
@@ -384,6 +382,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/RainingConfig.cpp
+    src/core/scenarios/SandboxConfig.cpp
+    src/core/scenarios/TreeGerminationConfig.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
@@ -547,6 +548,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
+    src/ui/UserSettingsManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/TrainingActiveView.cpp
     src/ui/TrainingIdleView.cpp

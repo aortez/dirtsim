@@ -21,7 +21,6 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
-#include "server/api/ScenarioConfigSet.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
@@ -1187,9 +1186,6 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
-    streamIntervalMs_ = 16;
-    bestPlaybackEnabled_ = false;
-    bestPlaybackIntervalMs_ = 16;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
@@ -1224,8 +1220,33 @@ void Evolution::onEnter(StateMachine& dsm)
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     scenarioConfigOverride_.reset();
-    if (trainingSpec.scenarioId == Scenario::EnumType::Clock) {
-        scenarioConfigOverride_ = dsm.getUserSettings().clockScenarioConfig;
+    switch (trainingSpec.scenarioId) {
+        case Scenario::EnumType::Benchmark:
+            break;
+        case Scenario::EnumType::Clock:
+            scenarioConfigOverride_ = dsm.getUserSettings().clockScenarioConfig;
+            break;
+        case Scenario::EnumType::DamBreak:
+            break;
+        case Scenario::EnumType::Empty:
+            break;
+        case Scenario::EnumType::GooseTest:
+            break;
+        case Scenario::EnumType::Lights:
+            break;
+        case Scenario::EnumType::NesFlappyParatroopa:
+            break;
+        case Scenario::EnumType::Sandbox:
+            scenarioConfigOverride_ = dsm.getUserSettings().sandboxScenarioConfig;
+            break;
+        case Scenario::EnumType::Raining:
+            scenarioConfigOverride_ = dsm.getUserSettings().rainingScenarioConfig;
+            break;
+        case Scenario::EnumType::TreeGermination:
+            scenarioConfigOverride_ = dsm.getUserSettings().treeGerminationScenarioConfig;
+            break;
+        case Scenario::EnumType::WaterEqualization:
+            break;
     }
     visibleRunner_.reset();
     visibleQueue_.clear();
@@ -1328,63 +1349,6 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     return Idle{};
 }
 
-Any Evolution::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMachine& dsm)
-{
-    using Response = Api::ScenarioConfigSet::Response;
-
-    const Scenario::EnumType configScenarioId = getScenarioId(cwc.command.config);
-    if (configScenarioId != trainingSpec.scenarioId) {
-        cwc.sendResponse(
-            Response::error(ApiError(
-                "ScenarioConfigSet scenario mismatch (training="
-                + std::string(toString(trainingSpec.scenarioId))
-                + ", config=" + std::string(toString(configScenarioId)) + ")")));
-        return std::move(*this);
-    }
-
-    scenarioConfigOverride_ = cwc.command.config;
-    if (workerState_) {
-        workerState_->scenarioConfigOverride = scenarioConfigOverride_;
-    }
-
-    if (visibleRunner_ && visibleScenarioId_ == configScenarioId) {
-        const auto visibleResult = visibleRunner_->setScenarioConfig(cwc.command.config);
-        if (visibleResult.isError()) {
-            cwc.sendResponse(Response::error(ApiError(visibleResult.errorValue())));
-            return std::move(*this);
-        }
-        visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
-    }
-
-    if (bestPlaybackRunner_ && bestPlaybackIndividual_.has_value()
-        && bestPlaybackIndividual_.value().scenarioId == configScenarioId) {
-        const auto playbackResult = bestPlaybackRunner_->setScenarioConfig(cwc.command.config);
-        if (playbackResult.isError()) {
-            cwc.sendResponse(Response::error(ApiError(playbackResult.errorValue())));
-            return std::move(*this);
-        }
-    }
-
-    if (configScenarioId == Scenario::EnumType::Clock) {
-        if (const auto* clockConfig = std::get_if<Config::Clock>(&cwc.command.config)) {
-            const auto syncResult = dsm.updateClockScenarioUserSettings(*clockConfig);
-            if (syncResult.isError()) {
-                LOG_WARN(
-                    State,
-                    "Evolution: Applied clock override, but failed to persist settings: {}",
-                    syncResult.errorValue());
-            }
-        }
-    }
-
-    LOG_INFO(
-        State,
-        "Evolution: Applied ScenarioConfigSet override for '{}'",
-        toString(configScenarioId));
-    cwc.sendResponse(Response::okay({ true }));
-    return std::move(*this);
-}
-
 Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
 {
     using Response = Api::TimerStatsGet::Response;
@@ -1408,48 +1372,6 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
 
     LOG_INFO(State, "Evolution: TimerStatsGet returning {} timers", okay.timers.size());
     cwc.sendResponse(Response::okay(std::move(okay)));
-    return std::move(*this);
-}
-
-Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
-{
-    if (cwc.command.intervalMs < 0) {
-        cwc.sendResponse(
-            Api::TrainingStreamConfigSet::Response::error(
-                ApiError("TrainingStreamConfigSet intervalMs must be >= 0")));
-        return std::move(*this);
-    }
-    if (cwc.command.bestPlaybackIntervalMs < 1) {
-        cwc.sendResponse(
-            Api::TrainingStreamConfigSet::Response::error(
-                ApiError("TrainingStreamConfigSet bestPlaybackIntervalMs must be >= 1")));
-        return std::move(*this);
-    }
-
-    streamIntervalMs_ = cwc.command.intervalMs;
-    bestPlaybackEnabled_ = cwc.command.bestPlaybackEnabled;
-    bestPlaybackIntervalMs_ = cwc.command.bestPlaybackIntervalMs;
-    lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
-    lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
-    if (!bestPlaybackEnabled_) {
-        clearBestPlaybackRunner();
-    }
-
-    LOG_INFO(
-        State,
-        "Evolution: Training stream config updated (interval={}ms, best_playback={}, "
-        "best_playback_interval={}ms)",
-        streamIntervalMs_,
-        bestPlaybackEnabled_,
-        bestPlaybackIntervalMs_);
-
-    Api::TrainingStreamConfigSet::Okay response{
-        .intervalMs = streamIntervalMs_,
-        .bestPlaybackEnabled = bestPlaybackEnabled_,
-        .bestPlaybackIntervalMs = bestPlaybackIntervalMs_,
-        .message = "Training stream config updated",
-    };
-    cwc.sendResponse(Api::TrainingStreamConfigSet::Response::okay(std::move(response)));
     return std::move(*this);
 }
 
@@ -1820,8 +1742,9 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 
     const auto now = std::chrono::steady_clock::now();
     bool shouldBroadcast = true;
-    if (streamIntervalMs_ > 0) {
-        const auto interval = std::chrono::milliseconds(streamIntervalMs_);
+    const int streamIntervalMs = dsm.getUserSettings().uiTraining.streamIntervalMs;
+    if (streamIntervalMs > 0) {
+        const auto interval = std::chrono::milliseconds(streamIntervalMs);
         if (now - lastStreamBroadcastTime_ < interval) {
             shouldBroadcast = false;
         }
@@ -2821,7 +2744,13 @@ void Evolution::setBestPlaybackSource(const Individual& individual, double fitne
 
 void Evolution::stepBestPlayback(StateMachine& dsm)
 {
-    if (!bestPlaybackEnabled_ || !bestPlaybackIndividual_.has_value()) {
+    const auto& uiTraining = dsm.getUserSettings().uiTraining;
+    if (!uiTraining.bestPlaybackEnabled) {
+        clearBestPlaybackRunner();
+        return;
+    }
+
+    if (!bestPlaybackIndividual_.has_value()) {
         return;
     }
 
@@ -2856,7 +2785,7 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
 
     // Broadcast frames at the configured interval, independent of sim step rate.
     const auto now = std::chrono::steady_clock::now();
-    const auto interval = std::chrono::milliseconds(bestPlaybackIntervalMs_);
+    const auto interval = std::chrono::milliseconds(uiTraining.bestPlaybackIntervalMs);
     if (lastBestPlaybackBroadcastTime_ == std::chrono::steady_clock::time_point{}
         || now - lastBestPlaybackBroadcastTime_ >= interval) {
         lastBestPlaybackBroadcastTime_ = now;

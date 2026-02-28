@@ -38,6 +38,15 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
     if (auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig)) {
         *clockConfig = dsm.getUserSettings().clockScenarioConfig;
     }
+    if (auto* sandboxConfig = std::get_if<Config::Sandbox>(&scenarioConfig)) {
+        *sandboxConfig = dsm.getUserSettings().sandboxScenarioConfig;
+    }
+    if (auto* rainingConfig = std::get_if<Config::Raining>(&scenarioConfig)) {
+        *rainingConfig = dsm.getUserSettings().rainingScenarioConfig;
+    }
+    if (auto* treeConfig = std::get_if<Config::TreeGermination>(&scenarioConfig)) {
+        *treeConfig = dsm.getUserSettings().treeGerminationScenarioConfig;
+    }
 
     return scenarioConfig;
 }
