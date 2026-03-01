@@ -511,7 +511,7 @@ void Duck::applyMovementToCell(World& world, double deltaTime)
         if (std::abs(move_y) > MOVE_INPUT_DEADZONE) {
             const double gravity = world.getPhysicsSettings().gravity;
             const double clampedY = std::clamp(static_cast<double>(move_y), -1.0, 1.0);
-            const double wing_force_y = -cell.material().density * gravity * clampedY;
+            const double wing_force_y = -static_cast<double>(cell.getMass()) * gravity * clampedY;
             cell.addPendingForce(Vector2d{ 0.0, wing_force_y });
         }
     }
