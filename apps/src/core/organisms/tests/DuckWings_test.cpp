@@ -123,6 +123,33 @@ TEST(DuckWingsTest, LiftHoversWhenStartingStationaryAirborne)
     EXPECT_NEAR(baselineSetup.duck->getEnergyConsumedTotal(), 0.0, 1e-9);
 }
 
+TEST(DuckWingsTest, FullLiftIsEnergyLimitedAfterAboutTenSeconds)
+{
+    // With default config:
+    // startingEnergy=1.0, regen=0.15/s, wingLiftCost=0.25/s (at |move.y|=1),
+    // net drain is 0.10/s, so we should lose the ability to hold full lift after ~10s.
+    auto setup = DuckTestSetup::create(10, 200, 5, 5, 0);
+    setup.brain->setDirectInput(Vector2f{ 0.0f, 1.0f }, false);
+
+    constexpr double kDt = 0.016;
+    double limitedAtSeconds = -1.0;
+
+    for (int i = 0; i < 1000; ++i) {
+        setup.advance(kDt);
+        if (setup.duck->getEnergyLimitedSeconds() > 0.0) {
+            limitedAtSeconds = static_cast<double>(i + 1) * kDt;
+            break;
+        }
+    }
+
+    ASSERT_GT(limitedAtSeconds, 0.0);
+    EXPECT_GT(limitedAtSeconds, 9.0);
+    EXPECT_LT(limitedAtSeconds, 11.0);
+
+    // By the time we're energy limited, energy should be near empty.
+    EXPECT_LT(setup.duck->getEnergy(), 0.02);
+}
+
 TEST(DuckWingsTest, HeldJumpWithLiftIsHigherAndMoreExpensiveThanNeutralAndDive)
 {
     const JumpMetrics neutral = simulateHeldJump(0.0f);
