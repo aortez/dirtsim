@@ -423,13 +423,13 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
     Api::FitnessBreakdownReport report{
         .organismType = OrganismType::DUCK,
         .modelId = "duck_v2",
-        .modelVersion = 1,
+        .modelVersion = 2,
         .totalFitness = breakdown.totalFitness,
         .totalFormula = "survival * (1 + movement)",
         .metrics = {},
     };
 
-    report.metrics.reserve(8);
+    report.metrics.reserve(11);
     report.metrics.push_back(makeFitnessMetric(
         "survival",
         "Survival",
@@ -438,6 +438,30 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         breakdown.survivalScore,
         optionalPositive(breakdown.survivalReference),
         "seconds"));
+    report.metrics.push_back(makeFitnessMetric(
+        "energy_avg",
+        "Energy Avg",
+        "energy",
+        breakdown.energyAverage,
+        breakdown.energyAverage,
+        std::nullopt,
+        "ratio"));
+    report.metrics.push_back(makeFitnessMetric(
+        "energy_limited_seconds",
+        "Energy Limited",
+        "energy",
+        breakdown.energyLimitedSeconds,
+        breakdown.energyLimitedSeconds,
+        std::nullopt,
+        "seconds"));
+    report.metrics.push_back(makeFitnessMetric(
+        "energy_consumed_total",
+        "Energy Consumed",
+        "energy",
+        breakdown.energyConsumedTotal,
+        breakdown.energyConsumedTotal,
+        std::nullopt,
+        "energy"));
     report.metrics.push_back(makeFitnessMetric(
         "coverage_columns",
         "Coverage Columns",

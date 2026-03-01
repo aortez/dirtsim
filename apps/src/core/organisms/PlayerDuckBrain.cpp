@@ -32,11 +32,11 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
     // Convert to continuous force: walk (60%) or run (100%) based on B button.
     float move_x = 0.0f;
     if (horizontal < -STICK_DEADZONE) {
-        move_x = input.button_b ? -1.0f : -0.6f;
+        move_x = horizontal;
         current_action_ = DuckAction::RUN_LEFT;
     }
     else if (horizontal > STICK_DEADZONE) {
-        move_x = input.button_b ? 1.0f : 0.6f;
+        move_x = horizontal;
         current_action_ = DuckAction::RUN_RIGHT;
     }
     else {
@@ -58,7 +58,7 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
     last_jump_pressed_ = jump_held;
 
     // Send combined input (movement AND jump together).
-    duck.setInput({ .move = { move_x, 0.0f }, .jump = jump_held });
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = jump_held, .run = input.button_b });
 
     // Clear input after consuming (brain receives fresh input each tick).
     gamepad_input_.reset();
