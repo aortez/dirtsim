@@ -66,6 +66,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::RenderStreamConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::Reset::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::ScenarioSwitch::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SeedAdd::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SimRun::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SimStop::Cwc>(serverHandlers_, serverExampleHandlers_);
