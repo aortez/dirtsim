@@ -3,6 +3,7 @@
 #include "TrainingPopulationPanel.h"
 #include "core/LoggingChannels.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "ui/UiServices.h"
 #include "ui/controls/IconRail.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
@@ -22,6 +23,7 @@ constexpr int kMinRightColumnWidth = 120;
 TrainingConfigPanel::TrainingConfigPanel(
     lv_obj_t* container,
     EventSink& eventSink,
+    UiServices& uiServices,
     ExpandablePanel* panel,
     Network::WebSocketServiceInterface* wsService,
     bool evolutionStarted,
@@ -33,6 +35,7 @@ TrainingConfigPanel::TrainingConfigPanel(
     int& bestPlaybackIntervalMs)
     : container_(container),
       eventSink_(eventSink),
+      uiServices_(uiServices),
       panel_(panel),
       wsService_(wsService),
       evolutionStarted_(evolutionStarted),
@@ -457,7 +460,13 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
 void TrainingConfigPanel::createPopulationView(lv_obj_t* parent)
 {
     trainingPopulationPanel_ = std::make_unique<TrainingPopulationPanel>(
-        parent, eventSink_, wsService_, evolutionStarted_, evolutionConfig_, trainingSpec_);
+        parent,
+        eventSink_,
+        uiServices_,
+        wsService_,
+        evolutionStarted_,
+        evolutionConfig_,
+        trainingSpec_);
     trainingPopulationPanel_->setPopulationTotalChangedCallback([this](int total) {
         if (populationStepper_) {
             LVGLBuilder::ActionStepperBuilder::setValue(populationStepper_, total);

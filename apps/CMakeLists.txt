@@ -268,6 +268,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/RenderMessage.cpp
     src/core/ScenarioConfig.cpp
     src/core/ScenarioId.cpp
+    src/core/ScenarioMetadata.cpp
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
     src/core/Timers.cpp
@@ -315,7 +316,6 @@ target_compile_options(dirtsim-core PRIVATE ${DIRTSIM_WARNINGS})
 # Server library - physics engine and server logic.
 add_library(dirtsim-server-lib STATIC
     # Server state machine.
-    src/server/ServerConfig.cpp
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
@@ -404,9 +404,16 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/NesFlappyParatroopaScenario.cpp
+    src/core/scenarios/NesSuperTiltBroScenario.cpp
+    src/core/scenarios/nes/NesDuckSensoryBuilder.cpp
+    src/core/scenarios/nes/NesGameAdapterRegistry.cpp
+    src/core/scenarios/nes/NesFlappyParatroopaGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
+    src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
+    src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
-    src/core/scenarios/nes/NesRomProfileExtractor.cpp
+    src/core/scenarios/nes/NesRomValidation.cpp
+    src/core/scenarios/nes/NesSuperTiltBroGameAdapter.cpp
     src/core/scenarios/nes/SmolnesRuntime.cpp
     src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
@@ -548,6 +555,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
+    src/ui/ScenarioMetadataManager.cpp
     src/ui/UserSettingsManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/TrainingActiveView.cpp
@@ -590,7 +598,6 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/TrainingPopulationPanel.cpp
     src/ui/controls/TrainingResultBrowserPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
-    src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
     src/ui/widgets/TimeSeriesPlotWidget.cpp
 )
@@ -821,8 +828,12 @@ add_executable(dirtsim-tests
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
+    src/core/scenarios/tests/NesGameAdapterRegistry_test.cpp
+    src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
+    src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
-    src/core/scenarios/tests/NesRomProfileExtractor_test.cpp
+    src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
+    src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
 
     # Organism tests.

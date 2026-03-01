@@ -220,7 +220,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
         });
 
     registry.registerBrain(
-        OrganismType::NES_FLAPPY_BIRD,
+        OrganismType::NES_DUCK,
         TrainingBrainKind::DuckNeuralNetRecurrent,
         "",
         BrainRegistryEntry{

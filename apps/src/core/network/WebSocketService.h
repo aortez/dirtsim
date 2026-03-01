@@ -325,127 +325,12 @@ public:
      * @brief Get the connection ID for a WebSocket.
      * Creates a new ID if this is a new connection.
      */
-    std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws);
+    std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws) override;
 
-    /**
-     * @brief Register a typed command handler (server-side).
-     *
-     * Handler receives CommandWithCallback and calls sendResponse() when done.
-     * Supports both immediate (synchronous) and queued (asynchronous) handlers.
-     *
-     * @tparam CwcT The CommandWithCallback type (e.g., Api::StateGet::Cwc).
-     * @param handler Function that receives CWC and eventually calls sendResponse().
-     *
-     * Example:
-     *   service.registerHandler<Api::StateGet::Cwc>([](Api::StateGet::Cwc cwc) {
-     *       // Immediate response
-     *       cwc.sendResponse(Api::StateGet::Response::okay(getState()));
-     *   });
-     *
-     *   service.registerHandler<Api::SimRun::Cwc>([sm](Api::SimRun::Cwc cwc) {
-     *       // Queue to state machine, respond later
-     *       sm->queueEvent(cwc);  // State machine calls sendResponse() when done
-     *   });
-     */
-    template <typename CwcT>
-    void registerHandler(std::function<void(CwcT)> handler)
-    {
-        using CommandT = typename CwcT::Command;
-        using ResponseT = typename CwcT::Response;
-
-        std::string cmdName(CommandT::name());
-        spdlog::debug("WebSocketService: Registering handler for '{}'", cmdName);
-
-        // Wrap typed handler in generic handler that handles serialization.
-        commandHandlers_[cmdName] = [this, handler, cmdName](
-                                        const std::vector<std::byte>& payload,
-                                        std::shared_ptr<rtc::WebSocket> ws,
-                                        uint64_t correlationId) {
-            // Deserialize payload → typed command.
-            // Value-initialize to silence GCC 13's -Wmaybe-uninitialized false positive.
-            CommandT cmd{};
-            try {
-                cmd = Network::deserialize_payload<CommandT>(payload);
-            }
-            catch (const std::exception& e) {
-                spdlog::error("Failed to deserialize {}: {}", cmdName, e.what());
-                // TODO: Send error response.
-                return;
-            }
-
-            // Build CWC with callback that sends response in appropriate format.
-            CwcT cwc;
-            cwc.command = cmd;
-
-            auto protocolIt = clientProtocols_.find(ws);
-            Protocol clientProtocol =
-                (protocolIt != clientProtocols_.end()) ? protocolIt->second : Protocol::BINARY;
-            cwc.usesBinary = (clientProtocol == Protocol::BINARY);
-
-            // Populate connectionId if the Command type has that field.
-            if constexpr (requires { cwc.command.connectionId; }) {
-                cwc.command.connectionId = getConnectionId(ws);
-            }
-
-            cwc.callback = [this, ws, correlationId, cmdName](ResponseT&& response) {
-                // Check which protocol this client is using.
-                auto protocolIt = clientProtocols_.find(ws);
-                Protocol clientProtocol =
-                    (protocolIt != clientProtocols_.end()) ? protocolIt->second : Protocol::BINARY;
-
-                if (clientProtocol == Protocol::JSON) {
-                    nlohmann::json jsonResponse = makeJsonResponse(correlationId, response);
-                    std::string jsonText = jsonResponse.dump();
-                    spdlog::debug(
-                        "WebSocketService: Sending {} JSON response ({} bytes)",
-                        cmdName,
-                        jsonText.size());
-                    if (!ws || !ws->isOpen()) {
-                        spdlog::error(
-                            "WebSocketService: {} JSON response failed (socket closed)", cmdName);
-                        return;
-                    }
-                    try {
-                        ws->send(jsonText);
-                    }
-                    catch (const std::exception& e) {
-                        spdlog::error(
-                            "WebSocketService: {} JSON response send failed: {}",
-                            cmdName,
-                            e.what());
-                    }
-                }
-                else {
-                    // Send binary response.
-                    auto envelope = Network::make_response_envelope(
-                        correlationId, std::string(cmdName), response);
-                    auto bytes = Network::serialize_envelope(envelope);
-                    rtc::binary binaryMsg(bytes.begin(), bytes.end());
-                    spdlog::debug(
-                        "WebSocketService: Sending {} binary response ({} bytes)",
-                        cmdName,
-                        bytes.size());
-                    if (!ws || !ws->isOpen()) {
-                        spdlog::error(
-                            "WebSocketService: {} binary response failed (socket closed)", cmdName);
-                        return;
-                    }
-                    try {
-                        ws->send(binaryMsg);
-                    }
-                    catch (const std::exception& e) {
-                        spdlog::error(
-                            "WebSocketService: {} binary response send failed: {}",
-                            cmdName,
-                            e.what());
-                    }
-                }
-            };
-
-            // Call handler - it will call cwc.sendResponse() or cwc.callback() when ready.
-            handler(std::move(cwc));
-        };
-    }
+    void registerCommandHandler(std::string commandName, CommandHandler handler) override;
+    bool isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const override;
+    void reportCommandHandlerDeserializeError(
+        const std::string& commandName, const std::string& errorMessage) override;
 
     // =========================================================================
     // Instrumentation.
@@ -499,11 +384,6 @@ private:
     // =========================================================================
     // Server-side state (listening for connections).
     // =========================================================================
-
-    using CommandHandler = std::function<void(
-        const std::vector<std::byte>& payload,
-        std::shared_ptr<rtc::WebSocket> ws,
-        uint64_t correlationId)>;
 
     std::unique_ptr<rtc::WebSocketServer> server_;
     std::map<std::string, CommandHandler> commandHandlers_;

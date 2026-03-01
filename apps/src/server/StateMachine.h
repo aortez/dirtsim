@@ -26,7 +26,6 @@ class ScenarioRegistry;
 namespace DirtSim {
 class GamepadManager;
 class GenomeRepository;
-struct ServerConfig;
 struct UserSettings;
 struct WorldData;
 
@@ -120,8 +119,6 @@ public:
     // 45x30 cells gives ~1.5:1 aspect ratio matching the display area.
     uint32_t defaultWidth = 45;
     uint32_t defaultHeight = 30;
-
-    std::unique_ptr<ServerConfig> serverConfig;
 
 private:
     struct Impl;

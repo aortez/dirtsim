@@ -1,10 +1,13 @@
 #include "TrainingPopulationPanel.h"
+#include "core/Assert.h"
 #include "core/network/WebSocketServiceInterface.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/reflect.h"
 #include "server/api/GenomeGet.h"
+#include "ui/ScenarioMetadataManager.h"
+#include "ui/UiServices.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
@@ -43,7 +46,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
                 { TrainingBrainKind::WallBouncing, false },
                 { TrainingBrainKind::DuckBrain2, false },
             };
-        case OrganismType::NES_FLAPPY_BIRD:
+        case OrganismType::NES_DUCK:
             return {
                 { TrainingBrainKind::DuckNeuralNetRecurrent, true },
             };
@@ -63,8 +66,8 @@ const char* organismLabel(OrganismType organismType)
             return "Tree";
         case OrganismType::DUCK:
             return "Duck";
-        case OrganismType::NES_FLAPPY_BIRD:
-            return "Nes Flappy Bird";
+        case OrganismType::NES_DUCK:
+            return "NES Duck";
         case OrganismType::GOOSE:
             return "Goose";
         default:
@@ -100,48 +103,30 @@ void setActionButtonText(lv_obj_t* container, const std::string& text)
 TrainingPopulationPanel::TrainingPopulationPanel(
     lv_obj_t* container,
     EventSink& eventSink,
+    UiServices& uiServices,
     Network::WebSocketServiceInterface* wsService,
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
     TrainingSpec& trainingSpec)
     : container_(container),
       eventSink_(eventSink),
+      uiServices_(uiServices),
       wsService_(wsService),
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
       trainingSpec_(trainingSpec)
 {
-    scenarioOptions_ = {
-        Scenario::EnumType::Benchmark,
-        Scenario::EnumType::Clock,
-        Scenario::EnumType::DamBreak,
-        Scenario::EnumType::Empty,
-        Scenario::EnumType::GooseTest,
-        Scenario::EnumType::Lights,
-        Scenario::EnumType::NesFlappyParatroopa,
-        Scenario::EnumType::Raining,
-        Scenario::EnumType::Sandbox,
-        Scenario::EnumType::TreeGermination,
-        Scenario::EnumType::WaterEqualization,
-    };
-    scenarioLabels_.reserve(scenarioOptions_.size());
-    for (const auto& scenarioId : scenarioOptions_) {
-        scenarioLabels_.push_back(Scenario::toString(scenarioId));
-    }
-
     organismOptions_ = {
         OrganismType::TREE,
         OrganismType::DUCK,
-        OrganismType::NES_FLAPPY_BIRD,
+        OrganismType::NES_DUCK,
         OrganismType::GOOSE,
     };
-    organismLabels_ = { "Tree", "Duck", "Nes Flappy Bird", "Goose" };
+    organismLabels_ = { "Tree", "Duck", "NES Duck", "Goose" };
 
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
-    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
-    }
+    selectedScenario_ = coerceScenarioToOrganism(selectedScenario_, selectedOrganism_);
     setBrainOptionsForOrganism(selectedOrganism_);
 
     createLayout();
@@ -402,10 +387,10 @@ void TrainingPopulationPanel::createScenarioColumn(lv_obj_t* parent)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     scenarioButtonToValue_.clear();
-    for (size_t i = 0; i < scenarioOptions_.size(); ++i) {
-        const std::string& label = scenarioLabels_[i];
+    const auto& scenarios = uiServices_.scenarioMetadataManager().scenarios();
+    for (const auto& scenarioMetadata : scenarios) {
         lv_obj_t* container = LVGLBuilder::actionButton(parent)
-                                  .text(label.c_str())
+                                  .text(scenarioMetadata.name.c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -413,7 +398,7 @@ void TrainingPopulationPanel::createScenarioColumn(lv_obj_t* parent)
         if (container) {
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                scenarioButtonToValue_[button] = scenarioOptions_[i];
+                scenarioButtonToValue_[button] = scenarioMetadata.id;
                 lv_obj_add_event_cb(button, onScenarioSelected, LV_EVENT_CLICKED, this);
             }
         }
@@ -473,14 +458,18 @@ void TrainingPopulationPanel::setOrganismListVisible(bool visible)
 void TrainingPopulationPanel::updateControlsEnabled()
 {
     const bool enabled = !evolutionStarted_;
-    const bool scenarioEnabled = enabled && selectedOrganism_ != OrganismType::NES_FLAPPY_BIRD;
+    const bool scenarioEnabled = enabled;
     setControlEnabled(scenarioButton_, scenarioEnabled);
     setControlEnabled(organismButton_, enabled);
     setControlEnabled(addCountStepper_, enabled);
     setControlEnabled(addButton_, enabled);
     setControlEnabled(clearAllButton_, enabled);
     setControlEnabled(clearAllConfirmCheckbox_, enabled);
-    if (!enabled || !scenarioEnabled) {
+    for (const auto& [button, scenarioId] : scenarioButtonToValue_) {
+        setControlEnabled(
+            button, enabled && isScenarioCompatibleWithOrganism(scenarioId, selectedOrganism_));
+    }
+    if (!enabled) {
         setOrganismListVisible(false);
         setScenarioColumnVisible(false);
     }
@@ -504,10 +493,52 @@ void TrainingPopulationPanel::setControlEnabled(lv_obj_t* control, bool enabled)
 
 void TrainingPopulationPanel::updateSelectorLabels()
 {
-    setActionButtonText(
-        scenarioButton_, std::string("Scenario: ") + Scenario::toString(selectedScenario_));
+    const auto& scenarioMetadata = uiServices_.scenarioMetadataManager().get(selectedScenario_);
+    setActionButtonText(scenarioButton_, std::string("Scenario: ") + scenarioMetadata.name);
     setActionButtonText(
         organismButton_, std::string("Organism Type: ") + organismLabel(selectedOrganism_));
+}
+
+bool TrainingPopulationPanel::isScenarioCompatibleWithOrganism(
+    Scenario::EnumType scenarioId, OrganismType organismType) const
+{
+    const bool scenarioKindIsNes =
+        uiServices_.scenarioMetadataManager().get(scenarioId).kind == ScenarioKind::NesWorld;
+    if (organismType == OrganismType::NES_DUCK) {
+        return scenarioKindIsNes;
+    }
+    return !scenarioKindIsNes;
+}
+
+Scenario::EnumType TrainingPopulationPanel::defaultScenarioForOrganism(
+    OrganismType organismType) const
+{
+    switch (organismType) {
+        case OrganismType::TREE:
+            return Scenario::EnumType::TreeGermination;
+        case OrganismType::DUCK:
+            return Scenario::EnumType::Clock;
+        case OrganismType::NES_DUCK:
+            for (const auto& scenarioMetadata : uiServices_.scenarioMetadataManager().scenarios()) {
+                if (scenarioMetadata.kind == ScenarioKind::NesWorld) {
+                    return scenarioMetadata.id;
+                }
+            }
+            DIRTSIM_ASSERT(false, "Expected at least one NES scenario");
+            return Scenario::EnumType::NesFlappyParatroopa;
+        case OrganismType::GOOSE:
+            return Scenario::EnumType::GooseTest;
+    }
+    return Scenario::EnumType::TreeGermination;
+}
+
+Scenario::EnumType TrainingPopulationPanel::coerceScenarioToOrganism(
+    Scenario::EnumType scenarioId, OrganismType organismType) const
+{
+    if (isScenarioCompatibleWithOrganism(scenarioId, organismType)) {
+        return scenarioId;
+    }
+    return defaultScenarioForOrganism(organismType);
 }
 
 void TrainingPopulationPanel::setEvolutionStarted(bool started)
@@ -618,9 +649,7 @@ void TrainingPopulationPanel::refreshFromSpec()
 {
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
-    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
-    }
+    selectedScenario_ = coerceScenarioToOrganism(selectedScenario_, selectedOrganism_);
     setBrainOptionsForOrganism(selectedOrganism_);
 
     if (trainingSpec_.population.empty() && evolutionConfig_.populationSize > 0) {
@@ -674,9 +703,7 @@ void TrainingPopulationPanel::refreshFromSpec()
 void TrainingPopulationPanel::applySpecUpdates()
 {
     trainingSpec_.organismType = selectedOrganism_;
-    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
-    }
+    selectedScenario_ = coerceScenarioToOrganism(selectedScenario_, selectedOrganism_);
     trainingSpec_.scenarioId = selectedScenario_;
     for (auto& spec : trainingSpec_.population) {
         const BrainOption resolvedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
@@ -1238,10 +1265,11 @@ void TrainingPopulationPanel::onScenarioSelected(lv_event_t* e)
     if (it == self->scenarioButtonToValue_.end()) {
         return;
     }
-    self->selectedScenario_ = it->second;
-    if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        self->selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
+    const Scenario::EnumType selected = it->second;
+    if (!self->isScenarioCompatibleWithOrganism(selected, self->selectedOrganism_)) {
+        return;
     }
+    self->selectedScenario_ = selected;
     self->applySpecUpdates();
     self->syncUiFromState();
     self->setOrganismListVisible(false);
@@ -1259,9 +1287,8 @@ void TrainingPopulationPanel::onOrganismSelected(lv_event_t* e)
         return;
     }
     self->selectedOrganism_ = it->second;
-    if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
-        self->selectedScenario_ = Scenario::EnumType::NesFlappyParatroopa;
-    }
+    self->selectedScenario_ =
+        self->coerceScenarioToOrganism(self->selectedScenario_, self->selectedOrganism_);
     self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->trainingSpec_.population.clear();
     self->populationTotal_ = 0;

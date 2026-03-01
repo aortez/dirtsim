@@ -23,9 +23,10 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/NesFlappyParatroopaScenario.h"
+#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "server/ServerConfig.h"
+#include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
@@ -205,8 +206,8 @@ void populateOrganismDebug(World& world, WorldData& data)
             case OrganismType::DUCK:
                 debug.type = "DUCK";
                 break;
-            case OrganismType::NES_FLAPPY_BIRD:
-                debug.type = "NES_FLAPPY_BIRD";
+            case OrganismType::NES_DUCK:
+                debug.type = "NES_DUCK";
                 break;
             case OrganismType::TREE:
                 debug.type = "TREE";
@@ -252,7 +253,7 @@ void SimRunning::onEnter(StateMachine& dsm)
     }
 
     // Apply default scenario if no scenario is set.
-    if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
+    if (world && scenario_id == Scenario::EnumType::Empty) {
         const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
@@ -270,9 +271,6 @@ void SimRunning::onEnter(StateMachine& dsm)
             }
 
             ScenarioConfig scenarioConfig = makeDefaultConfig(defaultScenarioId);
-            if (getScenarioId(dsm.serverConfig->startupConfig) == defaultScenarioId) {
-                scenarioConfig = dsm.serverConfig->startupConfig;
-            }
             applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
             scenario->setConfig(scenarioConfig, *world);
 
@@ -311,10 +309,7 @@ void SimRunning::tick(StateMachine& dsm)
     auto& gm = dsm.getGamepadManager();
     gm.poll();
 
-    auto* nesScenario = (scenario_id == Scenario::EnumType::NesFlappyParatroopa)
-        ? dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get())
-        : nullptr;
-
+    auto* nesScenario = scenario ? dynamic_cast<NesScenarioRuntime*>(scenario.get()) : nullptr;
     if (nesScenario != nullptr) {
         uint8_t controller1Buttons = nes_controller1_override_.value_or(0);
 
@@ -794,12 +789,12 @@ State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /
 {
     using Response = Api::NesInputSet::Response;
 
-    if (scenario_id != Scenario::EnumType::NesFlappyParatroopa || !scenario) {
+    if (!scenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
         return std::move(*this);
     }
 
-    auto* nesScenario = dynamic_cast<NesFlappyParatroopaScenario*>(scenario.get());
+    auto* nesScenario = dynamic_cast<NesScenarioRuntime*>(scenario.get());
     if (!nesScenario) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet could not resolve NES scenario")));
         return std::move(*this);

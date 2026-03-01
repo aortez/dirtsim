@@ -9,8 +9,8 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/NesFlappyParatroopaScenario.h"
+#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
 #include <algorithm>
@@ -31,9 +31,6 @@ namespace {
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
     ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
-    if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
-        scenarioConfig = dsm.serverConfig->startupConfig;
-    }
 
     if (auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig)) {
         *clockConfig = dsm.getUserSettings().clockScenarioConfig;
@@ -350,7 +347,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
-            case OrganismType::NES_FLAPPY_BIRD:
+            case OrganismType::NES_DUCK:
                 defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
@@ -625,8 +622,6 @@ State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
 State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 {
-    assert(dsm.serverConfig && "serverConfig must be loaded");
-
     // Use scenario_id from command if provided, otherwise fall back to user settings.
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
@@ -702,6 +697,23 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         }
         const NesConfigValidationResult validation =
             NesFlappyParatroopaScenario::validateConfig(*nesConfig);
+        if (!validation.valid) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Invalid NES config: " + validation.message)));
+            return Idle{};
+        }
+    }
+    else if (scenarioId == Scenario::EnumType::NesSuperTiltBro) {
+        const auto* nesConfig = std::get_if<Config::NesSuperTiltBro>(&scenarioConfig);
+        if (!nesConfig) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Scenario config mismatch for NES scenario")));
+            return Idle{};
+        }
+        const NesConfigValidationResult validation =
+            NesSuperTiltBroScenario::validateConfig(*nesConfig);
         if (!validation.valid) {
             cwc.sendResponse(
                 Api::SimRun::Response::error(

@@ -12,6 +12,7 @@ namespace DirtSim {
 
 GooseTestScenario::GooseTestScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Goose Test";
     metadata_.description = "Test rigid body physics with a goose";
     metadata_.category = "organisms";

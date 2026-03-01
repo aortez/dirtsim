@@ -28,6 +28,7 @@ class GenomeBrowserPanel;
 class TrainingConfigPanel;
 class TrainingResultBrowserPanel;
 class UiComponentManager;
+class UiServices;
 
 class TrainingIdleView {
 public:
@@ -40,6 +41,7 @@ public:
     TrainingIdleView(
         UiComponentManager* uiManager,
         EventSink& eventSink,
+        UiServices& uiServices,
         Network::WebSocketServiceInterface* wsService,
         UserSettings& userSettings,
         const Starfield::Snapshot* starfieldSnapshot = nullptr);
@@ -75,6 +77,7 @@ private:
     bool evolutionStarted_ = false;
     UiComponentManager* uiManager_ = nullptr;
     EventSink& eventSink_;
+    UiServices& uiServices_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
     UserSettings& userSettings_;
 

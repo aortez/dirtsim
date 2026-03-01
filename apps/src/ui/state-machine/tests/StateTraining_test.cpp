@@ -522,7 +522,7 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     evt.evolution.maxGenerations = 0;
     evt.mutation.rate = 0.1;
     evt.training.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    evt.training.organismType = OrganismType::NES_FLAPPY_BIRD;
+    evt.training.organismType = OrganismType::NES_DUCK;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -549,7 +549,7 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     settingsOkay.settings.evolutionConfig.populationSize = 37;
     settingsOkay.settings.mutationConfig.rate = 0.123;
     settingsOkay.settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    settingsOkay.settings.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+    settingsOkay.settings.trainingSpec.organismType = OrganismType::NES_DUCK;
 
     fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
 

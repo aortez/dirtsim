@@ -4,11 +4,10 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include "core/ScenarioId.h"
+#include "core/ScenarioMetadata.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
-#include <string>
 #include <vector>
 #include <zpp_bits.h>
 
@@ -35,26 +34,10 @@ struct Command {
 };
 
 /**
- * @brief Info about a single scenario.
- */
-struct ScenarioInfo {
-    Scenario::EnumType id;   // Scenario identifier.
-    std::string name;        // Display name (e.g., "Sandbox", "Dam Break").
-    std::string description; // Tooltip/help text.
-    std::string category;    // Category (sandbox, demo, organisms, benchmark).
-
-    // zpp_bits serialization.
-    using serialize = zpp::bits::members<4>;
-};
-
-void to_json(nlohmann::json& j, const ScenarioInfo& info);
-void from_json(const nlohmann::json& j, ScenarioInfo& info);
-
-/**
  * @brief Response containing list of available scenarios.
  */
 struct Okay {
-    std::vector<ScenarioInfo> scenarios;
+    std::vector<ScenarioMetadata> scenarios;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

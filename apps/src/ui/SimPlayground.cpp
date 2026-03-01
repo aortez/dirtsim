@@ -1,5 +1,4 @@
 #include "SimPlayground.h"
-#include "ScenarioMetadataCache.h"
 #include "controls/ClockControls.h"
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
@@ -17,6 +16,7 @@
 #include "server/api/UserSettingsPatch.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UiServices.h"
 #include "ui/UserSettingsManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <cstring>
@@ -28,12 +28,12 @@ namespace Ui {
 SimPlayground::SimPlayground(
     UiComponentManager* uiManager,
     Network::WebSocketServiceInterface* wsService,
-    UserSettingsManager& userSettingsManager,
+    UiServices& uiServices,
     EventSink& eventSink,
     FractalAnimator* fractalAnimator)
     : uiManager_(uiManager),
       wsService_(wsService),
-      userSettingsManager_(userSettingsManager),
+      uiServices_(uiServices),
       eventSink_(eventSink),
       fractalAnimator_(fractalAnimator)
 {
@@ -193,7 +193,7 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     scenarioPanel_ = std::make_unique<ScenarioPanel>(
         container,
         wsService_,
-        userSettingsManager_,
+        uiServices_,
         eventSink_,
         currentScenarioId_,
         currentScenarioConfig_,
@@ -405,7 +405,7 @@ void SimPlayground::sendDisplayResizeUpdate()
     // Persist the updated config to server UserSettings. The server applies it to the live
     // scenario and it comes back in the render stream as scenario_config.
     Api::UserSettingsPatch::Command patchCmd{ .clockScenarioConfig = config };
-    userSettingsManager_.patchOrAssert(patchCmd, 500);
+    uiServices_.userSettingsManager().patchOrAssert(patchCmd, 500);
 }
 
 void SimPlayground::setupCanvasEventHandlers(lv_obj_t* canvas)

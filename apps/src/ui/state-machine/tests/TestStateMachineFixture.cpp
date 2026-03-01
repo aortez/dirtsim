@@ -4,7 +4,8 @@ namespace DirtSim::Ui::Tests {
 
 TestStateMachineFixture::TestStateMachineFixture()
 {
-    stateMachine = std::make_unique<StateMachine>(StateMachine::TestMode{}, userSettingsManager);
+    stateMachine = std::make_unique<StateMachine>(
+        StateMachine::TestMode{}, userSettingsManager, scenarioMetadataManager);
 
     auto mockWs = std::make_unique<MockWebSocketService>();
     mockWebSocketService = mockWs.get();

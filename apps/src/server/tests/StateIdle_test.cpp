@@ -3,7 +3,6 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "server/ServerConfig.h"
 #include "server/UserSettings.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -50,7 +49,7 @@ TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
     // Verify: SimRunning has valid World.
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
     ASSERT_NE(simRunning.world, nullptr) << "SimRunning should have a World";
-    const auto scenario_id = getScenarioId(fixture.stateMachine->serverConfig->startupConfig);
+    const auto scenario_id = fixture.stateMachine->getUserSettings().defaultScenario;
     const auto* metadata = fixture.stateMachine->getScenarioRegistry().getMetadata(scenario_id);
     ASSERT_NE(metadata, nullptr);
 

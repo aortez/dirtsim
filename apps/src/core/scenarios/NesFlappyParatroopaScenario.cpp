@@ -10,16 +10,12 @@
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
-#include <fstream>
 #include <limits>
 #include <system_error>
 #include <utility>
 
 namespace {
-
-constexpr std::array<uint16_t, 6> kSmolnesSupportedMappers = { 0, 1, 2, 3, 4, 7 };
 
 const char* romCheckStatusToString(DirtSim::NesRomCheckStatus status)
 {
@@ -38,60 +34,12 @@ const char* romCheckStatusToString(DirtSim::NesRomCheckStatus status)
     return "unknown";
 }
 
-std::string normalizeRomId(std::string rawName)
-{
-    std::string normalized;
-    normalized.reserve(rawName.size());
-
-    bool pendingSeparator = false;
-    for (char ch : rawName) {
-        const unsigned char uch = static_cast<unsigned char>(ch);
-        if (std::isalnum(uch)) {
-            if (pendingSeparator && !normalized.empty() && normalized.back() != '-') {
-                normalized.push_back('-');
-            }
-            normalized.push_back(static_cast<char>(std::tolower(uch)));
-            pendingSeparator = false;
-            continue;
-        }
-        pendingSeparator = true;
-    }
-
-    while (!normalized.empty() && normalized.back() == '-') {
-        normalized.pop_back();
-    }
-    return normalized;
-}
-
-bool hasNesExtension(const std::filesystem::path& path)
-{
-    std::string extension = path.extension().string();
-    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return extension == ".nes";
-}
-
 uint32_t saturateCallCount(uint64_t count)
 {
     if (count > std::numeric_limits<uint32_t>::max()) {
         return std::numeric_limits<uint32_t>::max();
     }
     return static_cast<uint32_t>(count);
-}
-
-std::filesystem::path resolveRomDirectory(const DirtSim::Config::NesFlappyParatroopa& config)
-{
-    if (!config.romDirectory.empty()) {
-        return config.romDirectory;
-    }
-    if (!config.romPath.empty()) {
-        const std::filesystem::path configuredPath = config.romPath;
-        if (configuredPath.has_parent_path()) {
-            return configuredPath.parent_path();
-        }
-    }
-    return std::filesystem::path{ "testdata/roms" };
 }
 
 std::string describeRomSource(const DirtSim::Config::NesFlappyParatroopa& config)
@@ -108,6 +56,7 @@ namespace DirtSim {
 
 NesFlappyParatroopaScenario::NesFlappyParatroopaScenario()
 {
+    metadata_.kind = ScenarioKind::NesWorld;
     metadata_.name = "NES Flappy Paratroopa";
     metadata_.description = "NES Flappy Paratroopa World training scenario";
     metadata_.category = "organisms";
@@ -316,6 +265,22 @@ uint64_t NesFlappyParatroopaScenario::getRuntimeRenderedFrameCount() const
     return runtime_->getRenderedFrameCount();
 }
 
+std::optional<ScenarioVideoFrame> NesFlappyParatroopaScenario::copyRuntimeFrameSnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyLatestFrame();
+}
+
+std::optional<NesPaletteFrame> NesFlappyParatroopaScenario::copyRuntimePaletteFrame() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyLatestPaletteFrame();
+}
+
 std::string NesFlappyParatroopaScenario::getRuntimeResolvedRomId() const
 {
     return runtimeResolvedRomId_;
@@ -349,188 +314,28 @@ void NesFlappyParatroopaScenario::setController1State(uint8_t buttonMask)
 std::vector<NesRomCatalogEntry> NesFlappyParatroopaScenario::scanRomCatalog(
     const std::filesystem::path& romDir)
 {
-    std::vector<NesRomCatalogEntry> entries;
-
-    std::error_code ec;
-    if (romDir.empty() || !std::filesystem::exists(romDir, ec)
-        || !std::filesystem::is_directory(romDir, ec)) {
-        return entries;
-    }
-
-    for (std::filesystem::directory_iterator it(romDir, ec), end; it != end && !ec;
-         it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
-            continue;
-        }
-
-        const std::filesystem::path romPath = it->path();
-        if (!hasNesExtension(romPath)) {
-            continue;
-        }
-
-        NesRomCatalogEntry entry;
-        entry.romPath = romPath;
-        entry.displayName = romPath.stem().string();
-        entry.romId = makeRomId(entry.displayName);
-        entry.check = inspectRom(romPath);
-        entries.push_back(std::move(entry));
-    }
-
-    std::sort(
-        entries.begin(),
-        entries.end(),
-        [](const NesRomCatalogEntry& lhs, const NesRomCatalogEntry& rhs) {
-            if (lhs.romId != rhs.romId) {
-                return lhs.romId < rhs.romId;
-            }
-            return lhs.romPath.string() < rhs.romPath.string();
-        });
-    return entries;
+    return scanNesRomCatalog(romDir);
 }
 
 std::string NesFlappyParatroopaScenario::makeRomId(const std::string& rawName)
 {
-    return normalizeRomId(rawName);
+    return makeNesRomId(rawName);
 }
 
 NesConfigValidationResult NesFlappyParatroopaScenario::validateConfig(
     const Config::NesFlappyParatroopa& config)
 {
-    NesConfigValidationResult validation{};
-
-    std::filesystem::path resolvedRomPath;
-    if (!config.romId.empty()) {
-        const std::string requestedRomId = makeRomId(config.romId);
-        if (requestedRomId.empty()) {
-            validation.message = "romId must contain at least one alphanumeric character";
-            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
-            validation.romCheck.message = validation.message;
-            return validation;
-        }
-
-        const std::filesystem::path romDir = resolveRomDirectory(config);
-        const std::vector<NesRomCatalogEntry> entries = scanRomCatalog(romDir);
-        std::vector<std::filesystem::path> matchingPaths;
-        for (const auto& entry : entries) {
-            if (entry.romId == requestedRomId) {
-                matchingPaths.push_back(entry.romPath);
-            }
-        }
-
-        if (matchingPaths.empty()) {
-            if (!config.romPath.empty()) {
-                const std::filesystem::path fallbackRomPath = config.romPath;
-                const std::string fallbackRomId = makeRomId(fallbackRomPath.stem().string());
-                if (fallbackRomId == requestedRomId) {
-                    resolvedRomPath = fallbackRomPath;
-                    validation.resolvedRomId = requestedRomId;
-                }
-            }
-
-            if (resolvedRomPath.empty()) {
-                validation.message =
-                    "No ROM found for romId '" + config.romId + "' in '" + romDir.string() + "'";
-                validation.romCheck.status = NesRomCheckStatus::FileNotFound;
-                validation.romCheck.message = validation.message;
-                return validation;
-            }
-        }
-        else if (matchingPaths.size() > 1) {
-            validation.message = "romId '" + config.romId + "' matched multiple ROM files in '"
-                + romDir.string() + "'";
-            validation.romCheck.status = NesRomCheckStatus::ReadError;
-            validation.romCheck.message = validation.message;
-            return validation;
-        }
-        else {
-            resolvedRomPath = matchingPaths.front();
-            validation.resolvedRomId = requestedRomId;
-        }
-    }
-    else {
-        if (config.romPath.empty()) {
-            validation.message = "romPath must not be empty when romId is not set";
-            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
-            validation.romCheck.message = validation.message;
-            return validation;
-        }
-
-        resolvedRomPath = config.romPath;
-        validation.resolvedRomId = makeRomId(resolvedRomPath.stem().string());
-    }
-
-    validation.romCheck = inspectRom(resolvedRomPath);
-    validation.resolvedRomPath = resolvedRomPath;
-    validation.valid = validation.romCheck.isCompatible();
-    if (!validation.valid) {
-        validation.message =
-            "ROM '" + resolvedRomPath.string() + "' rejected: " + validation.romCheck.message;
-        return validation;
-    }
-
-    validation.message = "ROM is compatible";
-    return validation;
+    return validateNesRomSelection(config.romId, config.romDirectory, config.romPath);
 }
 
 NesRomCheckResult NesFlappyParatroopaScenario::inspectRom(const std::filesystem::path& romPath)
 {
-    NesRomCheckResult result{};
-    if (!std::filesystem::exists(romPath)) {
-        result.status = NesRomCheckStatus::FileNotFound;
-        result.message = "ROM path does not exist.";
-        return result;
-    }
-
-    std::ifstream romFile(romPath, std::ios::binary);
-    if (!romFile.is_open()) {
-        result.status = NesRomCheckStatus::ReadError;
-        result.message = "Failed to open ROM file.";
-        return result;
-    }
-
-    std::array<uint8_t, 16> header{};
-    romFile.read(
-        reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
-    if (romFile.gcount() != static_cast<std::streamsize>(header.size())) {
-        result.status = NesRomCheckStatus::ReadError;
-        result.message = "Failed to read iNES header.";
-        return result;
-    }
-
-    if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A) {
-        result.status = NesRomCheckStatus::InvalidHeader;
-        result.message = "ROM is missing iNES magic bytes.";
-        return result;
-    }
-
-    result.prgBanks16k = header[4];
-    result.chrBanks8k = header[5];
-    const uint8_t flags6 = header[6];
-    const uint8_t flags7 = header[7];
-    result.mapper = static_cast<uint16_t>((flags6 >> 4) | (flags7 & 0xF0));
-    result.hasBattery = (flags6 & 0x02) != 0;
-    result.hasTrainer = (flags6 & 0x04) != 0;
-    result.verticalMirroring = (flags6 & 0x01) != 0;
-
-    if (!isMapperSupportedBySmolnes(result.mapper)) {
-        result.status = NesRomCheckStatus::UnsupportedMapper;
-        result.message = "Mapper is unsupported by smolnes.";
-        return result;
-    }
-
-    result.status = NesRomCheckStatus::Compatible;
-    result.message = "ROM is compatible with smolnes mapper support.";
-    return result;
+    return inspectNesRom(romPath);
 }
 
 bool NesFlappyParatroopaScenario::isMapperSupportedBySmolnes(uint16_t mapper)
 {
-    for (const uint16_t supportedMapper : kSmolnesSupportedMappers) {
-        if (supportedMapper == mapper) {
-            return true;
-        }
-    }
-    return false;
+    return isNesMapperSupportedBySmolnes(mapper);
 }
 
 void NesFlappyParatroopaScenario::stopRuntime()

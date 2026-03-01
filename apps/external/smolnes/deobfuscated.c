@@ -103,6 +103,8 @@ SMOLNES_TLS uint16_t scany,          // Scanline Y
     frame_buffer[61440]; // 256x240 pixel frame buffer. Top and bottom 8 rows
                          // are not drawn.
 
+SMOLNES_TLS uint8_t frame_buffer_palette[61440];
+
 SMOLNES_TLS int shift_at = 0;
 
 // Read a byte from CHR ROM or CHR RAM.
@@ -699,6 +701,8 @@ loop:
             // Write pixel to framebuffer. Always use palette 0 for color 0.
             // BGR565 palette is used instead of RGBA32 to reduce source code
             // size.
+            uint8_t palette_index = palette_ram[color ? palette | color : 0];
+            frame_buffer_palette[scany * 256 + dot] = palette_index;
             frame_buffer[scany * 256 + dot] =
                 (uint16_t[64]){
                     25356, 34816, 39011, 30854, 24714, 4107,  106,   2311,
@@ -709,7 +713,7 @@ loop:
                     1429,  1550,  20075, 36358, 52713, 16904, 0,     0,
                     ~0,    ~328,  ~422,  ~452,  ~482,  58911, 50814, 42620,
                     40667, 40729, 48951, 53078, 61238, 44405}
-                    [palette_ram[color ? palette | color : 0]];
+                    [palette_index];
           }
 
           // Update shift registers every cycle.

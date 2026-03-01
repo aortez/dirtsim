@@ -38,16 +38,8 @@ constexpr uint32_t RAIL_COLOR = 0x303030;
 
 State::Any selectPostConnectState(StateMachine& sm)
 {
-    if (!sm.hasWebSocketService()) {
-        LOG_WARN(State, "No WebSocketService available after connect, defaulting to StartMenu");
-        return StartMenu{};
-    }
-
     auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "WebSocket not connected after connect, defaulting to StartMenu");
-        return StartMenu{};
-    }
+    DIRTSIM_ASSERT(wsService.isConnected(), "WebSocket must be connected after connect");
 
     Api::StatusGet::Command statusCmd{};
     const auto statusResult =
@@ -507,16 +499,8 @@ State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachi
 {
     LOG_INFO(State, "Server connection established");
 
-    if (!sm.hasWebSocketService()) {
-        LOG_WARN(State, "No WebSocketService available on ServerConnectedEvent");
-        return std::move(*this);
-    }
-
     auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "Ignoring stale ServerConnectedEvent without active connection");
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(wsService.isConnected(), "ServerConnectedEvent requires active connection");
 
     connectInProgress_ = false;
     retry_pending_ = false;

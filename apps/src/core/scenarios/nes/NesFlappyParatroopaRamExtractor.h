@@ -9,9 +9,9 @@
 
 namespace DirtSim {
 
-class NesRomProfileExtractor {
+class NesFlappyParatroopaRamExtractor {
 public:
-    explicit NesRomProfileExtractor(std::string romId);
+    explicit NesFlappyParatroopaRamExtractor(std::string romId);
 
     bool isSupported() const;
     std::optional<NesFlappyBirdEvaluatorInput> extract(

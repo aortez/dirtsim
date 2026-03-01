@@ -107,6 +107,30 @@ std::optional<ScenarioVideoFrame> SmolnesRuntime::copyLatestFrame() const
     return frame;
 }
 
+std::optional<NesPaletteFrame> SmolnesRuntime::copyLatestPaletteFrame() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    NesPaletteFrame frame;
+    frame.width = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_WIDTH);
+    frame.height = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_HEIGHT);
+    if (frame.indices.size() != SMOLNES_RUNTIME_PALETTE_FRAME_BYTES) {
+        frame.indices.resize(SMOLNES_RUNTIME_PALETTE_FRAME_BYTES);
+    }
+
+    if (!smolnesRuntimeCopyLatestPaletteIndices(
+            runtimeHandle_,
+            frame.indices.data(),
+            static_cast<uint32_t>(frame.indices.size()),
+            &frame.frameId)) {
+        return std::nullopt;
+    }
+
+    return frame;
+}
+
 std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot() const
 {
     if (runtimeHandle_ == nullptr) {

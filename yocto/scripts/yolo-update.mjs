@@ -125,6 +125,15 @@ function unique(items) {
   return out;
 }
 
+function shellQuote(value) {
+  // POSIX shell single-quote escaping.
+  // Example: hello'world -> 'hello'\''world'
+  if (value === '') {
+    return "''";
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function buildYoctoNinjaEnv(buildDir) {
   // Yocto recipes set up PATH so CMake can find cross tools like *-gcc-ar.
   // Fast deploy runs outside bitbake, so we recreate the minimal PATH additions.
@@ -888,63 +897,6 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
     }
   }
 
-  // Deploy config files if .local overrides exist.
-  banner('Checking for config overrides...', consola);
-
-  const APPS_CONFIG_DIR = join(YOCTO_DIR, '../apps/config');
-  const configFiles = [];
-
-  for (const configName of ['server.json.local', 'ui.json.local']) {
-    const localPath = join(APPS_CONFIG_DIR, configName);
-    if (existsSync(localPath)) {
-      configFiles.push({
-        name: configName,
-        path: localPath,
-        remotePath: `/etc/dirtsim/${configName}`,
-      });
-    }
-  }
-
-  if (configFiles.length > 0) {
-    info(`Found ${configFiles.length} config override(s) to deploy`);
-    for (const cfg of configFiles) {
-      info(`  ${cfg.name}`);
-      if (!dryRun) {
-        try {
-          execSync(
-            `scp ${buildScpOptions()} "${cfg.path}" "${remoteTarget}:${remoteStageDir}/${cfg.name}"`,
-            { stdio: 'pipe' },
-          );
-          // Copy and set permissions so dirtsim user can read the config files.
-          execSync(
-            `ssh ${buildSshOptions()} ${remoteTarget} "sudo cp ${remoteStageDir}/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`,
-            { stdio: 'pipe' },
-          );
-          success(`${cfg.name} deployed`);
-        } catch (err) {
-          error(`Failed to deploy ${cfg.name}`);
-          error(err.message);
-          process.exit(1);
-        }
-      } else {
-        info(`Would scp ${cfg.path} to ${remoteTarget}:${cfg.remotePath}`);
-      }
-    }
-
-    // Run config setup service to fix all permissions (config files + home dirs).
-    if (!dryRun) {
-      try {
-        info('Running config setup to fix permissions...');
-        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl restart dirtsim-config-setup.service"`, { stdio: 'pipe' });
-        success('Permissions fixed');
-      } catch (err) {
-        warn('Config setup service not available (needs full deployment)');
-      }
-    }
-  } else {
-    info('No .local config overrides found');
-  }
-
   // Deploy assets (fonts, etc.).
   banner('Deploying assets...', consola);
 
@@ -963,8 +915,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
           `scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:${remoteStageDir}/${fileName}"`,
           { stdio: 'pipe' },
         );
-        assetInstallCmds.push(`sudo mkdir -p ${remoteDir}`);
-        assetInstallCmds.push(`sudo cp ${remoteStageDir}/${fileName} ${asset.remote}`);
+        assetInstallCmds.push(`sudo mkdir -p ${shellQuote(remoteDir)}`);
+        assetInstallCmds.push(
+          `sudo cp ${shellQuote(`${remoteStageDir}/${fileName}`)} ${shellQuote(asset.remote)}`,
+        );
         success(`${fileName} transferred`);
       } catch (err) {
         error(`Failed to transfer ${fileName}`);
@@ -993,7 +947,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
   if (romFixtures.length === 0) {
     info('No NES ROM fixtures found');
   } else {
-    romInstallCmds.push(`sudo mkdir -p ${NES_ROM_REMOTE_DIR}`);
+    romInstallCmds.push(`sudo mkdir -p ${shellQuote(NES_ROM_REMOTE_DIR)}`);
     for (const rom of romFixtures) {
       info(`${rom.name} → ${rom.remote}`);
       if (!dryRun) {
@@ -1002,8 +956,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
             `scp ${buildScpOptions()} "${rom.local}" "${remoteTarget}:${remoteStageDir}/${rom.name}"`,
             { stdio: 'pipe' },
           );
-          romInstallCmds.push(`sudo cp ${remoteStageDir}/${rom.name} ${rom.remote}`);
-          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${rom.remote}`);
+          romInstallCmds.push(
+            `sudo cp ${shellQuote(`${remoteStageDir}/${rom.name}`)} ${shellQuote(rom.remote)}`,
+          );
+          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${shellQuote(rom.remote)}`);
           success(`${rom.name} transferred`);
         } catch (err) {
           error(`Failed to transfer ${rom.name}`);
