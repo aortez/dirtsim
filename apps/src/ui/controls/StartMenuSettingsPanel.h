@@ -8,11 +8,11 @@
 namespace DirtSim {
 namespace Ui {
 class PanelViewController;
-class UserSettingsManager;
+class UiServices;
 
 class StartMenuSettingsPanel {
 public:
-    StartMenuSettingsPanel(lv_obj_t* container, UserSettingsManager& userSettingsManager);
+    StartMenuSettingsPanel(lv_obj_t* container, UiServices& uiServices);
     ~StartMenuSettingsPanel();
 
     void applySettings(const DirtSim::UserSettings& settings);
@@ -53,8 +53,8 @@ private:
     lv_obj_t* trainingTargetDropdown_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* volumeStepper_ = nullptr;
-    UserSettingsManager& userSettingsManager_;
-    std::unordered_map<lv_obj_t*, int> buttonToScenarioIndex_;
+    UiServices& uiServices_;
+    std::unordered_map<lv_obj_t*, Scenario::EnumType> buttonToScenarioId_;
     std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
     std::unique_ptr<PanelViewController> viewController_;
     DirtSim::UserSettings settings_{};

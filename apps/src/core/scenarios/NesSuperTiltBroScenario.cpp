@@ -54,6 +54,7 @@ namespace DirtSim {
 
 NesSuperTiltBroScenario::NesSuperTiltBroScenario()
 {
+    metadata_.kind = ScenarioKind::NesWorld;
     metadata_.name = "NES Super Tilt Bro";
     metadata_.description = "NES Super Tilt Bro (UNROM no-network) training scenario";
     metadata_.category = "organisms";

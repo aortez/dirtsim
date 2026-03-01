@@ -56,6 +56,7 @@ namespace DirtSim {
 
 NesFlappyParatroopaScenario::NesFlappyParatroopaScenario()
 {
+    metadata_.kind = ScenarioKind::NesWorld;
     metadata_.name = "NES Flappy Paratroopa";
     metadata_.description = "NES Flappy Paratroopa World training scenario";
     metadata_.category = "organisms";

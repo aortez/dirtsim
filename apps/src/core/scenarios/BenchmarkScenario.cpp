@@ -11,6 +11,7 @@ namespace DirtSim {
 
 BenchmarkScenario::BenchmarkScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Benchmark";
     metadata_.description = "Performance test: 200x200 world with water pool and falling balls";
     metadata_.category = "benchmark";

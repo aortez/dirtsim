@@ -1,9 +1,11 @@
 #include "StartMenuSettingsPanel.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/scenarios/ClockScenario.h"
 #include "server/api/UserSettingsPatch.h"
 #include "ui/PanelViewController.h"
-#include "ui/ScenarioMetadataCache.h"
+#include "ui/ScenarioMetadataManager.h"
+#include "ui/UiServices.h"
 #include "ui/UserSettingsManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
@@ -21,6 +23,18 @@ int timeoutMsToSeconds(int timeoutMs)
 {
     const int roundedSeconds = (timeoutMs + 500) / 1000;
     return std::clamp(roundedSeconds, kIdleTimeoutMinSeconds, kIdleTimeoutMaxSeconds);
+}
+
+Scenario::EnumType defaultNesScenario(const ScenarioMetadataManager& scenarioMetadataManager)
+{
+    for (const auto& scenarioMetadata : scenarioMetadataManager.scenarios()) {
+        if (scenarioMetadata.kind == ScenarioKind::NesWorld) {
+            return scenarioMetadata.id;
+        }
+    }
+
+    DIRTSIM_ASSERT(false, "Expected at least one NES scenario");
+    return Scenario::EnumType::NesFlappyParatroopa;
 }
 
 void setActionButtonText(lv_obj_t* buttonContainer, const std::string& text)
@@ -67,9 +81,8 @@ void setControlEnabled(lv_obj_t* control, bool enabled)
 
 } // namespace
 
-StartMenuSettingsPanel::StartMenuSettingsPanel(
-    lv_obj_t* container, UserSettingsManager& userSettingsManager)
-    : container_(container), userSettingsManager_(userSettingsManager)
+StartMenuSettingsPanel::StartMenuSettingsPanel(lv_obj_t* container, UiServices& uiServices)
+    : container_(container), uiServices_(uiServices)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -266,19 +279,11 @@ void StartMenuSettingsPanel::createScenarioSelectionView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
-    buttonToScenarioIndex_.clear();
-    if (!ScenarioMetadataCache::hasScenarios()) {
-        lv_obj_t* emptyLabel = lv_label_create(view);
-        lv_label_set_text(emptyLabel, "No scenarios loaded.");
-        lv_obj_set_style_text_color(emptyLabel, lv_color_hex(0xBBBBBB), 0);
-        lv_obj_set_style_text_font(emptyLabel, &lv_font_montserrat_14, 0);
-        return;
-    }
-    const std::vector<std::string> options = ScenarioMetadataCache::buildOptionsList();
-
-    for (size_t i = 0; i < options.size(); ++i) {
+    buttonToScenarioId_.clear();
+    const auto& scenarios = uiServices_.scenarioMetadataManager().scenarios();
+    for (const auto& scenario : scenarios) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(options[i].c_str())
+                                  .text(scenario.name.c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -292,7 +297,7 @@ void StartMenuSettingsPanel::createScenarioSelectionView(lv_obj_t* view)
             continue;
         }
 
-        buttonToScenarioIndex_[button] = static_cast<int>(i);
+        buttonToScenarioId_[button] = scenario.id;
         lv_obj_add_event_cb(button, onDefaultScenarioSelected, LV_EVENT_CLICKED, this);
     }
 }
@@ -367,13 +372,9 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
 
 void StartMenuSettingsPanel::updateDefaultScenarioButtonText()
 {
-    std::string scenarioName = toString(settings_.defaultScenario);
-    const auto info = ScenarioMetadataCache::getScenarioInfo(settings_.defaultScenario);
-    if (info.has_value()) {
-        scenarioName = info->name;
-    }
-
-    setActionButtonText(defaultScenarioButton_, "Default Scenario: " + scenarioName);
+    const auto& scenarioMetadata =
+        uiServices_.scenarioMetadataManager().get(settings_.defaultScenario);
+    setActionButtonText(defaultScenarioButton_, "Default Scenario: " + scenarioMetadata.name);
 }
 
 void StartMenuSettingsPanel::updateIdleTimeoutControl()
@@ -422,10 +423,11 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
         return;
     }
 
+    const auto& scenarioMetadataManager = uiServices_.scenarioMetadataManager();
     uint16_t index = 0;
     if (settings_.trainingSpec.organismType == OrganismType::NES_DUCK
-        || settings_.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
-        || settings_.trainingSpec.scenarioId == Scenario::EnumType::NesSuperTiltBro) {
+        || scenarioMetadataManager.get(settings_.trainingSpec.scenarioId).kind
+            == ScenarioKind::NesWorld) {
         index = 2;
     }
     else if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
@@ -464,7 +466,7 @@ void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
 
     Api::UserSettingsPatch::Command patchCmd{ .startMenuIdleAction =
                                                   self->settings_.startMenuIdleAction };
-    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+    self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onIdleTimeoutChanged(lv_event_t* e)
@@ -491,7 +493,7 @@ void StartMenuSettingsPanel::onIdleTimeoutChanged(lv_event_t* e)
         Api::UserSettingsPatch::Command patchCmd{
             .startMenuIdleTimeoutMs = self->settings_.startMenuIdleTimeoutMs,
         };
-        self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+        self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
     }
 }
 
@@ -516,9 +518,12 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
             break;
         case 2:
             self->settings_.trainingSpec.organismType = OrganismType::NES_DUCK;
-            if (self->settings_.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa
-                && self->settings_.trainingSpec.scenarioId != Scenario::EnumType::NesSuperTiltBro) {
-                self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+            if (self->uiServices_.scenarioMetadataManager()
+                    .get(self->settings_.trainingSpec.scenarioId)
+                    .kind
+                != ScenarioKind::NesWorld) {
+                self->settings_.trainingSpec.scenarioId =
+                    defaultNesScenario(self->uiServices_.scenarioMetadataManager());
             }
             break;
         case 0:
@@ -531,7 +536,7 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
     self->settings_.trainingSpec.population.clear();
 
     Api::UserSettingsPatch::Command patchCmd{ .trainingSpec = self->settings_.trainingSpec };
-    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+    self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onBackToMainClicked(lv_event_t* e)
@@ -562,14 +567,13 @@ void StartMenuSettingsPanel::onDefaultScenarioSelected(lv_event_t* e)
     }
 
     lv_obj_t* button = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    auto it = self->buttonToScenarioIndex_.find(button);
-    if (it == self->buttonToScenarioIndex_.end()) {
+    auto it = self->buttonToScenarioId_.find(button);
+    if (it == self->buttonToScenarioId_.end()) {
         LOG_WARN(Controls, "StartMenuSettingsPanel: Unknown scenario button clicked");
         return;
     }
 
-    self->settings_.defaultScenario =
-        ScenarioMetadataCache::scenarioIdFromIndex(static_cast<uint16_t>(it->second));
+    self->settings_.defaultScenario = it->second;
     self->updateDefaultScenarioButtonText();
 
     if (self->viewController_) {
@@ -577,7 +581,7 @@ void StartMenuSettingsPanel::onDefaultScenarioSelected(lv_event_t* e)
     }
 
     Api::UserSettingsPatch::Command patchCmd{ .defaultScenario = self->settings_.defaultScenario };
-    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+    self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onResetConfirmToggled(lv_event_t* e)
@@ -601,7 +605,7 @@ void StartMenuSettingsPanel::onResetClicked(lv_event_t* e)
         return;
     }
 
-    self->userSettingsManager_.resetOrAssert(1000);
+    self->uiServices_.userSettingsManager().resetOrAssert(1000);
 }
 
 void StartMenuSettingsPanel::onTimezoneButtonClicked(lv_event_t* e)
@@ -637,7 +641,7 @@ void StartMenuSettingsPanel::onTimezoneSelected(lv_event_t* e)
 
     Api::UserSettingsPatch::Command patchCmd{ .clockScenarioConfig =
                                                   self->settings_.clockScenarioConfig };
-    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+    self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
 }
 
 void StartMenuSettingsPanel::onVolumeChanged(lv_event_t* e)
@@ -655,7 +659,7 @@ void StartMenuSettingsPanel::onVolumeChanged(lv_event_t* e)
     self->settings_.volumePercent = std::clamp(value, 0, 100);
 
     Api::UserSettingsPatch::Command patchCmd{ .volumePercent = self->settings_.volumePercent };
-    self->userSettingsManager_.patchOrAssert(patchCmd, 1000);
+    self->uiServices_.userSettingsManager().patchOrAssert(patchCmd, 1000);
 }
 
 } // namespace Ui

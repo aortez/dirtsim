@@ -35,7 +35,7 @@ class NeuralGridRenderer;
 class EventSink;
 class ExpandablePanel;
 class FractalAnimator;
-class UserSettingsManager;
+class UiServices;
 
 /**
  * @brief Coordinates the simulation playground view.
@@ -57,7 +57,7 @@ public:
     SimPlayground(
         UiComponentManager* uiManager,
         Network::WebSocketServiceInterface* wsService,
-        UserSettingsManager& userSettingsManager,
+        UiServices& uiServices,
         EventSink& eventSink,
         FractalAnimator* fractalAnimator);
     ~SimPlayground();
@@ -108,7 +108,7 @@ public:
 private:
     UiComponentManager* uiManager_;
     Network::WebSocketServiceInterface* wsService_;
-    UserSettingsManager& userSettingsManager_;
+    UiServices& uiServices_;
     EventSink& eventSink_;
     FractalAnimator* fractalAnimator_ = nullptr;
 

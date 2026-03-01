@@ -12,6 +12,7 @@ namespace DirtSim {
 
 LightsScenario::LightsScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Lights";
     metadata_.description = "Test lighting system with water, metal, leaf, and dirt materials";
     metadata_.category = "test";

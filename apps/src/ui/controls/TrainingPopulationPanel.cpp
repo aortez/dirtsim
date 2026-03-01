@@ -1,10 +1,13 @@
 #include "TrainingPopulationPanel.h"
+#include "core/Assert.h"
 #include "core/network/WebSocketServiceInterface.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/reflect.h"
 #include "server/api/GenomeGet.h"
+#include "ui/ScenarioMetadataManager.h"
+#include "ui/UiServices.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
@@ -25,44 +28,6 @@ constexpr int kMainColumnWidthPercent = 45;
 constexpr int kScenarioColumnWidthPercent = 55;
 constexpr int kEntryRowHeight = 60;
 constexpr int kListHeight = 240;
-
-bool isNesScenario(Scenario::EnumType scenarioId)
-{
-    return scenarioId == Scenario::EnumType::NesFlappyParatroopa
-        || scenarioId == Scenario::EnumType::NesSuperTiltBro;
-}
-
-Scenario::EnumType defaultScenarioForOrganism(OrganismType organismType)
-{
-    switch (organismType) {
-        case OrganismType::TREE:
-            return Scenario::EnumType::TreeGermination;
-        case OrganismType::DUCK:
-            return Scenario::EnumType::Clock;
-        case OrganismType::NES_DUCK:
-            return Scenario::EnumType::NesFlappyParatroopa;
-        case OrganismType::GOOSE:
-            return Scenario::EnumType::GooseTest;
-    }
-    return Scenario::EnumType::TreeGermination;
-}
-
-bool isScenarioCompatibleWithOrganism(Scenario::EnumType scenarioId, OrganismType organismType)
-{
-    if (organismType == OrganismType::NES_DUCK) {
-        return isNesScenario(scenarioId);
-    }
-    return !isNesScenario(scenarioId);
-}
-
-Scenario::EnumType coerceScenarioToOrganism(
-    Scenario::EnumType scenarioId, OrganismType organismType)
-{
-    if (isScenarioCompatibleWithOrganism(scenarioId, organismType)) {
-        return scenarioId;
-    }
-    return defaultScenarioForOrganism(organismType);
-}
 
 std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType organismType)
 {
@@ -138,36 +103,19 @@ void setActionButtonText(lv_obj_t* container, const std::string& text)
 TrainingPopulationPanel::TrainingPopulationPanel(
     lv_obj_t* container,
     EventSink& eventSink,
+    UiServices& uiServices,
     Network::WebSocketServiceInterface* wsService,
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
     TrainingSpec& trainingSpec)
     : container_(container),
       eventSink_(eventSink),
+      uiServices_(uiServices),
       wsService_(wsService),
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
       trainingSpec_(trainingSpec)
 {
-    scenarioOptions_ = {
-        Scenario::EnumType::Benchmark,
-        Scenario::EnumType::Clock,
-        Scenario::EnumType::DamBreak,
-        Scenario::EnumType::Empty,
-        Scenario::EnumType::GooseTest,
-        Scenario::EnumType::Lights,
-        Scenario::EnumType::NesFlappyParatroopa,
-        Scenario::EnumType::NesSuperTiltBro,
-        Scenario::EnumType::Raining,
-        Scenario::EnumType::Sandbox,
-        Scenario::EnumType::TreeGermination,
-        Scenario::EnumType::WaterEqualization,
-    };
-    scenarioLabels_.reserve(scenarioOptions_.size());
-    for (const auto& scenarioId : scenarioOptions_) {
-        scenarioLabels_.push_back(Scenario::toString(scenarioId));
-    }
-
     organismOptions_ = {
         OrganismType::TREE,
         OrganismType::DUCK,
@@ -439,10 +387,10 @@ void TrainingPopulationPanel::createScenarioColumn(lv_obj_t* parent)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     scenarioButtonToValue_.clear();
-    for (size_t i = 0; i < scenarioOptions_.size(); ++i) {
-        const std::string& label = scenarioLabels_[i];
+    const auto& scenarios = uiServices_.scenarioMetadataManager().scenarios();
+    for (const auto& scenarioMetadata : scenarios) {
         lv_obj_t* container = LVGLBuilder::actionButton(parent)
-                                  .text(label.c_str())
+                                  .text(scenarioMetadata.name.c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -450,7 +398,7 @@ void TrainingPopulationPanel::createScenarioColumn(lv_obj_t* parent)
         if (container) {
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                scenarioButtonToValue_[button] = scenarioOptions_[i];
+                scenarioButtonToValue_[button] = scenarioMetadata.id;
                 lv_obj_add_event_cb(button, onScenarioSelected, LV_EVENT_CLICKED, this);
             }
         }
@@ -545,10 +493,52 @@ void TrainingPopulationPanel::setControlEnabled(lv_obj_t* control, bool enabled)
 
 void TrainingPopulationPanel::updateSelectorLabels()
 {
-    setActionButtonText(
-        scenarioButton_, std::string("Scenario: ") + Scenario::toString(selectedScenario_));
+    const auto& scenarioMetadata = uiServices_.scenarioMetadataManager().get(selectedScenario_);
+    setActionButtonText(scenarioButton_, std::string("Scenario: ") + scenarioMetadata.name);
     setActionButtonText(
         organismButton_, std::string("Organism Type: ") + organismLabel(selectedOrganism_));
+}
+
+bool TrainingPopulationPanel::isScenarioCompatibleWithOrganism(
+    Scenario::EnumType scenarioId, OrganismType organismType) const
+{
+    const bool scenarioKindIsNes =
+        uiServices_.scenarioMetadataManager().get(scenarioId).kind == ScenarioKind::NesWorld;
+    if (organismType == OrganismType::NES_DUCK) {
+        return scenarioKindIsNes;
+    }
+    return !scenarioKindIsNes;
+}
+
+Scenario::EnumType TrainingPopulationPanel::defaultScenarioForOrganism(
+    OrganismType organismType) const
+{
+    switch (organismType) {
+        case OrganismType::TREE:
+            return Scenario::EnumType::TreeGermination;
+        case OrganismType::DUCK:
+            return Scenario::EnumType::Clock;
+        case OrganismType::NES_DUCK:
+            for (const auto& scenarioMetadata : uiServices_.scenarioMetadataManager().scenarios()) {
+                if (scenarioMetadata.kind == ScenarioKind::NesWorld) {
+                    return scenarioMetadata.id;
+                }
+            }
+            DIRTSIM_ASSERT(false, "Expected at least one NES scenario");
+            return Scenario::EnumType::NesFlappyParatroopa;
+        case OrganismType::GOOSE:
+            return Scenario::EnumType::GooseTest;
+    }
+    return Scenario::EnumType::TreeGermination;
+}
+
+Scenario::EnumType TrainingPopulationPanel::coerceScenarioToOrganism(
+    Scenario::EnumType scenarioId, OrganismType organismType) const
+{
+    if (isScenarioCompatibleWithOrganism(scenarioId, organismType)) {
+        return scenarioId;
+    }
+    return defaultScenarioForOrganism(organismType);
 }
 
 void TrainingPopulationPanel::setEvolutionStarted(bool started)
@@ -1276,7 +1266,7 @@ void TrainingPopulationPanel::onScenarioSelected(lv_event_t* e)
         return;
     }
     const Scenario::EnumType selected = it->second;
-    if (!isScenarioCompatibleWithOrganism(selected, self->selectedOrganism_)) {
+    if (!self->isScenarioCompatibleWithOrganism(selected, self->selectedOrganism_)) {
         return;
     }
     self->selectedScenario_ = selected;
@@ -1298,7 +1288,7 @@ void TrainingPopulationPanel::onOrganismSelected(lv_event_t* e)
     }
     self->selectedOrganism_ = it->second;
     self->selectedScenario_ =
-        coerceScenarioToOrganism(self->selectedScenario_, self->selectedOrganism_);
+        self->coerceScenarioToOrganism(self->selectedScenario_, self->selectedOrganism_);
     self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->trainingSpec_.population.clear();
     self->populationTotal_ = 0;

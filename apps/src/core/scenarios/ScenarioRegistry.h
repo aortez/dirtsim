@@ -37,6 +37,7 @@ public:
 
     // Get metadata for a scenario by ID (no instance created).
     const DirtSim::ScenarioMetadata* getMetadata(DirtSim::Scenario::EnumType id) const;
+    bool isNesScenario(DirtSim::Scenario::EnumType id) const;
 
     // Get all registered scenario IDs.
     std::vector<DirtSim::Scenario::EnumType> getScenarioIds() const;

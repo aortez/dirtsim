@@ -38,11 +38,13 @@ int computeBrowserPanelWidth()
 TrainingIdleView::TrainingIdleView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
+    UiServices& uiServices,
     Network::WebSocketServiceInterface* wsService,
     UserSettings& userSettings,
     const Starfield::Snapshot* starfieldSnapshot)
     : uiManager_(uiManager),
       eventSink_(eventSink),
+      uiServices_(uiServices),
       wsService_(wsService),
       userSettings_(userSettings),
       starfieldSnapshot_(starfieldSnapshot)
@@ -189,7 +191,7 @@ void TrainingIdleView::createGenomeBrowserPanelInternal()
     }
 
     genomeBrowserPanel_ =
-        std::make_unique<GenomeBrowserPanel>(panelContent_, wsService_, &eventSink_);
+        std::make_unique<GenomeBrowserPanel>(panelContent_, uiServices_, wsService_, &eventSink_);
     LOG_INFO(Controls, "TrainingIdleView: Created Genome browser panel");
 }
 
@@ -209,6 +211,7 @@ void TrainingIdleView::createTrainingConfigPanel()
     trainingConfigPanel_ = std::make_unique<TrainingConfigPanel>(
         panelContent_,
         eventSink_,
+        uiServices_,
         panel_,
         wsService_,
         evolutionStarted_,

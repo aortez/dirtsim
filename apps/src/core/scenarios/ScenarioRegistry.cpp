@@ -100,7 +100,9 @@ void ScenarioRegistry::registerScenario(
     }
 
     spdlog::debug("Registering scenario '{}' - {}", toString(id), metadata.name);
-    scenarios_[id] = ScenarioEntry{ metadata, std::move(factory) };
+    ScenarioEntry entry{ metadata, std::move(factory) };
+    entry.metadata.id = id;
+    scenarios_[id] = std::move(entry);
 }
 
 std::unique_ptr<ScenarioRunner> ScenarioRegistry::createScenario(Scenario::EnumType id) const
@@ -120,6 +122,12 @@ const ScenarioMetadata* ScenarioRegistry::getMetadata(Scenario::EnumType id) con
         return &it->second.metadata;
     }
     return nullptr;
+}
+
+bool ScenarioRegistry::isNesScenario(Scenario::EnumType id) const
+{
+    const auto* metadata = getMetadata(id);
+    return metadata && metadata->kind == ScenarioKind::NesWorld;
 }
 
 std::vector<Scenario::EnumType> ScenarioRegistry::getScenarioIds() const

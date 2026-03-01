@@ -23,6 +23,7 @@ class WebSocketServiceInterface;
 namespace Ui {
 
 class EventSink;
+class UiServices;
 
 class TrainingPopulationPanel {
 public:
@@ -36,6 +37,7 @@ public:
     TrainingPopulationPanel(
         lv_obj_t* container,
         EventSink& eventSink,
+        UiServices& uiServices,
         Network::WebSocketServiceInterface* wsService,
         bool evolutionStarted,
         EvolutionConfig& evolutionConfig,
@@ -62,6 +64,7 @@ private:
 
     lv_obj_t* container_ = nullptr;
     EventSink& eventSink_;
+    UiServices& uiServices_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
 
     bool evolutionStarted_ = false;
@@ -85,9 +88,6 @@ private:
     lv_obj_t* scenarioColumn_ = nullptr;
     lv_obj_t* mainColumn_ = nullptr;
     lv_obj_t* listColumn_ = nullptr;
-
-    std::vector<Scenario::EnumType> scenarioOptions_;
-    std::vector<std::string> scenarioLabels_;
 
     std::vector<OrganismType> organismOptions_;
     std::vector<std::string> organismLabels_;
@@ -141,6 +141,11 @@ private:
     int computeRandomCount() const;
     std::string formatEntryLabel(const PopulationEntry& entry, int index) const;
     std::string formatEntryDetailText(const PopulationEntry& entry) const;
+    bool isScenarioCompatibleWithOrganism(
+        Scenario::EnumType scenarioId, OrganismType organismType) const;
+    Scenario::EnumType defaultScenarioForOrganism(OrganismType organismType) const;
+    Scenario::EnumType coerceScenarioToOrganism(
+        Scenario::EnumType scenarioId, OrganismType organismType) const;
 
     static void onScenarioButtonClicked(lv_event_t* e);
     static void onOrganismButtonClicked(lv_event_t* e);

@@ -88,34 +88,6 @@ constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 
-bool isNesTrainingTarget(const TrainingSpec& spec)
-{
-    const bool isNesScenario = spec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
-        || spec.scenarioId == Scenario::EnumType::NesSuperTiltBro;
-    return spec.organismType == OrganismType::NES_DUCK || isNesScenario;
-}
-
-template <typename RecordUpdateFn>
-void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& recordUpdate)
-{
-    if (!isNesTrainingTarget(settings.trainingSpec)) {
-        return;
-    }
-
-    if (settings.trainingSpec.organismType != OrganismType::NES_DUCK) {
-        settings.trainingSpec.organismType = OrganismType::NES_DUCK;
-        recordUpdate("trainingSpec.organismType promoted to NES_DUCK for NES training");
-    }
-
-    const bool isNesScenario =
-        settings.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa
-        || settings.trainingSpec.scenarioId == Scenario::EnumType::NesSuperTiltBro;
-    if (!isNesScenario) {
-        settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-        recordUpdate("trainingSpec.scenarioId set to default NES scenario for NES training");
-    }
-}
-
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
     return dataDir / "user_settings.json";
@@ -315,7 +287,16 @@ UserSettings sanitizeUserSettings(
         recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
     }
 
-    canonicalizeNesTrainingTarget(settings, recordUpdate);
+    const bool isNesTrainingTarget = settings.trainingSpec.organismType == OrganismType::NES_DUCK
+        || registry.isNesScenario(settings.trainingSpec.scenarioId);
+    if (isNesTrainingTarget) {
+        DIRTSIM_ASSERT(
+            settings.trainingSpec.organismType == OrganismType::NES_DUCK,
+            "Invalid trainingSpec: NES scenario requires NES_DUCK organismType");
+        DIRTSIM_ASSERT(
+            registry.isNesScenario(settings.trainingSpec.scenarioId),
+            "Invalid trainingSpec: NES_DUCK requires NES scenarioId");
+    }
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
@@ -1403,11 +1384,7 @@ void StateMachine::handleEvent(const Event& event)
         for (const auto& id : scenarioIds) {
             const ScenarioMetadata* metadata = registry.getMetadata(id);
             if (metadata) {
-                response.scenarios.push_back(
-                    Api::ScenarioListGet::ScenarioInfo{ .id = id,
-                                                        .name = metadata->name,
-                                                        .description = metadata->description,
-                                                        .category = metadata->category });
+                response.scenarios.push_back(*metadata);
             }
         }
 

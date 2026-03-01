@@ -9,6 +9,7 @@ namespace DirtSim {
 
 EmptyScenario::EmptyScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Empty";
     metadata_.description = "A completely empty world with no particles";
     metadata_.category = "sandbox";

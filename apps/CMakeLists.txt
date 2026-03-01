@@ -268,6 +268,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/RenderMessage.cpp
     src/core/ScenarioConfig.cpp
     src/core/ScenarioId.cpp
+    src/core/ScenarioMetadata.cpp
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
     src/core/Timers.cpp
@@ -555,6 +556,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
+    src/ui/ScenarioMetadataManager.cpp
     src/ui/UserSettingsManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/TrainingActiveView.cpp
@@ -597,7 +599,6 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/TrainingPopulationPanel.cpp
     src/ui/controls/TrainingResultBrowserPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
-    src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
     src/ui/widgets/TimeSeriesPlotWidget.cpp
 )

@@ -17,10 +17,15 @@ class WebSocketServiceInterface;
 
 namespace Ui {
 
+class UiServices;
+
 class GenomeBrowserPanel {
 public:
     GenomeBrowserPanel(
-        lv_obj_t* parent, Network::WebSocketServiceInterface* wsService, EventSink* eventSink);
+        lv_obj_t* parent,
+        UiServices& uiServices,
+        Network::WebSocketServiceInterface* wsService,
+        EventSink* eventSink);
 
     void refresh();
     Result<GenomeId, std::string> openDetailByIndex(size_t index);
@@ -44,6 +49,7 @@ private:
         lv_obj_t* directionButton = nullptr;
     };
 
+    UiServices& uiServices_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
     EventSink* eventSink_ = nullptr;
     GenomeSortKey sortKey_ = GenomeSortKey::CreatedTimestamp;

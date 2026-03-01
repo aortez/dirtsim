@@ -19,7 +19,7 @@ class WebSocketServiceInterface;
 namespace Ui {
 
 class EventSink;
-class UserSettingsManager;
+class UiServices;
 /**
  * @brief Scenario panel with modal navigation.
  *
@@ -31,7 +31,7 @@ public:
     ScenarioPanel(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
-        UserSettingsManager& userSettingsManager,
+        UiServices& uiServices,
         EventSink& eventSink,
         Scenario::EnumType initialScenarioId,
         const ScenarioConfig& initialConfig,
@@ -43,7 +43,7 @@ public:
 private:
     lv_obj_t* container_;
     Network::WebSocketServiceInterface* wsService_;
-    UserSettingsManager& userSettingsManager_;
+    UiServices& uiServices_;
     EventSink& eventSink_;
     DisplayDimensionsGetter dimensionsGetter_;
 
@@ -60,8 +60,8 @@ private:
     // Scenario button (in main view).
     lv_obj_t* scenarioButton_ = nullptr;
 
-    // Scenario button to index mapping.
-    std::unordered_map<lv_obj_t*, int> buttonToScenarioIndex_;
+    // Scenario button to ID mapping.
+    std::unordered_map<lv_obj_t*, Scenario::EnumType> buttonToScenarioId_;
 
     // View creation.
     void createMainView(lv_obj_t* view);

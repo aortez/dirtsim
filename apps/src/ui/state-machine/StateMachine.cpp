@@ -26,7 +26,9 @@
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
+#include "ui/ScenarioMetadataManager.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/rendering/FractalAnimator.h"
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
@@ -35,9 +37,26 @@
 
 namespace DirtSim {
 namespace Ui {
+namespace {
 
-StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
-    : display(nullptr), userSettingsManager_(userSettingsManager)
+Network::WebSocketService& requireConcreteWebSocketService(
+    Network::WebSocketServiceInterface& wsService)
+{
+    auto* concreteWs = dynamic_cast<Network::WebSocketService*>(&wsService);
+    DIRTSIM_ASSERT(
+        concreteWs != nullptr, "WebSocketServiceInterface must be concrete WebSocketService");
+    return *concreteWs;
+}
+
+} // namespace
+
+StateMachine::StateMachine(
+    TestMode,
+    UserSettingsManager& userSettingsManager,
+    ScenarioMetadataManager& scenarioMetadataManager)
+    : display(nullptr),
+      userSettingsManager_(userSettingsManager),
+      scenarioMetadataManager_(scenarioMetadataManager)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
@@ -46,8 +65,13 @@ StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
 }
 
 StateMachine::StateMachine(
-    _lv_display_t* disp, UserSettingsManager& userSettingsManager, uint16_t wsPort)
-    : display(disp), userSettingsManager_(userSettingsManager)
+    _lv_display_t* disp,
+    UserSettingsManager& userSettingsManager,
+    ScenarioMetadataManager& scenarioMetadataManager,
+    uint16_t wsPort)
+    : display(disp),
+      userSettingsManager_(userSettingsManager),
+      scenarioMetadataManager_(scenarioMetadataManager)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
@@ -93,56 +117,47 @@ void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
 
-    // Get concrete WebSocketService for template method access.
-    auto* ws = getConcreteWebSocketService();
-    DIRTSIM_ASSERT(ws != nullptr, "Failed to cast wsService_ to WebSocketService");
+    auto& ws = requireConcreteWebSocketService(getWebSocketService());
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
-    ws->registerHandler<UiApi::SimRun::Cwc>([this](UiApi::SimRun::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::SimPause::Cwc>(
-        [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingQuit::Cwc>(
+    ws.registerHandler<UiApi::SimRun::Cwc>([this](UiApi::SimRun::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SimPause::Cwc>([this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::TrainingQuit::Cwc>(
         [this](UiApi::TrainingQuit::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingResultDiscard::Cwc>(
+    ws.registerHandler<UiApi::TrainingResultDiscard::Cwc>(
         [this](UiApi::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingResultSave::Cwc>(
+    ws.registerHandler<UiApi::TrainingResultSave::Cwc>(
         [this](UiApi::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingStart::Cwc>(
+    ws.registerHandler<UiApi::TrainingStart::Cwc>(
         [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingActiveScenarioControlsShow::Cwc>(
+    ws.registerHandler<UiApi::TrainingActiveScenarioControlsShow::Cwc>(
         [this](UiApi::TrainingActiveScenarioControlsShow::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::TrainingConfigShowEvolution::Cwc>(
+    ws.registerHandler<UiApi::TrainingConfigShowEvolution::Cwc>(
         [this](UiApi::TrainingConfigShowEvolution::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
+    ws.registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
         [this](UiApi::GenomeBrowserOpen::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::GenomeDetailLoad::Cwc>(
+    ws.registerHandler<UiApi::GenomeDetailLoad::Cwc>(
         [this](UiApi::GenomeDetailLoad::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::GenomeDetailOpen::Cwc>(
+    ws.registerHandler<UiApi::GenomeDetailOpen::Cwc>(
         [this](UiApi::GenomeDetailOpen::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::IconRailExpand::Cwc>(
+    ws.registerHandler<UiApi::IconRailExpand::Cwc>(
         [this](UiApi::IconRailExpand::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::IconRailShowIcons::Cwc>(
+    ws.registerHandler<UiApi::IconRailShowIcons::Cwc>(
         [this](UiApi::IconRailShowIcons::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::IconSelect::Cwc>(
+    ws.registerHandler<UiApi::IconSelect::Cwc>(
         [this](UiApi::IconSelect::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::StateGet::Cwc>(
-        [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::StatusGet::Cwc>(
+    ws.registerHandler<UiApi::StateGet::Cwc>([this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::StopButtonPress::Cwc>(
+    ws.registerHandler<UiApi::StopButtonPress::Cwc>(
         [this](UiApi::StopButtonPress::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::SynthKeyEvent::Cwc>(
+    ws.registerHandler<UiApi::SynthKeyEvent::Cwc>(
         [this](UiApi::SynthKeyEvent::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
+    ws.registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
         using Response = UiApi::WebSocketAccessSet::Response;
-
-        auto* wsService = getConcreteWebSocketService();
-        if (!wsService) {
-            cwc.sendResponse(Response::error(ApiError("WebSocket service unavailable")));
-            return;
-        }
+        auto& wsService = requireConcreteWebSocketService(getWebSocketService());
 
         if (wsPort_ == 0) {
             cwc.sendResponse(Response::error(ApiError("WebSocket port not set")));
@@ -155,18 +170,18 @@ void StateMachine::setupWebSocketService()
 
         const std::string bindAddress = cwc.command.enabled ? "0.0.0.0" : "127.0.0.1";
         if (cwc.command.enabled) {
-            wsService->setAccessToken(cwc.command.token);
+            wsService.setAccessToken(cwc.command.token);
         }
         else {
-            wsService->clearAccessToken();
-            wsService->closeNonLocalClients();
+            wsService.clearAccessToken();
+            wsService.closeNonLocalClients();
             if (webRtcStreamer_) {
                 webRtcStreamer_->closeAllClients();
             }
         }
 
-        wsService->stopListening(false);
-        auto listenResult = wsService->listen(wsPort_, bindAddress);
+        wsService.stopListening(false);
+        auto listenResult = wsService.listen(wsPort_, bindAddress);
         if (listenResult.isError()) {
             LOG_ERROR(
                 Network,
@@ -177,29 +192,29 @@ void StateMachine::setupWebSocketService()
             return;
         }
     });
-    ws->registerHandler<UiApi::ScreenGrab::Cwc>(
+    ws.registerHandler<UiApi::ScreenGrab::Cwc>(
         [this](UiApi::ScreenGrab::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::StreamStart::Cwc>(
+    ws.registerHandler<UiApi::StreamStart::Cwc>(
         [this](UiApi::StreamStart::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::WebRtcAnswer::Cwc>(
+    ws.registerHandler<UiApi::WebRtcAnswer::Cwc>(
         [this](UiApi::WebRtcAnswer::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::WebRtcCandidate::Cwc>(
+    ws.registerHandler<UiApi::WebRtcCandidate::Cwc>(
         [this](UiApi::WebRtcCandidate::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::Exit::Cwc>([this](UiApi::Exit::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::MouseDown::Cwc>(
+    ws.registerHandler<UiApi::Exit::Cwc>([this](UiApi::Exit::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::MouseDown::Cwc>(
         [this](UiApi::MouseDown::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::MouseMove::Cwc>(
+    ws.registerHandler<UiApi::MouseMove::Cwc>(
         [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::PlantSeed::Cwc>(
+    ws.registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::DrawDebugToggle::Cwc>(
+    ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::PixelRendererToggle::Cwc>(
+    ws.registerHandler<UiApi::PixelRendererToggle::Cwc>(
         [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::RenderModeSelect::Cwc>(
+    ws.registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<Api::TrainingResult::Cwc>(
+    ws.registerHandler<Api::TrainingResult::Cwc>(
         [this](Api::TrainingResult::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
@@ -311,6 +326,56 @@ void StateMachine::mainLoopRun()
     }
 
     LOG_INFO(State, "Main event loop exiting (shouldExit=true)");
+}
+
+UserSettingsManager& StateMachine::getUserSettingsManager()
+{
+    return userSettingsManager_;
+}
+
+UserSettings& StateMachine::getUserSettings()
+{
+    return userSettingsManager_.get();
+}
+
+const UserSettings& StateMachine::getUserSettings() const
+{
+    return userSettingsManager_.get();
+}
+
+const UserSettingsManager& StateMachine::getUserSettingsManager() const
+{
+    return userSettingsManager_;
+}
+
+ScenarioMetadataManager& StateMachine::getScenarioMetadataManager()
+{
+    return scenarioMetadataManager_;
+}
+
+const ScenarioMetadataManager& StateMachine::getScenarioMetadataManager() const
+{
+    return scenarioMetadataManager_;
+}
+
+UserSettingsManager& StateMachine::userSettingsManager()
+{
+    return userSettingsManager_;
+}
+
+const UserSettingsManager& StateMachine::userSettingsManager() const
+{
+    return userSettingsManager_;
+}
+
+ScenarioMetadataManager& StateMachine::scenarioMetadataManager()
+{
+    return scenarioMetadataManager_;
+}
+
+const ScenarioMetadataManager& StateMachine::scenarioMetadataManager() const
+{
+    return scenarioMetadataManager_;
 }
 
 void StateMachine::queueEvent(const Event& event)
@@ -484,6 +549,7 @@ void StateMachine::handleEvent(const Event& event)
                 "EventSubscribe rejected: " + result.value().errorValue().message);
             LOG_INFO(State, "Subscribed to server event stream");
 
+            scenarioMetadataManager_.syncFromServer(*wsService_, 2000);
             userSettingsManager_.setWebSocketService(wsService_.get());
             userSettingsManager_.syncFromServerOrAssert(2000);
             applyServerUserSettings(userSettingsManager_.get());
@@ -1135,13 +1201,8 @@ double StateMachine::getUiFps() const
 
 Network::WebSocketServiceInterface& StateMachine::getWebSocketService()
 {
-    assert(wsService_ && "wsService_ is null!");
+    DIRTSIM_ASSERT(wsService_, "wsService_ is null");
     return *wsService_.get();
-}
-
-Network::WebSocketService* StateMachine::getConcreteWebSocketService()
-{
-    return dynamic_cast<Network::WebSocketService*>(wsService_.get());
 }
 
 void StateMachine::setLastServerAddress(const std::string& host, uint16_t port)
