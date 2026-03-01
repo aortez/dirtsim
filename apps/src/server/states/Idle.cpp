@@ -11,7 +11,6 @@
 #include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
 #include <algorithm>
@@ -32,9 +31,6 @@ namespace {
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
     ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
-    if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
-        scenarioConfig = dsm.serverConfig->startupConfig;
-    }
 
     if (auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig)) {
         *clockConfig = dsm.getUserSettings().clockScenarioConfig;
@@ -626,8 +622,6 @@ State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
 State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 {
-    assert(dsm.serverConfig && "serverConfig must be loaded");
-
     // Use scenario_id from command if provided, otherwise fall back to user settings.
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()

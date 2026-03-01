@@ -316,7 +316,6 @@ target_compile_options(dirtsim-core PRIVATE ${DIRTSIM_WARNINGS})
 # Server library - physics engine and server logic.
 add_library(dirtsim-server-lib STATIC
     # Server state machine.
-    src/server/ServerConfig.cpp
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp

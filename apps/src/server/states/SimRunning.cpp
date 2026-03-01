@@ -27,7 +27,6 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
-#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
@@ -254,7 +253,7 @@ void SimRunning::onEnter(StateMachine& dsm)
     }
 
     // Apply default scenario if no scenario is set.
-    if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
+    if (world && scenario_id == Scenario::EnumType::Empty) {
         const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
@@ -272,9 +271,6 @@ void SimRunning::onEnter(StateMachine& dsm)
             }
 
             ScenarioConfig scenarioConfig = makeDefaultConfig(defaultScenarioId);
-            if (getScenarioId(dsm.serverConfig->startupConfig) == defaultScenarioId) {
-                scenarioConfig = dsm.serverConfig->startupConfig;
-            }
             applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
             scenario->setConfig(scenarioConfig, *world);
 

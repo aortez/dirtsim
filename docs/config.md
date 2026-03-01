@@ -102,9 +102,7 @@ Developers run from the `apps/` directory. Configs live in `apps/config/`:
 ```
 apps/
 ├── config/
-│   ├── server.json
 │   ├── server-logging.json
-│   ├── ui.json
 │   └── ui-logging.json
 ├── build-debug/bin/
 │   ├── cli
@@ -121,9 +119,7 @@ Yocto bakes configs into the image at `/etc/dirtsim/`:
 
 ```
 /etc/dirtsim/
-├── server.json
 ├── server-logging.json
-├── ui.json
 └── ui-logging.json
 ```
 
@@ -134,7 +130,7 @@ User overrides (if needed) go in `~/.config/dirtsim/` and take precedence.
 For local tweaks not committed to git, use `.local` suffix:
 
 ```
-apps/config/server.json.local    # Full replacement for server.json
+apps/config/server-logging.json.local
 apps/config/ui-logging.json.local
 ```
 

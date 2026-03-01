@@ -77,10 +77,6 @@ do_install() {
     install -m 0644 ${WORKDIR}/dirtsim-set-hostname.service ${D}${systemd_system_unitdir}/
     install -m 0644 ${WORKDIR}/dirtsim-config-setup.service ${D}${systemd_system_unitdir}/
 
-    # Install default UI configuration.
-    install -d ${D}${sysconfdir}/dirtsim
-    install -m 0644 ${EXTERNALSRC}/config/ui.json ${D}${sysconfdir}/dirtsim/ui.json
-
     # Install fonts (for color emoji clock display).
     install -d ${D}/data/dirtsim/fonts
     install -m 0644 ${EXTERNALSRC}/fonts/NotoColorEmoji.ttf ${D}/data/dirtsim/fonts/
@@ -106,7 +102,6 @@ FILES:${PN} = " \
     /data/dirtsim/fonts/NotoColorEmoji.ttf \
     /usr/share/dirtsim/fonts/NotoColorEmoji.ttf \
     /usr/share/fonts/fontawesome/fa-solid-900.ttf \
-    ${sysconfdir}/dirtsim/ui.json \
     ${systemd_system_unitdir}/dirtsim-ui.service \
     ${systemd_system_unitdir}/dirtsim-detect-display.service \
     ${systemd_system_unitdir}/dirtsim-set-hostname.service \

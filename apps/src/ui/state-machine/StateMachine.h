@@ -9,7 +9,6 @@
 #include "core/Timers.h"
 #include "server/UserSettings.h"
 #include "states/State.h"
-#include "ui/UiConfig.h"
 #include "ui/UiServices.h"
 
 #include <algorithm>
@@ -112,15 +111,6 @@ public:
     const ScenarioMetadataManager& scenarioMetadataManager() const override;
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
-
-    // UI configuration (loaded from ui.json).
-    std::unique_ptr<UiConfig> uiConfig;
-
-    const UiConfig& getUiConfig() const
-    {
-        static UiConfig defaultConfig;
-        return uiConfig ? *uiConfig : defaultConfig;
-    }
 
 private:
     static constexpr uint32_t AutoShrinkTimeoutMs = 10000;

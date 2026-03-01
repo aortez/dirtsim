@@ -1,7 +1,6 @@
 #include "StateMachine.h"
 #include "Event.h"
 #include "EventProcessor.h"
-#include "ServerConfig.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
 #include "api/TrainingBestSnapshotGet.h"
@@ -704,9 +703,6 @@ StateMachine::StateMachine(
     const std::optional<std::filesystem::path>& dataDir)
     : pImpl(dataDir)
 {
-    serverConfig = std::make_unique<ServerConfig>();
-    serverConfig->dataDir = dataDir;
-
     pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
 
     if (webSocketService) {

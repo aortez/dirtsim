@@ -2,10 +2,8 @@
 // TODO: Re-enable when integrating UI components:
 // #include "SimulatorUI.h"
 #include "ScenarioMetadataManager.h"
-#include "UiConfig.h"
 #include "UserSettingsManager.h"
 #include "audio/api/NoteOn.h"
-#include "core/ConfigLoader.h"
 #include "core/LoggingChannels.h"
 #include "core/World.h"
 #include "core/network/WebSocketService.h"
@@ -265,16 +263,6 @@ int main(int argc, char** argv)
     DirtSim::Ui::ScenarioMetadataManager scenarioMetadataManager;
     auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(
         lv_disp_get_default(), userSettingsManager, scenarioMetadataManager);
-
-    // Load UI configuration (optional - defaults apply if not found).
-    auto uiConfigResult = DirtSim::ConfigLoader::load<DirtSim::UiConfig>("ui.json");
-    if (uiConfigResult.isValue()) {
-        stateMachine->uiConfig = std::make_unique<DirtSim::UiConfig>(uiConfigResult.value());
-        SLOG_INFO("Loaded ui.json (autoRun={})", stateMachine->uiConfig->autoRun);
-    }
-    else {
-        SLOG_INFO("No ui.json found, using defaults (autoRun=false)");
-    }
 
     SLOG_INFO("UI state machine created, state: {}", stateMachine->getCurrentStateName());
 
