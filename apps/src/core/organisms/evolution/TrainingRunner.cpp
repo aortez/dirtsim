@@ -554,6 +554,11 @@ void TrainingRunner::resolveBrainEntry()
 
 void TrainingRunner::runScenarioDrivenStep()
 {
+    if (!nesDriver_) {
+        DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
+        DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
+    }
+
     if (!nesRuntime_ || !nesGameAdapter_) {
         state_ = State::OrganismDied;
         return;

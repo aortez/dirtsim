@@ -854,12 +854,13 @@ State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /
 {
     using Response = Api::NesInputSet::Response;
 
-    nes_controller1_override_ = cwc.command.controller1_mask;
     auto nes = session.requireNesWorld();
     if (nes.isError()) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
         return std::move(*this);
     }
+
+    nes_controller1_override_ = cwc.command.controller1_mask;
     nes.value().driver->setController1State(cwc.command.controller1_mask);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
