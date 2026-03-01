@@ -329,6 +329,8 @@ public:
 
     void registerCommandHandler(std::string commandName, CommandHandler handler) override;
     bool isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const override;
+    void reportCommandHandlerDeserializeError(
+        const std::string& commandName, const std::string& errorMessage) override;
 
     // =========================================================================
     // Instrumentation.

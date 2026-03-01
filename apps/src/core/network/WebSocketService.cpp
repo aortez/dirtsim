@@ -805,6 +805,12 @@ bool WebSocketService::isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const
     return it != clientProtocols_.end() && it->second == Protocol::JSON;
 }
 
+void WebSocketService::reportCommandHandlerDeserializeError(
+    const std::string& commandName, const std::string& errorMessage)
+{
+    LOG_ERROR(Network, "Failed to deserialize {}: {}", commandName, errorMessage);
+}
+
 bool WebSocketService::clientWantsEvents(const std::string& connectionId) const
 {
     std::lock_guard<std::mutex> lock(clientsMutex_);

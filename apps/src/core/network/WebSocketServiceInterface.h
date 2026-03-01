@@ -77,6 +77,8 @@ public:
     virtual void registerCommandHandler(std::string commandName, CommandHandler handler) = 0;
     virtual std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws) = 0;
     virtual bool isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const = 0;
+    virtual void reportCommandHandlerDeserializeError(
+        const std::string& commandName, const std::string& errorMessage) = 0;
 
     virtual uint64_t allocateRequestId()
     {
@@ -103,7 +105,38 @@ public:
                 try {
                     cmd = deserialize_payload<CommandT>(payload);
                 }
-                catch (const std::exception&) {
+                catch (const std::exception& e) {
+                    reportCommandHandlerDeserializeError(cmdName, e.what());
+
+                    const ApiError error("Failed to deserialize command '" + cmdName + "'");
+                    if constexpr (requires { ResponseT::error(error); }) {
+                        auto response = ResponseT::error(error);
+                        if (!ws || !ws->isOpen()) {
+                            return;
+                        }
+                        if (isJsonClient(ws)) {
+                            nlohmann::json jsonResponse = makeJsonResponse(correlationId, response);
+                            const std::string jsonText = jsonResponse.dump();
+                            try {
+                                ws->send(jsonText);
+                            }
+                            catch (const std::exception&) {
+                                return;
+                            }
+                        }
+                        else {
+                            auto envelope =
+                                make_response_envelope(correlationId, cmdName, response);
+                            const auto bytes = serialize_envelope(envelope);
+                            rtc::binary binaryMsg(bytes.begin(), bytes.end());
+                            try {
+                                ws->send(binaryMsg);
+                            }
+                            catch (const std::exception&) {
+                                return;
+                            }
+                        }
+                    }
                     return;
                 }
 
