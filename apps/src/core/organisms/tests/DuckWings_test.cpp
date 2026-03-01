@@ -94,6 +94,35 @@ TEST(DuckWingsTest, LiftCancelsGravityWhileAirborne)
     EXPECT_LT(liftVy, baselineVy - 1.0);
 }
 
+TEST(DuckWingsTest, LiftHoversWhenStartingStationaryAirborne)
+{
+    auto liftSetup = DuckTestSetup::create(10, 60, 5, 5, 0);
+    auto baselineSetup = DuckTestSetup::create(10, 60, 5, 5, 0);
+
+    liftSetup.brain->setDirectInput(Vector2f{ 0.0f, 1.0f }, false);
+    baselineSetup.brain->setDirectInput(Vector2f{ 0.0f, 0.0f }, false);
+
+    const double liftStartY = liftSetup.duck->position.y;
+    const double baselineStartY = baselineSetup.duck->position.y;
+
+    liftSetup.advanceFrames(60);
+    baselineSetup.advanceFrames(60);
+
+    const double liftDeltaY = liftSetup.duck->position.y - liftStartY;
+    const double baselineDeltaY = baselineSetup.duck->position.y - baselineStartY;
+
+    // Gravity pulls +Y. With full lift held and near-zero starting velocity,
+    // the duck should hover (minimal change in position.y).
+    EXPECT_LT(std::abs(liftDeltaY), 0.10);
+
+    // Baseline should fall noticeably in the same time window.
+    EXPECT_GT(baselineDeltaY, 0.50);
+
+    // Hovering with wings should consume energy; baseline should not.
+    EXPECT_GT(liftSetup.duck->getEnergyConsumedTotal(), 0.15);
+    EXPECT_NEAR(baselineSetup.duck->getEnergyConsumedTotal(), 0.0, 1e-9);
+}
+
 TEST(DuckWingsTest, HeldJumpWithLiftIsHigherAndMoreExpensiveThanNeutralAndDive)
 {
     const JumpMetrics neutral = simulateHeldJump(0.0f);
