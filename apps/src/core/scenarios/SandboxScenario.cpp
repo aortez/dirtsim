@@ -13,6 +13,7 @@ namespace DirtSim {
 
 SandboxScenario::SandboxScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Sandbox";
     metadata_.description = "Default sandbox with dirt quadrant and particle streams (no walls)";
     metadata_.category = "sandbox";

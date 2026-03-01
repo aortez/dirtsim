@@ -16,12 +16,15 @@
 #define SMOLNES_THREAD_LOCAL __thread
 #endif
 
+extern SMOLNES_THREAD_LOCAL uint8_t frame_buffer_palette[61440];
+
 struct SmolnesRuntimeHandle {
     pthread_cond_t runtimeCond;
     pthread_mutex_t runtimeMutex;
 
     pthread_t runtimeThread;
     bool hasLatestFrame;
+    bool hasLatestPaletteFrame;
     bool hasMemorySnapshot;
     bool healthy;
     bool stopRequested;
@@ -62,6 +65,7 @@ struct SmolnesRuntimeHandle {
     uint8_t controller1State;
     uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
     uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
+    uint8_t latestPaletteFrame[SMOLNES_RUNTIME_PALETTE_FRAME_BYTES];
     uint8_t prgRamSnapshot[SMOLNES_RUNTIME_PRG_RAM_BYTES];
     uint8_t rendererStub;
     uint8_t textureStub;
@@ -391,7 +395,15 @@ int smolnesRuntimeWrappedUpdateTexture(
         uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
         memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
     }
+    const uint8_t* paletteSrc =
+        frame_buffer_palette + (SMOLNES_RUNTIME_FRAME_WIDTH * 8u);
+    for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
+        const uint8_t* src = paletteSrc + (row * SMOLNES_RUNTIME_FRAME_WIDTH);
+        uint8_t* dst = runtime->latestPaletteFrame + (row * SMOLNES_RUNTIME_FRAME_WIDTH);
+        memcpy(dst, src, SMOLNES_RUNTIME_FRAME_WIDTH);
+    }
     runtime->hasLatestFrame = true;
+    runtime->hasLatestPaletteFrame = true;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 
     return 0;
@@ -793,6 +805,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->targetFrames = 0;
     runtime->latestFrameId = 0;
     runtime->hasLatestFrame = false;
+    runtime->hasLatestPaletteFrame = false;
     runtime->hasMemorySnapshot = false;
     runtime->runFramesWaitMs = 0.0;
     runtime->runFramesWaitCalls = 0;
@@ -821,6 +834,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->memorySnapshotCopyMs = 0.0;
     runtime->memorySnapshotCopyCalls = 0;
     memset(runtime->latestFrame, 0, sizeof(runtime->latestFrame));
+    memset(runtime->latestPaletteFrame, 0, sizeof(runtime->latestPaletteFrame));
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
     runtime->controller1State = 0;
@@ -983,6 +997,28 @@ bool smolnesRuntimeCopyLatestFrame(
     }
 
     memcpy(buffer, mutableRuntime->latestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
+    if (frameId != NULL) {
+        *frameId = mutableRuntime->latestFrameId;
+    }
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyLatestPaletteIndices(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)
+{
+    if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_PALETTE_FRAME_BYTES) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->hasLatestPaletteFrame) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(buffer, mutableRuntime->latestPaletteFrame, SMOLNES_RUNTIME_PALETTE_FRAME_BYTES);
     if (frameId != NULL) {
         *frameId = mutableRuntime->latestFrameId;
     }

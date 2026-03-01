@@ -10,12 +10,12 @@
 
 namespace DirtSim::Ui {
 
-void InMemoryUserSettingsManager::setWebSocketService(Network::WebSocketServiceInterface* wsService)
+void UserSettingsManager::setWebSocketService(Network::WebSocketServiceInterface* wsService)
 {
     wsService_ = wsService;
 }
 
-void InMemoryUserSettingsManager::syncFromServerOrAssert(int timeoutMs)
+void UserSettingsManager::syncFromServerOrAssert(int timeoutMs)
 {
     DIRTSIM_ASSERT(wsService_ != nullptr, "UserSettingsManager missing WebSocketService");
     DIRTSIM_ASSERT(wsService_->isConnected(), "UserSettingsManager not connected");
@@ -31,13 +31,12 @@ void InMemoryUserSettingsManager::syncFromServerOrAssert(int timeoutMs)
     settings_ = result.value().value().settings;
 }
 
-void InMemoryUserSettingsManager::applyServerUpdate(const DirtSim::UserSettings& settings)
+void UserSettingsManager::applyServerUpdate(const DirtSim::UserSettings& settings)
 {
     settings_ = settings;
 }
 
-void InMemoryUserSettingsManager::patchOrAssert(
-    const Api::UserSettingsPatch::Command& patch, int timeoutMs)
+void UserSettingsManager::patchOrAssert(const Api::UserSettingsPatch::Command& patch, int timeoutMs)
 {
     DIRTSIM_ASSERT(wsService_ != nullptr, "UserSettingsManager missing WebSocketService");
     DIRTSIM_ASSERT(wsService_->isConnected(), "UserSettingsManager not connected");
@@ -92,7 +91,7 @@ void InMemoryUserSettingsManager::patchOrAssert(
     settings_ = result.value().value().settings;
 }
 
-void InMemoryUserSettingsManager::setOrAssert(const DirtSim::UserSettings& settings, int timeoutMs)
+void UserSettingsManager::setOrAssert(const DirtSim::UserSettings& settings, int timeoutMs)
 {
     DIRTSIM_ASSERT(wsService_ != nullptr, "UserSettingsManager missing WebSocketService");
     DIRTSIM_ASSERT(wsService_->isConnected(), "UserSettingsManager not connected");
@@ -110,7 +109,7 @@ void InMemoryUserSettingsManager::setOrAssert(const DirtSim::UserSettings& setti
     settings_ = result.value().value().settings;
 }
 
-void InMemoryUserSettingsManager::resetOrAssert(int timeoutMs)
+void UserSettingsManager::resetOrAssert(int timeoutMs)
 {
     DIRTSIM_ASSERT(wsService_ != nullptr, "UserSettingsManager missing WebSocketService");
     DIRTSIM_ASSERT(wsService_->isConnected(), "UserSettingsManager not connected");

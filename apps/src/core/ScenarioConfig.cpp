@@ -33,6 +33,8 @@ ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
             return Config::TreeGermination{};
         case Scenario::EnumType::WaterEqualization:
             return Config::WaterEqualization{};
+        case Scenario::EnumType::NesSuperTiltBro:
+            return Config::NesSuperTiltBro{};
     }
     return Config::Empty{};
 }

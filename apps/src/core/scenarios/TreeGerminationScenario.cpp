@@ -15,6 +15,7 @@ namespace DirtSim {
 TreeGerminationScenario::TreeGerminationScenario(GenomeRepository& genomeRepository)
     : genomeRepository_(genomeRepository)
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Tree Germination";
     metadata_.description = "9x9 world with seed growing into balanced tree";
     metadata_.category = "organisms";

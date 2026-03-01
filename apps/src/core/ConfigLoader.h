@@ -18,8 +18,8 @@ namespace DirtSim {
  * 3. ~/.config/dirtsim/ (user overrides)
  * 4. /etc/dirtsim/ (system defaults)
  *
- * At each location, checks for .local version first (e.g., server.json.local),
- * then falls back to base file (e.g., server.json). The .local file is a complete
+ * At each location, checks for .local version first (e.g., foo.json.local),
+ * then falls back to base file (e.g., foo.json). The .local file is a complete
  * replacement, not a merge.
  */
 class ConfigLoader {

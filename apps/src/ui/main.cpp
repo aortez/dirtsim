@@ -1,9 +1,9 @@
 #include "state-machine/StateMachine.h"
 // TODO: Re-enable when integrating UI components:
 // #include "SimulatorUI.h"
-#include "UiConfig.h"
+#include "ScenarioMetadataManager.h"
+#include "UserSettingsManager.h"
 #include "audio/api/NoteOn.h"
-#include "core/ConfigLoader.h"
 #include "core/LoggingChannels.h"
 #include "core/World.h"
 #include "core/network/WebSocketService.h"
@@ -259,19 +259,10 @@ int main(int argc, char** argv)
     SLOG_INFO("Starting with new UI state machine (UISM)");
 
     // Create the UI state machine with display.
-    DirtSim::Ui::InMemoryUserSettingsManager userSettingsManager;
-    auto stateMachine =
-        std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default(), userSettingsManager);
-
-    // Load UI configuration (optional - defaults apply if not found).
-    auto uiConfigResult = DirtSim::ConfigLoader::load<DirtSim::UiConfig>("ui.json");
-    if (uiConfigResult.isValue()) {
-        stateMachine->uiConfig = std::make_unique<DirtSim::UiConfig>(uiConfigResult.value());
-        SLOG_INFO("Loaded ui.json (autoRun={})", stateMachine->uiConfig->autoRun);
-    }
-    else {
-        SLOG_INFO("No ui.json found, using defaults (autoRun=false)");
-    }
+    DirtSim::Ui::UserSettingsManager userSettingsManager;
+    DirtSim::Ui::ScenarioMetadataManager scenarioMetadataManager;
+    auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(
+        lv_disp_get_default(), userSettingsManager, scenarioMetadataManager);
 
     SLOG_INFO("UI state machine created, state: {}", stateMachine->getCurrentStateName());
 

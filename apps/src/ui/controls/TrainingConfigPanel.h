@@ -17,6 +17,7 @@ namespace Ui {
 class EventSink;
 class ExpandablePanel;
 class TrainingPopulationPanel;
+class UiServices;
 
 class TrainingConfigPanel {
 public:
@@ -29,6 +30,7 @@ public:
     TrainingConfigPanel(
         lv_obj_t* container,
         EventSink& eventSink,
+        UiServices& uiServices,
         ExpandablePanel* panel,
         Network::WebSocketServiceInterface* wsService,
         bool evolutionStarted,
@@ -51,6 +53,7 @@ public:
 private:
     lv_obj_t* container_ = nullptr;
     EventSink& eventSink_;
+    UiServices& uiServices_;
     ExpandablePanel* panel_ = nullptr;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
 

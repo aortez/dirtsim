@@ -11,6 +11,7 @@ namespace DirtSim {
 
 RainingScenario::RainingScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Raining";
     metadata_.description = "Rain falling from the sky";
     metadata_.category = "demo";

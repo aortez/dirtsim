@@ -72,6 +72,12 @@ public:
     void onBinary(BinaryCallback /*callback*/) override {}
     void onServerCommand(ServerCommandCallback /*callback*/) override {}
     void setJsonDeserializer(JsonDeserializer /*deserializer*/) override {}
+    void registerCommandHandler(std::string /*commandName*/, CommandHandler /*handler*/) override {}
+    std::string getConnectionId(std::shared_ptr<rtc::WebSocket> /*ws*/) override { return ""; }
+    bool isJsonClient(std::shared_ptr<rtc::WebSocket> /*ws*/) const override { return false; }
+    void reportCommandHandlerDeserializeError(
+        const std::string& /*commandName*/, const std::string& /*errorMessage*/) override
+    {}
 
     Result<Network::MessageEnvelope, std::string> sendBinaryAndReceive(
         const Network::MessageEnvelope& envelope, int /*timeoutMs*/ = 5000) override;

@@ -72,7 +72,7 @@ Build a minimal, purpose-built Linux image that:
 - [x] Added ScenarioSwitch command (switch scenarios at runtime)
 - [x] Added ScenariosListGet command (UI requests from server dynamically)
 - [x] Removed static SCENARIO_METADATA duplication (single source of truth)
-- [x] Fixed server.json config installation and permissions
+- [x] Removed obsolete server.json runtime config path
 
 **Tooling:**
 - [x] Added `tail_remote_logs.sh` for remote debugging

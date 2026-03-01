@@ -53,9 +53,6 @@ do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${THISDIR}/files/dirtsim-server.service ${D}${systemd_system_unitdir}/
 
-    # Install default configuration.
-    install -d ${D}${sysconfdir}/dirtsim
-    install -m 0644 ${EXTERNALSRC}/config/server.json ${D}${sysconfdir}/dirtsim/server.json
 }
 
 # Enable the systemd user service.
@@ -66,7 +63,6 @@ SYSTEMD_AUTO_ENABLE = "enable"
 FILES:${PN} = " \
     ${bindir}/dirtsim-server \
     ${systemd_system_unitdir}/dirtsim-server.service \
-    ${sysconfdir}/dirtsim/server.json \
 "
 
 # Runtime dependencies.

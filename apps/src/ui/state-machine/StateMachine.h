@@ -9,8 +9,7 @@
 #include "core/Timers.h"
 #include "server/UserSettings.h"
 #include "states/State.h"
-#include "ui/UiConfig.h"
-#include "ui/UserSettingsManager.h"
+#include "ui/UiServices.h"
 
 #include <algorithm>
 #include <memory>
@@ -32,6 +31,8 @@ class RemoteInputDevice;
 class UiComponentManager;
 class WebRtcStreamer;
 class FractalAnimator;
+class ScenarioMetadataManager;
+class UserSettingsManager;
 } // namespace Ui
 } // namespace DirtSim
 
@@ -40,15 +41,22 @@ namespace Ui {
 
 class StateMachine : public StateMachineBase,
                      public StateMachineInterface<Event>,
-                     public EventSink {
+                     public EventSink,
+                     public UiServices {
 public:
     explicit StateMachine(
-        _lv_display_t* display, UserSettingsManager& userSettingsManager, uint16_t wsPort = 7070);
+        _lv_display_t* display,
+        UserSettingsManager& userSettingsManager,
+        ScenarioMetadataManager& scenarioMetadataManager,
+        uint16_t wsPort = 7070);
     ~StateMachine();
 
     // Test-only constructor: creates minimal StateMachine without display or networking.
     struct TestMode {};
-    explicit StateMachine(TestMode, UserSettingsManager& userSettingsManager);
+    explicit StateMachine(
+        TestMode,
+        UserSettingsManager& userSettingsManager,
+        ScenarioMetadataManager& scenarioMetadataManager);
 
     void mainLoopRun();
 
@@ -76,8 +84,6 @@ public:
     std::unique_ptr<FractalAnimator> fractalAnimator_;
 
     Network::WebSocketServiceInterface& getWebSocketService();
-    Network::WebSocketService* getConcreteWebSocketService();
-    bool hasWebSocketService() const { return wsService_ != nullptr; }
     void setLastServerAddress(const std::string& host, uint16_t port);
     bool queueReconnectToLastServer();
 
@@ -93,21 +99,18 @@ public:
 
     double getUiFps() const;
 
-    UserSettings& getUserSettings() { return userSettingsManager_->get(); }
-    const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
-    UserSettingsManager& getUserSettingsManager() { return *userSettingsManager_; }
-    const UserSettingsManager& getUserSettingsManager() const { return *userSettingsManager_; }
+    UserSettings& getUserSettings();
+    const UserSettings& getUserSettings() const;
+    UserSettingsManager& getUserSettingsManager();
+    const UserSettingsManager& getUserSettingsManager() const;
+    ScenarioMetadataManager& getScenarioMetadataManager();
+    const ScenarioMetadataManager& getScenarioMetadataManager() const;
+    UserSettingsManager& userSettingsManager() override;
+    const UserSettingsManager& userSettingsManager() const override;
+    ScenarioMetadataManager& scenarioMetadataManager() override;
+    const ScenarioMetadataManager& scenarioMetadataManager() const override;
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
-
-    // UI configuration (loaded from ui.json).
-    std::unique_ptr<UiConfig> uiConfig;
-
-    const UiConfig& getUiConfig() const
-    {
-        static UiConfig defaultConfig;
-        return uiConfig ? *uiConfig : defaultConfig;
-    }
 
 private:
     static constexpr uint32_t AutoShrinkTimeoutMs = 10000;
@@ -123,7 +126,8 @@ private:
     bool hasLastServerAddress_ = false;
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
-    UserSettingsManager* userSettingsManager_ = nullptr;
+    UserSettingsManager& userSettingsManager_;
+    ScenarioMetadataManager& scenarioMetadataManager_;
     bool startMenuIdleActionTriggered_ = false;
     int synthVolumePercent_ = 20;
     bool audioVolumeWarningLogged_ = false;

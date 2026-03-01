@@ -1,7 +1,6 @@
 #include "StateMachine.h"
 #include "Event.h"
 #include "EventProcessor.h"
-#include "ServerConfig.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
 #include "api/TrainingBestSnapshotGet.h"
@@ -87,30 +86,6 @@ int getMaxTimezoneIndex()
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
-
-bool isNesTrainingTarget(const TrainingSpec& spec)
-{
-    return spec.organismType == OrganismType::NES_FLAPPY_BIRD
-        || spec.scenarioId == Scenario::EnumType::NesFlappyParatroopa;
-}
-
-template <typename RecordUpdateFn>
-void canonicalizeNesTrainingTarget(UserSettings& settings, RecordUpdateFn&& recordUpdate)
-{
-    if (!isNesTrainingTarget(settings.trainingSpec)) {
-        return;
-    }
-
-    if (settings.trainingSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
-        settings.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
-        recordUpdate("trainingSpec.organismType promoted to NES_FLAPPY_BIRD for NES training");
-    }
-
-    if (settings.trainingSpec.scenarioId != Scenario::EnumType::NesFlappyParatroopa) {
-        settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-        recordUpdate("trainingSpec.scenarioId forced to NesFlappyParatroopa for NES training");
-    }
-}
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -311,7 +286,16 @@ UserSettings sanitizeUserSettings(
         recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
     }
 
-    canonicalizeNesTrainingTarget(settings, recordUpdate);
+    const bool isNesTrainingTarget = settings.trainingSpec.organismType == OrganismType::NES_DUCK
+        || registry.isNesScenario(settings.trainingSpec.scenarioId);
+    if (isNesTrainingTarget) {
+        DIRTSIM_ASSERT(
+            settings.trainingSpec.organismType == OrganismType::NES_DUCK,
+            "Invalid trainingSpec: NES scenario requires NES_DUCK organismType");
+        DIRTSIM_ASSERT(
+            registry.isNesScenario(settings.trainingSpec.scenarioId),
+            "Invalid trainingSpec: NES_DUCK requires NES scenarioId");
+    }
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
@@ -420,6 +404,8 @@ std::optional<ScenarioConfig> makeScenarioConfigFromUserSettings(
             return std::nullopt;
         case Scenario::EnumType::NesFlappyParatroopa:
             return std::nullopt;
+        case Scenario::EnumType::NesSuperTiltBro:
+            return std::nullopt;
         case Scenario::EnumType::Sandbox:
             return settings.sandboxScenarioConfig;
         case Scenario::EnumType::Raining:
@@ -454,6 +440,8 @@ bool isScenarioConfigTouched(
         case Scenario::EnumType::Lights:
             return false;
         case Scenario::EnumType::NesFlappyParatroopa:
+            return false;
+        case Scenario::EnumType::NesSuperTiltBro:
             return false;
         case Scenario::EnumType::Sandbox:
             return sandboxTouched;
@@ -715,9 +703,6 @@ StateMachine::StateMachine(
     const std::optional<std::filesystem::path>& dataDir)
     : pImpl(dataDir)
 {
-    serverConfig = std::make_unique<ServerConfig>();
-    serverConfig->dataDir = dataDir;
-
     pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
 
     if (webSocketService) {
@@ -1395,11 +1380,7 @@ void StateMachine::handleEvent(const Event& event)
         for (const auto& id : scenarioIds) {
             const ScenarioMetadata* metadata = registry.getMetadata(id);
             if (metadata) {
-                response.scenarios.push_back(
-                    Api::ScenarioListGet::ScenarioInfo{ .id = id,
-                                                        .name = metadata->name,
-                                                        .description = metadata->description,
-                                                        .category = metadata->category });
+                response.scenarios.push_back(*metadata);
             }
         }
 

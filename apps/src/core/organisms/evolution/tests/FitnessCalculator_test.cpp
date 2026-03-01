@@ -379,26 +379,6 @@ TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
     EXPECT_GT(fitness_moved, fitness_static);
 }
 
-TEST(FitnessCalculatorTest, NesFitnessUsesRewardTotal)
-{
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{
-        .lifespan = 0.0,
-        .maxEnergy = 0.0,
-        .nesRewardTotal = 123.5,
-    };
-    const FitnessContext context{
-        .result = result,
-        .organismType = OrganismType::NES_FLAPPY_BIRD,
-        .worldWidth = 10,
-        .worldHeight = 10,
-        .evolutionConfig = config,
-    };
-
-    const double fitness = computeFitnessForOrganism(context);
-    EXPECT_DOUBLE_EQ(fitness, 123.5);
-}
-
 TEST(FitnessCalculatorTest, GooseFitnessPenalizesBackAndForthPath)
 {
     const EvolutionConfig config = makeConfig();

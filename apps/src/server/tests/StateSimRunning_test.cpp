@@ -3,7 +3,7 @@
 #include "core/World.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "server/ServerConfig.h"
+#include "server/UserSettings.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
@@ -214,7 +214,7 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
 
     // Verify: WorldData has correct properties.
     const WorldData& worldData = capturedResponse.value().worldData;
-    const auto scenario_id = getScenarioId(fixture.stateMachine->serverConfig->startupConfig);
+    const auto scenario_id = fixture.stateMachine->getUserSettings().defaultScenario;
     const auto* metadata = fixture.stateMachine->getScenarioRegistry().getMetadata(scenario_id);
     ASSERT_NE(metadata, nullptr);
 

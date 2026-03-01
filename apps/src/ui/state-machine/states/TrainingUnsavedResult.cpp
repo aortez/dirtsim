@@ -23,10 +23,6 @@ Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServe
     if (ids.empty()) {
         return Result<Api::TrainingResultSave::OkayType, std::string>::error("No ids provided");
     }
-    if (!sm.hasWebSocketService()) {
-        return Result<Api::TrainingResultSave::OkayType, std::string>::error(
-            "No WebSocketService available");
-    }
 
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
@@ -141,10 +137,6 @@ State::Any TrainingUnsavedResult::onEvent(
 {
     LOG_INFO(State, "Training result discard requested");
 
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available");
-        return std::move(*this);
-    }
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot discard training result");
@@ -233,12 +225,6 @@ State::Any TrainingUnsavedResult::onEvent(
         return std::move(*this);
     }
 
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available");
-        cwc.sendResponse(
-            UiApi::TrainingResultDiscard::Response::error(ApiError("No WebSocketService")));
-        return std::move(*this);
-    }
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot discard training result");

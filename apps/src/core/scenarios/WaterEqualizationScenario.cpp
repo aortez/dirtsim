@@ -10,6 +10,7 @@ namespace DirtSim {
 
 WaterEqualizationScenario::WaterEqualizationScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Water Equalization";
     metadata_.description = "Water flows through bottom opening to equalize between columns";
     metadata_.category = "demo";

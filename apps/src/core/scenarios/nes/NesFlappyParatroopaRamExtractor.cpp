@@ -1,4 +1,6 @@
-#include "NesRomProfileExtractor.h"
+#include "core/scenarios/nes/NesFlappyParatroopaRamExtractor.h"
+
+#include "core/organisms/evolution/NesPolicyLayout.h"
 
 #include <algorithm>
 #include <cctype>
@@ -35,7 +37,7 @@ int decodeScore(const SmolnesRuntime::MemorySnapshot& snapshot)
 }
 } // namespace
 
-NesRomProfileExtractor::NesRomProfileExtractor(std::string romId)
+NesFlappyParatroopaRamExtractor::NesFlappyParatroopaRamExtractor(std::string romId)
 {
     const std::string normalizedRomId = normalizeRomId(romId);
     if (normalizedRomId == NesPolicyLayout::FlappyParatroopaWorldUnlRomId) {
@@ -43,12 +45,12 @@ NesRomProfileExtractor::NesRomProfileExtractor(std::string romId)
     }
 }
 
-bool NesRomProfileExtractor::isSupported() const
+bool NesFlappyParatroopaRamExtractor::isSupported() const
 {
     return profile_ != Profile::Unsupported;
 }
 
-std::optional<NesFlappyBirdEvaluatorInput> NesRomProfileExtractor::extract(
+std::optional<NesFlappyBirdEvaluatorInput> NesFlappyParatroopaRamExtractor::extract(
     const SmolnesRuntime::MemorySnapshot& snapshot, uint8_t previousControllerMask) const
 {
     if (profile_ == Profile::Unsupported) {
@@ -74,7 +76,7 @@ std::optional<NesFlappyBirdEvaluatorInput> NesRomProfileExtractor::extract(
     return output;
 }
 
-std::string NesRomProfileExtractor::normalizeRomId(const std::string& rawRomId)
+std::string NesFlappyParatroopaRamExtractor::normalizeRomId(const std::string& rawRomId)
 {
     std::string normalized;
     normalized.reserve(rawRomId.size());

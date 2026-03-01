@@ -1,11 +1,13 @@
 #include "GenomeBrowserPanel.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioId.h"
 #include "core/network/WebSocketServiceInterface.h"
 #include "core/reflect.h"
 #include "server/api/GenomeDelete.h"
 #include "server/api/GenomeList.h"
-#include "ui/ScenarioMetadataCache.h"
+#include "ui/ScenarioMetadataManager.h"
+#include "ui/UiServices.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
 #include <iomanip>
@@ -24,8 +26,12 @@ constexpr const char* kSortArrowUp = "↑";
 } // namespace
 
 GenomeBrowserPanel::GenomeBrowserPanel(
-    lv_obj_t* parent, Network::WebSocketServiceInterface* wsService, EventSink* eventSink)
-    : wsService_(wsService),
+    lv_obj_t* parent,
+    UiServices& uiServices,
+    Network::WebSocketServiceInterface* wsService,
+    EventSink* eventSink)
+    : uiServices_(uiServices),
+      wsService_(wsService),
       eventSink_(eventSink),
       browser_(
           parent,
@@ -305,14 +311,6 @@ void GenomeBrowserPanel::buildScenarioPanel(lv_obj_t* parent, const BrowserPanel
         return;
     }
 
-    if (!ScenarioMetadataCache::hasScenarios()) {
-        lv_obj_t* missingLabel = lv_label_create(parent);
-        lv_label_set_text(missingLabel, "Scenario list not loaded.");
-        lv_obj_set_style_text_color(missingLabel, lv_color_hex(0xCCCCCC), 0);
-        lv_obj_set_style_text_font(missingLabel, &lv_font_montserrat_12, 0);
-        return;
-    }
-
     scenarioNameLabel_ = lv_label_create(parent);
     lv_label_set_long_mode(scenarioNameLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(scenarioNameLabel_, LV_PCT(100));
@@ -325,12 +323,12 @@ void GenomeBrowserPanel::buildScenarioPanel(lv_obj_t* parent, const BrowserPanel
     lv_obj_set_style_text_color(scenarioDescriptionLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(scenarioDescriptionLabel_, &lv_font_montserrat_12, 0);
 
-    std::vector<std::string> scenarios = ScenarioMetadataCache::buildOptionsList();
+    const auto& scenarios = uiServices_.scenarioMetadataManager().scenarios();
     scenarioButtons_.clear();
     scenarioButtons_.reserve(scenarios.size());
-    for (size_t i = 0; i < scenarios.size(); ++i) {
+    for (const auto& scenarioMetadata : scenarios) {
         lv_obj_t* container = LVGLBuilder::actionButton(parent)
-                                  .text(scenarios[i].c_str())
+                                  .text(scenarioMetadata.name.c_str())
                                   .mode(LVGLBuilder::ActionMode::Toggle)
                                   .width(LV_PCT(100))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
@@ -346,12 +344,10 @@ void GenomeBrowserPanel::buildScenarioPanel(lv_obj_t* parent, const BrowserPanel
             continue;
         }
 
-        Scenario::EnumType scenarioId =
-            ScenarioMetadataCache::scenarioIdFromIndex(static_cast<uint16_t>(i));
-        ScenarioButtonContext* context = new ScenarioButtonContext{ this, scenarioId };
+        ScenarioButtonContext* context = new ScenarioButtonContext{ this, scenarioMetadata.id };
         lv_obj_add_event_cb(button, onScenarioSelected, LV_EVENT_CLICKED, context);
         lv_obj_add_event_cb(button, onScenarioButtonDeleted, LV_EVENT_DELETE, context);
-        scenarioButtons_[container] = scenarioId;
+        scenarioButtons_[container] = scenarioMetadata.id;
     }
 
     Scenario::EnumType initialScenario = metaIt->second.scenarioId;
@@ -429,26 +425,10 @@ void GenomeBrowserPanel::updateScenarioLabels()
         return;
     }
 
-    std::string scenarioName = "Unknown";
-    std::string scenarioDescription;
-    if (selectedScenarioId_.has_value()) {
-        const Scenario::EnumType scenarioId = selectedScenarioId_.value();
-        if (auto info = ScenarioMetadataCache::getScenarioInfo(scenarioId); info.has_value()) {
-            scenarioName = info->name;
-            scenarioDescription = info->description;
-        }
-        else {
-            scenarioName = Scenario::toString(scenarioId);
-        }
-    }
-
-    lv_label_set_text(scenarioNameLabel_, scenarioName.c_str());
-    if (scenarioDescription.empty()) {
-        lv_label_set_text(scenarioDescriptionLabel_, "");
-    }
-    else {
-        lv_label_set_text(scenarioDescriptionLabel_, scenarioDescription.c_str());
-    }
+    DIRTSIM_ASSERT(selectedScenarioId_.has_value(), "Selected scenario must be set");
+    const auto& scenarioMetadata = uiServices_.scenarioMetadataManager().get(*selectedScenarioId_);
+    lv_label_set_text(scenarioNameLabel_, scenarioMetadata.name.c_str());
+    lv_label_set_text(scenarioDescriptionLabel_, scenarioMetadata.description.c_str());
 }
 
 void GenomeBrowserPanel::updateSortButtons()

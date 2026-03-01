@@ -16,4 +16,14 @@ struct NesFlappyParatroopa {
     bool requireSmolnesMapper = true;
 };
 
+struct NesSuperTiltBro {
+    using serialize = zpp::bits::members<5>;
+
+    std::string romId = "tilt-no-network-unrom-e";
+    std::string romDirectory = "testdata/roms";
+    std::string romPath = "testdata/roms/tilt_no_network_unrom_(E).nes";
+    uint32_t maxEpisodeFrames = 108000;
+    bool requireSmolnesMapper = true;
+};
+
 } // namespace DirtSim::Config

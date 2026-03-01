@@ -663,7 +663,7 @@ double computeFitnessForRunner(
     std::optional<Api::FitnessBreakdownReport>* fitnessBreakdownOut)
 {
     (void)brainKind;
-    if (organismType == OrganismType::NES_FLAPPY_BIRD) {
+    if (organismType == OrganismType::NES_DUCK) {
         if (treeBreakdownOut) {
             treeBreakdownOut->reset();
         }
@@ -1235,6 +1235,8 @@ void Evolution::onEnter(StateMachine& dsm)
         case Scenario::EnumType::Lights:
             break;
         case Scenario::EnumType::NesFlappyParatroopa:
+            break;
+        case Scenario::EnumType::NesSuperTiltBro:
             break;
         case Scenario::EnumType::Sandbox:
             scenarioConfigOverride_ = dsm.getUserSettings().sandboxScenarioConfig;

@@ -9,6 +9,7 @@
 #include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/LightsScenario.h"
 #include "core/scenarios/NesFlappyParatroopaScenario.h"
+#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/RainingScenario.h"
 #include "core/scenarios/SandboxScenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
@@ -58,6 +59,11 @@ ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeReposit
             return std::make_unique<NesFlappyParatroopaScenario>();
         });
 
+    registry.registerScenario(
+        Scenario::EnumType::NesSuperTiltBro, NesSuperTiltBroScenario{}.getMetadata(), []() {
+            return std::make_unique<NesSuperTiltBroScenario>();
+        });
+
     registry.registerScenario(Scenario::EnumType::Raining, RainingScenario{}.getMetadata(), []() {
         return std::make_unique<RainingScenario>();
     });
@@ -94,7 +100,9 @@ void ScenarioRegistry::registerScenario(
     }
 
     spdlog::debug("Registering scenario '{}' - {}", toString(id), metadata.name);
-    scenarios_[id] = ScenarioEntry{ metadata, std::move(factory) };
+    ScenarioEntry entry{ metadata, std::move(factory) };
+    entry.metadata.id = id;
+    scenarios_[id] = std::move(entry);
 }
 
 std::unique_ptr<ScenarioRunner> ScenarioRegistry::createScenario(Scenario::EnumType id) const
@@ -114,6 +122,12 @@ const ScenarioMetadata* ScenarioRegistry::getMetadata(Scenario::EnumType id) con
         return &it->second.metadata;
     }
     return nullptr;
+}
+
+bool ScenarioRegistry::isNesScenario(Scenario::EnumType id) const
+{
+    const auto* metadata = getMetadata(id);
+    return metadata && metadata->kind == ScenarioKind::NesWorld;
 }
 
 std::vector<Scenario::EnumType> ScenarioRegistry::getScenarioIds() const

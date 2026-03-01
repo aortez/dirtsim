@@ -96,53 +96,6 @@ TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
     EXPECT_TRUE(diskPopulation.seedGenomes.empty());
 }
 
-TEST(UserSettingsTest, LoadingSettingsPromotesNesDuckTargetToNesOrganismWithoutBrainRewrite)
-{
-    TestStateMachineFixture fixture("dirtsim-user-settings-sanitize-nes-target");
-    fixture.stateMachine.reset();
-
-    UserSettings staleSettings;
-    staleSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
-    staleSettings.trainingSpec.organismType = OrganismType::DUCK;
-    staleSettings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-
-    PopulationSpec population;
-    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
-    population.count = 2;
-    population.randomCount = 2;
-    staleSettings.trainingSpec.population.push_back(population);
-
-    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
-    std::ofstream file(settingsPath);
-    ASSERT_TRUE(file.is_open());
-    nlohmann::json json = staleSettings;
-    file << json.dump(2) << "\n";
-    file.close();
-
-    auto mockWs = std::make_unique<MockWebSocketService>();
-    fixture.mockWebSocketService = mockWs.get();
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingResult>(std::monostate{});
-    fixture.stateMachine = std::make_unique<StateMachine>(std::move(mockWs), fixture.testDataDir);
-
-    const UserSettings& inMemory = fixture.stateMachine->getUserSettings();
-    EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::NES_FLAPPY_BIRD);
-    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
-    ASSERT_EQ(inMemory.trainingSpec.population.size(), 1u);
-    const PopulationSpec& inMemoryPopulation = inMemory.trainingSpec.population.front();
-    EXPECT_EQ(inMemoryPopulation.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
-    EXPECT_EQ(inMemoryPopulation.count, 2);
-    EXPECT_EQ(inMemoryPopulation.randomCount, 2);
-
-    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::NES_FLAPPY_BIRD);
-    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::NesFlappyParatroopa);
-    ASSERT_EQ(fromDisk.trainingSpec.population.size(), 1u);
-    const PopulationSpec& diskPopulation = fromDisk.trainingSpec.population.front();
-    EXPECT_EQ(diskPopulation.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
-    EXPECT_EQ(diskPopulation.count, 2);
-    EXPECT_EQ(diskPopulation.randomCount, 2);
-}
-
 TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
 {
     TestStateMachineFixture fixture("dirtsim-user-settings-set");

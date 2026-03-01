@@ -11,6 +11,7 @@
 #include "server/api/UserSettingsPatch.h"
 #include "ui/TrainingActiveView.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
 #include <cstdint>
@@ -67,11 +68,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
     // path where TrainingIdle is skipped.
-    if (!sm.hasWebSocketService()) {
-        LOG_WARN(State, "No WebSocketService available for training stream setup");
-        return;
-    }
-
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot setup training streams");
@@ -124,10 +120,7 @@ void TrainingActive::onEnter(StateMachine& sm)
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
-    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
-    if (sm.hasWebSocketService()) {
-        wsService = &sm.getWebSocketService();
-    }
+    DirtSim::Network::WebSocketServiceInterface* wsService = &sm.getWebSocketService();
 
     view_ = std::make_unique<TrainingActiveView>(
         uiManager,
@@ -369,10 +362,6 @@ State::Any TrainingActive::onEvent(const StopTrainingClickedEvent& /*evt*/, Stat
 
     trainingPaused_ = false;
 
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available");
-        return StartMenu{};
-    }
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot stop evolution");

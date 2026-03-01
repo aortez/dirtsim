@@ -4,7 +4,8 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/ScenarioSwitch.h"
-#include "ui/ScenarioMetadataCache.h"
+#include "ui/ScenarioMetadataManager.h"
+#include "ui/UiServices.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 
 #include <atomic>
@@ -12,17 +13,33 @@
 namespace DirtSim {
 namespace Ui {
 
+namespace {
+
+std::string getScenarioDisplayName(
+    const ScenarioMetadataManager& scenarioMetadataManager, Scenario::EnumType scenarioId)
+{
+    for (const auto& meta : scenarioMetadataManager.scenarios()) {
+        if (meta.id == scenarioId) {
+            return meta.name;
+        }
+    }
+
+    return Scenario::toString(scenarioId);
+}
+
+} // namespace
+
 ScenarioPanel::ScenarioPanel(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
-    UserSettingsManager& userSettingsManager,
+    UiServices& uiServices,
     EventSink& eventSink,
     Scenario::EnumType initialScenarioId,
     const ScenarioConfig& initialConfig,
     DisplayDimensionsGetter dimensionsGetter)
     : container_(container),
       wsService_(wsService),
-      userSettingsManager_(userSettingsManager),
+      uiServices_(uiServices),
       eventSink_(eventSink),
       dimensionsGetter_(dimensionsGetter),
       currentScenarioId_(initialScenarioId),
@@ -54,7 +71,8 @@ ScenarioPanel::~ScenarioPanel()
 void ScenarioPanel::createMainView(lv_obj_t* view)
 {
     // Scenario selection button.
-    std::string buttonText = std::string("Scenario: ") + std::string(toString(currentScenarioId_));
+    std::string buttonText = "Scenario: "
+        + getScenarioDisplayName(uiServices_.scenarioMetadataManager(), currentScenarioId_);
     scenarioButton_ = LVGLBuilder::actionButton(view)
                           .text(buttonText.c_str())
                           .icon(LV_SYMBOL_RIGHT)
@@ -69,7 +87,7 @@ void ScenarioPanel::createMainView(lv_obj_t* view)
     scenarioControls_ = ScenarioControlsFactory::create(
         view,
         wsService_,
-        userSettingsManager_,
+        uiServices_.userSettingsManager(),
         &eventSink_,
         currentScenarioId_,
         currentScenarioConfig_,
@@ -98,11 +116,11 @@ void ScenarioPanel::createScenarioSelectionView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     // Scenario option buttons.
-    buttonToScenarioIndex_.clear();
-    std::vector<std::string> scenarios = ScenarioMetadataCache::buildOptionsList();
-    for (size_t i = 0; i < scenarios.size(); i++) {
+    buttonToScenarioId_.clear();
+    const auto& scenarios = uiServices_.scenarioMetadataManager().scenarios();
+    for (const auto& scenario : scenarios) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(scenarios[i].c_str())
+                                  .text(scenario.name.c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -112,7 +130,7 @@ void ScenarioPanel::createScenarioSelectionView(lv_obj_t* view)
             // Get the inner button.
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                buttonToScenarioIndex_[button] = static_cast<int>(i);
+                buttonToScenarioId_[button] = scenario.id;
                 lv_obj_add_event_cb(button, onScenarioSelected, LV_EVENT_CLICKED, this);
             }
         }
@@ -132,8 +150,8 @@ void ScenarioPanel::updateFromConfig(Scenario::EnumType scenarioId, const Scenar
                 lv_obj_t* label =
                     lv_obj_get_child(button, 1); // Second child is text (first is icon).
                 if (label) {
-                    std::string buttonText =
-                        std::string("Scenario: ") + std::string(toString(scenarioId));
+                    std::string buttonText = "Scenario: "
+                        + getScenarioDisplayName(uiServices_.scenarioMetadataManager(), scenarioId);
                     lv_label_set_text(label, buttonText.c_str());
                 }
             }
@@ -155,7 +173,7 @@ void ScenarioPanel::updateFromConfig(Scenario::EnumType scenarioId, const Scenar
             scenarioControls_ = ScenarioControlsFactory::create(
                 mainView,
                 wsService_,
-                userSettingsManager_,
+                uiServices_.userSettingsManager(),
                 &eventSink_,
                 currentScenarioId_,
                 currentScenarioConfig_,
@@ -186,14 +204,13 @@ void ScenarioPanel::onScenarioSelected(lv_event_t* e)
     lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
 
     // Look up scenario index from button mapping.
-    auto it = self->buttonToScenarioIndex_.find(btn);
-    if (it == self->buttonToScenarioIndex_.end()) {
+    auto it = self->buttonToScenarioId_.find(btn);
+    if (it == self->buttonToScenarioId_.end()) {
         LOG_ERROR(Controls, "ScenarioPanel: Unknown scenario button clicked");
         return;
     }
 
-    int selectedIdx = it->second;
-    Scenario::EnumType scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
+    Scenario::EnumType scenarioId = it->second;
     LOG_INFO(Controls, "ScenarioPanel: Scenario changed to '{}'", toString(scenarioId));
 
     // Return to main view.

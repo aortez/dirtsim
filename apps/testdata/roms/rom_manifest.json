@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "apps/scripts/fetch_nes_test_rom.sh",
+  "roms": [
+    {
+      "id": "flappy",
+      "fileName": "Flappy.Paratroopa.World.Unl.nes",
+      "sha256": "f45fc9ab0790bbaabbe7dfeff5397f6282e6c6d50ec49b2a13226207148b6d93",
+      "spdxLicenseId": "MIT",
+      "sourceUrl": "https://github.com/captain-http/flappy-paratroopa-nes/releases/download/v1.0/Flappy.Paratroopa.World.Unl.nes",
+      "buildSource": "captain-http/flappy-paratroopa-nes release v1.0",
+      "fetchMethod": "direct-download"
+    },
+    {
+      "id": "super_tilt_bro_unrom_no_network",
+      "fileName": "tilt_no_network_unrom_(E).nes",
+      "sha256": "6f80d56ce0b242a4faceafafea321feb1c364ab8e7937646e8580ae9289a4ec3",
+      "spdxLicenseId": "WTFPL",
+      "sourceUrl": "https://github.com/sgadrat/super-tilt-bro/actions/workflows/compile.yaml",
+      "buildSource": "sgadrat/super-tilt-bro workflow compile.yaml @ b132fd25add46f816e04be64c434386743b84b8b artifact: roms",
+      "fetchMethod": "github-actions-artifact"
+    }
+  ]
+}

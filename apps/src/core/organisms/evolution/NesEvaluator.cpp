@@ -6,8 +6,7 @@ namespace DirtSim {
 
 double NesEvaluator::evaluate(const FitnessContext& context)
 {
-    DIRTSIM_ASSERT(
-        context.organismType == OrganismType::NES_FLAPPY_BIRD, "NesEvaluator: non-NES context");
+    DIRTSIM_ASSERT(context.organismType == OrganismType::NES_DUCK, "NesEvaluator: non-NES context");
     return evaluateFromRewardTotal(context.result.nesRewardTotal);
 }
 

@@ -15,6 +15,7 @@
 #include "server/api/UserSettingsPatch.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
 #include <lvgl.h>
@@ -42,13 +43,11 @@ void TrainingIdle::onEnter(StateMachine& sm)
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
-    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
-    if (sm.hasWebSocketService()) {
-        wsService = &sm.getWebSocketService();
-    }
+    DirtSim::Network::WebSocketServiceInterface* wsService = &sm.getWebSocketService();
 
     view_ = std::make_unique<TrainingIdleView>(
         uiManager,
+        sm,
         sm,
         wsService,
         sm.getUserSettings(),
@@ -171,11 +170,6 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
         static_cast<int>(evt.training.organismType));
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
-
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available");
-        return std::move(*this);
-    }
 
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
@@ -360,11 +354,6 @@ State::Any TrainingIdle::onEvent(const GenomeLoadClickedEvent& evt, StateMachine
 {
     LOG_INFO(State, "Genome load requested (genome_id={})", evt.genomeId.toShortString());
 
-    if (!sm.hasWebSocketService()) {
-        LOG_WARN(State, "Genome load ignored: no WebSocketService");
-        return std::move(*this);
-    }
-
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Genome load ignored: not connected to server");
@@ -465,7 +454,6 @@ State::Any TrainingIdle::onEvent(const ViewBestButtonClickedEvent& evt, StateMac
         return std::move(*this);
     }
 
-    DIRTSIM_ASSERT(sm.hasWebSocketService(), "WebSocketService must exist");
     auto& wsService = sm.getWebSocketService();
     DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected");
 

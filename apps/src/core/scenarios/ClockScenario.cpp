@@ -71,6 +71,7 @@ static const char* eventTypeName(ClockEventType type);
 ClockScenario::ClockScenario(ClockEventConfigs event_configs)
     : event_configs_(std::move(event_configs))
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Clock";
     metadata_.description = "Digital clock displaying system time (HH:MM:SS)";
     metadata_.category = "demo";

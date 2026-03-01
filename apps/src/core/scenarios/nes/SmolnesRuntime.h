@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/RenderMessage.h"
+#include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <array>
@@ -62,6 +63,7 @@ public:
     uint64_t getRenderedFrameCount() const;
     bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     std::optional<ScenarioVideoFrame> copyLatestFrame() const;
+    std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
     std::optional<MemorySnapshot> copyMemorySnapshot() const;
     std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
     std::string getLastError() const;

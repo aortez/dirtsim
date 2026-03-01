@@ -1,10 +1,13 @@
-#include "core/scenarios/nes/NesRomProfileExtractor.h"
+#include "core/scenarios/nes/NesFlappyParatroopaRamExtractor.h"
+
+#include "core/organisms/evolution/NesPolicyLayout.h"
 
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <sstream>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -121,9 +124,9 @@ float decodeVelocity(const FixtureRow& row)
 
 } // namespace
 
-TEST(NesRomProfileExtractorTest, UnsupportedRomYieldsNoEvaluationInput)
+TEST(NesFlappyParatroopaRamExtractorTest, UnsupportedRomYieldsNoEvaluationInput)
 {
-    NesRomProfileExtractor extractor("unsupported-rom");
+    NesFlappyParatroopaRamExtractor extractor("unsupported-rom");
     ASSERT_FALSE(extractor.isSupported());
 
     SmolnesRuntime::MemorySnapshot snapshot;
@@ -134,12 +137,12 @@ TEST(NesRomProfileExtractorTest, UnsupportedRomYieldsNoEvaluationInput)
     EXPECT_FALSE(extraction.has_value());
 }
 
-TEST(NesRomProfileExtractorTest, FlappyFixtureMapsAbstractedStateFields)
+TEST(NesFlappyParatroopaRamExtractorTest, FlappyFixtureMapsAbstractedStateFields)
 {
     const std::vector<FixtureRow> rows = loadFixtureRows();
     ASSERT_FALSE(rows.empty());
 
-    NesRomProfileExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
+    NesFlappyParatroopaRamExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
     ASSERT_TRUE(extractor.isSupported());
 
     for (const FixtureRow& row : rows) {
@@ -162,12 +165,12 @@ TEST(NesRomProfileExtractorTest, FlappyFixtureMapsAbstractedStateFields)
     }
 }
 
-TEST(NesRomProfileExtractorTest, FlappyEvaluatorProducesScoreRewardAndDone)
+TEST(NesFlappyParatroopaRamExtractorTest, FlappyEvaluatorProducesScoreRewardAndDone)
 {
     const std::vector<FixtureRow> rows = loadFixtureRows();
     ASSERT_FALSE(rows.empty());
 
-    NesRomProfileExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
+    NesFlappyParatroopaRamExtractor extractor(NesPolicyLayout::FlappyParatroopaWorldUnlRomId);
     ASSERT_TRUE(extractor.isSupported());
     NesFlappyBirdEvaluator evaluator;
     evaluator.reset();

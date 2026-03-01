@@ -11,6 +11,7 @@ namespace DirtSim {
 
 DamBreakScenario::DamBreakScenario()
 {
+    metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Dam Break";
     metadata_.description = "Water column held by wall dam that breaks at timestep 30";
     metadata_.category = "demo";

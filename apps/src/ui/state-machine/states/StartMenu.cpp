@@ -3,9 +3,7 @@
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/ScenarioListGet.h"
 #include "server/api/SimRun.h"
-#include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/ExpandablePanel.h"
 #include "ui/controls/IconRail.h"
@@ -25,28 +23,6 @@ void StartMenu::onEnter(StateMachine& sm)
 {
     sm_ = &sm; // Store for callbacks.
     LOG_INFO(State, "Connected to server, ready to start simulation");
-
-    // Request scenario list from server and cache it.
-    auto& wsService = sm.getWebSocketService();
-    if (wsService.isConnected()) {
-        const Api::ScenarioListGet::Command cmd{};
-        const auto result =
-            wsService.sendCommandAndGetResponse<Api::ScenarioListGet::Okay>(cmd, 2000);
-        if (result.isValue()) {
-            const auto& response = result.value();
-            if (response.isValue()) {
-                ScenarioMetadataCache::load(response.value().scenarios);
-                LOG_INFO(
-                    State, "Loaded {} scenarios from server", response.value().scenarios.size());
-            }
-            else {
-                LOG_ERROR(State, "ScenarioListGet failed: {}", response.errorValue().message);
-            }
-        }
-        else {
-            LOG_ERROR(State, "Failed to request scenario list: {}", result.errorValue());
-        }
-    }
 
     // Get main menu container (switches to menu screen with IconRail).
     auto* uiManager = sm.getUiComponentManager();
@@ -310,8 +286,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->resetWidth();
-            settingsPanel_ = std::make_unique<StartMenuSettingsPanel>(
-                panel->getContentArea(), sm.getUserSettingsManager());
+            settingsPanel_ = std::make_unique<StartMenuSettingsPanel>(panel->getContentArea(), sm);
             settingsPanel_->applySettings(sm.getUserSettings());
             panel->show();
         }

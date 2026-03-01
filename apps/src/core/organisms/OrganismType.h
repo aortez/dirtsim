@@ -10,7 +10,7 @@ enum class OrganismType : uint8_t {
     DUCK = 0,
     GOOSE = 1,
     TREE = 2,
-    NES_FLAPPY_BIRD = 3,
+    NES_DUCK = 3,
 };
 
 using OrganismId = StrongType<struct OrganismIdTag>;

@@ -43,6 +43,8 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
 #define SMOLNES_RUNTIME_FRAME_BYTES \
     (SMOLNES_RUNTIME_FRAME_PITCH_BYTES * SMOLNES_RUNTIME_FRAME_HEIGHT)
+#define SMOLNES_RUNTIME_PALETTE_FRAME_BYTES \
+    (SMOLNES_RUNTIME_FRAME_WIDTH * SMOLNES_RUNTIME_FRAME_HEIGHT)
 #define SMOLNES_RUNTIME_CPU_RAM_BYTES 8192u
 #define SMOLNES_RUNTIME_PRG_RAM_BYTES 8192u
 
@@ -68,6 +70,8 @@ bool smolnesRuntimeIsRunning(const SmolnesRuntimeHandle* runtime);
 uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime);
 void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask);
 bool smolnesRuntimeCopyLatestFrame(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
+bool smolnesRuntimeCopyLatestPaletteIndices(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
 bool smolnesRuntimeCopyCpuRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);

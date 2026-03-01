@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ScenarioConfig.h"
+#include "core/ScenarioMetadata.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -8,14 +9,6 @@
 namespace DirtSim {
 
 class World;
-
-struct ScenarioMetadata {
-    std::string name;
-    std::string description;
-    std::string category;
-    uint32_t requiredWidth = 0;
-    uint32_t requiredHeight = 0;
-};
 
 class ScenarioRunner {
 public:
