@@ -6,6 +6,7 @@
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/DuckNeuralNetBrain.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
@@ -124,6 +125,27 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
         });
 
     registry.registerBrain(
+        OrganismType::DUCK,
+        TrainingBrainKind::DuckNeuralNetRecurrentV2,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = true,
+            .allowsMutation = true,
+            .spawn = [](World& world, uint32_t x, uint32_t y, const Genome* genome) -> OrganismId {
+                DIRTSIM_ASSERT(
+                    genome != nullptr, "DuckNeuralNetRecurrentV2 brain requires a genome");
+                auto brain = std::make_unique<DuckNeuralNetRecurrentBrainV2>(*genome);
+                return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
+            },
+            .createRandomGenome =
+                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrainV2::randomGenome(rng); },
+            .isGenomeCompatible =
+                [](const Genome& genome) {
+                    return DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome);
+                },
+        });
+
+    registry.registerBrain(
         OrganismType::TREE,
         TrainingBrainKind::RuleBased,
         "",
@@ -233,6 +255,23 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .isGenomeCompatible =
                 [](const Genome& genome) {
                     return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
+                },
+        });
+
+    registry.registerBrain(
+        OrganismType::NES_DUCK,
+        TrainingBrainKind::DuckNeuralNetRecurrentV2,
+        "",
+        BrainRegistryEntry{
+            .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
+            .requiresGenome = true,
+            .allowsMutation = true,
+            .spawn = nullptr,
+            .createRandomGenome =
+                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrainV2::randomGenome(rng); },
+            .isGenomeCompatible =
+                [](const Genome& genome) {
+                    return DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome);
                 },
         });
 

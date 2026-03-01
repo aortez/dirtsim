@@ -416,7 +416,7 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
                 entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 break;
             case OrganismType::NES_DUCK:
-                entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+                entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
                 break;
             case OrganismType::GOOSE:
                 entry.brainKind = TrainingBrainKind::Random;

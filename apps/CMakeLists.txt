@@ -456,6 +456,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/Genome.cpp
     src/core/organisms/brains/DuckNeuralNetBrain.cpp
     src/core/organisms/brains/DuckNeuralNetRecurrentBrain.cpp
+    src/core/organisms/brains/DuckNeuralNetRecurrentBrainV2.cpp
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
@@ -849,6 +850,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
     src/core/organisms/tests/DuckNeuralNetRecurrentBrain_test.cpp
+    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
     src/core/organisms/tests/Genome_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp

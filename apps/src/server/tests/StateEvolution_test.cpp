@@ -163,7 +163,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyO
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
     const PopulationSpec& population = evolution.trainingSpec.population.front();
-    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
     EXPECT_EQ(population.count, 3);
     EXPECT_EQ(population.randomCount, 3);
 }
