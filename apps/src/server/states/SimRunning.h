@@ -3,16 +3,15 @@
 #include "StateForward.h"
 #include "core/ScenarioId.h"
 #include "core/Vector2d.h"
-#include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
-#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "server/Event.h"
 #include "server/api/ClockEventTrigger.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/NesInputSet.h"
+#include "server/states/ScenarioSession.h"
 
 #include <chrono>
 #include <cstdint>
@@ -41,12 +40,7 @@ struct FingerSession {
  * @brief Active simulation state - owns either a GridWorld (World+Scenario) or an NES runtime.
  */
 struct SimRunning {
-    std::unique_ptr<World> world;
-    std::unique_ptr<ScenarioRunner> scenario; // Owns scenario instance (not singleton).
-    std::unique_ptr<NesSmolnesScenarioDriver> nes_driver;
-    ScenarioConfig nes_scenario_config;
-    WorldData nes_world_data;
-    Scenario::EnumType scenario_id = Scenario::EnumType::Empty; // Current scenario ID.
+    ScenarioSession session;
     uint32_t stepCount = 0;
     uint32_t targetSteps = 0;     // Steps to execute before pausing.
     double stepDurationMs = 16.0; // Physics timestep in milliseconds.

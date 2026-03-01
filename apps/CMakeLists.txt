@@ -326,7 +326,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp
     src/server/states/SimRunning.cpp
-    src/server/states/ScenarioSessionUtils.cpp
+    src/server/states/ScenarioSession.cpp
     src/server/states/Startup.cpp
     src/server/states/UnsavedTrainingResult.cpp
 

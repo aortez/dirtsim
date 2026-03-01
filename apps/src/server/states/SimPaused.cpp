@@ -13,7 +13,7 @@ namespace State {
 
 void SimPaused::onEnter(StateMachine& /*dsm*/)
 {
-    if (previousState.nes_driver) {
+    if (previousState.session.isNesSession()) {
         spdlog::info(
             "SimPaused: Simulation paused at step {} (NES session preserved)",
             previousState.stepCount);
@@ -51,15 +51,9 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
         responseData.worldData = *cachedPtr;
         cwc.sendResponse(Response::okay(std::move(responseData)));
     }
-    else if (previousState.nes_driver) {
+    else if (const WorldData* worldData = previousState.session.getWorldData()) {
         Api::StateGet::Okay responseData;
-        responseData.worldData = previousState.nes_world_data;
-        cwc.sendResponse(Response::okay(std::move(responseData)));
-    }
-    else if (previousState.world) {
-        // Fallback: cache not ready yet, copy from world.
-        Api::StateGet::Okay responseData;
-        responseData.worldData = previousState.world->getData();
+        responseData.worldData = *worldData;
         cwc.sendResponse(Response::okay(std::move(responseData)));
     }
     else {

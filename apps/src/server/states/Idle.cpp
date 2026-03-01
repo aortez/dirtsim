@@ -11,7 +11,7 @@
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
-#include "server/states/ScenarioSessionUtils.h"
+#include "server/states/ScenarioSession.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -639,13 +639,10 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     // Create new SimRunning state (GridWorld or NesWorld).
     SimRunning newState;
 
-    // Set scenario ID in state.
-    newState.scenario_id = scenarioId;
-
     // Apply config from server settings and user settings.
     ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
     const auto startResult =
-        startScenarioSession(dsm, newState, scenarioId, scenarioConfig, cwc.command.container_size);
+        newState.session.start(dsm, scenarioId, scenarioConfig, cwc.command.container_size);
     if (startResult.isError()) {
         cwc.sendResponse(Api::SimRun::Response::error(startResult.errorValue()));
         return Idle{};

@@ -469,36 +469,14 @@ void applyScenarioConfigUpdatesToActiveState(
             using StateType = std::decay_t<decltype(state)>;
 
             if constexpr (std::is_same_v<StateType, State::SimRunning>) {
-                if (!state.world || !state.scenario) {
+                World* world = state.session.getWorld();
+                ScenarioRunner* scenario = state.session.getScenarioRunner();
+                if (!world || !scenario) {
                     return;
                 }
 
                 if (!isScenarioConfigTouched(
-                        state.scenario_id,
-                        clockTouched,
-                        sandboxTouched,
-                        rainingTouched,
-                        treeGerminationTouched)) {
-                    return;
-                }
-
-                const auto config = makeScenarioConfigFromUserSettings(settings, state.scenario_id);
-                if (!config.has_value()) {
-                    return;
-                }
-
-                state.scenario->setConfig(*config, *state.world);
-                return;
-            }
-
-            if constexpr (std::is_same_v<StateType, State::SimPaused>) {
-                auto& running = state.previousState;
-                if (!running.world || !running.scenario) {
-                    return;
-                }
-
-                if (!isScenarioConfigTouched(
-                        running.scenario_id,
+                        state.session.getScenarioId(),
                         clockTouched,
                         sandboxTouched,
                         rainingTouched,
@@ -507,12 +485,39 @@ void applyScenarioConfigUpdatesToActiveState(
                 }
 
                 const auto config =
-                    makeScenarioConfigFromUserSettings(settings, running.scenario_id);
+                    makeScenarioConfigFromUserSettings(settings, state.session.getScenarioId());
                 if (!config.has_value()) {
                     return;
                 }
 
-                running.scenario->setConfig(*config, *running.world);
+                scenario->setConfig(*config, *world);
+                return;
+            }
+
+            if constexpr (std::is_same_v<StateType, State::SimPaused>) {
+                auto& running = state.previousState;
+                World* world = running.session.getWorld();
+                ScenarioRunner* scenario = running.session.getScenarioRunner();
+                if (!world || !scenario) {
+                    return;
+                }
+
+                if (!isScenarioConfigTouched(
+                        running.session.getScenarioId(),
+                        clockTouched,
+                        sandboxTouched,
+                        rainingTouched,
+                        treeGerminationTouched)) {
+                    return;
+                }
+
+                const auto config =
+                    makeScenarioConfigFromUserSettings(settings, running.session.getScenarioId());
+                if (!config.has_value()) {
+                    return;
+                }
+
+                scenario->setConfig(*config, *world);
                 return;
             }
 
@@ -913,7 +918,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
             [&status](auto&& state) {
                 using T = std::decay_t<decltype(state)>;
                 if constexpr (std::is_same_v<T, State::SimRunning>) {
-                    status.scenario_id = state.scenario_id;
+                    status.scenario_id = state.session.getScenarioId();
                 }
                 else if constexpr (std::is_same_v<T, State::Error>) {
                     status.error_message = state.error_message;
