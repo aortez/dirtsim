@@ -8,7 +8,6 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"

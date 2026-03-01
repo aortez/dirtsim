@@ -346,7 +346,14 @@ Result<std::monostate, ApiError> ScenarioSession::reset()
                 return Result<std::monostate, ApiError>::okay(std::monostate{});
             }
             else {
-                impl.driver->reset();
+                if (!impl.driver) {
+                    return Result<std::monostate, ApiError>::error(ApiError("No scenario session"));
+                }
+                const auto resetResult = impl.driver->reset();
+                if (resetResult.isError()) {
+                    return Result<std::monostate, ApiError>::error(
+                        ApiError(resetResult.errorValue()));
+                }
                 impl.worldData.scenario_video_frame.reset();
                 impl.worldData.timestep = 0;
                 return Result<std::monostate, ApiError>::okay(std::monostate{});

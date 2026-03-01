@@ -1,7 +1,5 @@
 #include "NesRamProbe.h"
 
-#include "core/World.h"
-
 #include <fstream>
 #include <utility>
 
@@ -63,15 +61,20 @@ std::vector<NesRamProbeAddress> makeFlappyParatroopaAddresses()
 } // namespace
 
 NesRamProbeStepper::NesRamProbeStepper(
-    NesFlappyParatroopaScenario& scenario,
-    World& world,
+    Scenario::EnumType scenarioId,
+    const ScenarioConfig& config,
     std::vector<NesRamProbeAddress> cpuAddresses,
     double deltaTimeSeconds)
-    : scenario_(scenario),
-      world_(world),
-      cpuAddresses_(std::move(cpuAddresses)),
-      deltaTimeSeconds_(deltaTimeSeconds)
-{}
+    : cpuAddresses_(std::move(cpuAddresses)),
+      deltaTimeSeconds_(deltaTimeSeconds),
+      driver_(scenarioId)
+{
+    const auto setResult = driver_.setConfig(config);
+    if (setResult.isError()) {
+        return;
+    }
+    (void)driver_.setup();
+}
 
 const std::vector<NesRamProbeAddress>& NesRamProbeStepper::getCpuAddresses() const
 {
@@ -88,21 +91,32 @@ const SmolnesRuntime::MemorySnapshot* NesRamProbeStepper::getLastMemorySnapshot(
     return lastMemorySnapshot_.has_value() ? &lastMemorySnapshot_.value() : nullptr;
 }
 
+bool NesRamProbeStepper::isRuntimeReady() const
+{
+    return driver_.isRuntimeRunning() && driver_.isRuntimeHealthy();
+}
+
+std::string NesRamProbeStepper::getLastError() const
+{
+    return driver_.getRuntimeLastError();
+}
+
 NesRamProbeFrame NesRamProbeStepper::step(std::optional<uint8_t> controllerMask)
 {
     if (controllerMask.has_value()) {
         controllerMask_ = controllerMask.value();
     }
 
-    scenario_.setController1State(controllerMask_);
-    scenario_.tick(world_, deltaTimeSeconds_);
+    (void)deltaTimeSeconds_;
+    driver_.setController1State(controllerMask_);
+    driver_.tick(timers_, scenarioVideoFrame_);
 
     NesRamProbeFrame frame;
     frame.frame = frameIndex_;
     frame.controllerMask = controllerMask_;
     frame.cpuRamValues.resize(cpuAddresses_.size(), 0u);
 
-    lastMemorySnapshot_ = scenario_.copyRuntimeMemorySnapshot();
+    lastMemorySnapshot_ = driver_.copyRuntimeMemorySnapshot();
     if (lastMemorySnapshot_.has_value()) {
         for (size_t addrIndex = 0; addrIndex < cpuAddresses_.size(); ++addrIndex) {
             const uint16_t address = cpuAddresses_[addrIndex].address;
@@ -174,8 +188,12 @@ FlappyParatroopaGamePhase flappyParatroopaGamePhaseFromByte(uint8_t value)
 }
 
 FlappyParatroopaProbeStepper::FlappyParatroopaProbeStepper(
-    NesFlappyParatroopaScenario& scenario, World& world, double deltaTimeSeconds)
-    : stepper_(scenario, world, makeFlappyParatroopaAddresses(), deltaTimeSeconds)
+    const Config::NesFlappyParatroopa& config, double deltaTimeSeconds)
+    : stepper_(
+          Scenario::EnumType::NesFlappyParatroopa,
+          ScenarioConfig{ config },
+          makeFlappyParatroopaAddresses(),
+          deltaTimeSeconds)
 {}
 
 uint8_t FlappyParatroopaProbeStepper::getControllerMask() const
@@ -186,6 +204,16 @@ uint8_t FlappyParatroopaProbeStepper::getControllerMask() const
 const SmolnesRuntime::MemorySnapshot* FlappyParatroopaProbeStepper::getLastMemorySnapshot() const
 {
     return stepper_.getLastMemorySnapshot();
+}
+
+bool FlappyParatroopaProbeStepper::isRuntimeReady() const
+{
+    return stepper_.isRuntimeReady();
+}
+
+std::string FlappyParatroopaProbeStepper::getLastError() const
+{
+    return stepper_.getLastError();
 }
 
 std::optional<FlappyParatroopaGameState> FlappyParatroopaProbeStepper::step(
@@ -242,8 +270,8 @@ bool NesRamProbeTrace::writeCsv(const std::filesystem::path& path) const
 }
 
 NesRamProbeTrace captureNesRamProbeTrace(
-    NesFlappyParatroopaScenario& scenario,
-    World& world,
+    Scenario::EnumType scenarioId,
+    const ScenarioConfig& config,
     const std::vector<uint8_t>& controllerScript,
     const std::vector<NesRamProbeAddress>& cpuAddresses,
     double deltaTimeSeconds)
@@ -252,7 +280,7 @@ NesRamProbeTrace captureNesRamProbeTrace(
     trace.cpuAddresses = cpuAddresses;
     trace.frames.reserve(controllerScript.size());
 
-    NesRamProbeStepper stepper{ scenario, world, cpuAddresses, deltaTimeSeconds };
+    NesRamProbeStepper stepper{ scenarioId, config, cpuAddresses, deltaTimeSeconds };
     for (uint8_t controllerMask : controllerScript) {
         trace.frames.push_back(stepper.step(controllerMask));
     }

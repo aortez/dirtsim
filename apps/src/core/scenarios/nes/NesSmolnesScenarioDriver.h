@@ -40,7 +40,7 @@ public:
     const NesRomCheckResult& getLastRomCheck() const { return lastRomCheck_; }
 
     Result<std::monostate, std::string> setup();
-    void reset();
+    Result<std::monostate, std::string> reset();
 
     void tick(Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
 

@@ -97,9 +97,9 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
-void NesSmolnesScenarioDriver::reset()
+Result<std::monostate, std::string> NesSmolnesScenarioDriver::reset()
 {
-    (void)setup();
+    return setup();
 }
 
 void NesSmolnesScenarioDriver::tick(
@@ -351,12 +351,6 @@ void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)
         previous.runtimeThreadPpuSpriteEvalMs,
         current.runtimeThreadPpuSpriteEvalCalls,
         previous.runtimeThreadPpuSpriteEvalCalls);
-    addDelta(
-        "nes_runtime_thread_ppu_background_pipeline",
-        current.runtimeThreadPpuVisiblePixelsMs,
-        previous.runtimeThreadPpuVisiblePixelsMs,
-        current.runtimeThreadPpuVisiblePixelsCalls,
-        previous.runtimeThreadPpuVisiblePixelsCalls);
     addDelta(
         "nes_runtime_thread_ppu_prefetch",
         current.runtimeThreadPpuPrefetchMs,
