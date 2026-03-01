@@ -2,10 +2,12 @@
 
 #include "BinaryProtocol.h"
 #include "ClientHello.h"
+#include "JsonProtocol.h"
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include <any>
 #include <atomic>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <rtc/rtc.hpp>
@@ -30,6 +32,10 @@ public:
     using ServerCommandCallback =
         std::function<void(const std::string& messageType, const std::vector<std::byte>& payload)>;
     using JsonDeserializer = std::function<std::any(const std::string&)>;
+    using CommandHandler = std::function<void(
+        const std::vector<std::byte>& payload,
+        std::shared_ptr<rtc::WebSocket> ws,
+        uint64_t correlationId)>;
 
     virtual ~WebSocketServiceInterface() = default;
 
@@ -68,17 +74,79 @@ public:
 
     virtual void setJsonDeserializer(JsonDeserializer deserializer) = 0;
 
+    virtual void registerCommandHandler(std::string commandName, CommandHandler handler) = 0;
+    virtual std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws) = 0;
+    virtual bool isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const = 0;
+
     virtual uint64_t allocateRequestId()
     {
         static std::atomic<uint64_t> nextId{ 1 };
         return nextId.fetch_add(1, std::memory_order_relaxed);
     }
 
-    // Template methods (non-virtual, no-ops in base for mocking).
+    // Template methods (non-virtual wrappers over virtual hooks).
     template <typename CwcType>
-    void registerHandler(std::function<void(CwcType)> /*handler*/)
+    void registerHandler(std::function<void(CwcType)> handler)
     {
-        // No-op for mocks - real implementation in WebSocketService.
+        using CommandT = typename CwcType::Command;
+        using ResponseT = typename CwcType::Response;
+
+        std::string cmdName(CommandT::name());
+
+        registerCommandHandler(
+            cmdName,
+            [this, handler = std::move(handler), cmdName](
+                const std::vector<std::byte>& payload,
+                std::shared_ptr<rtc::WebSocket> ws,
+                uint64_t correlationId) {
+                CommandT cmd{};
+                try {
+                    cmd = deserialize_payload<CommandT>(payload);
+                }
+                catch (const std::exception&) {
+                    return;
+                }
+
+                CwcType cwc{};
+                cwc.command = cmd;
+                cwc.usesBinary = !isJsonClient(ws);
+
+                if constexpr (requires { cwc.command.connectionId; }) {
+                    cwc.command.connectionId = getConnectionId(ws);
+                }
+
+                cwc.callback = [this, ws, correlationId, cmdName](ResponseT&& response) {
+                    if (isJsonClient(ws)) {
+                        nlohmann::json jsonResponse = makeJsonResponse(correlationId, response);
+                        const std::string jsonText = jsonResponse.dump();
+                        if (!ws || !ws->isOpen()) {
+                            return;
+                        }
+                        try {
+                            ws->send(jsonText);
+                        }
+                        catch (const std::exception&) {
+                            return;
+                        }
+                    }
+                    else {
+                        auto envelope = make_response_envelope(correlationId, cmdName, response);
+                        const auto bytes = serialize_envelope(envelope);
+                        rtc::binary binaryMsg(bytes.begin(), bytes.end());
+                        if (!ws || !ws->isOpen()) {
+                            return;
+                        }
+                        try {
+                            ws->send(binaryMsg);
+                        }
+                        catch (const std::exception&) {
+                            return;
+                        }
+                    }
+                };
+
+                handler(std::move(cwc));
+            });
     }
 
     using HandlerInvoker = std::function<void(

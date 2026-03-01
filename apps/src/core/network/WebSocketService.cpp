@@ -766,6 +766,12 @@ std::shared_ptr<rtc::WebSocket> WebSocketService::getClientByConnectionId(
     return nullptr;
 }
 
+void WebSocketService::registerCommandHandler(std::string commandName, CommandHandler handler)
+{
+    LOG_DEBUG(Network, "Registering command handler '{}'", commandName);
+    commandHandlers_[std::move(commandName)] = std::move(handler);
+}
+
 std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws)
 {
     // Check if we already have an ID for this connection.
@@ -790,6 +796,13 @@ std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws
 
     LOG_DEBUG(Network, "Assigned connection ID '{}' to client", connectionId);
     return connectionId;
+}
+
+bool WebSocketService::isJsonClient(std::shared_ptr<rtc::WebSocket> ws) const
+{
+    std::lock_guard<std::mutex> lock(clientsMutex_);
+    auto it = clientProtocols_.find(ws);
+    return it != clientProtocols_.end() && it->second == Protocol::JSON;
 }
 
 bool WebSocketService::clientWantsEvents(const std::string& connectionId) const

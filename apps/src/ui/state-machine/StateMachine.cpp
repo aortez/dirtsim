@@ -37,18 +37,6 @@
 
 namespace DirtSim {
 namespace Ui {
-namespace {
-
-Network::WebSocketService& requireConcreteWebSocketService(
-    Network::WebSocketServiceInterface& wsService)
-{
-    auto* concreteWs = dynamic_cast<Network::WebSocketService*>(&wsService);
-    DIRTSIM_ASSERT(
-        concreteWs != nullptr, "WebSocketServiceInterface must be concrete WebSocketService");
-    return *concreteWs;
-}
-
-} // namespace
 
 StateMachine::StateMachine(
     TestMode,
@@ -117,7 +105,7 @@ void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
 
-    auto& ws = requireConcreteWebSocketService(getWebSocketService());
+    auto& ws = getWebSocketService();
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
@@ -157,7 +145,7 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::SynthKeyEvent::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
         using Response = UiApi::WebSocketAccessSet::Response;
-        auto& wsService = requireConcreteWebSocketService(getWebSocketService());
+        auto& wsService = getWebSocketService();
 
         if (wsPort_ == 0) {
             cwc.sendResponse(Response::error(ApiError("WebSocket port not set")));
