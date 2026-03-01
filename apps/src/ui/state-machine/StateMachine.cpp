@@ -37,7 +37,7 @@ namespace DirtSim {
 namespace Ui {
 
 StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
-    : display(nullptr), userSettingsManager_(&userSettingsManager)
+    : display(nullptr), userSettingsManager_(userSettingsManager)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
@@ -47,7 +47,7 @@ StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
 
 StateMachine::StateMachine(
     _lv_display_t* disp, UserSettingsManager& userSettingsManager, uint16_t wsPort)
-    : display(disp), userSettingsManager_(&userSettingsManager)
+    : display(disp), userSettingsManager_(userSettingsManager)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
@@ -484,17 +484,15 @@ void StateMachine::handleEvent(const Event& event)
                 "EventSubscribe rejected: " + result.value().errorValue().message);
             LOG_INFO(State, "Subscribed to server event stream");
 
-            DIRTSIM_ASSERT(userSettingsManager_ != nullptr, "UserSettingsManager missing");
-            userSettingsManager_->setWebSocketService(wsService_.get());
-            userSettingsManager_->syncFromServerOrAssert(2000);
-            applyServerUserSettings(userSettingsManager_->get());
+            userSettingsManager_.setWebSocketService(wsService_.get());
+            userSettingsManager_.syncFromServerOrAssert(2000);
+            applyServerUserSettings(userSettingsManager_.get());
         }
     }
 
     if (std::holds_alternative<UserSettingsUpdatedEvent>(event)) {
         const auto& settingsEvent = std::get<UserSettingsUpdatedEvent>(event);
-        DIRTSIM_ASSERT(userSettingsManager_ != nullptr, "UserSettingsManager missing");
-        userSettingsManager_->applyServerUpdate(settingsEvent.settings);
+        userSettingsManager_.applyServerUpdate(settingsEvent.settings);
         applyServerUserSettings(settingsEvent.settings);
     }
 
@@ -558,9 +556,7 @@ void StateMachine::handleEvent(const Event& event)
         auto& evt = std::get<ServerDisconnectedEvent>(event);
         LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
 
-        if (userSettingsManager_) {
-            userSettingsManager_->setWebSocketService(nullptr);
-        }
+        userSettingsManager_.setWebSocketService(nullptr);
 
         if (std::holds_alternative<State::Shutdown>(fsmState.getVariant())) {
             LOG_INFO(State, "Ignoring disconnect while shutting down");
