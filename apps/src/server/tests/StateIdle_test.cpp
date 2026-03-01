@@ -48,7 +48,10 @@ TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
 
     // Verify: SimRunning has valid World.
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
-    ASSERT_NE(simRunning.world, nullptr) << "SimRunning should have a World";
+    auto gridWorld = simRunning.session.requireGridWorld();
+    ASSERT_TRUE(gridWorld.isValue()) << gridWorld.errorValue().message;
+    World* world = gridWorld.value().world;
+    ASSERT_NE(world, nullptr) << "SimRunning should have a World";
     const auto scenario_id = fixture.stateMachine->getUserSettings().defaultScenario;
     const auto* metadata = fixture.stateMachine->getScenarioRegistry().getMetadata(scenario_id);
     ASSERT_NE(metadata, nullptr);
@@ -60,8 +63,8 @@ TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
         expected_height = metadata->requiredHeight;
     }
 
-    EXPECT_EQ(simRunning.world->getData().width, expected_width);
-    EXPECT_EQ(simRunning.world->getData().height, expected_height);
+    EXPECT_EQ(world->getData().width, expected_width);
+    EXPECT_EQ(world->getData().height, expected_height);
 
     // Verify: SimRunning has correct run parameters.
     EXPECT_EQ(simRunning.stepCount, 0u) << "Initial step count should be 0";
@@ -129,10 +132,13 @@ TEST(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
 
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
-    ASSERT_NE(simRunning.world, nullptr);
+    auto gridWorld = simRunning.session.requireGridWorld();
+    ASSERT_TRUE(gridWorld.isValue()) << gridWorld.errorValue().message;
+    World* world = gridWorld.value().world;
+    ASSERT_NE(world, nullptr);
 
-    EXPECT_EQ(simRunning.world->getData().width, 800 / 16);
-    EXPECT_EQ(simRunning.world->getData().height, 480 / 16);
+    EXPECT_EQ(world->getData().width, 800 / 16);
+    EXPECT_EQ(world->getData().height, 480 / 16);
 
     ASSERT_TRUE(callbackInvoked);
 }
@@ -158,9 +164,9 @@ TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)
     ASSERT_TRUE(callbackInvoked);
 
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
+    EXPECT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Clock);
 
-    const ScenarioConfig config = simRunning.scenario->getConfig();
+    const ScenarioConfig config = simRunning.session.getScenarioConfig();
     const auto* clockConfig = std::get_if<Config::Clock>(&config);
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_EQ(clockConfig->timezoneIndex, 5);
@@ -187,9 +193,9 @@ TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
     ASSERT_TRUE(callbackInvoked);
 
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
+    EXPECT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Clock);
 
-    const ScenarioConfig config = simRunning.scenario->getConfig();
+    const ScenarioConfig config = simRunning.session.getScenarioConfig();
     const auto* clockConfig = std::get_if<Config::Clock>(&config);
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_EQ(clockConfig->timezoneIndex, 8);

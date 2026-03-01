@@ -8,14 +8,42 @@
 #include "core/scenarios/EmptyScenario.h"
 #include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/LightsScenario.h"
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
-#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/RainingScenario.h"
 #include "core/scenarios/SandboxScenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
 #include "core/scenarios/WaterEqualizationScenario.h"
 
 using namespace DirtSim;
+
+namespace {
+
+ScenarioMetadata makeNesFlappyParatroopaMetadata()
+{
+    return ScenarioMetadata{
+        .id = Scenario::EnumType::NesFlappyParatroopa,
+        .kind = ScenarioKind::NesWorld,
+        .name = "NES Flappy Paratroopa",
+        .description = "NES Flappy Paratroopa World training scenario",
+        .category = "organisms",
+        .requiredWidth = 0,
+        .requiredHeight = 0,
+    };
+}
+
+ScenarioMetadata makeNesSuperTiltBroMetadata()
+{
+    return ScenarioMetadata{
+        .id = Scenario::EnumType::NesSuperTiltBro,
+        .kind = ScenarioKind::NesWorld,
+        .name = "NES Super Tilt Bro",
+        .description = "NES Super Tilt Bro (UNROM no-network) training scenario",
+        .category = "organisms",
+        .requiredWidth = 0,
+        .requiredHeight = 0,
+    };
+}
+
+} // namespace
 
 ScenarioRegistry::ScenarioRegistry(GenomeRepository& genomeRepository)
     : genomeRepository_(genomeRepository)
@@ -55,14 +83,14 @@ ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeReposit
     });
 
     registry.registerScenario(
-        Scenario::EnumType::NesFlappyParatroopa, NesFlappyParatroopaScenario{}.getMetadata(), []() {
-            return std::make_unique<NesFlappyParatroopaScenario>();
-        });
+        Scenario::EnumType::NesFlappyParatroopa,
+        makeNesFlappyParatroopaMetadata(),
+        []() -> std::unique_ptr<ScenarioRunner> { return nullptr; });
 
     registry.registerScenario(
-        Scenario::EnumType::NesSuperTiltBro, NesSuperTiltBroScenario{}.getMetadata(), []() {
-            return std::make_unique<NesSuperTiltBroScenario>();
-        });
+        Scenario::EnumType::NesSuperTiltBro,
+        makeNesSuperTiltBroMetadata(),
+        []() -> std::unique_ptr<ScenarioRunner> { return nullptr; });
 
     registry.registerScenario(Scenario::EnumType::Raining, RainingScenario{}.getMetadata(), []() {
         return std::make_unique<RainingScenario>();

@@ -1,9 +1,9 @@
 #include "core/ScenarioConfig.h"
-#include "core/World.h"
-#include "core/WorldData.h"
+#include "core/Timers.h"
 #include "core/organisms/evolution/GenomeRepository.h"
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/nes/NesRomValidation.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
@@ -57,35 +57,34 @@ ParallelRuntimeResult runScenarioFrames(const std::filesystem::path& romPath, in
 {
     ParallelRuntimeResult result;
 
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesFlappyParatroopa);
+    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
     config.romPath = romPath.string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
 
-    if (!scenario->isRuntimeRunning()) {
-        result.lastError = scenario->getRuntimeLastError();
-        return result;
-    }
-    if (!scenario->isRuntimeHealthy()) {
-        result.lastError = scenario->getRuntimeLastError();
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    if (setResult.isError()) {
+        result.lastError = setResult.errorValue();
         return result;
     }
 
-    constexpr double deltaTime = 1.0 / 60.0;
+    const auto setupResult = driver.setup();
+    if (setupResult.isError()) {
+        result.lastError = setupResult.errorValue();
+        return result;
+    }
+
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     for (int frame = 0; frame < frameCount; ++frame) {
-        scenario->tick(world, deltaTime);
+        driver.tick(timers, scenarioVideoFrame);
     }
 
-    result.healthy = scenario->isRuntimeHealthy();
-    result.renderedFrames = scenario->getRuntimeRenderedFrameCount();
+    result.healthy = driver.isRuntimeHealthy();
+    result.renderedFrames = driver.getRuntimeRenderedFrameCount();
     if (!result.healthy) {
-        result.lastError = scenario->getRuntimeLastError();
+        result.lastError = driver.getRuntimeLastError();
     }
     return result;
 }
@@ -99,7 +98,7 @@ TEST(NesFlappyParatroopaScenarioTest, InspectRomAcceptsMapperZero)
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
+    const NesRomCheckResult result = inspectNesRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::Compatible);
     EXPECT_TRUE(result.isCompatible());
@@ -115,7 +114,7 @@ TEST(NesFlappyParatroopaScenarioTest, InspectRomRejectsUnsupportedMapper)
     writeRomHeader(
         romPath, { 'N', 'E', 'S', 0x1A, 0x20, 0x00, 0xE3, 0x10, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
+    const NesRomCheckResult result = inspectNesRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::UnsupportedMapper);
     EXPECT_FALSE(result.isCompatible());
@@ -129,7 +128,7 @@ TEST(NesFlappyParatroopaScenarioTest, InspectRomRejectsInvalidHeader)
     writeRomHeader(
         romPath, { 'B', 'A', 'D', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-    const NesRomCheckResult result = NesFlappyParatroopaScenario::inspectRom(romPath);
+    const NesRomCheckResult result = inspectNesRom(romPath);
 
     EXPECT_EQ(result.status, NesRomCheckStatus::InvalidHeader);
     EXPECT_FALSE(result.isCompatible());
@@ -150,7 +149,7 @@ TEST(NesFlappyParatroopaScenarioTest, ValidateConfigResolvesRomIdFromCatalog)
     config.romDirectory = romDir.string();
 
     const NesConfigValidationResult validation =
-        NesFlappyParatroopaScenario::validateConfig(config);
+        validateNesRomSelection(config.romId, config.romDirectory, config.romPath);
     EXPECT_TRUE(validation.valid);
     EXPECT_EQ(validation.resolvedRomPath, romPath);
     EXPECT_EQ(validation.resolvedRomId, "flappy-paratroopa-world-unl");
@@ -169,7 +168,7 @@ TEST(NesFlappyParatroopaScenarioTest, ValidateConfigRejectsUnknownRomId)
     config.romDirectory = romDir.string();
 
     const NesConfigValidationResult validation =
-        NesFlappyParatroopaScenario::validateConfig(config);
+        validateNesRomSelection(config.romId, config.romDirectory, config.romPath);
     EXPECT_FALSE(validation.valid);
     EXPECT_EQ(validation.romCheck.status, NesRomCheckStatus::FileNotFound);
     EXPECT_NE(validation.message.find("No ROM found"), std::string::npos);
@@ -189,7 +188,7 @@ TEST(NesFlappyParatroopaScenarioTest, ValidateConfigFallsBackToRomPathWhenCatalo
     config.romPath = romPath.string();
 
     const NesConfigValidationResult validation =
-        NesFlappyParatroopaScenario::validateConfig(config);
+        validateNesRomSelection(config.romId, config.romDirectory, config.romPath);
     EXPECT_TRUE(validation.valid);
     EXPECT_EQ(validation.resolvedRomPath, romPath);
     EXPECT_EQ(validation.resolvedRomId, "flappy-paratroopa-world-unl");
@@ -215,12 +214,12 @@ TEST(NesFlappyParatroopaScenarioTest, ScenarioRegistryRegistersNesFlappyParatroo
     const ScenarioMetadata* metadata =
         registry.getMetadata(Scenario::EnumType::NesFlappyParatroopa);
     ASSERT_NE(metadata, nullptr);
+    EXPECT_EQ(metadata->kind, ScenarioKind::NesWorld);
     EXPECT_EQ(metadata->name, "NES Flappy Paratroopa");
 
     std::unique_ptr<ScenarioRunner> scenario =
         registry.createScenario(Scenario::EnumType::NesFlappyParatroopa);
-    ASSERT_NE(scenario, nullptr);
-    EXPECT_TRUE(std::holds_alternative<Config::NesFlappyParatroopa>(scenario->getConfig()));
+    EXPECT_EQ(scenario, nullptr);
 }
 
 TEST(NesFlappyParatroopaScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
@@ -231,34 +230,35 @@ TEST(NesFlappyParatroopaScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesFlappyParatroopa);
+    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
 
-    const NesRomCheckResult& romCheck = scenario->getLastRomCheck();
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
+    const auto setupResult = driver.setup();
+    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
+
+    const NesRomCheckResult& romCheck = driver.getLastRomCheck();
     ASSERT_TRUE(romCheck.isCompatible()) << "ROM compatibility check failed: " << romCheck.message
                                          << " (mapper=" << romCheck.mapper << ")";
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
 
-    constexpr double deltaTime = 1.0 / 60.0;
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     constexpr int frameCount = 100;
     for (int frame = 0; frame < frameCount; ++frame) {
-        scenario->tick(world, deltaTime);
+        driver.tick(timers, scenarioVideoFrame);
     }
 
-    EXPECT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
-    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), static_cast<uint64_t>(frameCount));
+    EXPECT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), static_cast<uint64_t>(frameCount));
 
-    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
-    const ScenarioVideoFrame& videoFrame = world.getData().scenario_video_frame.value();
+    ASSERT_TRUE(scenarioVideoFrame.has_value());
+    const ScenarioVideoFrame& videoFrame = scenarioVideoFrame.value();
     EXPECT_EQ(videoFrame.width, SMOLNES_RUNTIME_FRAME_WIDTH);
     EXPECT_EQ(videoFrame.height, SMOLNES_RUNTIME_FRAME_HEIGHT);
     EXPECT_EQ(videoFrame.frame_id, static_cast<uint64_t>(frameCount));
@@ -273,39 +273,43 @@ TEST(NesFlappyParatroopaScenarioTest, ResetRestartsRuntimeFrameCounter)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesFlappyParatroopa);
+    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
 
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
+    const auto setupResult = driver.setup();
+    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
 
+    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     constexpr double deltaTime = 1.0 / 60.0;
+    (void)deltaTime;
     for (int frame = 0; frame < 10; ++frame) {
-        scenario->tick(world, deltaTime);
+        driver.tick(timers, scenarioVideoFrame);
     }
-    ASSERT_EQ(scenario->getRuntimeRenderedFrameCount(), 10u);
-    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
-    EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 10u);
+    ASSERT_EQ(driver.getRuntimeRenderedFrameCount(), 10u);
+    ASSERT_TRUE(scenarioVideoFrame.has_value());
+    EXPECT_EQ(scenarioVideoFrame->frame_id, 10u);
 
-    scenario->reset(world);
+    const auto resetResult = driver.reset();
+    ASSERT_TRUE(resetResult.isValue()) << resetResult.errorValue();
+    scenarioVideoFrame.reset();
 
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
-    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 0u);
-    EXPECT_FALSE(world.getData().scenario_video_frame.has_value());
+    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), 0u);
 
-    scenario->tick(world, deltaTime);
-    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 1u);
-    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
-    EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 1u);
+    driver.tick(timers, scenarioVideoFrame);
+    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), 1u);
+    ASSERT_TRUE(scenarioVideoFrame.has_value());
+    EXPECT_EQ(scenarioVideoFrame->frame_id, 1u);
 }
 
 TEST(NesFlappyParatroopaScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
@@ -316,33 +320,36 @@ TEST(NesFlappyParatroopaScenarioTest, RuntimeMemorySnapshotExposesCpuAndPrgRam)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesFlappyParatroopa);
+    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
     config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
 
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
+    const auto setupResult = driver.setup();
+    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
 
+    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     constexpr double deltaTime = 1.0 / 60.0;
+    (void)deltaTime;
     for (int frame = 0; frame < 8; ++frame) {
-        scenario->setController1State(SMOLNES_RUNTIME_BUTTON_START);
-        scenario->tick(world, deltaTime);
+        driver.setController1State(SMOLNES_RUNTIME_BUTTON_START);
+        driver.tick(timers, scenarioVideoFrame);
     }
 
-    const auto firstSnapshot = scenario->copyRuntimeMemorySnapshot();
+    const auto firstSnapshot = driver.copyRuntimeMemorySnapshot();
     ASSERT_TRUE(firstSnapshot.has_value());
     EXPECT_EQ(firstSnapshot->cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
     EXPECT_EQ(firstSnapshot->prgRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_PRG_RAM_BYTES));
 
-    scenario->tick(world, deltaTime);
-    const auto secondSnapshot = scenario->copyRuntimeMemorySnapshot();
+    driver.tick(timers, scenarioVideoFrame);
+    const auto secondSnapshot = driver.copyRuntimeMemorySnapshot();
     ASSERT_TRUE(secondSnapshot.has_value());
 
     bool cpuChanged = false;

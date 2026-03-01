@@ -1,6 +1,6 @@
 #include "core/ScenarioConfig.h"
-#include "core/World.h"
-#include "core/scenarios/NesSuperTiltBroScenario.h"
+#include "core/Timers.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
@@ -21,8 +21,6 @@
 using namespace DirtSim;
 
 namespace {
-
-constexpr double kFrameDeltaSeconds = 1.0 / 60.0;
 
 std::optional<std::filesystem::path> resolveNesStbFixtureRomPath()
 {
@@ -159,19 +157,21 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
                         "set DIRTSIM_NES_STB_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesSuperTiltBroScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesSuperTiltBro config = std::get<Config::NesSuperTiltBro>(scenario->getConfig());
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperTiltBro);
+    Config::NesSuperTiltBro config =
+        std::get<Config::NesSuperTiltBro>(makeDefaultConfig(Scenario::EnumType::NesSuperTiltBro));
     config.romId = "";
     config.romPath = romPath->string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
+    const auto setupResult = driver.setup();
+    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
 
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
+    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
 
     constexpr uint64_t kCaptureFrames = 1801;
     const std::array<uint64_t, 21> screenshotFrames = {
@@ -197,15 +197,15 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
 
     for (uint64_t frameIndex = 0; frameIndex < kCaptureFrames; ++frameIndex) {
         const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex);
-        scenario->setController1State(controllerMask);
-        scenario->tick(world, kFrameDeltaSeconds);
+        driver.setController1State(controllerMask);
+        driver.tick(timers, scenarioVideoFrame);
 
         for (uint64_t snapshotFrame : screenshotFrames) {
             if (snapshotFrame != frameIndex) {
                 continue;
             }
 
-            const auto scenarioFrame = scenario->copyRuntimeFrameSnapshot();
+            const auto scenarioFrame = driver.copyRuntimeFrameSnapshot();
             if (!scenarioFrame.has_value()) {
                 continue;
             }
@@ -217,7 +217,7 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
             }
         }
 
-        const auto snapshot = scenario->copyRuntimeMemorySnapshot();
+        const auto snapshot = driver.copyRuntimeMemorySnapshot();
         ASSERT_TRUE(snapshot.has_value());
 
         CapturedFrame frame;
@@ -227,7 +227,7 @@ TEST(NesSuperTiltBroRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
         frames.push_back(std::move(frame));
     }
 
-    ASSERT_EQ(scenario->getRuntimeRenderedFrameCount(), kCaptureFrames);
+    ASSERT_EQ(driver.getRuntimeRenderedFrameCount(), kCaptureFrames);
     ASSERT_FALSE(frames.empty());
     ASSERT_EQ(frames.front().cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
 

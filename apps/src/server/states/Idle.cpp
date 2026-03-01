@@ -8,11 +8,10 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
-#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
+#include "server/states/ScenarioSession.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -637,100 +636,17 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         return Idle{};
     }
 
-    // Create new SimRunning state with world.
+    // Create new SimRunning state (GridWorld or NesWorld).
     SimRunning newState;
-
-    // Get scenario metadata first to check for required dimensions.
-    auto& registry = dsm.getScenarioRegistry();
-    const ScenarioMetadata* metadata = registry.getMetadata(scenarioId);
-
-    if (!metadata) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", toString(scenarioId));
-        cwc.sendResponse(
-            Api::SimRun::Response::error(
-                ApiError(std::string("Scenario not found: ") + std::string(toString(scenarioId)))));
-        return Idle{};
-    }
-
-    // Determine world dimensions: container-based > scenario requirements > defaults.
-    uint32_t worldWidth = dsm.defaultWidth;
-    uint32_t worldHeight = dsm.defaultHeight;
-
-    if (cwc.command.container_size.x > 0 && cwc.command.container_size.y > 0) {
-        constexpr int targetCellSize = 16;
-        worldWidth = static_cast<uint32_t>(cwc.command.container_size.x / targetCellSize);
-        worldHeight = static_cast<uint32_t>(cwc.command.container_size.y / targetCellSize);
-        worldWidth = std::max(worldWidth, 10u);
-        worldHeight = std::max(worldHeight, 10u);
-    }
-    else if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
-        worldWidth = metadata->requiredWidth;
-        worldHeight = metadata->requiredHeight;
-    }
-
-    // Create world with appropriate dimensions.
-    LOG_INFO(
-        State,
-        "Creating World {}x{} (container: {}x{})",
-        worldWidth,
-        worldHeight,
-        cwc.command.container_size.x,
-        cwc.command.container_size.y);
-    newState.world = std::make_unique<World>(worldWidth, worldHeight);
-
-    // Create scenario instance from factory.
-    newState.scenario = registry.createScenario(scenarioId);
-    assert(newState.scenario && "Scenario factory failed after metadata check");
-
-    // Set scenario ID in state.
-    newState.scenario_id = scenarioId;
 
     // Apply config from server settings and user settings.
     ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
-    if (scenarioId == Scenario::EnumType::NesFlappyParatroopa) {
-        const auto* nesConfig = std::get_if<Config::NesFlappyParatroopa>(&scenarioConfig);
-        if (!nesConfig) {
-            cwc.sendResponse(
-                Api::SimRun::Response::error(
-                    ApiError("Scenario config mismatch for NES scenario")));
-            return Idle{};
-        }
-        const NesConfigValidationResult validation =
-            NesFlappyParatroopaScenario::validateConfig(*nesConfig);
-        if (!validation.valid) {
-            cwc.sendResponse(
-                Api::SimRun::Response::error(
-                    ApiError("Invalid NES config: " + validation.message)));
-            return Idle{};
-        }
+    const auto startResult =
+        newState.session.start(dsm, scenarioId, scenarioConfig, cwc.command.container_size);
+    if (startResult.isError()) {
+        cwc.sendResponse(Api::SimRun::Response::error(startResult.errorValue()));
+        return Idle{};
     }
-    else if (scenarioId == Scenario::EnumType::NesSuperTiltBro) {
-        const auto* nesConfig = std::get_if<Config::NesSuperTiltBro>(&scenarioConfig);
-        if (!nesConfig) {
-            cwc.sendResponse(
-                Api::SimRun::Response::error(
-                    ApiError("Scenario config mismatch for NES scenario")));
-            return Idle{};
-        }
-        const NesConfigValidationResult validation =
-            NesSuperTiltBroScenario::validateConfig(*nesConfig);
-        if (!validation.valid) {
-            cwc.sendResponse(
-                Api::SimRun::Response::error(
-                    ApiError("Invalid NES config: " + validation.message)));
-            return Idle{};
-        }
-    }
-
-    newState.scenario->setConfig(scenarioConfig, *newState.world);
-
-    // Run scenario setup to initialize world.
-    newState.scenario->setup(*newState.world);
-
-    // Register scenario with World for tick during advanceTime.
-    newState.world->setScenario(newState.scenario.get());
-
-    LOG_INFO(State, "Scenario '{}' applied to new world", toString(scenarioId));
 
     // Set run parameters.
     newState.stepDurationMs = cwc.command.timestep * 1000.0; // Convert seconds to milliseconds.
@@ -740,7 +656,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     newState.frameLimit = cwc.command.max_frame_ms;
 
     spdlog::info(
-        "Idle: World created, transitioning to {} (timestep={}ms, max_steps={}, "
+        "Idle: Scenario session ready, transitioning to {} (timestep={}ms, max_steps={}, "
         "max_frame_ms={})",
         cwc.command.start_paused ? "SimPaused" : "SimRunning",
         newState.stepDurationMs,
