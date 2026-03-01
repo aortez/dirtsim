@@ -760,14 +760,15 @@ struct EvaluationPassResult {
 std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
     const TrainingRunner& runner)
 {
-    const World* world = runner.getWorld();
-    if (!world) {
+    const WorldData* worldData = runner.getWorldData();
+    const std::vector<OrganismId>* organismGrid = runner.getOrganismGrid();
+    if (!worldData || !organismGrid) {
         return std::nullopt;
     }
 
     Evolution::EvaluationSnapshot snapshot;
-    snapshot.worldData = world->getData();
-    snapshot.organismIds = world->getOrganismManager().getGrid();
+    snapshot.worldData = *worldData;
+    snapshot.organismIds = *organismGrid;
     return snapshot;
 }
 
@@ -806,8 +807,8 @@ EvaluationPassResult buildEvaluationPassResult(
         &fitnessBreakdown);
     pass.treeFitnessBreakdown = treeBreakdown;
     pass.fitnessBreakdown = fitnessBreakdown;
-    if (const World* world = runner.getWorld()) {
-        pass.timerStats = collectTimerStats(world->getTimers());
+    if (const Timers* timers = runner.getTimers()) {
+        pass.timerStats = collectTimerStats(*timers);
     }
     pass.snapshot = buildEvaluationSnapshotForRunner(runner);
     return pass;
@@ -1358,8 +1359,8 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
     // Include in-flight visible runner timers so callers can profile active evaluations.
     std::unordered_map<std::string, TimerAggregate> mergedStats = timerStatsAggregate_;
     if (visibleRunner_) {
-        if (const World* world = visibleRunner_->getWorld()) {
-            mergeTimerStats(mergedStats, collectTimerStats(world->getTimers()));
+        if (const Timers* timers = visibleRunner_->getTimers()) {
+            mergeTimerStats(mergedStats, collectTimerStats(*timers));
         }
     }
 
@@ -1759,13 +1760,15 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
     }
 
     if (shouldBroadcast) {
-        World* world = visibleRunner_->getWorld();
-        DIRTSIM_ASSERT(world != nullptr, "Evolution: Visible runner missing World");
-        dsm.broadcastRenderMessage(
-            world->getData(),
-            world->getOrganismManager().getGrid(),
-            visibleScenarioId_,
-            visibleScenarioConfig_);
+        const WorldData* worldData = visibleRunner_->getWorldData();
+        const std::vector<OrganismId>* organismGrid = visibleRunner_->getOrganismGrid();
+        DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Visible runner missing WorldData");
+        DIRTSIM_ASSERT(organismGrid != nullptr, "Evolution: Visible runner missing organism grid");
+
+        if (!visibleRunner_->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+            dsm.broadcastRenderMessage(
+                *worldData, *organismGrid, visibleScenarioId_, visibleScenarioConfig_);
+        }
     }
 
     const bool evalComplete = status.state != TrainingRunner::State::Running;
@@ -2791,14 +2794,16 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
     if (lastBestPlaybackBroadcastTime_ == std::chrono::steady_clock::time_point{}
         || now - lastBestPlaybackBroadcastTime_ >= interval) {
         lastBestPlaybackBroadcastTime_ = now;
-        World* world = bestPlaybackRunner_->getWorld();
-        DIRTSIM_ASSERT(world != nullptr, "Evolution: Best playback runner missing World");
-        broadcastTrainingBestPlaybackFrame(
-            dsm,
-            world->getData(),
-            world->getOrganismManager().getGrid(),
-            bestPlaybackFitness_,
-            bestPlaybackGeneration_);
+        const WorldData* worldData = bestPlaybackRunner_->getWorldData();
+        const std::vector<OrganismId>* organismGrid = bestPlaybackRunner_->getOrganismGrid();
+        DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Best playback runner missing WorldData");
+        DIRTSIM_ASSERT(
+            organismGrid != nullptr, "Evolution: Best playback runner missing organism grid");
+
+        if (!bestPlaybackRunner_->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+            broadcastTrainingBestPlaybackFrame(
+                dsm, *worldData, *organismGrid, bestPlaybackFitness_, bestPlaybackGeneration_);
+        }
     }
 
     if (status.state == TrainingRunner::State::Running) {

@@ -415,7 +415,7 @@ WebSocket Binary Frame
 // Error Response
 {
   "id": 12345,
-  "error": "World not initialized"
+  "error": "No world available"
 }
 ```
 

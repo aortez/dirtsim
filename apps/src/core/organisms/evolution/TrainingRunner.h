@@ -2,6 +2,8 @@
 
 #include "core/Result.h"
 #include "core/ScenarioConfig.h"
+#include "core/Timers.h"
+#include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/Genome.h"
@@ -29,6 +31,7 @@ namespace DirtSim {
 class GenomeRepository;
 class NesGameAdapter;
 class NesScenarioRuntime;
+class NesSmolnesScenarioDriver;
 namespace Organism {
 class Body;
 }
@@ -108,6 +111,10 @@ public:
 
     const World* getWorld() const { return world_.get(); }
     World* getWorld() { return world_.get(); }
+    bool isNesScenario() const { return nesDriver_ != nullptr; }
+    const WorldData* getWorldData() const;
+    const std::vector<OrganismId>* getOrganismGrid() const;
+    const Timers* getTimers() const;
     ScenarioConfig getScenarioConfig() const;
     Result<std::monostate, std::string> setScenarioConfig(const ScenarioConfig& config);
 
@@ -138,6 +145,10 @@ private:
     Individual individual_;
     std::unique_ptr<World> world_;
     std::unique_ptr<ScenarioRunner> scenario_;
+    std::unique_ptr<NesSmolnesScenarioDriver> nesDriver_;
+    ScenarioConfig nesScenarioConfig_;
+    WorldData nesWorldData_;
+    Timers nesTimers_;
     OrganismId organismId_ = INVALID_ORGANISM_ID;
 
     double simTime_ = 0.0;

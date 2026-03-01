@@ -3,8 +3,10 @@
 #include "StateForward.h"
 #include "core/ScenarioId.h"
 #include "core/Vector2d.h"
+#include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "server/Event.h"
 #include "server/api/ClockEventTrigger.h"
 #include "server/api/FingerDown.h"
@@ -36,11 +38,14 @@ struct FingerSession {
 };
 
 /**
- * @brief Active simulation state - owns World and Scenario instance.
+ * @brief Active simulation state - owns either a GridWorld (World+Scenario) or an NES runtime.
  */
 struct SimRunning {
     std::unique_ptr<World> world;
     std::unique_ptr<ScenarioRunner> scenario; // Owns scenario instance (not singleton).
+    std::unique_ptr<NesSmolnesScenarioDriver> nes_driver;
+    ScenarioConfig nes_scenario_config;
+    WorldData nes_world_data;
     Scenario::EnumType scenario_id = Scenario::EnumType::Empty; // Current scenario ID.
     uint32_t stepCount = 0;
     uint32_t targetSteps = 0;     // Steps to execute before pausing.
@@ -67,6 +72,13 @@ struct SimRunning {
     std::map<size_t, bool> prev_back_button_;  // For edge detection of reset.
     std::map<size_t, bool> prev_y_button_;     // For edge detection of debug toggle.
     std::optional<uint8_t> nes_controller1_override_;
+
+    SimRunning() = default;
+    SimRunning(const SimRunning&) = delete;
+    SimRunning& operator=(const SimRunning&) = delete;
+    SimRunning(SimRunning&&) noexcept;
+    SimRunning& operator=(SimRunning&&) noexcept;
+    ~SimRunning();
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);

@@ -326,6 +326,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp
     src/server/states/SimRunning.cpp
+    src/server/states/ScenarioSessionUtils.cpp
     src/server/states/Startup.cpp
     src/server/states/UnsavedTrainingResult.cpp
 
@@ -407,6 +408,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/NesSuperTiltBroScenario.cpp
     src/core/scenarios/nes/NesDuckSensoryBuilder.cpp
     src/core/scenarios/nes/NesGameAdapterRegistry.cpp
+    src/core/scenarios/nes/NesSmolnesScenarioDriver.cpp
     src/core/scenarios/nes/NesFlappyParatroopaGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp

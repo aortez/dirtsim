@@ -1,14 +1,12 @@
 #pragma once
 
 #include "NesConfig.h"
-#include "core/Timers.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/nes/NesRomValidation.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
-#include "core/scenarios/nes/SmolnesRuntime.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,16 +42,9 @@ public:
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:
-    void stopRuntime();
-    void updateRuntimeProfilingTimers(Timers& timers);
-
     ScenarioMetadata metadata_;
     Config::NesFlappyParatroopa config_;
-    NesRomCheckResult lastRomCheck_;
-    std::string runtimeResolvedRomId_;
-    std::unique_ptr<SmolnesRuntime> runtime_;
-    std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
-    uint8_t controller1State_ = 0;
+    NesSmolnesScenarioDriver driver_;
 };
 
 } // namespace DirtSim
