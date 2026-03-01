@@ -26,6 +26,7 @@
 #include "RenderStreamConfigSet.h"
 #include "Reset.h"
 #include "ScenarioListGet.h"
+#include "ScenarioSwitch.h"
 #include "SeedAdd.h"
 #include "SimRun.h"
 #include "SimStop.h"
@@ -99,6 +100,7 @@ using ApiCommand = std::variant<
     Api::RenderStreamConfigSet::Command,
     Api::Reset::Command,
     Api::ScenarioListGet::Command,
+    Api::ScenarioSwitch::Command,
     Api::SeedAdd::Command,
     Api::SimRun::Command,
     Api::SimStop::Command,

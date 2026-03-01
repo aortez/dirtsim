@@ -13,6 +13,13 @@ namespace State {
 
 void SimPaused::onEnter(StateMachine& /*dsm*/)
 {
+    if (previousState.session.isNesSession()) {
+        spdlog::info(
+            "SimPaused: Simulation paused at step {} (NES session preserved)",
+            previousState.stepCount);
+        return;
+    }
+
     spdlog::info(
         "SimPaused: Simulation paused at step {} (World preserved)", previousState.stepCount);
 }
@@ -37,11 +44,6 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::StateGet::Response;
 
-    if (!previousState.world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
-
     // Return cached WorldData from paused state.
     auto cachedPtr = dsm.getCachedWorldData();
     if (cachedPtr) {
@@ -49,11 +51,13 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
         responseData.worldData = *cachedPtr;
         cwc.sendResponse(Response::okay(std::move(responseData)));
     }
-    else {
-        // Fallback: cache not ready yet, copy from world.
+    else if (const WorldData* worldData = previousState.session.getWorldData()) {
         Api::StateGet::Okay responseData;
-        responseData.worldData = previousState.world->getData();
+        responseData.worldData = *worldData;
         cwc.sendResponse(Response::okay(std::move(responseData)));
+    }
+    else {
+        cwc.sendResponse(Response::error(ApiError("No state available")));
     }
     return std::move(*this);
 }

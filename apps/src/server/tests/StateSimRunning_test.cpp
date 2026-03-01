@@ -45,10 +45,14 @@ void applyCleanScenario(SimRunning& simRunning)
     cleanConfig.rightThrowEnabled = false;
     cleanConfig.rainRate = 0.0;
 
-    ASSERT_NE(simRunning.world, nullptr);
-    ASSERT_NE(simRunning.scenario, nullptr);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
-    simRunning.scenario->setConfig(cleanConfig, *simRunning.world);
+    auto gridWorld = simRunning.session.requireGridWorld();
+    ASSERT_TRUE(gridWorld.isValue()) << gridWorld.errorValue().message;
+    World* world = gridWorld.value().world;
+    ScenarioRunner* scenario = gridWorld.value().scenario;
+    ASSERT_NE(world, nullptr);
+    ASSERT_NE(scenario, nullptr);
+    ASSERT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox);
+    scenario->setConfig(cleanConfig, *world);
 }
 
 } // namespace
@@ -68,20 +72,24 @@ TEST(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
     SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
 
     // Verify: World exists and scenario already applied by Idle.
-    ASSERT_NE(simRunning.world, nullptr);
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox) << "Scenario applied by Idle";
+    auto gridWorld = simRunning.session.requireGridWorld();
+    ASSERT_TRUE(gridWorld.isValue()) << gridWorld.errorValue().message;
+    World* world = gridWorld.value().world;
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox)
+        << "Scenario applied by Idle";
 
     // Execute: Call onEnter (should not change scenario since it's already set).
     simRunning.onEnter(*fixture.stateMachine);
 
     // Verify: Sandbox scenario is still applied.
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox)
+    EXPECT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox)
         << "Scenario should remain Sandbox";
 
     // Verify: Walls exist (basic scenario setup check).
-    const Cell& topLeft = simRunning.world->getData().at(0, 0);
-    const Cell& bottomRight = simRunning.world->getData().at(
-        simRunning.world->getData().width - 1, simRunning.world->getData().height - 1);
+    const Cell& topLeft = world->getData().at(0, 0);
+    const Cell& bottomRight =
+        world->getData().at(world->getData().width - 1, world->getData().height - 1);
     EXPECT_EQ(topLeft.material_type, Material::EnumType::Wall) << "Walls should be created";
     EXPECT_EQ(bottomRight.material_type, Material::EnumType::Wall) << "Walls should be created";
 }
@@ -96,23 +104,22 @@ TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
     // Setup: Create initialized SimRunning with clean scenario (no features).
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
     applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
 
     // Setup: Manually add dirt at top center.
     const uint32_t testX = 14;
     const uint32_t testY = 5;
 
     // Debug: Check world state before adding dirt.
-    spdlog::info(
-        "TEST: World dimensions: {}x{}",
-        simRunning.world->getData().width,
-        simRunning.world->getData().height);
-    spdlog::info("TEST: Gravity: {}", simRunning.world->getPhysicsSettings().gravity);
+    spdlog::info("TEST: World dimensions: {}x{}", world->getData().width, world->getData().height);
+    spdlog::info("TEST: Gravity: {}", world->getPhysicsSettings().gravity);
 
-    simRunning.world->getData().at(testX, testY).addDirt(1.0);
+    world->getData().at(testX, testY).addDirt(1.0);
 
     // Verify initial state.
-    const Cell& startCell = simRunning.world->getData().at(testX, testY);
-    const Cell& cellBelow = simRunning.world->getData().at(testX, testY + 1);
+    const Cell& startCell = world->getData().at(testX, testY);
+    const Cell& cellBelow = world->getData().at(testX, testY + 1);
     spdlog::info(
         "TEST: Start cell ({},{}) material={}, fill={}",
         testX,
@@ -138,8 +145,8 @@ TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 
         // Debug: Log first few steps.
         if (i < 5 || i % 20 == 0) {
-            const Cell& current = simRunning.world->getData().at(testX, testY);
-            const Cell& below = simRunning.world->getData().at(testX, testY + 1);
+            const Cell& current = world->getData().at(testX, testY);
+            const Cell& below = world->getData().at(testX, testY + 1);
             spdlog::info(
                 "TEST: Step {} - Cell({},{}) mat={} fill={:.2f} COM=({:.3f},{:.3f}) "
                 "vel=({:.3f},{:.3f})",
@@ -162,7 +169,7 @@ TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
         }
 
         // Check if dirt has moved to cell below.
-        const Cell& cellBelow = simRunning.world->getData().at(testX, testY + 1);
+        const Cell& cellBelow = world->getData().at(testX, testY + 1);
         if (cellBelow.material_type == Material::EnumType::Dirt && cellBelow.fill_ratio > 0.1) {
             dirtFell = true;
             spdlog::info("Dirt fell after {} steps", i + 1);
@@ -172,7 +179,7 @@ TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 
     // Verify: Dirt fell to the cell below within 200 frames.
     ASSERT_TRUE(dirtFell) << "Dirt should fall to next cell within 200 frames";
-    const Cell& finalCellBelow = simRunning.world->getData().at(testX, testY + 1);
+    const Cell& finalCellBelow = world->getData().at(testX, testY + 1);
     EXPECT_EQ(finalCellBelow.material_type, Material::EnumType::Dirt)
         << "Cell below should have dirt";
     EXPECT_GT(finalCellBelow.fill_ratio, 0.1) << "Cell below should have dirt";
@@ -227,8 +234,8 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
 
     EXPECT_EQ(worldData.width, expected_width);
     EXPECT_EQ(worldData.height, expected_height);
-    // Scenario ID is now in SimRunning state, not WorldData.
-    EXPECT_EQ(updatedState.scenario_id, Scenario::EnumType::Sandbox);
+    // Scenario ID is tracked by the active ScenarioSession.
+    EXPECT_EQ(updatedState.session.getScenarioId(), Scenario::EnumType::Sandbox);
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
 }
 
@@ -241,10 +248,14 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
 
     // Setup: Create initialized SimRunning (water column ON by default).
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    ScenarioRunner* scenario = simRunning.session.getScenarioRunner();
+    ASSERT_NE(scenario, nullptr);
 
     // Verify: Water column initially exists (check a few cells).
     // Water column height = world.height / 3 = 28 / 3 = 9, so check y=5 (middle of column).
-    const Cell& waterCell = simRunning.world->getData().at(3, 5);
+    const Cell& waterCell = world->getData().at(3, 5);
     EXPECT_EQ(waterCell.material_type, Material::EnumType::Water)
         << "Water column should exist initially";
     EXPECT_GT(waterCell.fill_ratio, 0.5) << "Water column cells should be filled";
@@ -256,15 +267,13 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
     configOff.rightThrowEnabled = false;
     configOff.rainRate = 0.0;
 
-    ASSERT_NE(simRunning.world, nullptr);
-    ASSERT_NE(simRunning.scenario, nullptr);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
-    simRunning.scenario->setConfig(configOff, *simRunning.world);
+    ASSERT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox);
+    scenario->setConfig(configOff, *world);
 
     // Verify: Water column removed.
     for (uint32_t y = 0; y < 20; ++y) {
         for (uint32_t x = 1; x <= 5; ++x) {
-            const Cell& cell = simRunning.world->getData().at(x, y);
+            const Cell& cell = world->getData().at(x, y);
             EXPECT_TRUE(cell.material_type != Material::EnumType::Water || cell.fill_ratio < 0.1)
                 << "Water column cells should be cleared at (" << x << "," << y << ")";
         }
@@ -273,10 +282,10 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
     // Execute: Toggle water column back ON.
     Config::Sandbox configOn = configOff;
     configOn.waterColumnEnabled = true;
-    simRunning.scenario->setConfig(configOn, *simRunning.world);
+    scenario->setConfig(configOn, *world);
 
     // Verify: Water column restored.
-    const Cell& restoredWaterCell = simRunning.world->getData().at(3, 5);
+    const Cell& restoredWaterCell = world->getData().at(3, 5);
     EXPECT_EQ(restoredWaterCell.material_type, Material::EnumType::Water)
         << "Water column should be restored";
     EXPECT_GT(restoredWaterCell.fill_ratio, 0.9) << "Water should be nearly full";
@@ -291,11 +300,15 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesDirtQuadrant)
 
     // Setup: Create initialized SimRunning (quadrant ON by default).
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    ScenarioRunner* scenario = simRunning.session.getScenarioRunner();
+    ASSERT_NE(scenario, nullptr);
 
     // Verify: Dirt quadrant initially exists (check a cell in lower-right).
-    uint32_t quadX = simRunning.world->getData().width - 5;
-    uint32_t quadY = simRunning.world->getData().height - 5;
-    const Cell& quadCell = simRunning.world->getData().at(quadX, quadY);
+    uint32_t quadX = world->getData().width - 5;
+    uint32_t quadY = world->getData().height - 5;
+    const Cell& quadCell = world->getData().at(quadX, quadY);
     EXPECT_EQ(quadCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should exist initially";
     EXPECT_GT(quadCell.fill_ratio, 0.5) << "Quadrant cells should be filled";
@@ -307,13 +320,11 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesDirtQuadrant)
     configOff.rightThrowEnabled = false;
     configOff.rainRate = 0.0;
 
-    ASSERT_NE(simRunning.world, nullptr);
-    ASSERT_NE(simRunning.scenario, nullptr);
-    ASSERT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox);
-    simRunning.scenario->setConfig(configOff, *simRunning.world);
+    ASSERT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox);
+    scenario->setConfig(configOff, *world);
 
     // Verify: Quadrant removed.
-    const Cell& clearedCell = simRunning.world->getData().at(quadX, quadY);
+    const Cell& clearedCell = world->getData().at(quadX, quadY);
     EXPECT_TRUE(
         clearedCell.material_type != Material::EnumType::Dirt || clearedCell.fill_ratio < 0.1)
         << "Quadrant should be cleared";
@@ -321,10 +332,10 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesDirtQuadrant)
     // Execute: Toggle quadrant back ON.
     Config::Sandbox configOn = configOff;
     configOn.quadrantEnabled = true;
-    simRunning.scenario->setConfig(configOn, *simRunning.world);
+    scenario->setConfig(configOn, *world);
 
     // Verify: Quadrant restored.
-    const Cell& restoredCell = simRunning.world->getData().at(quadX, quadY);
+    const Cell& restoredCell = world->getData().at(quadX, quadY);
     EXPECT_EQ(restoredCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should be restored";
     EXPECT_GT(restoredCell.fill_ratio, 0.9) << "Quadrant cells should be filled";
@@ -405,13 +416,15 @@ TEST(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
     // Setup: Create initialized SimRunning with clean scenario.
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
     applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
 
     // Setup: Choose test coordinates (world is 28x28, avoid walls at boundaries).
     const uint32_t testX = 14;
     const uint32_t testY = 14;
 
     // Verify: Cell is initially empty (AIR).
-    const Cell& cellBefore = simRunning.world->getData().at(testX, testY);
+    const Cell& cellBefore = world->getData().at(testX, testY);
     EXPECT_EQ(cellBefore.material_type, Material::EnumType::Air)
         << "Cell should be empty initially";
     EXPECT_LT(cellBefore.fill_ratio, 0.1) << "Cell should have minimal fill initially";
@@ -438,7 +451,9 @@ TEST(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
     // Verify: Cell now contains SEED material.
-    const Cell& cellAfter = simRunning.world->getData().at(testX, testY);
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    const Cell& cellAfter = world->getData().at(testX, testY);
     EXPECT_EQ(cellAfter.material_type, Material::EnumType::Seed)
         << "Cell should contain SEED material";
     EXPECT_GT(cellAfter.fill_ratio, 0.9) << "Cell should be nearly full with SEED";
@@ -464,7 +479,9 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
     const int testX = 14;
     const int testY = 14;
 
-    auto& data = simRunning.world->getData();
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    auto& data = world->getData();
     const int width = data.width;
     const int height = data.height;
 
@@ -508,11 +525,13 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
 
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
-    const Cell& cellTop = simRunning.world->getData().at(expectedX, expectedY);
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    const Cell& cellTop = world->getData().at(expectedX, expectedY);
     EXPECT_EQ(cellTop.material_type, Material::EnumType::Seed);
     EXPECT_GT(cellTop.fill_ratio, 0.9f);
 
-    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    const Cell& cellBottom = world->getData().at(bottomX, bottomY);
     EXPECT_TRUE(cellBottom.isAir());
 }
 
@@ -525,11 +544,13 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
 
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
     applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
 
     const int testX = 14;
     const int testY = 14;
 
-    auto& data = simRunning.world->getData();
+    auto& data = world->getData();
     const int width = data.width;
     const int height = data.height;
 
@@ -561,7 +582,9 @@ TEST(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
 
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
-    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    const Cell& cellBottom = world->getData().at(bottomX, bottomY);
     EXPECT_EQ(cellBottom.material_type, Material::EnumType::Seed);
     EXPECT_GT(cellBottom.fill_ratio, 0.9f);
 }
@@ -599,8 +622,10 @@ TEST(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 
     // Test coordinates beyond world bounds.
     callbackInvoked = false;
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
     Api::SeedAdd::Command cmd2{
-        .x = simRunning.world->getData().width + 10,
+        .x = world->getData().width + 10,
         .y = 10,
         .genome_id = std::nullopt,
     };
@@ -625,10 +650,12 @@ TEST(StateSimRunningTest, WorldResize_ResizesWorldGrid)
 
     // Setup: Create initialized SimRunning state.
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
 
     // Get initial world size.
-    const uint32_t initialWidth = simRunning.world->getData().width;
-    const uint32_t initialHeight = simRunning.world->getData().height;
+    const uint32_t initialWidth = world->getData().width;
+    const uint32_t initialHeight = world->getData().height;
 
     EXPECT_GT(initialWidth, 0) << "Initial width should be positive";
     EXPECT_GT(initialHeight, 0) << "Initial height should be positive";
@@ -652,8 +679,10 @@ TEST(StateSimRunningTest, WorldResize_ResizesWorldGrid)
 
     // Verify: World resized correctly.
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked";
-    EXPECT_EQ(simRunning.world->getData().width, 50) << "World width should be resized to 50";
-    EXPECT_EQ(simRunning.world->getData().height, 50) << "World height should be resized to 50";
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getData().width, 50) << "World width should be resized to 50";
+    EXPECT_EQ(world->getData().height, 50) << "World height should be resized to 50";
 
     // Execute: Resize world to smaller size (10x10).
     callbackInvoked = false;
@@ -673,8 +702,10 @@ TEST(StateSimRunningTest, WorldResize_ResizesWorldGrid)
     simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
 
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked for resize";
-    EXPECT_EQ(simRunning.world->getData().width, 10) << "World width should be resized to 10";
-    EXPECT_EQ(simRunning.world->getData().height, 10) << "World height should be resized to 10";
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getData().width, 10) << "World width should be resized to 10";
+    EXPECT_EQ(world->getData().height, 10) << "World height should be resized to 10";
 
     // Execute: Resize world to larger size (100x100).
     callbackInvoked = false;
@@ -694,8 +725,10 @@ TEST(StateSimRunningTest, WorldResize_ResizesWorldGrid)
     simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
 
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked for resize";
-    EXPECT_EQ(simRunning.world->getData().width, 100) << "World width should be resized to 100";
-    EXPECT_EQ(simRunning.world->getData().height, 100) << "World height should be resized to 100";
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getData().width, 100) << "World width should be resized to 100";
+    EXPECT_EQ(world->getData().height, 100) << "World height should be resized to 100";
 }
 
 /**
@@ -708,17 +741,18 @@ TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     // Setup: Create initialized SimRunning with Sandbox scenario.
     SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
     applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
 
     // Add a duck organism.
     const uint32_t duckX = 10;
     const uint32_t duckY = 10;
-    OrganismId duckId =
-        simRunning.world->getOrganismManager().createDuck(*simRunning.world, duckX, duckY);
+    OrganismId duckId = world->getOrganismManager().createDuck(*world, duckX, duckY);
 
     // Verify duck exists.
     ASSERT_NE(duckId, INVALID_ORGANISM_ID);
-    EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 1u);
-    EXPECT_EQ(simRunning.world->getData().at(duckX, duckY).material_type, Material::EnumType::Wood);
+    EXPECT_EQ(world->getOrganismManager().getOrganismCount(), 1u);
+    EXPECT_EQ(world->getData().at(duckX, duckY).material_type, Material::EnumType::Wood);
 
     // Execute: Switch to Benchmark scenario.
     bool callbackInvoked = false;
@@ -737,7 +771,9 @@ TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
 
     // Verify: Callback invoked and organisms cleared.
     ASSERT_TRUE(callbackInvoked);
-    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Benchmark);
-    EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 0u)
+    EXPECT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Benchmark);
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getOrganismManager().getOrganismCount(), 0u)
         << "Organisms should be cleared on scenario switch";
 }

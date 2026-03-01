@@ -1,6 +1,8 @@
 #pragma once
 
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
+#include "core/ScenarioConfig.h"
+#include "core/Timers.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -9,8 +11,6 @@
 #include <vector>
 
 namespace DirtSim {
-
-class World;
 
 struct NesRamProbeAddress {
     std::string label;
@@ -31,8 +31,8 @@ struct NesRamProbeTrace {
 };
 
 NesRamProbeTrace captureNesRamProbeTrace(
-    NesFlappyParatroopaScenario& scenario,
-    World& world,
+    Scenario::EnumType scenarioId,
+    const ScenarioConfig& config,
     const std::vector<uint8_t>& controllerScript,
     const std::vector<NesRamProbeAddress>& cpuAddresses,
     double deltaTimeSeconds);
@@ -40,8 +40,8 @@ NesRamProbeTrace captureNesRamProbeTrace(
 class NesRamProbeStepper {
 public:
     NesRamProbeStepper(
-        NesFlappyParatroopaScenario& scenario,
-        World& world,
+        Scenario::EnumType scenarioId,
+        const ScenarioConfig& config,
         std::vector<NesRamProbeAddress> cpuAddresses,
         double deltaTimeSeconds);
 
@@ -52,17 +52,20 @@ public:
 
     uint8_t getControllerMask() const;
     const SmolnesRuntime::MemorySnapshot* getLastMemorySnapshot() const;
+    bool isRuntimeReady() const;
+    std::string getLastError() const;
 
     NesRamProbeFrame step(std::optional<uint8_t> controllerMask = std::nullopt);
 
 private:
-    NesFlappyParatroopaScenario& scenario_;
-    World& world_;
     std::vector<NesRamProbeAddress> cpuAddresses_;
     double deltaTimeSeconds_ = 0.0;
     uint64_t frameIndex_ = 0;
     uint8_t controllerMask_ = 0;
     std::optional<SmolnesRuntime::MemorySnapshot> lastMemorySnapshot_;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame_;
+    Timers timers_;
+    NesSmolnesScenarioDriver driver_;
 };
 
 enum class FlappyParatroopaGamePhase : uint8_t {
@@ -101,14 +104,16 @@ struct FlappyParatroopaGameState {
 
 class FlappyParatroopaProbeStepper {
 public:
-    FlappyParatroopaProbeStepper(
-        NesFlappyParatroopaScenario& scenario, World& world, double deltaTimeSeconds);
+    explicit FlappyParatroopaProbeStepper(
+        const Config::NesFlappyParatroopa& config, double deltaTimeSeconds);
 
     FlappyParatroopaProbeStepper(const FlappyParatroopaProbeStepper&) = delete;
     FlappyParatroopaProbeStepper& operator=(const FlappyParatroopaProbeStepper&) = delete;
 
     uint8_t getControllerMask() const;
     const SmolnesRuntime::MemorySnapshot* getLastMemorySnapshot() const;
+    bool isRuntimeReady() const;
+    std::string getLastError() const;
 
     std::optional<FlappyParatroopaGameState> step(
         std::optional<uint8_t> controllerMask = std::nullopt);

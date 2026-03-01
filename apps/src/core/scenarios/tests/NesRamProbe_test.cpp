@@ -1,6 +1,4 @@
 #include "core/ScenarioConfig.h"
-#include "core/World.h"
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
 #include "core/scenarios/nes/NesRamProbe.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
@@ -11,7 +9,6 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -59,47 +56,17 @@ std::vector<uint8_t> buildScriptedControllerSequence()
     return script;
 }
 
-NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
+Config::NesFlappyParatroopa makeFlappyProbeConfig(const std::filesystem::path& romPath)
 {
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
+    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
     config.romPath = romPath.string();
     config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
+    return config;
+}
 
-    EXPECT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    EXPECT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
-
-    constexpr double kDeltaTimeSeconds = 1.0 / 60.0;
-    int waitingStateStableFrames = 0;
-    for (int i = 0; i < 1600 && waitingStateStableFrames < 4; ++i) {
-        uint8_t controllerMask = 0;
-        const auto snapshot = scenario->copyRuntimeMemorySnapshot();
-        if (snapshot.has_value()) {
-            const uint8_t gameState = snapshot->cpuRam[kGameStateAddr];
-            if (gameState == 0u || gameState == 7u) {
-                controllerMask = SMOLNES_RUNTIME_BUTTON_START;
-            }
-        }
-
-        scenario->setController1State(controllerMask);
-        scenario->tick(world, kDeltaTimeSeconds);
-
-        const auto postTickSnapshot = scenario->copyRuntimeMemorySnapshot();
-        if (postTickSnapshot.has_value() && postTickSnapshot->cpuRam[kGameStateAddr] == 1u) {
-            waitingStateStableFrames++;
-        }
-        else {
-            waitingStateStableFrames = 0;
-        }
-    }
-    EXPECT_GE(waitingStateStableFrames, 4) << "Failed to synchronize probe start on waiting state.";
-
+NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
+{
     const std::vector<NesRamProbeAddress> addresses{
         NesRamProbeAddress{ .label = "game_state", .address = kGameStateAddr },
         NesRamProbeAddress{ .label = "scroll_x", .address = 0x08 },
@@ -116,8 +83,43 @@ NesRamProbeTrace runProbeTraceOnce(const std::filesystem::path& romPath)
         NesRamProbeAddress{ .label = "nt1_pipe1_gap", .address = 0x15 },
     };
 
-    return captureNesRamProbeTrace(
-        *scenario, world, buildScriptedControllerSequence(), addresses, kDeltaTimeSeconds);
+    const Config::NesFlappyParatroopa config = makeFlappyProbeConfig(romPath);
+    NesRamProbeStepper stepper(
+        Scenario::EnumType::NesFlappyParatroopa,
+        ScenarioConfig{ config },
+        addresses,
+        kFrameDeltaSeconds);
+    EXPECT_TRUE(stepper.isRuntimeReady()) << stepper.getLastError();
+
+    int waitingStateStableFrames = 0;
+    for (int i = 0; i < 1600 && waitingStateStableFrames < 4; ++i) {
+        uint8_t controllerMask = 0u;
+        const SmolnesRuntime::MemorySnapshot* snapshot = stepper.getLastMemorySnapshot();
+        if (snapshot != nullptr) {
+            const uint8_t gameState = snapshot->cpuRam[kGameStateAddr];
+            if (gameState == 0u || gameState == 7u) {
+                controllerMask = SMOLNES_RUNTIME_BUTTON_START;
+            }
+        }
+
+        const NesRamProbeFrame frame = stepper.step(controllerMask);
+        if (!frame.cpuRamValues.empty() && frame.cpuRamValues.front() == 1u) {
+            waitingStateStableFrames++;
+        }
+        else {
+            waitingStateStableFrames = 0;
+        }
+    }
+    EXPECT_GE(waitingStateStableFrames, 4) << "Failed to synchronize probe start on waiting state.";
+
+    NesRamProbeTrace trace;
+    trace.cpuAddresses = addresses;
+    const auto script = buildScriptedControllerSequence();
+    trace.frames.reserve(script.size());
+    for (uint8_t controllerMask : script) {
+        trace.frames.push_back(stepper.step(controllerMask));
+    }
+    return trace;
 }
 
 size_t findAddressIndex(const NesRamProbeTrace& trace, const std::string& label)
@@ -293,21 +295,9 @@ TEST(NesRamProbeTest, ManualStep_BirdStartAndFlapSequence_PrintsTrace)
                         "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
-    auto scenario = std::make_unique<NesFlappyParatroopaScenario>();
-    const ScenarioMetadata& metadata = scenario->getMetadata();
-    World world(metadata.requiredWidth, metadata.requiredHeight);
-
-    Config::NesFlappyParatroopa config =
-        std::get<Config::NesFlappyParatroopa>(scenario->getConfig());
-    config.romPath = romPath->string();
-    config.requireSmolnesMapper = true;
-    scenario->setConfig(config, world);
-    scenario->setup(world);
-
-    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
-    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
-
-    FlappyParatroopaProbeStepper stepper{ *scenario, world, kFrameDeltaSeconds };
+    const Config::NesFlappyParatroopa config = makeFlappyProbeConfig(romPath.value());
+    FlappyParatroopaProbeStepper stepper{ config, kFrameDeltaSeconds };
+    ASSERT_TRUE(stepper.isRuntimeReady()) << stepper.getLastError();
 
     bool startPressed = false;
     std::optional<FlappyParatroopaGameState> state;

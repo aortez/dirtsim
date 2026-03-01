@@ -3,6 +3,7 @@
 #include "FitnessCalculator.h"
 #include "GenomeRepository.h"
 #include "core/Assert.h"
+#include "core/LoggingChannels.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
@@ -11,6 +12,7 @@
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -188,27 +190,74 @@ TrainingRunner::TrainingRunner(
 {
     resolveBrainEntry();
 
-    // Create scenario from registry.
     auto registry = ScenarioRegistry::createDefault(genomeRepository);
-    scenario_ = registry.createScenario(individual_.scenarioId);
-    DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario factory returned null");
+    const ScenarioMetadata* metadata = registry.getMetadata(individual_.scenarioId);
+    DIRTSIM_ASSERT(metadata != nullptr, "TrainingRunner: Scenario metadata missing");
+    const bool isNesScenario = metadata->kind == ScenarioKind::NesWorld;
 
-    // Create world with scenario's required dimensions.
-    const auto& metadata = scenario_->getMetadata();
-    int width = metadata.requiredWidth > 0 ? metadata.requiredWidth : 9;
-    int height = metadata.requiredHeight > 0 ? metadata.requiredHeight : 9;
-    world_ = std::make_unique<World>(width, height);
+    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
+        DIRTSIM_ASSERT(
+            isNesScenario, "TrainingRunner: Scenario-driven brains require a NesWorld scenario");
+    }
+    if (isNesScenario) {
+        DIRTSIM_ASSERT(
+            controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven,
+            "TrainingRunner: NesWorld scenarios require a scenario-driven brain");
+    }
 
-    ScenarioConfig scenarioConfig = scenario_->getConfig();
+    ScenarioConfig scenarioConfig = ::DirtSim::makeDefaultConfig(individual_.scenarioId);
     if (runnerConfig.scenarioConfigOverride.has_value()) {
         scenarioConfig = runnerConfig.scenarioConfigOverride.value();
     }
     scenarioConfig = buildEffectiveScenarioConfig(scenarioConfig);
-    scenario_->setConfig(scenarioConfig, *world_);
 
-    // Setup scenario.
-    scenario_->setup(*world_);
-    world_->setScenario(scenario_.get());
+    nesDriver_.reset();
+    nesScenarioConfig_ = ScenarioConfig{};
+    nesWorldData_ = WorldData{};
+
+    if (isNesScenario) {
+        nesDriver_ = std::make_unique<NesSmolnesScenarioDriver>(individual_.scenarioId);
+        nesScenarioConfig_ = scenarioConfig;
+
+        const auto setResult = nesDriver_->setConfig(nesScenarioConfig_);
+        if (setResult.isError()) {
+            LOG_ERROR(
+                Scenario, "TrainingRunner: Failed to apply NES config: {}", setResult.errorValue());
+            state_ = State::OrganismDied;
+        }
+
+        if (state_ == State::Running) {
+            const auto setupResult = nesDriver_->setup();
+            if (setupResult.isError()) {
+                LOG_ERROR(
+                    Scenario,
+                    "TrainingRunner: Failed to start NES runtime: {}",
+                    setupResult.errorValue());
+                state_ = State::OrganismDied;
+            }
+        }
+
+        nesWorldData_.width = 256;
+        nesWorldData_.height = 240;
+        nesWorldData_.cells.clear();
+        nesWorldData_.colors.data.clear();
+        nesWorldData_.scenario_video_frame.reset();
+        nesWorldData_.entities.clear();
+        nesWorldData_.tree_vision.reset();
+    }
+    else {
+        scenario_ = registry.createScenario(individual_.scenarioId);
+        DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario factory returned null");
+
+        // Create world with scenario's required dimensions.
+        int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
+        int height = metadata->requiredHeight > 0 ? metadata->requiredHeight : 9;
+        world_ = std::make_unique<World>(width, height);
+
+        scenario_->setConfig(scenarioConfig, *world_);
+        scenario_->setup(*world_);
+        world_->setScenario(scenario_.get());
+    }
 
     nesPaletteFrame_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven
@@ -222,7 +271,8 @@ TrainingRunner::TrainingRunner(
     nesRuntime_ = nullptr;
     nesGameAdapter_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
-        nesRuntime_ = dynamic_cast<NesScenarioRuntime*>(scenario_.get());
+        nesRuntime_ = nesDriver_ ? static_cast<NesScenarioRuntime*>(nesDriver_.get())
+                                 : dynamic_cast<NesScenarioRuntime*>(scenario_.get());
         nesGameAdapter_ = nesGameAdapterRegistry_.createAdapter(individual_.scenarioId);
         if (nesGameAdapter_) {
             const std::string runtimeRomId =
@@ -387,24 +437,81 @@ const Organism::Body* TrainingRunner::getOrganism() const
     return world_->getOrganismManager().getOrganism(organismId_);
 }
 
+const WorldData* TrainingRunner::getWorldData() const
+{
+    if (world_) {
+        return &world_->getData();
+    }
+    if (nesDriver_) {
+        return &nesWorldData_;
+    }
+    return nullptr;
+}
+
+const std::vector<OrganismId>* TrainingRunner::getOrganismGrid() const
+{
+    if (world_) {
+        return &world_->getOrganismManager().getGrid();
+    }
+    if (nesDriver_) {
+        static const std::vector<OrganismId> kEmpty;
+        return &kEmpty;
+    }
+    return nullptr;
+}
+
+const Timers* TrainingRunner::getTimers() const
+{
+    if (world_) {
+        return &world_->getTimers();
+    }
+    if (nesDriver_) {
+        return &nesTimers_;
+    }
+    return nullptr;
+}
+
 ScenarioConfig TrainingRunner::getScenarioConfig() const
 {
-    if (!scenario_) {
-        return DirtSim::Config::Empty{};
+    if (scenario_) {
+        return scenario_->getConfig();
     }
-    return scenario_->getConfig();
+    if (nesDriver_) {
+        return nesScenarioConfig_;
+    }
+    return DirtSim::Config::Empty{};
 }
 
 Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const ScenarioConfig& config)
 {
-    if (!scenario_ || !world_) {
-        return Result<std::monostate, std::string>::error(
-            "TrainingRunner: Scenario config update requires active scenario and world");
+    const ScenarioConfig effectiveConfig = buildEffectiveScenarioConfig(config);
+    if (scenario_ && world_) {
+        scenario_->setConfig(effectiveConfig, *world_);
+        return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
-    const ScenarioConfig effectiveConfig = buildEffectiveScenarioConfig(config);
-    scenario_->setConfig(effectiveConfig, *world_);
-    return Result<std::monostate, std::string>::okay(std::monostate{});
+    if (nesDriver_) {
+        const auto setResult = nesDriver_->setConfig(effectiveConfig);
+        if (setResult.isError()) {
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+        nesScenarioConfig_ = effectiveConfig;
+
+        nesWorldData_.scenario_video_frame.reset();
+        nesWorldData_.timestep = 0;
+        const auto setupResult = nesDriver_->setup();
+        if (setupResult.isError()) {
+            return Result<std::monostate, std::string>::error(setupResult.errorValue());
+        }
+
+        if (nesGameAdapter_) {
+            nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
+        }
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    return Result<std::monostate, std::string>::error(
+        "TrainingRunner: Scenario config update requires an active scenario session");
 }
 
 bool TrainingRunner::isOrganismAlive() const
@@ -447,8 +554,10 @@ void TrainingRunner::resolveBrainEntry()
 
 void TrainingRunner::runScenarioDrivenStep()
 {
-    DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
-    DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
+    if (!nesDriver_) {
+        DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
+        DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
+    }
 
     if (!nesRuntime_ || !nesGameAdapter_) {
         state_ = State::OrganismDied;
@@ -475,7 +584,19 @@ void TrainingRunner::runScenarioDrivenStep()
     nesControllerMask_ = controllerMask;
     nesRuntime_->setController1State(nesControllerMask_);
 
-    world_->advanceTime(TIMESTEP);
+    const auto tickNesDriver = [&] {
+        if (!nesDriver_) {
+            return;
+        }
+
+        nesDriver_->tick(nesTimers_, nesWorldData_.scenario_video_frame);
+        nesWorldData_.timestep += 1;
+        if (nesWorldData_.scenario_video_frame.has_value()) {
+            nesWorldData_.width = static_cast<int16_t>(nesWorldData_.scenario_video_frame->width);
+            nesWorldData_.height = static_cast<int16_t>(nesWorldData_.scenario_video_frame->height);
+        }
+    };
+    tickNesDriver();
     simTime_ += TIMESTEP;
 
     const uint64_t renderedFramesAfter = nesRuntime_->getRuntimeRenderedFrameCount();

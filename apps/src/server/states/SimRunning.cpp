@@ -22,11 +22,8 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/NesFlappyParatroopaScenario.h"
-#include "core/scenarios/NesSuperTiltBroScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
@@ -35,6 +32,7 @@
 #include "server/api/NesInputSet.h"
 #include "server/api/ScenarioSwitch.h"
 #include "server/api/SimStop.h"
+#include "server/states/ScenarioSession.h"
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -236,56 +234,46 @@ void populateOrganismDebug(World& world, WorldData& data)
 }
 } // namespace
 
+SimRunning::~SimRunning() = default;
+SimRunning::SimRunning(SimRunning&&) noexcept = default;
+SimRunning& SimRunning::operator=(SimRunning&&) noexcept = default;
+
 void SimRunning::onEnter(StateMachine& dsm)
 {
     spdlog::info("SimRunning: Entering simulation state");
 
-    // Create World if it doesn't exist (first time entering from Idle).
-    if (!world) {
-        spdlog::info("SimRunning: Creating new World {}x{}", dsm.defaultWidth, dsm.defaultHeight);
-        world = std::make_unique<World>(dsm.defaultWidth, dsm.defaultHeight);
-    }
-    else {
-        spdlog::info(
-            "SimRunning: Resuming with existing World {}x{}",
-            world->getData().width,
-            world->getData().height);
-    }
-
     // Apply default scenario if no scenario is set.
-    if (world && scenario_id == Scenario::EnumType::Empty) {
+    if (!session.hasSession() || session.getScenarioId() == Scenario::EnumType::Empty) {
         const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
-        auto& registry = dsm.getScenarioRegistry();
-        scenario = registry.createScenario(defaultScenarioId);
+        ScenarioConfig scenarioConfig = makeDefaultConfig(defaultScenarioId);
+        applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
 
-        if (scenario) {
-            scenario_id = defaultScenarioId;
-
-            // Clear world before applying scenario.
-            for (int y = 0; y < world->getData().height; ++y) {
-                for (int x = 0; x < world->getData().width; ++x) {
-                    world->getData().at(x, y) = Cell();
-                }
-            }
-
-            ScenarioConfig scenarioConfig = makeDefaultConfig(defaultScenarioId);
-            applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
-            scenario->setConfig(scenarioConfig, *world);
-
-            // Run scenario setup to initialize world.
-            scenario->setup(*world);
-
-            // Register scenario with World for tick during advanceTime.
-            world->setScenario(scenario.get());
-
-            spdlog::info(
-                "SimRunning: Default scenario '{}' applied with config",
-                toString(defaultScenarioId));
+        const auto startResult =
+            session.start(dsm, defaultScenarioId, scenarioConfig, Vector2s{ 0, 0 });
+        if (startResult.isError()) {
+            spdlog::error(
+                "SimRunning: Failed to start default scenario '{}': {}",
+                toString(defaultScenarioId),
+                startResult.errorValue().message);
         }
+        return;
     }
 
+    if (session.isNesSession()) {
+        spdlog::info(
+            "SimRunning: Resuming NES session (scenario='{}')", toString(session.getScenarioId()));
+        spdlog::info("SimRunning: Ready to run simulation (stepCount={})", stepCount);
+        return;
+    }
+
+    World* world = session.getWorld();
+    DIRTSIM_ASSERT(world != nullptr, "SimRunning: GridWorld requires World");
+    spdlog::info(
+        "SimRunning: Resuming with existing World {}x{}",
+        world->getData().width,
+        world->getData().height);
     spdlog::info("SimRunning: Ready to run simulation (stepCount={})", stepCount);
 }
 
@@ -302,15 +290,14 @@ void SimRunning::tick(StateMachine& dsm)
         return;
     }
 
-    // Headless server: advance physics simulation with fixed timestep accumulator.
-    assert(world && "World must exist in SimRunning state");
-
-    // Poll gamepad and manage player ducks.
+    // Poll gamepad.
     auto& gm = dsm.getGamepadManager();
     gm.poll();
 
-    auto* nesScenario = scenario ? dynamic_cast<NesScenarioRuntime*>(scenario.get()) : nullptr;
-    if (nesScenario != nullptr) {
+    if (session.isNesSession()) {
+        auto nes = session.requireNesWorld();
+        DIRTSIM_ASSERT(nes.isValue(), "SimRunning: NES session missing runtime state");
+
         uint8_t controller1Buttons = nes_controller1_override_.value_or(0);
 
         if (!nes_controller1_override_.has_value()) {
@@ -324,9 +311,67 @@ void SimRunning::tick(StateMachine& dsm)
             }
         }
 
-        nesScenario->setController1State(controller1Buttons);
+        nes.value().driver->setController1State(controller1Buttons);
+
+        const auto now = std::chrono::steady_clock::now();
+
+        dsm.getTimers().startTimer("physics_step");
+        nes.value().driver->tick(*nes.value().timers, nes.value().worldData->scenario_video_frame);
+        dsm.getTimers().stopTimer("physics_step");
+
+        stepCount++;
+        nes.value().worldData->timestep = static_cast<int32_t>(stepCount);
+
+        if (nes.value().worldData->scenario_video_frame.has_value()) {
+            nes.value().worldData->width =
+                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->width);
+            nes.value().worldData->height =
+                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->height);
+        }
+
+        // Calculate actual FPS (steps per second).
+        const auto frameElapsed =
+            std::chrono::duration_cast<std::chrono::microseconds>(now - lastFrameTime).count();
+        if (frameElapsed > 0) {
+            actualFPS = 1000000.0 / frameElapsed;
+            nes.value().worldData->fps_server = actualFPS;
+            lastFrameTime = now;
+        }
+
+        dsm.updateCachedWorldData(*nes.value().worldData);
+
+        const WorldData* worldData = session.getWorldData();
+        const std::vector<OrganismId>* organismGrid = session.getOrganismGrid();
+        DIRTSIM_ASSERT(worldData != nullptr, "SimRunning: NES session missing WorldData");
+        DIRTSIM_ASSERT(organismGrid != nullptr, "SimRunning: NES session missing organism grid");
+
+        if (dsm.getWebSocketService() && worldData->scenario_video_frame.has_value()) {
+            dsm.broadcastRenderMessage(
+                *worldData, *organismGrid, session.getScenarioId(), session.getScenarioConfig());
+
+            // Track FPS for frame send rate.
+            if (lastFrameSendTime.time_since_epoch().count() > 0) {
+                auto sendElapsed =
+                    std::chrono::duration_cast<std::chrono::microseconds>(now - lastFrameSendTime)
+                        .count();
+                if (sendElapsed > 0) {
+                    frameSendFPS = 1000000.0 / sendElapsed;
+                    nes.value().worldData->fps_server = frameSendFPS;
+                }
+            }
+            lastFrameSendTime = now;
+        }
+        return;
     }
-    else {
+
+    // Headless server: advance physics simulation.
+    World* world = session.getWorld();
+    ScenarioRunner* scenario = session.getScenarioRunner();
+    DIRTSIM_ASSERT(world != nullptr, "World must exist for GridWorld simulation");
+    DIRTSIM_ASSERT(scenario != nullptr, "Scenario must exist for GridWorld simulation");
+
+    // Poll gamepad and manage player ducks.
+    {
         // Handle gamepad disconnects - remove ducks.
         for (size_t idx : gm.getNewlyDisconnected()) {
             auto it = gamepad_to_duck_.find(idx);
@@ -607,7 +652,7 @@ void SimRunning::tick(StateMachine& dsm)
         dsm.broadcastRenderMessage(
             world->getData(),
             world->getOrganismManager().getGrid(),
-            scenario_id,
+            session.getScenarioId(),
             scenario->getConfig());
 
         timers.stopTimer("broadcast_render_message");
@@ -649,23 +694,26 @@ State::Any SimRunning::onEvent(const ApplyScenarioCommand& cmd, StateMachine& ds
 {
     spdlog::info("SimRunning: Applying scenario: {}", toString(cmd.scenarioId));
 
-    auto& registry = dsm.getScenarioRegistry();
-    scenario = registry.createScenario(cmd.scenarioId);
-
-    if (!scenario) {
-        spdlog::error("Scenario not found: {}", toString(cmd.scenarioId));
+    ScenarioConfig scenarioConfig = makeDefaultConfig(cmd.scenarioId);
+    applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
+    const auto startResult = session.start(dsm, cmd.scenarioId, scenarioConfig, Vector2s{ 0, 0 });
+    if (startResult.isError()) {
+        spdlog::error(
+            "SimRunning: Failed to apply scenario '{}': {}",
+            toString(cmd.scenarioId),
+            startResult.errorValue().message);
         return std::move(*this);
     }
 
-    if (world) {
-        // Update scenario ID.
-        scenario_id = cmd.scenarioId;
-
-        // Register scenario with World for tick during advanceTime.
-        world->setScenario(scenario.get());
-
-        spdlog::info("SimRunning: Scenario '{}' applied", toString(cmd.scenarioId));
+    fingerSessions.clear();
+    gamepad_to_duck_.clear();
+    prev_start_button_.clear();
+    prev_back_button_.clear();
+    prev_y_button_.clear();
+    if (!session.isNesSession()) {
+        nes_controller1_override_.reset();
     }
+    stepCount = 0;
 
     return std::move(*this);
 }
@@ -673,11 +721,12 @@ State::Any SimRunning::onEvent(const Api::CellGet::Cwc& cwc, StateMachine& /*dsm
 {
     using Response = Api::CellGet::Response;
 
-    // Validate coordinates.
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
 
     if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
         cwc.sendResponse(Response::error(ApiError("Invalid coordinates")));
@@ -695,7 +744,12 @@ State::Any SimRunning::onEvent(const Api::DiagramGet::Cwc& cwc, StateMachine& /*
 {
     using Response = Api::DiagramGet::Response;
 
-    assert(world && "World must exist in SimRunning state");
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
 
     std::string diagram;
     switch (cwc.command.style) {
@@ -724,11 +778,12 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
 {
     using Response = Api::CellSet::Response;
 
-    // Validate world availability.
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
 
     // Validate coordinates.
     if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
@@ -749,12 +804,20 @@ State::Any SimRunning::onEvent(const Api::ClockEventTrigger::Cwc& cwc, StateMach
 {
     using Response = Api::ClockEventTrigger::Response;
 
-    if (!world || !scenario) {
-        cwc.sendResponse(Response::error(ApiError("ClockEventTrigger requires an active world")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
+    ScenarioRunner* scenario = grid.value().scenario;
+
+    if (!scenario) {
+        cwc.sendResponse(Response::error(ApiError("No scenario available")));
         return std::move(*this);
     }
 
-    auto* clockScenario = dynamic_cast<ClockScenario*>(scenario.get());
+    auto* clockScenario = dynamic_cast<ClockScenario*>(scenario);
     if (!clockScenario) {
         cwc.sendResponse(Response::error(ApiError("ClockEventTrigger requires Clock scenario")));
         return std::move(*this);
@@ -773,10 +836,12 @@ State::Any SimRunning::onEvent(const Api::GravitySet::Cwc& cwc, StateMachine& /*
 {
     using Response = Api::GravitySet::Response;
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
 
     world->getPhysicsSettings().gravity = cwc.command.gravity;
     spdlog::info("SimRunning: API set gravity to {}", cwc.command.gravity);
@@ -789,19 +854,14 @@ State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /
 {
     using Response = Api::NesInputSet::Response;
 
-    if (!scenario) {
+    auto nes = session.requireNesWorld();
+    if (nes.isError()) {
         cwc.sendResponse(Response::error(ApiError("NesInputSet requires active NES scenario")));
         return std::move(*this);
     }
 
-    auto* nesScenario = dynamic_cast<NesScenarioRuntime*>(scenario.get());
-    if (!nesScenario) {
-        cwc.sendResponse(Response::error(ApiError("NesInputSet could not resolve NES scenario")));
-        return std::move(*this);
-    }
-
     nes_controller1_override_ = cwc.command.controller1_mask;
-    nesScenario->setController1State(cwc.command.controller1_mask);
+    nes.value().driver->setController1State(cwc.command.controller1_mask);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -851,19 +911,22 @@ State::Any SimRunning::onEvent(const Api::PerfStatsGet::Cwc& cwc, StateMachine& 
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any SimRunning::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::TimerStatsGet::Response;
 
-    // Gather detailed timer statistics from World's timers.
+    // Gather detailed timer statistics.
     Api::TimerStatsGet::Okay stats;
 
-    if (world) {
-        auto timerNames = world->getTimers().getAllTimerNames();
+    (void)dsm;
+    const Timers* timers = session.getTimers();
+
+    if (timers) {
+        auto timerNames = timers->getAllTimerNames();
         for (const auto& name : timerNames) {
             Api::TimerStatsGet::TimerEntry entry;
-            entry.total_ms = world->getTimers().getAccumulatedTime(name);
-            entry.calls = world->getTimers().getCallCount(name);
+            entry.total_ms = timers->getAccumulatedTime(name);
+            entry.calls = timers->getCallCount(name);
             entry.avg_ms = entry.calls > 0 ? entry.total_ms / entry.calls : 0.0;
             stats.timers[name] = entry;
         }
@@ -879,17 +942,18 @@ State::Any SimRunning::onEvent(const Api::StatusGet::Cwc& cwc, StateMachine& /*d
 {
     using Response = Api::StatusGet::Response;
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
-
     // Return lightweight status (no cell data).
     Api::StatusGet::Okay status;
     status.timestep = stepCount;
-    status.scenario_id = scenario_id;
-    status.width = world->getData().width;
-    status.height = world->getData().height;
+    status.scenario_id = session.getScenarioId();
+
+    const WorldData* worldData = session.getWorldData();
+    if (!worldData) {
+        cwc.sendResponse(Response::error(ApiError("No state available")));
+        return std::move(*this);
+    }
+    status.width = worldData->width;
+    status.height = worldData->height;
 
     spdlog::debug(
         "SimRunning: API status_get (step {}, {}x{})",
@@ -907,17 +971,14 @@ State::Any SimRunning::onEvent(const Api::Reset::Cwc& cwc, StateMachine& /*dsm*/
 
     spdlog::info("SimRunning: API reset simulation");
 
-    if (world && scenario) {
-        // Reset scenario (clears world and reinitializes).
-        scenario->reset(*world);
-
-        // Clear tree vision and organism bone data from WorldData.
-        world->getData().tree_vision.reset();
-        world->getData().bones.clear();
-
-        // Clear gamepad-controlled duck mappings (ducks are gone with reset).
-        gamepad_to_duck_.clear();
+    const auto resetResult = session.reset();
+    if (resetResult.isError()) {
+        cwc.sendResponse(Response::error(resetResult.errorValue()));
+        return std::move(*this);
     }
+
+    // Clear GridWorld-only state (ducks are gone with reset).
+    gamepad_to_duck_.clear();
 
     stepCount = 0;
 
@@ -929,56 +990,35 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 {
     using Response = Api::ScenarioSwitch::Response;
 
-    assert(world && "World must exist in SimRunning");
-
-    Scenario::EnumType newScenarioId = cwc.command.scenario_id;
+    const Scenario::EnumType newScenarioId = cwc.command.scenario_id;
     LOG_INFO(
         State,
         "Switching scenario from '{}' to '{}'",
-        toString(scenario_id),
+        toString(session.getScenarioId()),
         toString(newScenarioId));
 
-    // Create new scenario instance from registry.
-    auto& registry = dsm.getScenarioRegistry();
-    auto newScenario = registry.createScenario(newScenarioId);
-
-    if (!newScenario) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", toString(newScenarioId));
-        cwc.sendResponse(
-            Response::error(ApiError(
-                std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
+    ScenarioConfig scenarioConfig = makeDefaultConfig(newScenarioId);
+    applyUserScenarioConfigToConfig(scenarioConfig, dsm.getUserSettings());
+    const auto startResult = session.start(dsm, newScenarioId, scenarioConfig, Vector2s{ 0, 0 });
+    if (startResult.isError()) {
+        cwc.sendResponse(Response::error(startResult.errorValue()));
         return std::move(*this);
     }
 
-    // Create fresh world for new scenario.
-    const auto& metadata = newScenario->getMetadata();
-    uint32_t newWidth = (metadata.requiredWidth > 0) ? metadata.requiredWidth : dsm.defaultWidth;
-    uint32_t newHeight =
-        (metadata.requiredHeight > 0) ? metadata.requiredHeight : dsm.defaultHeight;
-    world = std::make_unique<World>(newWidth, newHeight);
-
-    // Clear gamepad-controlled duck mappings (ducks are gone with the old world).
+    // Clear session-dependent input state.
+    fingerSessions.clear();
     gamepad_to_duck_.clear();
-
-    // Get scenario's default config and apply it.
-    ScenarioConfig defaultConfig = newScenario->getConfig();
-    applyUserScenarioConfigToConfig(defaultConfig, dsm.getUserSettings());
-    newScenario->setConfig(defaultConfig, *world);
-
-    // Run scenario setup.
-    newScenario->setup(*world);
-
-    // Replace scenario and update ID.
-    scenario = std::move(newScenario);
-    scenario_id = newScenarioId;
-
-    // Register scenario with World for tick during advanceTime.
-    world->setScenario(scenario.get());
+    prev_start_button_.clear();
+    prev_back_button_.clear();
+    prev_y_button_.clear();
+    if (!session.isNesSession()) {
+        nes_controller1_override_.reset();
+    }
 
     // Reset step counter.
     stepCount = 0;
 
-    LOG_INFO(State, "Switched to scenario '{}' successfully", toString(scenario_id));
+    LOG_INFO(State, "Switched to scenario '{}' successfully", toString(session.getScenarioId()));
 
     cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
@@ -991,16 +1031,17 @@ State::Any SimRunning::onEvent(const Api::WorldResize::Cwc& cwc, StateMachine& /
     const auto& cmd = cwc.command;
     spdlog::info("SimRunning: API resize world to {}x{}", cmd.width, cmd.height);
 
-    if (world) {
-        // Resize the world grid.
-        world->resizeGrid(cmd.width, cmd.height);
-        spdlog::debug("SimRunning: World resized successfully");
-    }
-    else {
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
         spdlog::error("SimRunning: Cannot resize - world is null");
-        cwc.sendResponse(Response::error(ApiError("World not initialized")));
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
+
+    // Resize the world grid.
+    world->resizeGrid(cmd.width, cmd.height);
+    spdlog::debug("SimRunning: World resized successfully");
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -1009,6 +1050,13 @@ State::Any SimRunning::onEvent(const Api::WorldResize::Cwc& cwc, StateMachine& /
 State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::SeedAdd::Response;
+
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
 
     // Validate coordinates.
     if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
@@ -1064,10 +1112,12 @@ State::Any SimRunning::onEvent(const Api::SpawnDirtBall::Cwc& cwc, StateMachine&
 {
     using Response = Api::SpawnDirtBall::Response;
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
 
     // Spawn a dirt ball at top center.
     int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
@@ -1088,7 +1138,12 @@ State::Any SimRunning::onEvent(const Api::PhysicsSettingsGet::Cwc& cwc, StateMac
 {
     using namespace Api::PhysicsSettingsGet;
 
-    assert(world && "World must exist in SimRunning state");
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
 
     spdlog::info("PhysicsSettingsGet: Sending current physics settings");
 
@@ -1101,9 +1156,14 @@ State::Any SimRunning::onEvent(const Api::PhysicsSettingsGet::Cwc& cwc, StateMac
 
 State::Any SimRunning::onEvent(const Api::PhysicsSettingsSet::Cwc& cwc, StateMachine& /*dsm*/)
 {
-    assert(world && "World must exist in SimRunning state");
-
     using Response = Api::PhysicsSettingsSet::Response;
+
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
 
     spdlog::info("PhysicsSettingsSet: Applying new physics settings");
 
@@ -1121,11 +1181,6 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     // Track total server-side processing time.
     auto requestStart = std::chrono::steady_clock::now();
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
-
     // Return cached WorldData (fast - uses pre-cached copy, no World copy overhead!).
     auto cachedPtr = dsm.getCachedWorldData();
     Api::StateGet::Okay responseData;
@@ -1133,12 +1188,17 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     if (cachedPtr) {
         responseData.worldData = *cachedPtr;
     }
+    else if (const WorldData* worldData = session.getWorldData()) {
+        responseData.worldData = *worldData;
+    }
     else {
-        // Fallback: cache not ready yet, copy from world.
-        responseData.worldData = world->getData();
+        cwc.sendResponse(Response::error(ApiError("No state available")));
+        return std::move(*this);
     }
 
-    populateOrganismDebug(*world, responseData.worldData);
+    if (World* world = session.getWorld()) {
+        populateOrganismDebug(*world, responseData.worldData);
+    }
 
     cwc.sendResponse(Response::okay(std::move(responseData)));
 
@@ -1154,8 +1214,6 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& /*dsm*/)
 {
     using Response = Api::SimRun::Response;
-
-    assert(world && "World must exist in SimRunning state");
 
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
@@ -1208,13 +1266,14 @@ State::Any SimRunning::onEvent(const ResetSimulationCommand& /*cmd*/, StateMachi
 {
     spdlog::info("SimRunning: Resetting simulation");
 
-    if (world && scenario) {
-        scenario->reset(*world);
-
-        // Clear tree vision and organism bone data from WorldData.
-        world->getData().tree_vision.reset();
-        world->getData().bones.clear();
+    const auto resetResult = session.reset();
+    if (resetResult.isError()) {
+        spdlog::error("SimRunning: Reset failed: {}", resetResult.errorValue().message);
+        return std::move(*this);
     }
+
+    gamepad_to_duck_.clear();
+    fingerSessions.clear();
 
     stepCount = 0;
 
@@ -1241,7 +1300,7 @@ State::Any SimRunning::onEvent(const MouseUpEvent& /*evt*/, StateMachine& /*dsm*
 
 State::Any SimRunning::onEvent(const SelectMaterialCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->setSelectedMaterial(cmd.material);
         spdlog::debug("SimRunning: Selected material {}", static_cast<int>(cmd.material));
     }
@@ -1251,7 +1310,7 @@ State::Any SimRunning::onEvent(const SelectMaterialCommand& cmd, StateMachine& /
 State::Any SimRunning::onEvent(const SetTimescaleCommand& cmd, StateMachine& /*dsm*/)
 {
     // Update world directly (source of truth).
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().timescale = cmd.timescale;
         spdlog::info("SimRunning: Set timescale to {}", cmd.timescale);
     }
@@ -1261,7 +1320,7 @@ State::Any SimRunning::onEvent(const SetTimescaleCommand& cmd, StateMachine& /*d
 State::Any SimRunning::onEvent(const SetElasticityCommand& cmd, StateMachine& /*dsm*/)
 {
     // Update world directly (source of truth).
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().elasticity = cmd.elasticity;
         spdlog::info("SimRunning: Set elasticity to {}", cmd.elasticity);
     }
@@ -1271,7 +1330,7 @@ State::Any SimRunning::onEvent(const SetElasticityCommand& cmd, StateMachine& /*
 State::Any SimRunning::onEvent(const SetDynamicStrengthCommand& cmd, StateMachine& /*dsm*/)
 {
     // Update world directly (source of truth).
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().pressure_dynamic_strength = cmd.strength;
         spdlog::info("SimRunning: Set dynamic strength to {:.1f}", cmd.strength);
     }
@@ -1281,7 +1340,7 @@ State::Any SimRunning::onEvent(const SetDynamicStrengthCommand& cmd, StateMachin
 State::Any SimRunning::onEvent(const SetGravityCommand& cmd, StateMachine& /*dsm*/)
 {
     // Update world directly (source of truth).
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().gravity = cmd.gravity;
         spdlog::info("SimRunning: Set gravity to {}", cmd.gravity);
     }
@@ -1291,7 +1350,7 @@ State::Any SimRunning::onEvent(const SetGravityCommand& cmd, StateMachine& /*dsm
 State::Any SimRunning::onEvent(const SetPressureScaleCommand& cmd, StateMachine& /*dsm*/)
 {
     // Apply to world.
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().pressure_scale = cmd.scale;
     }
 
@@ -1302,7 +1361,7 @@ State::Any SimRunning::onEvent(const SetPressureScaleCommand& cmd, StateMachine&
 State::Any SimRunning::onEvent(const SetPressureScaleWorldBCommand& cmd, StateMachine& /*dsm*/)
 {
     // Apply to world.
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().pressure_scale = cmd.scale;
     }
 
@@ -1315,8 +1374,8 @@ State::Any SimRunning::onEvent(const SetPressureScaleWorldBCommand& cmd, StateMa
 
 State::Any SimRunning::onEvent(const SetContactFrictionStrengthCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (auto* worldPtr = dynamic_cast<World*>(world.get())) {
-        worldPtr->getPhysicsSettings().friction_strength = cmd.strength;
+    if (World* world = session.getWorld()) {
+        world->getPhysicsSettings().friction_strength = cmd.strength;
         spdlog::info("SimRunning: Set contact friction strength to {}", cmd.strength);
     }
     return std::move(*this);
@@ -1324,7 +1383,7 @@ State::Any SimRunning::onEvent(const SetContactFrictionStrengthCommand& cmd, Sta
 
 State::Any SimRunning::onEvent(const SetCOMCohesionRangeCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->setCOMCohesionRange(cmd.range);
         spdlog::info("SimRunning: Set COM cohesion range to {}", cmd.range);
     }
@@ -1333,7 +1392,7 @@ State::Any SimRunning::onEvent(const SetCOMCohesionRangeCommand& cmd, StateMachi
 
 State::Any SimRunning::onEvent(const SetAirResistanceCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->setAirResistanceStrength(cmd.strength);
         spdlog::info("SimRunning: Set air resistance to {}", cmd.strength);
     }
@@ -1345,7 +1404,7 @@ State::Any SimRunning::onEvent(const SetAirResistanceCommand& cmd, StateMachine&
 State::Any SimRunning::onEvent(
     const SetHydrostaticPressureStrengthCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->getPhysicsSettings().pressure_hydrostatic_strength = cmd.strength;
         spdlog::info("SimRunning: Set hydrostatic pressure strength to {}", cmd.strength);
     }
@@ -1355,7 +1414,7 @@ State::Any SimRunning::onEvent(
 State::Any SimRunning::onEvent(const SetDynamicPressureStrengthCommand& cmd, StateMachine& /*dsm*/)
 {
     // Apply to world.
-    if (world) {
+    if (World* world = session.getWorld()) {
         // TODO: Need to add setDynamicPressureStrength method to WorldInterface.
         // For now, suppress unused warning.
         (void)world;
@@ -1367,6 +1426,8 @@ State::Any SimRunning::onEvent(const SetDynamicPressureStrengthCommand& cmd, Sta
 
 State::Any SimRunning::onEvent(const SetRainRateCommand& cmd, StateMachine& /*dsm*/)
 {
+    World* world = session.getWorld();
+    ScenarioRunner* scenario = session.getScenarioRunner();
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
@@ -1405,7 +1466,7 @@ State::Any SimRunning::onEvent(const GetSimStatsCommand& /*cmd*/, StateMachine& 
 
 State::Any SimRunning::onEvent(const ToggleCohesionForceCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         bool newValue = !world->isCohesionComForceEnabled();
         world->setCohesionComForceEnabled(newValue);
         spdlog::info("SimRunning: Cohesion force now: {}", newValue);
@@ -1415,7 +1476,7 @@ State::Any SimRunning::onEvent(const ToggleCohesionForceCommand& /*cmd*/, StateM
 
 State::Any SimRunning::onEvent(const ToggleTimeHistoryCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         bool newValue = !world->isTimeReversalEnabled();
         world->enableTimeReversal(newValue);
         spdlog::info("SimRunning: Time history now: {}", newValue);
@@ -1426,7 +1487,7 @@ State::Any SimRunning::onEvent(const ToggleTimeHistoryCommand& /*cmd*/, StateMac
 State::Any SimRunning::onEvent(const PrintAsciiDiagramCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
     // Get the current world and print ASCII diagram.
-    if (world) {
+    if (World* world = session.getWorld()) {
         std::string ascii_diagram = world->toAsciiDiagram();
         spdlog::info("Current world state (ASCII diagram):\n{}", ascii_diagram);
     }
@@ -1440,7 +1501,7 @@ State::Any SimRunning::onEvent(const PrintAsciiDiagramCommand& /*cmd*/, StateMac
 State::Any SimRunning::onEvent(const SpawnDirtBallCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
     // Get the current world and spawn a ball at top center.
-    if (world) {
+    if (World* world = session.getWorld()) {
         // Calculate the top center position.
         int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
         int16_t topY = 2; // Start at row 2 to avoid the very top edge.
@@ -1459,7 +1520,7 @@ State::Any SimRunning::onEvent(const SpawnDirtBallCommand& /*cmd*/, StateMachine
 
 State::Any SimRunning::onEvent(const SetFragmentationCommand& cmd, StateMachine& /*dsm*/)
 {
-    if (world) {
+    if (World* world = session.getWorld()) {
         world->setDirtFragmentationFactor(cmd.factor);
         spdlog::info("SimRunning: Set fragmentation factor to {}", cmd.factor);
     }
@@ -1468,6 +1529,8 @@ State::Any SimRunning::onEvent(const SetFragmentationCommand& cmd, StateMachine&
 
 State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
+    World* world = session.getWorld();
+    ScenarioRunner* scenario = session.getScenarioRunner();
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
@@ -1495,6 +1558,8 @@ State::Any SimRunning::onEvent(const ToggleLeftThrowCommand& /*cmd*/, StateMachi
 
 State::Any SimRunning::onEvent(const ToggleRightThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
+    World* world = session.getWorld();
+    ScenarioRunner* scenario = session.getScenarioRunner();
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
@@ -1514,6 +1579,8 @@ State::Any SimRunning::onEvent(const ToggleRightThrowCommand& /*cmd*/, StateMach
 
 State::Any SimRunning::onEvent(const ToggleQuadrantCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
+    World* world = session.getWorld();
+    ScenarioRunner* scenario = session.getScenarioRunner();
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
@@ -1563,6 +1630,12 @@ State::Any SimRunning::onEvent(const Api::FingerDown::Cwc& cwc, StateMachine& /*
 {
     using Response = Api::FingerDown::Response;
 
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+
     const auto& cmd = cwc.command;
     spdlog::info(
         "FingerDown: finger_id={}, pos=({:.2f}, {:.2f}), radius={:.2f}",
@@ -1597,10 +1670,12 @@ State::Any SimRunning::onEvent(const Api::FingerMove::Cwc& cwc, StateMachine& /*
         return std::move(*this);
     }
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
         return std::move(*this);
     }
+    World* world = grid.value().world;
 
     FingerSession& session = it->second;
     Vector2d new_position{ cmd.world_x, cmd.world_y };
@@ -1680,6 +1755,12 @@ State::Any SimRunning::onEvent(const Api::FingerMove::Cwc& cwc, StateMachine& /*
 State::Any SimRunning::onEvent(const Api::FingerUp::Cwc& cwc, StateMachine& /*dsm*/)
 {
     using Response = Api::FingerUp::Response;
+
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
 
     const auto& cmd = cwc.command;
     spdlog::info("FingerUp: finger_id={}", cmd.finger_id);
