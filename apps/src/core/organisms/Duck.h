@@ -45,6 +45,15 @@ struct DuckSparkle {
  */
 class Duck : public Organism::Body {
 public:
+    struct EnergyConfig {
+        double startingEnergy = 1.0;      // [0,1] full tank at eval start.
+        double regenRate = 0.15;          // Energy per second.
+        double walkCostPerSec = 0.05;     // Energy per second at |move.x| == 1.
+        double runCostPerSec = 0.20;      // Energy per second at |move.x| == 1.
+        double jumpBurstCost = 0.08;      // One-time cost on jump press.
+        double jumpHoldCostPerSec = 0.30; // Energy per second while jump boost is active.
+    };
+
     /**
      * Construct a new duck with a given brain implementation.
      *
@@ -83,6 +92,17 @@ public:
     double getEffortJumpHeldTotal() const { return effortJumpHeldTotal_; }
     uint64_t getEffortSampleCount() const { return effortSampleCount_; }
 
+    double getEnergy() const { return energy_; }
+    double getEnergyAverage() const
+    {
+        if (energySampleCount_ == 0) {
+            return energy_;
+        }
+        return energySum_ / static_cast<double>(energySampleCount_);
+    }
+    double getEnergyConsumedTotal() const { return energyConsumedTotal_; }
+    double getEnergyLimitedSeconds() const { return energyLimitedSeconds_; }
+
     // Maximum sparkle count (used for emission ratio calculation).
     static constexpr int MAX_SPARKLES = 32;
 
@@ -112,6 +132,12 @@ private:
     double effortAbsMoveInputTotal_ = 0.0;
     double effortJumpHeldTotal_ = 0.0;
     uint64_t effortSampleCount_ = 0;
+    EnergyConfig energyConfig_{};
+    double energy_ = 1.0;
+    double energyConsumedTotal_ = 0.0;
+    double energyLimitedSeconds_ = 0.0;
+    double energySum_ = 0.0;
+    uint64_t energySampleCount_ = 0;
 
     static constexpr float GROUND_CONTACT_COM_THRESHOLD = 0.80f; // COM must be near cell bottom.
     static constexpr float GROUND_REST_VERTICAL_SPEED_THRESHOLD =
@@ -126,6 +152,7 @@ private:
     std::unique_ptr<LightHandHeld> handheld_light_;
 
     void applyMovementToCell(World& world, double deltaTime);
+    void applyEnergyGating(double deltaTime);
     int getDesiredSparkleCount(float acceleration) const;
     bool isSolidCell(const World& world, int x, int y) const;
     void logPhysicsState(const World& world);

@@ -1149,10 +1149,10 @@ TEST_F(TrainingRunnerTest, ClockDuckPopulatesCommandSignatures)
         scriptedInputs.push_back(DuckInput{ .move = { -0.2f, 0.0f }, .jump = false });
     }
     for (int i = 0; i < 8; ++i) {
-        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false });
+        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false, .run = true });
     }
     for (int i = 0; i < 8; ++i) {
-        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false });
+        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false, .run = true });
     }
     for (int i = 0; i < 3; ++i) {
         scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = true });
