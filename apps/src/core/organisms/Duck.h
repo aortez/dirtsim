@@ -50,6 +50,8 @@ public:
         double regenRate = 0.15;          // Energy per second.
         double walkCostPerSec = 0.05;     // Energy per second at |move.x| == 1.
         double runCostPerSec = 0.20;      // Energy per second at |move.x| == 1.
+        double wingLiftCostPerSec = 0.25; // Energy per second at |move.y| == 1 while airborne.
+        double wingDiveCostPerSec = 0.05; // Energy per second at |move.y| == 1 while airborne.
         double jumpBurstCost = 0.08;      // One-time cost on jump press.
         double jumpHoldCostPerSec = 0.30; // Energy per second while jump boost is active.
     };
