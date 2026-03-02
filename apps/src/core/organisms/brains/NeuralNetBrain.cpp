@@ -33,6 +33,8 @@ constexpr int OUTPUT_SIZE = 231;
 constexpr int W_IH_SIZE = INPUT_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;
 constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
+constexpr int B_O_SIZE = OUTPUT_SIZE;
+constexpr int TOTAL_WEIGHTS = W_IH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
 
 constexpr int NUM_COMMANDS = 6;
 constexpr int NUM_POSITIONS = 225;
@@ -85,7 +87,7 @@ struct NeuralNetBrain::Impl {
 
     Genome toGenome() const
     {
-        Genome g;
+        Genome g(static_cast<size_t>(TOTAL_WEIGHTS));
         int idx = 0;
 
         for (int i = 0; i < W_IH_SIZE; i++) {
@@ -245,7 +247,7 @@ struct NeuralNetBrain::Impl {
 NeuralNetBrain::NeuralNetBrain() : impl_(std::make_unique<Impl>())
 {
     std::mt19937 rng(std::random_device{}());
-    auto genome = Genome::random(rng);
+    const Genome genome = randomGenome(rng);
     impl_->loadFromGenome(genome);
 }
 
@@ -257,7 +259,7 @@ NeuralNetBrain::NeuralNetBrain(const Genome& genome) : impl_(std::make_unique<Im
 NeuralNetBrain::NeuralNetBrain(uint32_t seed) : impl_(std::make_unique<Impl>())
 {
     std::mt19937 rng(seed);
-    auto genome = Genome::random(rng);
+    const Genome genome = randomGenome(rng);
     impl_->loadFromGenome(genome);
 }
 
@@ -295,6 +297,51 @@ Genome NeuralNetBrain::getGenome() const
 void NeuralNetBrain::setGenome(const Genome& genome)
 {
     impl_->loadFromGenome(genome);
+}
+
+Genome NeuralNetBrain::randomGenome(std::mt19937& rng)
+{
+    Genome genome(static_cast<size_t>(TOTAL_WEIGHTS));
+
+    const WeightType ihStddev = std::sqrt(2.0f / (INPUT_SIZE + HIDDEN_SIZE));
+    const WeightType hoStddev = std::sqrt(2.0f / (HIDDEN_SIZE + OUTPUT_SIZE));
+
+    std::normal_distribution<WeightType> ihDist(0.0f, ihStddev);
+    std::normal_distribution<WeightType> hoDist(0.0f, hoStddev);
+
+    int idx = 0;
+    for (int i = 0; i < W_IH_SIZE; ++i) {
+        genome.weights[idx++] = ihDist(rng);
+    }
+    for (int i = 0; i < B_H_SIZE; ++i) {
+        genome.weights[idx++] = 0.0f;
+    }
+    for (int i = 0; i < W_HO_SIZE; ++i) {
+        genome.weights[idx++] = hoDist(rng);
+    }
+    for (int i = 0; i < B_O_SIZE; ++i) {
+        genome.weights[idx++] = 0.0f;
+    }
+
+    DIRTSIM_ASSERT(idx == TOTAL_WEIGHTS, "NeuralNetBrain: Generated genome size mismatch");
+    return genome;
+}
+
+bool NeuralNetBrain::isGenomeCompatible(const Genome& genome)
+{
+    return genome.weights.size() == static_cast<size_t>(TOTAL_WEIGHTS);
+}
+
+GenomeLayout NeuralNetBrain::getGenomeLayout()
+{
+    return GenomeLayout{
+        .segments = {
+            { "w_ih", W_IH_SIZE },
+            { "b_h", B_H_SIZE },
+            { "w_ho", W_HO_SIZE },
+            { "b_o", B_O_SIZE },
+        },
+    };
 }
 
 } // namespace DirtSim

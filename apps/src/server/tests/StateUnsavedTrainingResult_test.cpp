@@ -21,7 +21,7 @@ UnsavedTrainingResult::Candidate makeCandidate(double fitness, double weightValu
 {
     UnsavedTrainingResult::Candidate candidate;
     candidate.id = UUID::generate();
-    candidate.genome = Genome::constant(weightValue);
+    candidate.genome = Genome(1, static_cast<WeightType>(weightValue));
     candidate.metadata = GenomeMetadata{
         .name = "candidate",
         .fitness = fitness,

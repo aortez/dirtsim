@@ -13,7 +13,7 @@ protected:
     {
         std::vector<Genome> pop;
         for (int i = 0; i < size; i++) {
-            pop.push_back(Genome::constant(static_cast<double>(i)));
+            pop.push_back(Genome(1, static_cast<WeightType>(i)));
         }
         return pop;
     }
@@ -54,8 +54,8 @@ TEST_F(SelectionTest, ElitistReplaceKeepsTopGenomes)
     const std::vector<double> parentFitness = { 1.0, 2.0, 3.0 };
 
     std::vector<Genome> offspring;
-    offspring.push_back(Genome::constant(10.0));
-    offspring.push_back(Genome::constant(20.0));
+    offspring.push_back(Genome(1, 10.0f));
+    offspring.push_back(Genome(1, 20.0f));
     const std::vector<double> offspringFitness = { 5.0, 4.0 };
 
     const auto next = elitistReplace(parents, parentFitness, offspring, offspringFitness, 3);
@@ -84,9 +84,9 @@ TEST_F(SelectionTest, ElitistReplaceHandlesSmallPool)
 TEST_F(SelectionTest, ElitistReplaceSortsByFitnessDescending)
 {
     std::vector<Genome> parents;
-    parents.push_back(Genome::constant(1.0));
-    parents.push_back(Genome::constant(2.0));
-    parents.push_back(Genome::constant(3.0));
+    parents.push_back(Genome(1, 1.0f));
+    parents.push_back(Genome(1, 2.0f));
+    parents.push_back(Genome(1, 3.0f));
     const std::vector<double> parentFitness = { 10.0, 30.0, 20.0 };
 
     const std::vector<Genome> offspring;

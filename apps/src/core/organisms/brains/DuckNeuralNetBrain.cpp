@@ -238,4 +238,16 @@ bool DuckNeuralNetBrain::isGenomeCompatible(const Genome& genome)
     return genome.weights.size() == static_cast<size_t>(TOTAL_WEIGHTS);
 }
 
+GenomeLayout DuckNeuralNetBrain::getGenomeLayout()
+{
+    return GenomeLayout{
+        .segments = {
+            { "w_ih", W_IH_SIZE },
+            { "b_h", B_H_SIZE },
+            { "w_ho", W_HO_SIZE },
+            { "b_o", B_O_SIZE },
+        },
+    };
+}
+
 } // namespace DirtSim

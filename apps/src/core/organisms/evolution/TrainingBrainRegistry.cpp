@@ -34,6 +34,9 @@ void TrainingBrainRegistry::registerBrain(
         DIRTSIM_ASSERT(
             entry.isGenomeCompatible,
             "TrainingBrainRegistry: requiresGenome requires compatibility check");
+        DIRTSIM_ASSERT(
+            entry.getGenomeLayout,
+            "TrainingBrainRegistry: requiresGenome requires getGenomeLayout");
     }
     else {
         DIRTSIM_ASSERT(
@@ -42,6 +45,9 @@ void TrainingBrainRegistry::registerBrain(
         DIRTSIM_ASSERT(
             !entry.isGenomeCompatible,
             "TrainingBrainRegistry: isGenomeCompatible must be unset when requiresGenome=false");
+        DIRTSIM_ASSERT(
+            !entry.getGenomeLayout,
+            "TrainingBrainRegistry: getGenomeLayout must be unset when requiresGenome=false");
     }
 
     BrainRegistryKey key{ .organismType = organismType,
@@ -79,11 +85,11 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 auto brain = std::make_unique<NeuralNetBrain>(*genome);
                 return world.getOrganismManager().createTree(world, x, y, std::move(brain));
             },
-            .createRandomGenome = [](std::mt19937& rng) { return Genome::random(rng); },
+            .createRandomGenome =
+                [](std::mt19937& rng) { return NeuralNetBrain::randomGenome(rng); },
             .isGenomeCompatible =
-                [](const Genome& genome) {
-                    return genome.weights.size() == Genome::EXPECTED_WEIGHT_COUNT;
-                },
+                [](const Genome& genome) { return NeuralNetBrain::isGenomeCompatible(genome); },
+            .getGenomeLayout = []() { return NeuralNetBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -102,6 +108,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 [](std::mt19937& rng) { return DuckNeuralNetBrain::randomGenome(rng); },
             .isGenomeCompatible =
                 [](const Genome& genome) { return DuckNeuralNetBrain::isGenomeCompatible(genome); },
+            .getGenomeLayout = []() { return DuckNeuralNetBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -122,6 +129,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 [](const Genome& genome) {
                     return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
                 },
+            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -143,6 +151,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 [](const Genome& genome) {
                     return DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome);
                 },
+            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrainV2::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -159,6 +168,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -175,6 +185,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -191,6 +202,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -207,6 +219,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -223,6 +236,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -239,6 +253,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     registry.registerBrain(
@@ -256,6 +271,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 [](const Genome& genome) {
                     return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
                 },
+            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -273,6 +289,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 [](const Genome& genome) {
                     return DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome);
                 },
+            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrainV2::getGenomeLayout(); },
         });
 
     return registry;

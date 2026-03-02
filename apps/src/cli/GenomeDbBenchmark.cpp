@@ -19,10 +19,11 @@ namespace {
 
 constexpr const char* kServerAddress = "ws://localhost:8080";
 constexpr int kTimeoutMs = 5000;
+constexpr size_t kBenchmarkWeightCount = 130791; // Representative genome size for benchmarks.
 
 std::vector<WeightType> createSentinelWeights(float seedValue)
 {
-    std::vector<WeightType> weights(Genome::EXPECTED_WEIGHT_COUNT);
+    std::vector<WeightType> weights(kBenchmarkWeightCount);
     for (size_t i = 0; i < weights.size(); ++i) {
         weights[i] = seedValue + static_cast<float>(i) * 0.0001f;
     }
@@ -35,7 +36,7 @@ GenomeDbBenchmarkResults GenomeDbBenchmark::run(int count)
 {
     GenomeDbBenchmarkResults results;
     results.count = count;
-    results.genomeSizeBytes = Genome::EXPECTED_SIZE_BYTES;
+    results.genomeSizeBytes = kBenchmarkWeightCount * sizeof(WeightType);
 
     // Connect to server.
     spdlog::info("Connecting to server at {}", kServerAddress);

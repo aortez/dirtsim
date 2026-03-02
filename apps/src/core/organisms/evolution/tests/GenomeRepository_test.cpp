@@ -17,7 +17,7 @@ class GenomeRepositoryTest : public ::testing::Test {
 protected:
     GenomeRepository repo;
 
-    Genome createTestGenome(double value) { return Genome::constant(value); }
+    Genome createTestGenome(double value) { return Genome(1, static_cast<WeightType>(value)); }
 
     GenomeMetadata createTestMetadata(const std::string& name, double fitness)
     {
@@ -423,7 +423,7 @@ protected:
         std::filesystem::remove(dbPath_);
     }
 
-    Genome createTestGenome(float value) { return Genome::constant(value); }
+    Genome createTestGenome(float value) { return Genome(1, static_cast<WeightType>(value)); }
 
     GenomeMetadata createTestMetadata(const std::string& name, double fitness)
     {

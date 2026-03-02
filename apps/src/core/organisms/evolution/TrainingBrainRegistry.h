@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GenomeLayout.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 
@@ -57,6 +58,7 @@ struct BrainRegistryEntry {
     std::function<OrganismId(World& world, uint32_t x, uint32_t y, const Genome* genome)> spawn;
     std::function<Genome(std::mt19937& rng)> createRandomGenome;
     std::function<bool(const Genome& genome)> isGenomeCompatible;
+    std::function<GenomeLayout()> getGenomeLayout;
 };
 
 class TrainingBrainRegistry {

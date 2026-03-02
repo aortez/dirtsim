@@ -440,4 +440,22 @@ bool DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(const Genome& genome)
     return genome.weights.size() == static_cast<size_t>(TOTAL_WEIGHTS);
 }
 
+GenomeLayout DuckNeuralNetRecurrentBrainV2::getGenomeLayout()
+{
+    return GenomeLayout{
+        .segments = {
+            { "w_xh1", W_XH1_SIZE },
+            { "w_h1h1", W_H1H1_SIZE },
+            { "b_h1", B_H1_SIZE },
+            { "alpha1", ALPHA1_LOGIT_SIZE },
+            { "w_h1h2", W_H1H2_SIZE },
+            { "w_h2h2", W_H2H2_SIZE },
+            { "b_h2", B_H2_SIZE },
+            { "alpha2", ALPHA2_LOGIT_SIZE },
+            { "w_h2o", W_H2O_SIZE },
+            { "b_o", B_O_SIZE },
+        },
+    };
+}
+
 } // namespace DirtSim

@@ -1,4 +1,5 @@
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -26,6 +27,11 @@ using namespace DirtSim::Server::State;
 using namespace DirtSim::Server::Tests;
 
 namespace {
+
+Genome makeNeuralNetGenome(WeightType value)
+{
+    return Genome(static_cast<size_t>(NeuralNetBrain::getGenomeLayout().totalSize()), value);
+}
 
 TrainingSpec makeTrainingSpec(int populationSize)
 {
@@ -370,7 +376,7 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
     repo.clear();
 
     const GenomeId bestId = UUID::generate();
-    const Genome bestGenome = Genome::constant(0.25);
+    const Genome bestGenome = makeNeuralNetGenome(0.25f);
     const GenomeMetadata bestMetadata{
         .name = "warm-best",
         .fitness = 9.0,
@@ -429,7 +435,7 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
     repo.clear();
 
     const GenomeId bestId = UUID::generate();
-    const Genome bestGenome = Genome::constant(0.5);
+    const Genome bestGenome = makeNeuralNetGenome(0.5f);
     const GenomeMetadata bestMetadata{
         .name = "fresh-best",
         .fitness = 4.0,
@@ -514,10 +520,10 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
     const GenomeId robustA = UUID::generate();
     const GenomeId robustB = UUID::generate();
     const GenomeId weak = UUID::generate();
-    repo.store(outlierPeak, Genome::constant(0.1), makeMetadata("outlier", 9999.0, 10.0));
-    repo.store(robustA, Genome::constant(0.2), makeMetadata("robust-a", 90.0, 50.0));
-    repo.store(robustB, Genome::constant(0.3), makeMetadata("robust-b", 80.0, 40.0));
-    repo.store(weak, Genome::constant(0.4), makeMetadata("weak", 70.0, 5.0));
+    repo.store(outlierPeak, makeNeuralNetGenome(0.1f), makeMetadata("outlier", 9999.0, 10.0));
+    repo.store(robustA, makeNeuralNetGenome(0.2f), makeMetadata("robust-a", 90.0, 50.0));
+    repo.store(robustB, makeNeuralNetGenome(0.3f), makeMetadata("robust-b", 80.0, 40.0));
+    repo.store(weak, makeNeuralNetGenome(0.4f), makeMetadata("weak", 70.0, 5.0));
     repo.markAsBest(outlierPeak);
 
     Idle idleState;
@@ -1068,7 +1074,7 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
     auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
-    const Genome seedGenome = Genome::constant(0.1);
+    const Genome seedGenome = makeNeuralNetGenome(0.1f);
     const GenomeId seedId = UUID::generate();
     const GenomeMetadata seedMeta{
         .name = "seed",
@@ -1199,7 +1205,7 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
-    const Genome seedGenome = Genome::constant(0.1);
+    const Genome seedGenome = makeNeuralNetGenome(0.1f);
     const GenomeId seedId = UUID::generate();
     const GenomeMetadata seedMeta{
         .name = "seed",

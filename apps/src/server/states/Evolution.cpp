@@ -2574,7 +2574,14 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         }
         else {
             MutationStats stats;
-            Genome mutatedGenome = mutate(parent.genome.value(), mutationConfig, rng, &stats);
+            const std::string variant = parent.brainVariant.value_or("");
+            const BrainRegistryEntry* entry =
+                brainRegistry_.find(trainingSpec.organismType, parent.brainKind, variant);
+            DIRTSIM_ASSERT(entry != nullptr, "Evolution: brain kind not registered for mutation");
+            DIRTSIM_ASSERT(entry->getGenomeLayout, "Evolution: brain has no genome layout");
+            const GenomeLayout layout = entry->getGenomeLayout();
+            Genome mutatedGenome =
+                mutate(parent.genome.value(), mutationConfig, layout, rng, &stats);
             perturbationsTotal += stats.perturbations;
             resetsTotal += stats.resets;
             weightChanges = stats.totalChanges();
