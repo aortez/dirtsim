@@ -74,13 +74,11 @@ std::string duckCommandSignature(const DirtSim::DuckInput& input, bool onGround)
         }
     }
 
-    if (!onGround) {
-        if (input.move.y > MOVE_INPUT_DEADZONE) {
-            signature += "+Up";
-        }
-        else if (input.move.y < -MOVE_INPUT_DEADZONE) {
-            signature += "+Down";
-        }
+    if (input.move.y > MOVE_INPUT_DEADZONE) {
+        signature += onGround ? "+UpOnGround" : "+UpInAir";
+    }
+    else if (input.move.y < -MOVE_INPUT_DEADZONE) {
+        signature += onGround ? "+DownOnGround" : "+DownInAir";
     }
 
     return signature;
