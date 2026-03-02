@@ -429,7 +429,7 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         .metrics = {},
     };
 
-    report.metrics.reserve(11);
+    report.metrics.reserve(13);
     report.metrics.push_back(makeFitnessMetric(
         "survival",
         "Survival",
@@ -462,6 +462,22 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         breakdown.energyConsumedTotal,
         std::nullopt,
         "energy"));
+    report.metrics.push_back(makeFitnessMetric(
+        "wing_up_seconds",
+        "Wing Up",
+        "wings",
+        breakdown.wingUpSeconds,
+        breakdown.wingUpSeconds,
+        std::nullopt,
+        "seconds"));
+    report.metrics.push_back(makeFitnessMetric(
+        "wing_down_seconds",
+        "Wing Down",
+        "wings",
+        breakdown.wingDownSeconds,
+        breakdown.wingDownSeconds,
+        std::nullopt,
+        "seconds"));
     report.metrics.push_back(makeFitnessMetric(
         "coverage_columns",
         "Coverage Columns",

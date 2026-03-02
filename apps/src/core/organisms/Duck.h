@@ -105,6 +105,9 @@ public:
     double getEnergyConsumedTotal() const { return energyConsumedTotal_; }
     double getEnergyLimitedSeconds() const { return energyLimitedSeconds_; }
 
+    double getWingUpSeconds() const;
+    double getWingDownSeconds() const;
+
     // Maximum sparkle count (used for emission ratio calculation).
     static constexpr int MAX_SPARKLES = 32;
 
@@ -140,6 +143,9 @@ private:
     double energyLimitedSeconds_ = 0.0;
     double energySum_ = 0.0;
     uint64_t energySampleCount_ = 0;
+
+    double wingUpSeconds_ = 0.0;
+    double wingDownSeconds_ = 0.0;
 
     static constexpr float GROUND_CONTACT_COM_THRESHOLD = 0.80f; // COM must be near cell bottom.
     static constexpr float GROUND_REST_VERTICAL_SPEED_THRESHOLD =

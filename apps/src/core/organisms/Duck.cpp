@@ -47,36 +47,43 @@ static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
 static constexpr float MOVE_INPUT_DEADZONE = 0.01f;    // Ignore tiny input as no movement.
 
-std::string duckCommandSignature(const DirtSim::DuckInput& input)
+std::string duckCommandSignature(const DirtSim::DuckInput& input, bool onGround)
 {
+    std::string signature;
     if (input.jump) {
         if (input.move.x < -MOVE_INPUT_DEADZONE) {
-            return "JumpLeft";
+            signature = "JumpLeft";
         }
-
-        if (input.move.x > MOVE_INPUT_DEADZONE) {
-            return "JumpRight";
+        else if (input.move.x > MOVE_INPUT_DEADZONE) {
+            signature = "JumpRight";
         }
-
-        return "Jump";
+        else {
+            signature = "Jump";
+        }
+    }
+    else {
+        const float moveX = input.move.x;
+        if (moveX < -MOVE_INPUT_DEADZONE) {
+            signature = input.run ? "RunLeft" : "WalkLeft";
+        }
+        else if (moveX > MOVE_INPUT_DEADZONE) {
+            signature = input.run ? "RunRight" : "WalkRight";
+        }
+        else {
+            signature = "Wait";
+        }
     }
 
-    const float moveX = input.move.x;
-    if (moveX < -MOVE_INPUT_DEADZONE) {
-        if (!input.run) {
-            return "WalkLeft";
+    if (!onGround) {
+        if (input.move.y > MOVE_INPUT_DEADZONE) {
+            signature += "+Up";
         }
-        return "RunLeft";
+        else if (input.move.y < -MOVE_INPUT_DEADZONE) {
+            signature += "+Down";
+        }
     }
 
-    if (moveX > MOVE_INPUT_DEADZONE) {
-        if (!input.run) {
-            return "WalkRight";
-        }
-        return "RunRight";
-    }
-
-    return "Wait";
+    return signature;
 }
 
 std::string duckCommandOutcomeSignature(const std::string& commandSignature, const char* outcome)
@@ -94,6 +101,16 @@ Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
 }
 
 Duck::~Duck() = default;
+
+double Duck::getWingUpSeconds() const
+{
+    return wingUpSeconds_;
+}
+
+double Duck::getWingDownSeconds() const
+{
+    return wingDownSeconds_;
+}
 
 void Duck::update(World& world, double deltaTime)
 {
@@ -181,7 +198,17 @@ void Duck::update(World& world, double deltaTime)
 
     applyEnergyGating(deltaTime);
 
-    recordCommandSignature(duckCommandSignature(current_input_));
+    if (deltaTime > 0.0 && !on_ground_) {
+        const float moveY = current_input_.move.y;
+        if (moveY > MOVE_INPUT_DEADZONE) {
+            wingUpSeconds_ += deltaTime;
+        }
+        else if (moveY < -MOVE_INPUT_DEADZONE) {
+            wingDownSeconds_ += deltaTime;
+        }
+    }
+
+    recordCommandSignature(duckCommandSignature(current_input_, on_ground_));
 
     // Apply movement intent to the cell.
     applyMovementToCell(world, deltaTime);
@@ -405,7 +432,7 @@ void Duck::updateGroundDetection(const World& world)
 
 void Duck::applyMovementToCell(World& world, double deltaTime)
 {
-    const std::string commandSignature = duckCommandSignature(current_input_);
+    const std::string commandSignature = duckCommandSignature(current_input_, on_ground_);
     const auto recordOutcome = [this, &commandSignature](const char* outcome) {
         recordCommandOutcomeSignature(duckCommandOutcomeSignature(commandSignature, outcome));
     };
