@@ -406,8 +406,10 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < B_H1_SIZE; ++i) {
         genome.weights[idx++] = 0.0f;
     }
+    // Spread alpha logits across full range so neurons start with diverse time constants.
+    std::uniform_real_distribution<WeightType> alphaLogitDist(-4.0f, 4.0f);
     for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
-        genome.weights[idx++] = HIDDEN_LEAK_ALPHA_LOGIT_INIT;
+        genome.weights[idx++] = alphaLogitDist(rng);
     }
     for (int i = 0; i < W_H1H2_SIZE; ++i) {
         genome.weights[idx++] = h1h2Dist(rng);
@@ -419,7 +421,7 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
         genome.weights[idx++] = 0.0f;
     }
     for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
-        genome.weights[idx++] = HIDDEN_LEAK_ALPHA_LOGIT_INIT;
+        genome.weights[idx++] = alphaLogitDist(rng);
     }
     for (int i = 0; i < W_H2O_SIZE; ++i) {
         genome.weights[idx++] = h2oDist(rng);
