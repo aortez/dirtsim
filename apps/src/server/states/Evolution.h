@@ -166,15 +166,21 @@ struct Evolution {
         GenomeRepository* genomeRepository = nullptr;
     };
 
-    std::unique_ptr<TrainingRunner> visibleRunner_;
-    int visibleEvalIndex_ = -1;
-    bool visibleEvalIsRobustness_ = false;
-    std::vector<WorkerResult> visibleDuckPassResults_;
-    std::optional<bool> visibleDuckPrimarySpawnLeftFirst_ = std::nullopt;
-    int visibleRobustSampleOrdinal_ = 0;
+    struct VisibleEvaluationState {
+        std::unique_ptr<TrainingRunner> runner;
+        std::deque<int> queue;
+        int evalIndex = -1;
+        bool evalIsRobustness = false;
+        std::vector<WorkerResult> duckPassResults;
+        std::optional<bool> duckPrimarySpawnLeftFirst = std::nullopt;
+        int robustSampleOrdinal = 0;
+
+        void reset();
+    };
+
+    VisibleEvaluationState visible_;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
-    std::deque<int> visibleQueue_;
     std::optional<ScenarioConfig> scenarioConfigOverride_ = std::nullopt;
 
     std::unique_ptr<WorkerState> workerState_;
@@ -194,13 +200,21 @@ struct Evolution {
     std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;
 
     TrainingBrainRegistry brainRegistry_;
-    std::optional<Individual> bestPlaybackIndividual_;
-    std::unique_ptr<TrainingRunner> bestPlaybackRunner_;
-    double bestPlaybackFitness_ = 0.0;
-    int bestPlaybackGeneration_ = 0;
-    bool bestPlaybackDuckSecondPassActive_ = false;
-    bool bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
-    bool bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
+
+    struct BestPlaybackState {
+        std::optional<Individual> individual;
+        std::unique_ptr<TrainingRunner> runner;
+        double fitness = 0.0;
+        int generation = 0;
+        bool duckSecondPassActive = false;
+        bool duckNextPrimarySpawnLeftFirst = true;
+        bool duckPrimarySpawnLeftFirst = true;
+
+        void reset();
+        void clearRunner();
+    };
+
+    BestPlaybackState bestPlayback_;
 
     // CPU auto-tuning.
     std::unique_ptr<SystemMetrics> cpuMetrics_;
@@ -266,44 +280,61 @@ private:
 
     GenerationTelemetry generationTelemetry_;
 
-    int lastGenerationEliteCarryoverCount_ = 0;
-    int lastGenerationSeedCount_ = 0;
-    int lastGenerationOffspringCloneCount_ = 0;
-    int lastGenerationOffspringMutatedCount_ = 0;
-    int lastGenerationOffspringCloneBeatsParentCount_ = 0;
-    double lastGenerationOffspringCloneAvgDeltaFitness_ = 0.0;
-    int lastGenerationOffspringMutatedBeatsParentCount_ = 0;
-    double lastGenerationOffspringMutatedAvgDeltaFitness_ = 0.0;
-    int lastGenerationPhenotypeUniqueCount_ = 0;
-    int lastGenerationPhenotypeUniqueEliteCarryoverCount_ = 0;
-    int lastGenerationPhenotypeUniqueOffspringMutatedCount_ = 0;
-    int lastGenerationPhenotypeNovelOffspringMutatedCount_ = 0;
+    struct LastGenerationTelemetry {
+        int eliteCarryoverCount = 0;
+        int seedCount = 0;
+        int offspringCloneCount = 0;
+        int offspringMutatedCount = 0;
+        int offspringCloneBeatsParentCount = 0;
+        double offspringCloneAvgDeltaFitness = 0.0;
+        int offspringMutatedBeatsParentCount = 0;
+        double offspringMutatedAvgDeltaFitness = 0.0;
+        int phenotypeUniqueCount = 0;
+        int phenotypeUniqueEliteCarryoverCount = 0;
+        int phenotypeUniqueOffspringMutatedCount = 0;
+        int phenotypeNovelOffspringMutatedCount = 0;
+        double breedingPerturbationsAvg = 0.0;
+        double breedingResetsAvg = 0.0;
+        double breedingWeightChangesAvg = 0.0;
+        int breedingWeightChangesMin = 0;
+        int breedingWeightChangesMax = 0;
+    };
 
-    double lastBreedingPerturbationsAvg_ = 0.0;
-    double lastBreedingResetsAvg_ = 0.0;
-    double lastBreedingWeightChangesAvg_ = 0.0;
-    int lastBreedingWeightChangesMin_ = 0;
-    int lastBreedingWeightChangesMax_ = 0;
+    LastGenerationTelemetry lastGenTelemetry_;
 
-    bool pendingBestRobustness_ = false;
-    int pendingBestRobustnessGeneration_ = -1;
-    int pendingBestRobustnessIndex_ = -1;
-    double pendingBestRobustnessFirstSample_ = 0.0;
-    std::optional<EvaluationSnapshot> pendingBestSnapshot_;
-    std::optional<Api::FitnessBreakdownReport> pendingBestSnapshotFitnessBreakdown_;
-    int pendingBestSnapshotCommandsAccepted_ = 0;
-    int pendingBestSnapshotCommandsRejected_ = 0;
-    std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandSignatures_;
-    std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandOutcomeSignatures_;
-    bool robustnessPassActive_ = false;
-    int robustnessPassGeneration_ = -1;
-    int robustnessPassIndex_ = -1;
-    int robustnessPassTargetEvalCount_ = 0;
-    int robustnessPassPendingSamples_ = 0;
-    int robustnessPassCompletedSamples_ = 0;
-    int robustnessPassVisibleSamplesRemaining_ = 0;
-    int robustnessPassNextVisibleSampleOrdinal_ = 1;
-    std::vector<double> robustnessPassSamples_;
+    struct PendingBestState {
+        bool robustness = false;
+        int robustnessGeneration = -1;
+        int robustnessIndex = -1;
+        double robustnessFirstSample = 0.0;
+        std::optional<EvaluationSnapshot> snapshot;
+        std::optional<Api::FitnessBreakdownReport> snapshotFitnessBreakdown;
+        int snapshotCommandsAccepted = 0;
+        int snapshotCommandsRejected = 0;
+        std::vector<std::pair<std::string, int>> snapshotTopCommandSignatures;
+        std::vector<std::pair<std::string, int>> snapshotTopCommandOutcomeSignatures;
+
+        void reset();
+        void resetTrigger();
+    };
+
+    PendingBestState pendingBest_;
+
+    struct RobustnessPassState {
+        bool active = false;
+        int generation = -1;
+        int index = -1;
+        int targetEvalCount = 0;
+        int pendingSamples = 0;
+        int completedSamples = 0;
+        int visibleSamplesRemaining = 0;
+        int nextVisibleSampleOrdinal = 1;
+        std::vector<double> samples;
+
+        void reset();
+    };
+
+    RobustnessPassState robustnessPass_;
 
     void initializePopulation(StateMachine& dsm);
     void startWorkers(StateMachine& dsm);
@@ -323,7 +354,6 @@ private:
     void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
-    void clearBestPlaybackRunner();
     void setBestPlaybackSource(const Individual& individual, double fitness, int generation);
     void stepBestPlayback(StateMachine& dsm);
     std::optional<Any> broadcastTrainingResult(StateMachine& dsm);

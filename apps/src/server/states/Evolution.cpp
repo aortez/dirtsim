@@ -1212,6 +1212,70 @@ GenomeRepository::StoreByHashResult storeManagedGenome(
 }
 } // namespace
 
+void Evolution::VisibleEvaluationState::reset()
+{
+    runner.reset();
+    queue.clear();
+    evalIndex = -1;
+    evalIsRobustness = false;
+    duckPassResults.clear();
+    duckPrimarySpawnLeftFirst.reset();
+    robustSampleOrdinal = 0;
+}
+
+void Evolution::BestPlaybackState::reset()
+{
+    individual.reset();
+    runner.reset();
+    fitness = 0.0;
+    generation = 0;
+    duckSecondPassActive = false;
+    duckNextPrimarySpawnLeftFirst = true;
+    duckPrimarySpawnLeftFirst = true;
+}
+
+void Evolution::BestPlaybackState::clearRunner()
+{
+    runner.reset();
+    duckSecondPassActive = false;
+    duckPrimarySpawnLeftFirst = true;
+}
+
+void Evolution::PendingBestState::reset()
+{
+    robustness = false;
+    robustnessGeneration = -1;
+    robustnessIndex = -1;
+    robustnessFirstSample = 0.0;
+    snapshot.reset();
+    snapshotFitnessBreakdown.reset();
+    snapshotCommandsAccepted = 0;
+    snapshotCommandsRejected = 0;
+    snapshotTopCommandSignatures.clear();
+    snapshotTopCommandOutcomeSignatures.clear();
+}
+
+void Evolution::PendingBestState::resetTrigger()
+{
+    robustness = false;
+    robustnessGeneration = -1;
+    robustnessIndex = -1;
+    robustnessFirstSample = 0.0;
+}
+
+void Evolution::RobustnessPassState::reset()
+{
+    active = false;
+    generation = -1;
+    index = -1;
+    targetEvalCount = 0;
+    pendingSamples = 0;
+    completedSamples = 0;
+    visibleSamplesRemaining = 0;
+    nextVisibleSampleOrdinal = 1;
+    samples.clear();
+}
+
 void Evolution::onEnter(StateMachine& dsm)
 {
     LOG_INFO(
@@ -1235,29 +1299,8 @@ void Evolution::onEnter(StateMachine& dsm)
     cumulativeSimTime_ = 0.0;
     sumFitnessThisGen_ = 0.0;
     generationTelemetry_.reset();
-    lastGenerationEliteCarryoverCount_ = 0;
-    lastGenerationSeedCount_ = 0;
-    lastGenerationOffspringCloneCount_ = 0;
-    lastGenerationOffspringMutatedCount_ = 0;
-    lastGenerationOffspringCloneBeatsParentCount_ = 0;
-    lastGenerationOffspringCloneAvgDeltaFitness_ = 0.0;
-    lastGenerationOffspringMutatedBeatsParentCount_ = 0;
-    lastGenerationOffspringMutatedAvgDeltaFitness_ = 0.0;
-    lastGenerationPhenotypeUniqueCount_ = 0;
-    lastGenerationPhenotypeUniqueEliteCarryoverCount_ = 0;
-    lastGenerationPhenotypeUniqueOffspringMutatedCount_ = 0;
-    lastGenerationPhenotypeNovelOffspringMutatedCount_ = 0;
-    lastBreedingPerturbationsAvg_ = 0.0;
-    lastBreedingResetsAvg_ = 0.0;
-    lastBreedingWeightChangesAvg_ = 0.0;
-    lastBreedingWeightChangesMin_ = 0;
-    lastBreedingWeightChangesMax_ = 0;
-    pendingBestSnapshot_.reset();
-    pendingBestSnapshotFitnessBreakdown_.reset();
-    pendingBestSnapshotCommandsAccepted_ = 0;
-    pendingBestSnapshotCommandsRejected_ = 0;
-    pendingBestSnapshotTopCommandSignatures_.clear();
-    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
+    lastGenTelemetry_ = {};
+    pendingBest_.reset();
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     scenarioConfigOverride_.reset();
@@ -1291,18 +1334,8 @@ void Evolution::onEnter(StateMachine& dsm)
         case Scenario::EnumType::WaterEqualization:
             break;
     }
-    visibleRunner_.reset();
-    visibleQueue_.clear();
-    visibleEvalIndex_ = -1;
-    visibleEvalIsRobustness_ = false;
-    visibleDuckPassResults_.clear();
-    visibleDuckPrimarySpawnLeftFirst_.reset();
-    visibleRobustSampleOrdinal_ = 0;
-    bestPlaybackIndividual_.reset();
-    clearBestPlaybackRunner();
-    bestPlaybackFitness_ = 0.0;
-    bestPlaybackGeneration_ = 0;
-    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
+    visible_.reset();
+    bestPlayback_.reset();
     workerState_ = std::make_unique<WorkerState>();
 
     // Seed RNG.
@@ -1332,8 +1365,7 @@ void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
     stopWorkers();
-    clearBestPlaybackRunner();
-    bestPlaybackIndividual_.reset();
+    bestPlayback_.reset();
     cpuMetrics_.reset();
     cpuSamples_.clear();
     lastCpuPercent_ = 0.0;
@@ -1398,8 +1430,8 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
 
     // Include in-flight visible runner timers so callers can profile active evaluations.
     std::unordered_map<std::string, TimerAggregate> mergedStats = timerStatsAggregate_;
-    if (visibleRunner_) {
-        if (const Timers* timers = visibleRunner_->getTimers()) {
+    if (visible_.runner) {
+        if (const Timers* timers = visible_.runner->getTimers()) {
             mergeTimerStats(mergedStats, collectTimerStats(*timers));
         }
     }
@@ -1518,40 +1550,12 @@ void Evolution::initializePopulation(StateMachine& dsm)
     pruneBeforeBreeding_ = false;
     completedEvaluations_ = 0;
     sumFitnessThisGen_ = 0.0;
-    pendingBestRobustness_ = false;
-    pendingBestRobustnessGeneration_ = -1;
-    pendingBestRobustnessIndex_ = -1;
-    pendingBestRobustnessFirstSample_ = 0.0;
-    pendingBestSnapshot_.reset();
-    pendingBestSnapshotFitnessBreakdown_.reset();
-    pendingBestSnapshotCommandsAccepted_ = 0;
-    pendingBestSnapshotCommandsRejected_ = 0;
-    pendingBestSnapshotTopCommandSignatures_.clear();
-    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
-    robustnessPassActive_ = false;
-    robustnessPassGeneration_ = -1;
-    robustnessPassIndex_ = -1;
-    robustnessPassTargetEvalCount_ = 0;
-    robustnessPassPendingSamples_ = 0;
-    robustnessPassCompletedSamples_ = 0;
-    robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 1;
-    robustnessPassSamples_.clear();
-
-    visibleRunner_.reset();
-    visibleQueue_.clear();
-    visibleEvalIndex_ = -1;
-    visibleEvalIsRobustness_ = false;
-    visibleDuckPassResults_.clear();
-    visibleDuckPrimarySpawnLeftFirst_.reset();
-    visibleRobustSampleOrdinal_ = 0;
+    pendingBest_.reset();
+    robustnessPass_.reset();
+    visible_.reset();
     visibleScenarioConfig_ = Config::Empty{};
     visibleScenarioId_ = trainingSpec.scenarioId;
-    bestPlaybackIndividual_.reset();
-    clearBestPlaybackRunner();
-    bestPlaybackFitness_ = 0.0;
-    bestPlaybackGeneration_ = 0;
-    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
+    bestPlayback_.reset();
 }
 
 void Evolution::startWorkers(StateMachine& dsm)
@@ -1639,19 +1643,13 @@ void Evolution::stopWorkers()
         workerState_->resultQueue.clear();
     }
 
-    visibleQueue_.clear();
-    visibleRunner_.reset();
-    visibleEvalIndex_ = -1;
-    visibleEvalIsRobustness_ = false;
-    visibleDuckPassResults_.clear();
-    visibleDuckPrimarySpawnLeftFirst_.reset();
-    visibleRobustSampleOrdinal_ = 0;
-    clearBestPlaybackRunner();
+    visible_.reset();
+    bestPlayback_.clearRunner();
 }
 
 void Evolution::queueGenerationTasks()
 {
-    visibleQueue_.clear();
+    visible_.queue.clear();
 
     if (!workerState_) {
         workerState_ = std::make_unique<WorkerState>();
@@ -1664,7 +1662,7 @@ void Evolution::queueGenerationTasks()
         const int totalWorkers = std::max(1, evolutionConfig.maxParallelEvaluations);
         for (int i = 0; i < static_cast<int>(population.size()); ++i) {
             if (totalWorkers == 1 || (i % totalWorkers) == 0) {
-                visibleQueue_.push_back(i);
+                visible_.queue.push_back(i);
             }
             else {
                 workerState_->taskQueue.push_back(
@@ -1699,65 +1697,65 @@ void Evolution::drainResults(StateMachine& dsm)
 
 void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
 {
-    if (visibleRunner_) {
+    if (visible_.runner) {
         return;
     }
 
-    if (robustnessPassActive_ && robustnessPassVisibleSamplesRemaining_ > 0) {
-        if (robustnessPassIndex_ < 0
-            || robustnessPassIndex_ >= static_cast<int>(population.size())) {
+    if (robustnessPass_.active && robustnessPass_.visibleSamplesRemaining > 0) {
+        if (robustnessPass_.index < 0
+            || robustnessPass_.index >= static_cast<int>(population.size())) {
             return;
         }
 
-        visibleEvalIndex_ = robustnessPassIndex_;
-        visibleEvalIsRobustness_ = true;
-        visibleDuckPassResults_.clear();
-        visibleDuckPrimarySpawnLeftFirst_.reset();
-        visibleRobustSampleOrdinal_ = robustnessPassNextVisibleSampleOrdinal_++;
-        robustnessPassVisibleSamplesRemaining_--;
+        visible_.evalIndex = robustnessPass_.index;
+        visible_.evalIsRobustness = true;
+        visible_.duckPassResults.clear();
+        visible_.duckPrimarySpawnLeftFirst.reset();
+        visible_.robustSampleOrdinal = robustnessPass_.nextVisibleSampleOrdinal++;
+        robustnessPass_.visibleSamplesRemaining--;
 
-        const Individual& individual = population[visibleEvalIndex_];
+        const Individual& individual = population[visible_.evalIndex];
         const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
             WorkerResult::TaskType::RobustnessEval,
             trainingSpec.organismType,
             individual.scenarioId,
-            visibleRobustSampleOrdinal_);
-        visibleDuckPrimarySpawnLeftFirst_ = spawnSideOverride;
+            visible_.robustSampleOrdinal);
+        visible_.duckPrimarySpawnLeftFirst = spawnSideOverride;
         const TrainingRunner::Config runnerConfig{
             .brainRegistry = brainRegistry_,
             .duckClockSpawnLeftFirst = spawnSideOverride,
             .duckClockSpawnRngSeed = std::nullopt,
             .scenarioConfigOverride = scenarioConfigOverride_,
         };
-        visibleRunner_ = std::make_unique<TrainingRunner>(
+        visible_.runner = std::make_unique<TrainingRunner>(
             trainingSpec,
             makeRunnerIndividual(individual),
             evolutionConfig,
             dsm.getGenomeRepository(),
             runnerConfig);
-        visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+        visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
         visibleScenarioId_ = individual.scenarioId;
         return;
     }
 
-    if (robustnessPassActive_ || visibleQueue_.empty()) {
+    if (robustnessPass_.active || visible_.queue.empty()) {
         return;
     }
 
-    visibleEvalIndex_ = visibleQueue_.front();
-    visibleQueue_.pop_front();
-    visibleEvalIsRobustness_ = false;
-    visibleDuckPassResults_.clear();
-    visibleDuckPrimarySpawnLeftFirst_.reset();
-    visibleRobustSampleOrdinal_ = 0;
+    visible_.evalIndex = visible_.queue.front();
+    visible_.queue.pop_front();
+    visible_.evalIsRobustness = false;
+    visible_.duckPassResults.clear();
+    visible_.duckPrimarySpawnLeftFirst.reset();
+    visible_.robustSampleOrdinal = 0;
 
-    const Individual& individual = population[visibleEvalIndex_];
+    const Individual& individual = population[visible_.evalIndex];
     const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
         WorkerResult::TaskType::GenerationEval,
         trainingSpec.organismType,
         individual.scenarioId,
-        visibleRobustSampleOrdinal_);
-    visibleDuckPrimarySpawnLeftFirst_ = spawnSideOverride;
+        visible_.robustSampleOrdinal);
+    visible_.duckPrimarySpawnLeftFirst = spawnSideOverride;
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = brainRegistry_,
         .duckClockSpawnLeftFirst = spawnSideOverride,
@@ -1765,24 +1763,24 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
         .scenarioConfigOverride = scenarioConfigOverride_,
     };
 
-    visibleRunner_ = std::make_unique<TrainingRunner>(
+    visible_.runner = std::make_unique<TrainingRunner>(
         trainingSpec,
         makeRunnerIndividual(individual),
         evolutionConfig,
         dsm.getGenomeRepository(),
         runnerConfig);
 
-    visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+    visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
     visibleScenarioId_ = individual.scenarioId;
 }
 
 void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 {
-    if (!visibleRunner_) {
+    if (!visible_.runner) {
         return;
     }
 
-    const TrainingRunner::Status status = visibleRunner_->step(1);
+    const TrainingRunner::Status status = visible_.runner->step(1);
 
     const auto now = std::chrono::steady_clock::now();
     bool shouldBroadcast = true;
@@ -1801,12 +1799,12 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
     }
 
     if (shouldBroadcast) {
-        const WorldData* worldData = visibleRunner_->getWorldData();
-        const std::vector<OrganismId>* organismGrid = visibleRunner_->getOrganismGrid();
+        const WorldData* worldData = visible_.runner->getWorldData();
+        const std::vector<OrganismId>* organismGrid = visible_.runner->getOrganismGrid();
         DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Visible runner missing WorldData");
         DIRTSIM_ASSERT(organismGrid != nullptr, "Evolution: Visible runner missing organism grid");
 
-        if (!visibleRunner_->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+        if (!visible_.runner->isNesScenario() || worldData->scenario_video_frame.has_value()) {
             dsm.broadcastRenderMessage(
                 *worldData, *organismGrid, visibleScenarioId_, visibleScenarioConfig_);
         }
@@ -1814,48 +1812,48 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 
     const bool evalComplete = status.state != TrainingRunner::State::Running;
     if (status.state != TrainingRunner::State::Running) {
-        const WorkerResult::TaskType taskType = visibleEvalIsRobustness_
+        const WorkerResult::TaskType taskType = visible_.evalIsRobustness
             ? WorkerResult::TaskType::RobustnessEval
             : WorkerResult::TaskType::GenerationEval;
-        const bool includeGenerationDetails = !visibleEvalIsRobustness_;
+        const bool includeGenerationDetails = !visible_.evalIsRobustness;
         EvaluationPassResult completedPass = buildEvaluationPassResult(
-            *visibleRunner_,
+            *visible_.runner,
             status,
-            population[visibleEvalIndex_].brainKind,
+            population[visible_.evalIndex].brainKind,
             trainingSpec.organismType,
             evolutionConfig,
             includeGenerationDetails);
         WorkerResult passResult = buildWorkerResultFromPass(
             taskType,
-            visibleEvalIndex_,
-            visibleEvalIsRobustness_ ? robustnessPassGeneration_ : -1,
-            visibleEvalIsRobustness_ ? visibleRobustSampleOrdinal_ : 0,
+            visible_.evalIndex,
+            visible_.evalIsRobustness ? robustnessPass_.generation : -1,
+            visible_.evalIsRobustness ? visible_.robustSampleOrdinal : 0,
             std::move(completedPass),
             includeGenerationDetails);
 
-        const Individual& individual = population[visibleEvalIndex_];
+        const Individual& individual = population[visible_.evalIndex];
         const bool duckClockVisibleEval =
             isDuckClockScenario(trainingSpec.organismType, individual.scenarioId);
         if (duckClockVisibleEval) {
-            visibleDuckPassResults_.push_back(std::move(passResult));
+            visible_.duckPassResults.push_back(std::move(passResult));
             const int passCount = duckClockPassCountForTask(taskType);
-            if (static_cast<int>(visibleDuckPassResults_.size()) < passCount) {
-                const int nextPassOrdinal = static_cast<int>(visibleDuckPassResults_.size());
+            if (static_cast<int>(visible_.duckPassResults.size()) < passCount) {
+                const int nextPassOrdinal = static_cast<int>(visible_.duckPassResults.size());
                 const std::optional<bool> spawnSide = resolveDuckClockSpawnSideForPass(
-                    visibleDuckPrimarySpawnLeftFirst_, nextPassOrdinal);
+                    visible_.duckPrimarySpawnLeftFirst, nextPassOrdinal);
                 const TrainingRunner::Config runnerConfig{
                     .brainRegistry = brainRegistry_,
                     .duckClockSpawnLeftFirst = spawnSide,
                     .duckClockSpawnRngSeed = std::nullopt,
                     .scenarioConfigOverride = scenarioConfigOverride_,
                 };
-                visibleRunner_ = std::make_unique<TrainingRunner>(
+                visible_.runner = std::make_unique<TrainingRunner>(
                     trainingSpec,
                     makeRunnerIndividual(individual),
                     evolutionConfig,
                     dsm.getGenomeRepository(),
                     runnerConfig);
-                visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+                visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
                 visibleScenarioId_ = individual.scenarioId;
                 if (shouldBroadcast || evalComplete) {
                     broadcastProgress(dsm);
@@ -1864,13 +1862,13 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
             }
 
             DIRTSIM_ASSERT(
-                passCount == 4 && visibleDuckPassResults_.size() == 4,
+                passCount == 4 && visible_.duckPassResults.size() == 4,
                 "Evolution: duck clock evaluation must complete 4 passes");
             WorkerResult result = mergeDuckClockGenerationPasses(
-                visibleDuckPassResults_[0],
-                visibleDuckPassResults_[1],
-                visibleDuckPassResults_[2],
-                visibleDuckPassResults_[3]);
+                visible_.duckPassResults[0],
+                visible_.duckPassResults[1],
+                visible_.duckPassResults[2],
+                visible_.duckPassResults[3]);
 
             processResult(dsm, std::move(result));
         }
@@ -1878,12 +1876,12 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
             processResult(dsm, std::move(passResult));
         }
 
-        visibleRunner_.reset();
-        visibleEvalIndex_ = -1;
-        visibleEvalIsRobustness_ = false;
-        visibleDuckPassResults_.clear();
-        visibleDuckPrimarySpawnLeftFirst_.reset();
-        visibleRobustSampleOrdinal_ = 0;
+        visible_.runner.reset();
+        visible_.evalIndex = -1;
+        visible_.evalIsRobustness = false;
+        visible_.duckPassResults.clear();
+        visible_.duckPrimarySpawnLeftFirst.reset();
+        visible_.robustSampleOrdinal = 0;
     }
 
     if (shouldBroadcast || evalComplete) {
@@ -2054,22 +2052,22 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
     if (result.fitness > bestFitnessAllTime) {
         if (individual.genome.has_value()) {
-            const bool replacePendingCandidate = !pendingBestRobustness_
-                || pendingBestRobustnessGeneration_ != generation
-                || result.fitness > pendingBestRobustnessFirstSample_;
+            const bool replacePendingCandidate = !pendingBest_.robustness
+                || pendingBest_.robustnessGeneration != generation
+                || result.fitness > pendingBest_.robustnessFirstSample;
             if (replacePendingCandidate) {
-                pendingBestRobustness_ = true;
-                pendingBestRobustnessGeneration_ = generation;
-                pendingBestRobustnessIndex_ = result.index;
-                pendingBestRobustnessFirstSample_ = result.fitness;
-                pendingBestSnapshot_ = std::move(result.snapshot);
-                pendingBestSnapshotFitnessBreakdown_ = std::move(result.fitnessBreakdown);
-                pendingBestSnapshotCommandsAccepted_ = result.commandsAccepted;
-                pendingBestSnapshotCommandsRejected_ = result.commandsRejected;
-                pendingBestSnapshotTopCommandSignatures_ = std::move(result.topCommandSignatures);
-                pendingBestSnapshotTopCommandOutcomeSignatures_ =
+                pendingBest_.robustness = true;
+                pendingBest_.robustnessGeneration = generation;
+                pendingBest_.robustnessIndex = result.index;
+                pendingBest_.robustnessFirstSample = result.fitness;
+                pendingBest_.snapshot = std::move(result.snapshot);
+                pendingBest_.snapshotFitnessBreakdown = std::move(result.fitnessBreakdown);
+                pendingBest_.snapshotCommandsAccepted = result.commandsAccepted;
+                pendingBest_.snapshotCommandsRejected = result.commandsRejected;
+                pendingBest_.snapshotTopCommandSignatures = std::move(result.topCommandSignatures);
+                pendingBest_.snapshotTopCommandOutcomeSignatures =
                     std::move(result.topCommandOutcomeSignatures);
-                if (!pendingBestSnapshot_.has_value()) {
+                if (!pendingBest_.snapshot.has_value()) {
                     LOG_WARN(
                         State,
                         "Evolution: Missing snapshot for pending robust best (gen={} eval={})",
@@ -2087,16 +2085,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         }
         else {
             bestFitnessAllTime = result.fitness;
-            pendingBestRobustness_ = false;
-            pendingBestRobustnessGeneration_ = -1;
-            pendingBestRobustnessIndex_ = -1;
-            pendingBestRobustnessFirstSample_ = 0.0;
-            pendingBestSnapshot_.reset();
-            pendingBestSnapshotFitnessBreakdown_.reset();
-            pendingBestSnapshotCommandsAccepted_ = 0;
-            pendingBestSnapshotCommandsRejected_ = 0;
-            pendingBestSnapshotTopCommandSignatures_.clear();
-            pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
+            pendingBest_.reset();
             bestGenomeId = INVALID_GENOME_ID;
             LOG_INFO(
                 State,
@@ -2144,75 +2133,76 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
 void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
 {
-    if (robustnessPassActive_) {
+    if (robustnessPass_.active) {
         return;
     }
 
-    if (!pendingBestRobustness_) {
+    if (!pendingBest_.robustness) {
         return;
     }
 
-    if (pendingBestRobustnessGeneration_ != generation) {
-        pendingBestRobustness_ = false;
+    if (pendingBest_.robustnessGeneration != generation) {
+        pendingBest_.robustness = false;
         return;
     }
 
-    if (pendingBestRobustnessIndex_ < 0
-        || pendingBestRobustnessIndex_ >= static_cast<int>(population.size())) {
-        pendingBestRobustness_ = false;
+    if (pendingBest_.robustnessIndex < 0
+        || pendingBest_.robustnessIndex >= static_cast<int>(population.size())) {
+        pendingBest_.robustness = false;
         return;
     }
 
-    const Individual& candidate = population[pendingBestRobustnessIndex_];
+    const Individual& candidate = population[pendingBest_.robustnessIndex];
     if (!candidate.genome.has_value()) {
-        pendingBestRobustness_ = false;
+        pendingBest_.robustness = false;
         return;
     }
 
-    robustnessPassActive_ = true;
-    robustnessPassGeneration_ = generation;
-    robustnessPassIndex_ = pendingBestRobustnessIndex_;
-    robustnessPassTargetEvalCount_ =
+    robustnessPass_.active = true;
+    robustnessPass_.generation = generation;
+    robustnessPass_.index = pendingBest_.robustnessIndex;
+    robustnessPass_.targetEvalCount =
         resolveRobustnessEvalCount(evolutionConfig.robustFitnessEvaluationCount);
-    robustnessPassCompletedSamples_ = 0;
-    robustnessPassPendingSamples_ = robustnessPassTargetEvalCount_;
-    robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 1;
-    robustnessPassSamples_.clear();
+    robustnessPass_.completedSamples = 0;
+    robustnessPass_.pendingSamples = robustnessPass_.targetEvalCount;
+    robustnessPass_.visibleSamplesRemaining = 0;
+    robustnessPass_.nextVisibleSampleOrdinal = 1;
+    robustnessPass_.samples.clear();
 
-    pendingBestRobustness_ = false;
+    pendingBest_.robustness = false;
 
     const bool hasWorkerPool = workerState_ && workerState_->backgroundWorkerCount > 0;
-    if (robustnessPassPendingSamples_ > 0) {
-        robustnessPassVisibleSamplesRemaining_ = hasWorkerPool ? 1 : robustnessPassPendingSamples_;
+    if (robustnessPass_.pendingSamples > 0) {
+        robustnessPass_.visibleSamplesRemaining =
+            hasWorkerPool ? 1 : robustnessPass_.pendingSamples;
     }
     const int workerSampleCount =
-        robustnessPassPendingSamples_ - robustnessPassVisibleSamplesRemaining_;
+        robustnessPass_.pendingSamples - robustnessPass_.visibleSamplesRemaining;
 
     LOG_INFO(
         State,
         "Evolution: Starting robust pass for gen {} eval {} "
         "(target evals={}, extra samples={}, visible samples={}, worker samples={})",
-        robustnessPassGeneration_,
-        robustnessPassIndex_,
-        robustnessPassTargetEvalCount_,
-        robustnessPassPendingSamples_,
-        robustnessPassVisibleSamplesRemaining_,
+        robustnessPass_.generation,
+        robustnessPass_.index,
+        robustnessPass_.targetEvalCount,
+        robustnessPass_.pendingSamples,
+        robustnessPass_.visibleSamplesRemaining,
         workerSampleCount);
 
     if (workerSampleCount <= 0) {
         return;
     }
 
-    const int firstWorkerSampleOrdinal = 1 + robustnessPassVisibleSamplesRemaining_;
+    const int firstWorkerSampleOrdinal = 1 + robustnessPass_.visibleSamplesRemaining;
     {
         std::lock_guard<std::mutex> lock(workerState_->taskMutex);
         for (int i = 0; i < workerSampleCount; ++i) {
             workerState_->taskQueue.push_back(
                 WorkerTask{
                     .taskType = WorkerResult::TaskType::RobustnessEval,
-                    .index = robustnessPassIndex_,
-                    .robustGeneration = robustnessPassGeneration_,
+                    .index = robustnessPass_.index,
+                    .robustGeneration = robustnessPass_.generation,
                     .robustSampleOrdinal = firstWorkerSampleOrdinal + i,
                     .individual = candidate,
                 });
@@ -2224,33 +2214,33 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
 
 void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result)
 {
-    if (!robustnessPassActive_) {
+    if (!robustnessPass_.active) {
         return;
     }
 
-    if (result.robustGeneration != robustnessPassGeneration_) {
+    if (result.robustGeneration != robustnessPass_.generation) {
         return;
     }
 
-    if (result.index != robustnessPassIndex_) {
+    if (result.index != robustnessPass_.index) {
         return;
     }
 
-    if (robustnessPassPendingSamples_ <= 0) {
+    if (robustnessPass_.pendingSamples <= 0) {
         return;
     }
 
-    robustnessPassSamples_.push_back(result.fitness);
-    robustnessPassPendingSamples_--;
-    robustnessPassCompletedSamples_++;
+    robustnessPass_.samples.push_back(result.fitness);
+    robustnessPass_.pendingSamples--;
+    robustnessPass_.completedSamples++;
 
     LOG_INFO(
         State,
         "Evolution: Robust sample {}/{} for gen {} eval {} = {:.4f}",
-        robustnessPassCompletedSamples_,
-        robustnessPassTargetEvalCount_,
-        robustnessPassGeneration_,
-        robustnessPassIndex_,
+        robustnessPass_.completedSamples,
+        robustnessPass_.targetEvalCount,
+        robustnessPass_.generation,
+        robustnessPass_.index,
         result.fitness);
 
     broadcastProgress(dsm);
@@ -2258,60 +2248,44 @@ void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResu
 
 void Evolution::finalizeRobustnessPass(StateMachine& dsm)
 {
-    if (!robustnessPassActive_) {
+    if (!robustnessPass_.active) {
         return;
     }
 
-    if (robustnessPassPendingSamples_ > 0) {
+    if (robustnessPass_.pendingSamples > 0) {
         return;
     }
 
-    if (robustnessPassSamples_.size() > kRobustFitnessSampleWindow) {
-        robustnessPassSamples_.erase(
-            robustnessPassSamples_.begin(),
-            robustnessPassSamples_.end()
+    if (robustnessPass_.samples.size() > kRobustFitnessSampleWindow) {
+        robustnessPass_.samples.erase(
+            robustnessPass_.samples.begin(),
+            robustnessPass_.samples.end()
                 - static_cast<std::vector<double>::difference_type>(kRobustFitnessSampleWindow));
     }
 
-    if (robustnessPassIndex_ < 0 || robustnessPassIndex_ >= static_cast<int>(population.size())) {
-        robustnessPassActive_ = false;
-        robustnessPassGeneration_ = -1;
-        robustnessPassIndex_ = -1;
-        robustnessPassTargetEvalCount_ = 0;
-        robustnessPassPendingSamples_ = 0;
-        robustnessPassCompletedSamples_ = 0;
-        robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 1;
-        robustnessPassSamples_.clear();
+    if (robustnessPass_.index < 0 || robustnessPass_.index >= static_cast<int>(population.size())) {
+        robustnessPass_.reset();
         return;
     }
 
-    const Individual& individual = population[robustnessPassIndex_];
+    const Individual& individual = population[robustnessPass_.index];
     if (!individual.genome.has_value()) {
-        robustnessPassActive_ = false;
-        robustnessPassGeneration_ = -1;
-        robustnessPassIndex_ = -1;
-        robustnessPassTargetEvalCount_ = 0;
-        robustnessPassPendingSamples_ = 0;
-        robustnessPassCompletedSamples_ = 0;
-        robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 1;
-        robustnessPassSamples_.clear();
+        robustnessPass_.reset();
         return;
     }
 
-    const double robustFitness = computeMedian(robustnessPassSamples_);
-    const double firstSampleFitness = std::isfinite(pendingBestRobustnessFirstSample_)
-        ? pendingBestRobustnessFirstSample_
-        : (robustnessPassSamples_.empty() ? 0.0 : robustnessPassSamples_.front());
+    const double robustFitness = computeMedian(robustnessPass_.samples);
+    const double firstSampleFitness = std::isfinite(pendingBest_.robustnessFirstSample)
+        ? pendingBest_.robustnessFirstSample
+        : (robustnessPass_.samples.empty() ? 0.0 : robustnessPass_.samples.front());
     const GenomeMetadata meta{
-        .name = "gen_" + std::to_string(robustnessPassGeneration_) + "_eval_"
-            + std::to_string(robustnessPassIndex_),
+        .name = "gen_" + std::to_string(robustnessPass_.generation) + "_eval_"
+            + std::to_string(robustnessPass_.index),
         .fitness = firstSampleFitness,
         .robustFitness = robustFitness,
-        .robustEvalCount = robustnessPassTargetEvalCount_,
-        .robustFitnessSamples = robustnessPassSamples_,
-        .generation = robustnessPassGeneration_,
+        .robustEvalCount = robustnessPass_.targetEvalCount,
+        .robustFitnessSamples = robustnessPass_.samples,
+        .generation = robustnessPass_.generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = individual.scenarioId,
         .notes = "",
@@ -2323,9 +2297,9 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
 
     bestFitnessThisGen = robustFitness;
     robustEvaluationCount_++;
-    if (robustnessPassIndex_ >= 0
-        && robustnessPassIndex_ < static_cast<int>(populationOrigins.size())) {
-        bestThisGenOrigin_ = populationOrigins[robustnessPassIndex_];
+    if (robustnessPass_.index >= 0
+        && robustnessPass_.index < static_cast<int>(populationOrigins.size())) {
+        bestThisGenOrigin_ = populationOrigins[robustnessPass_.index];
     }
     else {
         bestThisGenOrigin_ = IndividualOrigin::Unknown;
@@ -2346,57 +2320,44 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         repo.markAsBest(storeResult.id);
         bestGenomeId = storeResult.id;
         bestFitnessAllTime = robustFitness;
-        setBestPlaybackSource(individual, robustFitness, robustnessPassGeneration_);
+        setBestPlaybackSource(individual, robustFitness, robustnessPass_.generation);
         LOG_INFO(
             State,
             "Evolution: Promoted genome {} as current-session best (robust {:.4f})",
             storeResult.id.toShortString(),
             robustFitness);
 
-        if (pendingBestSnapshot_.has_value()) {
+        if (pendingBest_.snapshot.has_value()) {
             broadcastTrainingBestSnapshot(
                 dsm,
-                std::move(pendingBestSnapshot_.value()),
+                std::move(pendingBest_.snapshot.value()),
                 robustFitness,
-                robustnessPassGeneration_,
-                pendingBestSnapshotCommandsAccepted_,
-                pendingBestSnapshotCommandsRejected_,
-                pendingBestSnapshotTopCommandSignatures_,
-                pendingBestSnapshotTopCommandOutcomeSignatures_,
-                pendingBestSnapshotFitnessBreakdown_);
+                robustnessPass_.generation,
+                pendingBest_.snapshotCommandsAccepted,
+                pendingBest_.snapshotCommandsRejected,
+                pendingBest_.snapshotTopCommandSignatures,
+                pendingBest_.snapshotTopCommandOutcomeSignatures,
+                pendingBest_.snapshotFitnessBreakdown);
         }
         else {
             LOG_WARN(
                 State,
                 "Evolution: Missing snapshot for robust best broadcast (gen={} eval={})",
-                robustnessPassGeneration_,
-                robustnessPassIndex_);
+                robustnessPass_.generation,
+                robustnessPass_.index);
         }
     }
 
     LOG_INFO(
         State,
         "Evolution: Finalized robust pass for gen {} eval {} (robust {:.4f}, evals {})",
-        robustnessPassGeneration_,
-        robustnessPassIndex_,
+        robustnessPass_.generation,
+        robustnessPass_.index,
         robustFitness,
-        robustnessPassTargetEvalCount_);
+        robustnessPass_.targetEvalCount);
 
-    robustnessPassActive_ = false;
-    robustnessPassGeneration_ = -1;
-    robustnessPassIndex_ = -1;
-    robustnessPassTargetEvalCount_ = 0;
-    robustnessPassPendingSamples_ = 0;
-    robustnessPassCompletedSamples_ = 0;
-    robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 1;
-    robustnessPassSamples_.clear();
-    pendingBestSnapshot_.reset();
-    pendingBestSnapshotFitnessBreakdown_.reset();
-    pendingBestSnapshotCommandsAccepted_ = 0;
-    pendingBestSnapshotCommandsRejected_ = 0;
-    pendingBestSnapshotTopCommandSignatures_.clear();
-    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
+    robustnessPass_.reset();
+    pendingBest_.reset();
 }
 
 void Evolution::maybeCompleteGeneration(StateMachine& dsm)
@@ -2407,8 +2368,8 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
     }
 
     startRobustnessPass(dsm);
-    if (robustnessPassActive_) {
-        if (robustnessPassPendingSamples_ > 0) {
+    if (robustnessPass_.active) {
+        if (robustnessPass_.pendingSamples > 0) {
             return;
         }
         finalizeRobustnessPass(dsm);
@@ -2472,11 +2433,8 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             bestNonFlapperFitness);
     }
 
-    DIRTSIM_ASSERT(!robustnessPassActive_, "Evolution: robust pass must complete before advance");
-    pendingBestRobustness_ = false;
-    pendingBestRobustnessGeneration_ = -1;
-    pendingBestRobustnessIndex_ = -1;
-    pendingBestRobustnessFirstSample_ = 0.0;
+    DIRTSIM_ASSERT(!robustnessPass_.active, "Evolution: robust pass must complete before advance");
+    pendingBest_.resetTrigger();
 
     // Store best genome periodically.
     if (generation % saveInterval == 0) {
@@ -2645,19 +2603,19 @@ void Evolution::advanceGeneration(StateMachine& dsm)
                              : IndividualOrigin::OffspringClone);
     }
 
-    lastBreedingPerturbationsAvg_ = survivorPopulationSize > 0
+    lastGenTelemetry_.breedingPerturbationsAvg = survivorPopulationSize > 0
         ? static_cast<double>(perturbationsTotal) / static_cast<double>(survivorPopulationSize)
         : 0.0;
-    lastBreedingResetsAvg_ = survivorPopulationSize > 0
+    lastGenTelemetry_.breedingResetsAvg = survivorPopulationSize > 0
         ? static_cast<double>(resetsTotal) / static_cast<double>(survivorPopulationSize)
         : 0.0;
-    lastBreedingWeightChangesAvg_ = survivorPopulationSize > 0
+    lastGenTelemetry_.breedingWeightChangesAvg = survivorPopulationSize > 0
         ? static_cast<double>(perturbationsTotal + resetsTotal)
             / static_cast<double>(survivorPopulationSize)
         : 0.0;
-    lastBreedingWeightChangesMin_ =
+    lastGenTelemetry_.breedingWeightChangesMin =
         weightChangesMin == std::numeric_limits<int>::max() ? 0 : weightChangesMin;
-    lastBreedingWeightChangesMax_ = weightChangesMax;
+    lastGenTelemetry_.breedingWeightChangesMax = weightChangesMax;
 
     LOG_INFO(
         State,
@@ -2743,32 +2701,32 @@ void Evolution::captureLastGenerationFitnessDistribution()
 
 void Evolution::captureLastGenerationTelemetry()
 {
-    lastGenerationEliteCarryoverCount_ = generationTelemetry_.eliteCarryoverCount;
-    lastGenerationSeedCount_ = generationTelemetry_.seedCount;
-    lastGenerationOffspringCloneCount_ = generationTelemetry_.offspringCloneCount;
-    lastGenerationOffspringMutatedCount_ = generationTelemetry_.offspringMutatedCount;
+    lastGenTelemetry_.eliteCarryoverCount = generationTelemetry_.eliteCarryoverCount;
+    lastGenTelemetry_.seedCount = generationTelemetry_.seedCount;
+    lastGenTelemetry_.offspringCloneCount = generationTelemetry_.offspringCloneCount;
+    lastGenTelemetry_.offspringMutatedCount = generationTelemetry_.offspringMutatedCount;
 
-    lastGenerationOffspringCloneBeatsParentCount_ =
+    lastGenTelemetry_.offspringCloneBeatsParentCount =
         generationTelemetry_.offspringCloneBeatsParentCount;
-    lastGenerationOffspringCloneAvgDeltaFitness_ =
+    lastGenTelemetry_.offspringCloneAvgDeltaFitness =
         generationTelemetry_.offspringCloneComparedCount > 0
         ? generationTelemetry_.offspringCloneDeltaFitnessSum
             / static_cast<double>(generationTelemetry_.offspringCloneComparedCount)
         : 0.0;
 
-    lastGenerationOffspringMutatedBeatsParentCount_ =
+    lastGenTelemetry_.offspringMutatedBeatsParentCount =
         generationTelemetry_.offspringMutatedBeatsParentCount;
-    lastGenerationOffspringMutatedAvgDeltaFitness_ =
+    lastGenTelemetry_.offspringMutatedAvgDeltaFitness =
         generationTelemetry_.offspringMutatedComparedCount > 0
         ? generationTelemetry_.offspringMutatedDeltaFitnessSum
             / static_cast<double>(generationTelemetry_.offspringMutatedComparedCount)
         : 0.0;
 
-    lastGenerationPhenotypeUniqueCount_ =
+    lastGenTelemetry_.phenotypeUniqueCount =
         static_cast<int>(generationTelemetry_.phenotypeAll.size());
-    lastGenerationPhenotypeUniqueEliteCarryoverCount_ =
+    lastGenTelemetry_.phenotypeUniqueEliteCarryoverCount =
         static_cast<int>(generationTelemetry_.phenotypeEliteCarryover.size());
-    lastGenerationPhenotypeUniqueOffspringMutatedCount_ =
+    lastGenTelemetry_.phenotypeUniqueOffspringMutatedCount =
         static_cast<int>(generationTelemetry_.phenotypeOffspringMutated.size());
 
     int novelOffspringMutated = 0;
@@ -2778,7 +2736,7 @@ void Evolution::captureLastGenerationTelemetry()
             novelOffspringMutated++;
         }
     }
-    lastGenerationPhenotypeNovelOffspringMutatedCount_ = novelOffspringMutated;
+    lastGenTelemetry_.phenotypeNovelOffspringMutatedCount = novelOffspringMutated;
 }
 
 void Evolution::adjustConcurrency()
@@ -2820,33 +2778,26 @@ void Evolution::adjustConcurrency()
     }
 }
 
-void Evolution::clearBestPlaybackRunner()
-{
-    bestPlaybackRunner_.reset();
-    bestPlaybackDuckSecondPassActive_ = false;
-    bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
-}
-
 void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
 {
-    bestPlaybackIndividual_ = individual;
-    bestPlaybackIndividual_->parentFitness.reset();
-    bestPlaybackFitness_ = fitness;
-    bestPlaybackGeneration_ = generation;
-    bestPlaybackDuckNextPrimarySpawnLeftFirst_ = true;
+    bestPlayback_.individual = individual;
+    bestPlayback_.individual->parentFitness.reset();
+    bestPlayback_.fitness = fitness;
+    bestPlayback_.generation = generation;
+    bestPlayback_.duckNextPrimarySpawnLeftFirst = true;
     lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
-    clearBestPlaybackRunner();
+    bestPlayback_.clearRunner();
 }
 
 void Evolution::stepBestPlayback(StateMachine& dsm)
 {
     const auto& uiTraining = dsm.getUserSettings().uiTraining;
     if (!uiTraining.bestPlaybackEnabled) {
-        clearBestPlaybackRunner();
+        bestPlayback_.clearRunner();
         return;
     }
 
-    if (!bestPlaybackIndividual_.has_value()) {
+    if (!bestPlayback_.individual.has_value()) {
         return;
     }
 
@@ -2857,27 +2808,27 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
             .duckClockSpawnRngSeed = std::nullopt,
             .scenarioConfigOverride = scenarioConfigOverride_,
         };
-        bestPlaybackRunner_ = std::make_unique<TrainingRunner>(
+        bestPlayback_.runner = std::make_unique<TrainingRunner>(
             trainingSpec,
-            makeRunnerIndividual(bestPlaybackIndividual_.value()),
+            makeRunnerIndividual(bestPlayback_.individual.value()),
             evolutionConfig,
             dsm.getGenomeRepository(),
             runnerConfig);
     };
 
     const bool duckClockScenario =
-        isDuckClockScenario(trainingSpec.organismType, bestPlaybackIndividual_->scenarioId);
-    if (!bestPlaybackRunner_) {
+        isDuckClockScenario(trainingSpec.organismType, bestPlayback_.individual->scenarioId);
+    if (!bestPlayback_.runner) {
         const std::optional<bool> primarySpawnSide = duckClockScenario
-            ? std::optional<bool>(bestPlaybackDuckNextPrimarySpawnLeftFirst_)
+            ? std::optional<bool>(bestPlayback_.duckNextPrimarySpawnLeftFirst)
             : std::nullopt;
-        bestPlaybackDuckPrimarySpawnLeftFirst_ = primarySpawnSide.value_or(true);
-        bestPlaybackDuckSecondPassActive_ = false;
+        bestPlayback_.duckPrimarySpawnLeftFirst = primarySpawnSide.value_or(true);
+        bestPlayback_.duckSecondPassActive = false;
         startRunner(primarySpawnSide);
     }
 
     // Always advance the sim every tick to play back at real speed.
-    const TrainingRunner::Status status = bestPlaybackRunner_->step(1);
+    const TrainingRunner::Status status = bestPlayback_.runner->step(1);
 
     // Broadcast frames at the configured interval, independent of sim step rate.
     const auto now = std::chrono::steady_clock::now();
@@ -2885,15 +2836,15 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
     if (lastBestPlaybackBroadcastTime_ == std::chrono::steady_clock::time_point{}
         || now - lastBestPlaybackBroadcastTime_ >= interval) {
         lastBestPlaybackBroadcastTime_ = now;
-        const WorldData* worldData = bestPlaybackRunner_->getWorldData();
-        const std::vector<OrganismId>* organismGrid = bestPlaybackRunner_->getOrganismGrid();
+        const WorldData* worldData = bestPlayback_.runner->getWorldData();
+        const std::vector<OrganismId>* organismGrid = bestPlayback_.runner->getOrganismGrid();
         DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Best playback runner missing WorldData");
         DIRTSIM_ASSERT(
             organismGrid != nullptr, "Evolution: Best playback runner missing organism grid");
 
-        if (!bestPlaybackRunner_->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+        if (!bestPlayback_.runner->isNesScenario() || worldData->scenario_video_frame.has_value()) {
             broadcastTrainingBestPlaybackFrame(
-                dsm, *worldData, *organismGrid, bestPlaybackFitness_, bestPlaybackGeneration_);
+                dsm, *worldData, *organismGrid, bestPlayback_.fitness, bestPlayback_.generation);
         }
     }
 
@@ -2901,16 +2852,16 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         return;
     }
 
-    if (duckClockScenario && !bestPlaybackDuckSecondPassActive_) {
-        bestPlaybackDuckSecondPassActive_ = true;
-        startRunner(std::optional<bool>(!bestPlaybackDuckPrimarySpawnLeftFirst_));
+    if (duckClockScenario && !bestPlayback_.duckSecondPassActive) {
+        bestPlayback_.duckSecondPassActive = true;
+        startRunner(std::optional<bool>(!bestPlayback_.duckPrimarySpawnLeftFirst));
         return;
     }
 
     if (duckClockScenario) {
-        bestPlaybackDuckNextPrimarySpawnLeftFirst_ = !bestPlaybackDuckNextPrimarySpawnLeftFirst_;
+        bestPlayback_.duckNextPrimarySpawnLeftFirst = !bestPlayback_.duckNextPrimarySpawnLeftFirst;
     }
-    clearBestPlaybackRunner();
+    bestPlayback_.clearRunner();
 }
 
 void Evolution::broadcastProgress(StateMachine& dsm)
@@ -2933,7 +2884,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     // Calculate total training time.
     double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
 
-    const double visibleSimTime = visibleRunner_ ? visibleRunner_->getSimTime() : 0.0;
+    const double visibleSimTime = visible_.runner ? visible_.runner->getSimTime() : 0.0;
     double cumulative = cumulativeSimTime_ + visibleSimTime;
 
     // Speedup factor = how much faster than real-time.
@@ -2994,29 +2945,30 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .activeParallelism = activeParallelism,
         .cpuPercent = latestCpu,
         .cpuPercentPerCore = lastCpuPercentPerCore_,
-        .lastBreedingPerturbationsAvg = lastBreedingPerturbationsAvg_,
-        .lastBreedingResetsAvg = lastBreedingResetsAvg_,
-        .lastBreedingWeightChangesAvg = lastBreedingWeightChangesAvg_,
-        .lastBreedingWeightChangesMin = lastBreedingWeightChangesMin_,
-        .lastBreedingWeightChangesMax = lastBreedingWeightChangesMax_,
-        .lastGenerationEliteCarryoverCount = lastGenerationEliteCarryoverCount_,
-        .lastGenerationSeedCount = lastGenerationSeedCount_,
-        .lastGenerationOffspringCloneCount = lastGenerationOffspringCloneCount_,
-        .lastGenerationOffspringMutatedCount = lastGenerationOffspringMutatedCount_,
+        .lastBreedingPerturbationsAvg = lastGenTelemetry_.breedingPerturbationsAvg,
+        .lastBreedingResetsAvg = lastGenTelemetry_.breedingResetsAvg,
+        .lastBreedingWeightChangesAvg = lastGenTelemetry_.breedingWeightChangesAvg,
+        .lastBreedingWeightChangesMin = lastGenTelemetry_.breedingWeightChangesMin,
+        .lastBreedingWeightChangesMax = lastGenTelemetry_.breedingWeightChangesMax,
+        .lastGenerationEliteCarryoverCount = lastGenTelemetry_.eliteCarryoverCount,
+        .lastGenerationSeedCount = lastGenTelemetry_.seedCount,
+        .lastGenerationOffspringCloneCount = lastGenTelemetry_.offspringCloneCount,
+        .lastGenerationOffspringMutatedCount = lastGenTelemetry_.offspringMutatedCount,
         .lastGenerationOffspringCloneBeatsParentCount =
-            lastGenerationOffspringCloneBeatsParentCount_,
-        .lastGenerationOffspringCloneAvgDeltaFitness = lastGenerationOffspringCloneAvgDeltaFitness_,
+            lastGenTelemetry_.offspringCloneBeatsParentCount,
+        .lastGenerationOffspringCloneAvgDeltaFitness =
+            lastGenTelemetry_.offspringCloneAvgDeltaFitness,
         .lastGenerationOffspringMutatedBeatsParentCount =
-            lastGenerationOffspringMutatedBeatsParentCount_,
+            lastGenTelemetry_.offspringMutatedBeatsParentCount,
         .lastGenerationOffspringMutatedAvgDeltaFitness =
-            lastGenerationOffspringMutatedAvgDeltaFitness_,
-        .lastGenerationPhenotypeUniqueCount = lastGenerationPhenotypeUniqueCount_,
+            lastGenTelemetry_.offspringMutatedAvgDeltaFitness,
+        .lastGenerationPhenotypeUniqueCount = lastGenTelemetry_.phenotypeUniqueCount,
         .lastGenerationPhenotypeUniqueEliteCarryoverCount =
-            lastGenerationPhenotypeUniqueEliteCarryoverCount_,
+            lastGenTelemetry_.phenotypeUniqueEliteCarryoverCount,
         .lastGenerationPhenotypeUniqueOffspringMutatedCount =
-            lastGenerationPhenotypeUniqueOffspringMutatedCount_,
+            lastGenTelemetry_.phenotypeUniqueOffspringMutatedCount,
         .lastGenerationPhenotypeNovelOffspringMutatedCount =
-            lastGenerationPhenotypeNovelOffspringMutatedCount_,
+            lastGenTelemetry_.phenotypeNovelOffspringMutatedCount,
     };
 
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
