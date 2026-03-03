@@ -61,7 +61,8 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, RandomGenomesProduceCommandDiversity)
 
         auto world = createFlatWorld(32, 20);
         OrganismManager& manager = world->getOrganismManager();
-        const OrganismId id = manager.createDuck(*world, 16, 10, std::move(brain));
+        // Spawn on the floor (height-2).
+        const OrganismId id = manager.createDuck(*world, 16, 18, std::move(brain));
         Duck* duck = manager.getDuck(id);
         ASSERT_NE(duck, nullptr);
 

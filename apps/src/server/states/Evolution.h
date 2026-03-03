@@ -96,6 +96,7 @@ struct Evolution {
     std::vector<Individual> population;
     std::vector<IndividualOrigin> populationOrigins;
     std::vector<double> fitnessScores;
+    std::vector<double> wingUpSecondsPerIndividual;
     int generation = 0;
     int currentEval = 0;
 

@@ -1501,6 +1501,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
 
     evolutionConfig.populationSize = static_cast<int>(population.size());
     fitnessScores.resize(population.size(), 0.0);
+    wingUpSecondsPerIndividual.resize(population.size(), 0.0);
 
     generation = 0;
     currentEval = 0;
@@ -2017,6 +2018,16 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
     fitnessScores[result.index] = result.fitness;
     sumFitnessThisGen_ += result.fitness;
+
+    // Extract wing_up_seconds from fitness breakdown for diagnostics.
+    if (result.fitnessBreakdown.has_value()) {
+        for (const auto& metric : result.fitnessBreakdown->metrics) {
+            if (metric.key == "wing_up_seconds") {
+                wingUpSecondsPerIndividual[result.index] = metric.raw;
+                break;
+            }
+        }
+    }
     completedEvaluations_++;
     currentEval++;
     cumulativeSimTime_ += result.simTime;
@@ -2429,6 +2440,38 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         bestFitnessThisGen,
         bestFitnessAllTime,
         robustEvaluationCount_);
+
+    // Log wing usage diagnostics for this generation.
+    {
+        int flapCount = 0;
+        double maxWingUp = 0.0;
+        double bestFlapperFitness = 0.0;
+        double bestNonFlapperFitness = 0.0;
+        const int popSize = static_cast<int>(wingUpSecondsPerIndividual.size());
+        for (int i = 0; i < popSize; ++i) {
+            const double wingUp = wingUpSecondsPerIndividual[i];
+            const double fitness = fitnessScores[i];
+            if (wingUp > 0.5) {
+                ++flapCount;
+                maxWingUp = std::max(maxWingUp, wingUp);
+                bestFlapperFitness = std::max(bestFlapperFitness, fitness);
+            }
+            else {
+                bestNonFlapperFitness = std::max(bestNonFlapperFitness, fitness);
+            }
+        }
+        LOG_INFO(
+            State,
+            "Evolution: Gen {} wing diagnostics: flappers={}/{}, maxWingUp={:.1f}s, "
+            "bestFlapFit={:.4f}, bestNoFlapFit={:.4f}",
+            generation,
+            flapCount,
+            popSize,
+            maxWingUp,
+            bestFlapperFitness,
+            bestNonFlapperFitness);
+    }
+
     DIRTSIM_ASSERT(!robustnessPassActive_, "Evolution: robust pass must complete before advance");
     pendingBestRobustness_ = false;
     pendingBestRobustnessGeneration_ = -1;
@@ -2648,6 +2691,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         generationTelemetry_.reset();
         sumFitnessThisGen_ = 0.0;
         fitnessScores.assign(population.size(), 0.0);
+        wingUpSecondsPerIndividual.assign(population.size(), 0.0);
     }
 
     adjustConcurrency();
