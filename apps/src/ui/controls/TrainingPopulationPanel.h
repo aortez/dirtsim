@@ -81,6 +81,8 @@ private:
     lv_obj_t* detailConfirmCheckbox_ = nullptr;
     lv_obj_t* detailRemoveButton_ = nullptr;
     lv_obj_t* detailOverlay_ = nullptr;
+    lv_obj_t* brainButton_ = nullptr;
+    lv_obj_t* brainList_ = nullptr;
     lv_obj_t* organismButton_ = nullptr;
     lv_obj_t* organismList_ = nullptr;
     lv_obj_t* scenarioButton_ = nullptr;
@@ -94,6 +96,7 @@ private:
 
     std::vector<BrainOption> brainOptions_;
 
+    std::unordered_map<lv_obj_t*, size_t> brainButtonToIndex_;
     std::unordered_map<lv_obj_t*, Scenario::EnumType> scenarioButtonToValue_;
     std::unordered_map<lv_obj_t*, OrganismType> organismButtonToValue_;
 
@@ -103,6 +106,7 @@ private:
     bool brainRequiresGenome_ = false;
     int populationTotal_ = 0;
     int addCount_ = 1;
+    bool brainListVisible_ = false;
     bool scenarioColumnVisible_ = false;
     bool organismListVisible_ = false;
     std::optional<size_t> detailEntryIndex_;
@@ -129,6 +133,8 @@ private:
     void openDetailModal(size_t index);
     void updateDetailRemoveState();
     void updateClearAllState();
+    void setBrainListVisible(bool visible);
+    void rebuildBrainListButtons();
     void setControlEnabled(lv_obj_t* control, bool enabled);
     void setScenarioColumnVisible(bool visible);
     void setOrganismListVisible(bool visible);
@@ -147,6 +153,8 @@ private:
     Scenario::EnumType coerceScenarioToOrganism(
         Scenario::EnumType scenarioId, OrganismType organismType) const;
 
+    static void onBrainButtonClicked(lv_event_t* e);
+    static void onBrainSelected(lv_event_t* e);
     static void onScenarioButtonClicked(lv_event_t* e);
     static void onOrganismButtonClicked(lv_event_t* e);
     static void onScenarioBackClicked(lv_event_t* e);
