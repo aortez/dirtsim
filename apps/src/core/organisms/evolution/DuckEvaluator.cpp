@@ -19,7 +19,7 @@ struct DuckMovementScoringConfig {
     double columnCoverageWeight = 0.65;
     double effortPenaltyWeight = 0.15;
     double effortReference = 1.0;
-    double jumpHeldEffortWeight = 25;
+    double jumpHeldEffortWeight = 10;
     double rowCoverageReferenceHeightScale = 0.40;
     double rowCoverageWeight = 0.25;
     double cellCoverageReferenceDiagonalScale = 0.75;
