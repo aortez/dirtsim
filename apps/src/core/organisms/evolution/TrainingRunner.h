@@ -132,6 +132,8 @@ public:
     double getCurrentMaxEnergy() const;
     bool isOrganismAlive() const;
 
+    static constexpr double TIMESTEP = 0.016;
+
 private:
     void resolveBrainEntry();
     void runScenarioDrivenStep();
@@ -173,8 +175,6 @@ private:
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
-
-    static constexpr double TIMESTEP = 0.016;
 };
 
 } // namespace DirtSim

@@ -188,6 +188,7 @@ struct Evolution {
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackBroadcastTime_{};
+    std::chrono::steady_clock::time_point lastBestPlaybackStepTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
     std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;

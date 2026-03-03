@@ -2734,6 +2734,7 @@ void Evolution::clearBestPlaybackRunner()
     bestPlaybackRunner_.reset();
     bestPlaybackDuckSecondPassActive_ = false;
     bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
+    lastBestPlaybackStepTime_ = {};
 }
 
 void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
@@ -2785,11 +2786,18 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         startRunner(primarySpawnSide);
     }
 
-    // Always advance the sim every tick to play back at real speed.
-    const TrainingRunner::Status status = bestPlaybackRunner_->step(1);
+    // Advance the sim at real-time pace: one step per TIMESTEP of wall-clock time.
+    const auto now = std::chrono::steady_clock::now();
+    const auto stepInterval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(TrainingRunner::TIMESTEP));
+    TrainingRunner::Status status{ .state = TrainingRunner::State::Running };
+    if (lastBestPlaybackStepTime_ == std::chrono::steady_clock::time_point{}
+        || now - lastBestPlaybackStepTime_ >= stepInterval) {
+        lastBestPlaybackStepTime_ = now;
+        status = bestPlaybackRunner_->step(1);
+    }
 
     // Broadcast frames at the configured interval, independent of sim step rate.
-    const auto now = std::chrono::steady_clock::now();
     const auto interval = std::chrono::milliseconds(uiTraining.bestPlaybackIntervalMs);
     if (lastBestPlaybackBroadcastTime_ == std::chrono::steady_clock::time_point{}
         || now - lastBestPlaybackBroadcastTime_ >= interval) {
