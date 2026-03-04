@@ -52,6 +52,7 @@ public:
 };
 
 std::unique_ptr<NesGameAdapter> createNesFlappyParatroopaGameAdapter();
+std::unique_ptr<NesGameAdapter> createNesSuperMarioBrosGameAdapter();
 std::unique_ptr<NesGameAdapter> createNesSuperTiltBroGameAdapter();
 
 } // namespace DirtSim

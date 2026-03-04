@@ -408,6 +408,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesGameAdapterRegistry.cpp
     src/core/scenarios/nes/NesSmolnesScenarioDriver.cpp
     src/core/scenarios/nes/NesFlappyParatroopaGameAdapter.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp

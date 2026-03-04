@@ -1320,6 +1320,8 @@ void Evolution::onEnter(StateMachine& dsm)
             break;
         case Scenario::EnumType::NesFlappyParatroopa:
             break;
+        case Scenario::EnumType::NesSuperMarioBros:
+            break;
         case Scenario::EnumType::NesSuperTiltBro:
             break;
         case Scenario::EnumType::Sandbox:

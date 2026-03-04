@@ -30,6 +30,19 @@ ScenarioMetadata makeNesFlappyParatroopaMetadata()
     };
 }
 
+ScenarioMetadata makeNesSuperMarioBrosMetadata()
+{
+    return ScenarioMetadata{
+        .id = Scenario::EnumType::NesSuperMarioBros,
+        .kind = ScenarioKind::NesWorld,
+        .name = "NES Super Mario Bros",
+        .description = "NES Super Mario Bros (mapper 0) training scenario",
+        .category = "organisms",
+        .requiredWidth = 0,
+        .requiredHeight = 0,
+    };
+}
+
 ScenarioMetadata makeNesSuperTiltBroMetadata()
 {
     return ScenarioMetadata{
@@ -85,6 +98,11 @@ ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeReposit
     registry.registerScenario(
         Scenario::EnumType::NesFlappyParatroopa,
         makeNesFlappyParatroopaMetadata(),
+        []() -> std::unique_ptr<ScenarioRunner> { return nullptr; });
+
+    registry.registerScenario(
+        Scenario::EnumType::NesSuperMarioBros,
+        makeNesSuperMarioBrosMetadata(),
         []() -> std::unique_ptr<ScenarioRunner> { return nullptr; });
 
     registry.registerScenario(

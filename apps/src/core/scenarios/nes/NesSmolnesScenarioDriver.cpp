@@ -134,6 +134,9 @@ void NesSmolnesScenarioDriver::tick(
     if (std::holds_alternative<Config::NesFlappyParatroopa>(config_)) {
         maxEpisodeFrames = getMaxEpisodeFrames(std::get<Config::NesFlappyParatroopa>(config_));
     }
+    else if (std::holds_alternative<Config::NesSuperMarioBros>(config_)) {
+        maxEpisodeFrames = getMaxEpisodeFrames(std::get<Config::NesSuperMarioBros>(config_));
+    }
     else if (std::holds_alternative<Config::NesSuperTiltBro>(config_)) {
         maxEpisodeFrames = getMaxEpisodeFrames(std::get<Config::NesSuperTiltBro>(config_));
     }
@@ -395,6 +398,9 @@ NesConfigValidationResult NesSmolnesScenarioDriver::validateConfig() const
 {
     if (std::holds_alternative<Config::NesFlappyParatroopa>(config_)) {
         return validateSmolnesConfig(std::get<Config::NesFlappyParatroopa>(config_));
+    }
+    if (std::holds_alternative<Config::NesSuperMarioBros>(config_)) {
+        return validateSmolnesConfig(std::get<Config::NesSuperMarioBros>(config_));
     }
     if (std::holds_alternative<Config::NesSuperTiltBro>(config_)) {
         return validateSmolnesConfig(std::get<Config::NesSuperTiltBro>(config_));
