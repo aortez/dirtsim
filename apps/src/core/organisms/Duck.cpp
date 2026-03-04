@@ -530,13 +530,16 @@ void Duck::applyMovementToCell(World& world, double deltaTime)
         cell.addPendingForce(walk_force);
     }
 
-    // Apply gentle wing lift/dive while airborne. move.y=+1 cancels gravity; move.y=-1 doubles it.
+    // Apply gentle wing lift/dive while airborne. move.y=+1 counters half of gravity; move.y=-1
+    // doubles it.
     if (!on_ground_) {
         const float move_y = current_input_.move.y;
         if (std::abs(move_y) > MOVE_INPUT_DEADZONE) {
             const double gravity = world.getPhysicsSettings().gravity;
             const double clampedY = std::clamp(static_cast<double>(move_y), -1.0, 1.0);
-            const double wing_force_y = -static_cast<double>(cell.getMass()) * gravity * clampedY;
+            const double lift_scale = (clampedY > 0.0) ? 0.5 : 1.0;
+            const double wing_force_y =
+                -static_cast<double>(cell.getMass()) * gravity * clampedY * lift_scale;
             cell.addPendingForce(Vector2d{ 0.0, wing_force_y });
         }
     }
