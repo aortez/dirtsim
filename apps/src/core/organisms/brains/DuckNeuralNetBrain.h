@@ -2,6 +2,7 @@
 
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/evolution/GenomeLayout.h"
 
 #include <memory>
 #include <random>
@@ -24,6 +25,7 @@ public:
 
     static Genome randomGenome(std::mt19937& rng);
     static bool isGenomeCompatible(const Genome& genome);
+    static GenomeLayout getGenomeLayout();
 
 private:
     struct Impl;

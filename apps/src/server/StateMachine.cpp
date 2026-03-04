@@ -542,9 +542,9 @@ void applyScenarioConfigUpdatesToActiveState(
                     state.workerState_->scenarioConfigOverride = state.scenarioConfigOverride_;
                 }
 
-                if (state.visibleRunner_
+                if (state.visible_.runner
                     && state.visibleScenarioId_ == state.trainingSpec.scenarioId) {
-                    const auto result = state.visibleRunner_->setScenarioConfig(*config);
+                    const auto result = state.visible_.runner->setScenarioConfig(*config);
                     if (result.isError()) {
                         LOG_WARN(
                             State,
@@ -552,14 +552,14 @@ void applyScenarioConfigUpdatesToActiveState(
                             result.errorValue());
                     }
                     else {
-                        state.visibleScenarioConfig_ = state.visibleRunner_->getScenarioConfig();
+                        state.visibleScenarioConfig_ = state.visible_.runner->getScenarioConfig();
                     }
                 }
 
-                if (state.bestPlaybackRunner_ && state.bestPlaybackIndividual_.has_value()
-                    && state.bestPlaybackIndividual_.value().scenarioId
+                if (state.bestPlayback_.runner && state.bestPlayback_.individual.has_value()
+                    && state.bestPlayback_.individual.value().scenarioId
                         == state.trainingSpec.scenarioId) {
-                    const auto result = state.bestPlaybackRunner_->setScenarioConfig(*config);
+                    const auto result = state.bestPlayback_.runner->setScenarioConfig(*config);
                     if (result.isError()) {
                         LOG_WARN(
                             State,

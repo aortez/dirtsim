@@ -106,7 +106,7 @@ TEST_F(NeuralNetBrainTest, SetGenomeChangesOutput)
 
     // Change to different genome.
     std::mt19937 rng(999);
-    Genome new_genome = Genome::random(rng);
+    Genome new_genome = NeuralNetBrain::randomGenome(rng);
     brain.setGenome(new_genome);
 
     TreeCommand cmd2 = brain.decide(sensory);
@@ -128,7 +128,7 @@ TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
 
 TEST_F(NeuralNetBrainTest, ConstantGenomeProducesConsistentOutput)
 {
-    Genome g = Genome::constant(0.1);
+    Genome g(130791, 0.1f);
     NeuralNetBrain brain(g);
 
     auto sensory = createTestSensoryData();

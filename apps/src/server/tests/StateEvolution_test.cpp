@@ -1,4 +1,5 @@
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -26,6 +27,11 @@ using namespace DirtSim::Server::State;
 using namespace DirtSim::Server::Tests;
 
 namespace {
+
+Genome makeNeuralNetGenome(WeightType value)
+{
+    return Genome(static_cast<size_t>(NeuralNetBrain::getGenomeLayout().totalSize()), value);
+}
 
 TrainingSpec makeTrainingSpec(int populationSize)
 {
@@ -163,7 +169,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyO
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
     const PopulationSpec& population = evolution.trainingSpec.population.front();
-    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
     EXPECT_EQ(population.count, 3);
     EXPECT_EQ(population.randomCount, 3);
 }
@@ -193,7 +199,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForDuckClockS
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
     const PopulationSpec& population = evolution.trainingSpec.population.front();
-    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
     EXPECT_EQ(population.count, 3);
     EXPECT_EQ(population.randomCount, 3);
 }
@@ -370,7 +376,7 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
     repo.clear();
 
     const GenomeId bestId = UUID::generate();
-    const Genome bestGenome = Genome::constant(0.25);
+    const Genome bestGenome = makeNeuralNetGenome(0.25f);
     const GenomeMetadata bestMetadata{
         .name = "warm-best",
         .fitness = 9.0,
@@ -429,7 +435,7 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
     repo.clear();
 
     const GenomeId bestId = UUID::generate();
-    const Genome bestGenome = Genome::constant(0.5);
+    const Genome bestGenome = makeNeuralNetGenome(0.5f);
     const GenomeMetadata bestMetadata{
         .name = "fresh-best",
         .fitness = 4.0,
@@ -514,10 +520,10 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
     const GenomeId robustA = UUID::generate();
     const GenomeId robustB = UUID::generate();
     const GenomeId weak = UUID::generate();
-    repo.store(outlierPeak, Genome::constant(0.1), makeMetadata("outlier", 9999.0, 10.0));
-    repo.store(robustA, Genome::constant(0.2), makeMetadata("robust-a", 90.0, 50.0));
-    repo.store(robustB, Genome::constant(0.3), makeMetadata("robust-b", 80.0, 40.0));
-    repo.store(weak, Genome::constant(0.4), makeMetadata("weak", 70.0, 5.0));
+    repo.store(outlierPeak, makeNeuralNetGenome(0.1f), makeMetadata("outlier", 9999.0, 10.0));
+    repo.store(robustA, makeNeuralNetGenome(0.2f), makeMetadata("robust-a", 90.0, 50.0));
+    repo.store(robustB, makeNeuralNetGenome(0.3f), makeMetadata("robust-b", 80.0, 40.0));
+    repo.store(weak, makeNeuralNetGenome(0.4f), makeMetadata("weak", 70.0, 5.0));
     repo.markAsBest(outlierPeak);
 
     Idle idleState;
@@ -1068,7 +1074,7 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
     auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
-    const Genome seedGenome = Genome::constant(0.1);
+    const Genome seedGenome = makeNeuralNetGenome(0.1f);
     const GenomeId seedId = UUID::generate();
     const GenomeMetadata seedMeta{
         .name = "seed",
@@ -1199,7 +1205,7 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
-    const Genome seedGenome = Genome::constant(0.1);
+    const Genome seedGenome = makeNeuralNetGenome(0.1f);
     const GenomeId seedId = UUID::generate();
     const GenomeMetadata seedMeta{
         .name = "seed",
@@ -1395,22 +1401,22 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     evolutionState.onEnter(*fixture.stateMachine);
 
     // Verify: No runner exists yet.
-    EXPECT_EQ(evolutionState.visibleRunner_, nullptr);
+    EXPECT_EQ(evolutionState.visible_.runner, nullptr);
 
     // Execute: First tick should create world and advance one step.
     auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
+    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
-    ASSERT_NE(evolutionState.visibleRunner_, nullptr);
-    EXPECT_GT(evolutionState.visibleRunner_->getSimTime(), 0.0) << "Sim time should have advanced";
-    EXPECT_LT(evolutionState.visibleRunner_->getSimTime(), 0.1)
+    ASSERT_NE(evolutionState.visible_.runner, nullptr);
+    EXPECT_GT(evolutionState.visible_.runner->getSimTime(), 0.0) << "Sim time should have advanced";
+    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.1)
         << "Sim time should not be complete";
 
     // Execute: Second tick should advance further but not complete.
     auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should still exist";
+    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should still exist";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
 
     // Execute: Tick until first evaluation completes.
@@ -1423,7 +1429,7 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Verify: First evaluation completed after multiple ticks.
     EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
-    EXPECT_EQ(evolutionState.visibleRunner_, nullptr)
+    EXPECT_EQ(evolutionState.visible_.runner, nullptr)
         << "Runner should be cleaned up between evals";
 }
 
@@ -1450,9 +1456,9 @@ TEST(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     evolutionState.tick(*fixture.stateMachine);
 
     // Verify: Evaluation is in progress.
-    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
-    ASSERT_NE(evolutionState.visibleRunner_, nullptr);
-    EXPECT_LT(evolutionState.visibleRunner_->getSimTime(), 0.5) << "Should be early in evaluation";
+    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
+    ASSERT_NE(evolutionState.visible_.runner, nullptr);
+    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.5) << "Should be early in evaluation";
 
     // Setup: Create EvolutionStop command.
     bool callbackInvoked = false;
@@ -1570,8 +1576,8 @@ TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
     EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
     EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 2);
     EXPECT_EQ(evolutionState.workerState_->workers.size(), 2u);
-    EXPECT_GT(evolutionState.visibleQueue_.size(), 0u);
-    EXPECT_LT(evolutionState.visibleQueue_.size(), evolutionState.population.size());
+    EXPECT_GT(evolutionState.visible_.queue.size(), 0u);
+    EXPECT_LT(evolutionState.visible_.queue.size(), evolutionState.population.size());
 
     std::optional<Any> finalState;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -1605,8 +1611,8 @@ TEST(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
     constexpr int maxTicks = 200;
     for (int i = 0; i < maxTicks; ++i) {
         evolutionState.tick(*fixture.stateMachine);
-        if (evolutionState.visibleRunner_ != nullptr
-            && evolutionState.visibleRunner_->getSimTime()
+        if (evolutionState.visible_.runner != nullptr
+            && evolutionState.visible_.runner->getSimTime()
                 < evolutionState.evolutionConfig.maxSimulationTime
             && evolutionState.currentEval > 0) {
             sawBackgroundCompletion = true;

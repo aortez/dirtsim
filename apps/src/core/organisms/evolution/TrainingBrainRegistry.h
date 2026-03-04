@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GenomeLayout.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 
@@ -20,6 +21,7 @@ inline constexpr const char* Random = "Random";
 inline constexpr const char* WallBouncing = "WallBouncing";
 inline constexpr const char* DuckBrain2 = "DuckBrain2";
 inline constexpr const char* DuckNeuralNetRecurrent = "DuckNeuralNetRecurrent";
+inline constexpr const char* DuckNeuralNetRecurrentV2 = "DuckNeuralNetRecurrentV2";
 } // namespace TrainingBrainKind
 
 struct BrainRegistryKey {
@@ -56,6 +58,7 @@ struct BrainRegistryEntry {
     std::function<OrganismId(World& world, uint32_t x, uint32_t y, const Genome* genome)> spawn;
     std::function<Genome(std::mt19937& rng)> createRandomGenome;
     std::function<bool(const Genome& genome)> isGenomeCompatible;
+    std::function<GenomeLayout()> getGenomeLayout;
 };
 
 class TrainingBrainRegistry {

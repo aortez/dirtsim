@@ -17,9 +17,9 @@ struct DuckMovementScoringConfig {
     double cellCoverageWeight = 0.10;
     double columnCoverageReferenceWidthScale = 0.40;
     double columnCoverageWeight = 0.65;
-    double effortPenaltyWeight = 0.50;
+    double effortPenaltyWeight = 0.15;
     double effortReference = 1.0;
-    double jumpHeldEffortWeight = 25;
+    double jumpHeldEffortWeight = 10;
     double rowCoverageReferenceHeightScale = 0.40;
     double rowCoverageWeight = 0.25;
     double cellCoverageReferenceDiagonalScale = 0.75;
@@ -96,9 +96,8 @@ MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
         scores.effortReference = kDuckScoringConfig.effortReference;
     }
 
-    const double uncoveredFraction = 1.0 - MovementScoring::clamp01(scores.coverageScore);
-    scores.effortPenaltyRaw = MovementScoring::clamp01(
-        kDuckScoringConfig.effortPenaltyWeight * scores.effortScore * uncoveredFraction);
+    scores.effortPenaltyRaw =
+        MovementScoring::clamp01(kDuckScoringConfig.effortPenaltyWeight * scores.effortScore);
     scores.effortPenaltyScore = scores.effortPenaltyRaw;
     scores.movementRaw = scores.coverageScore - scores.effortPenaltyScore;
     scores.movementScore = std::max(0.0, scores.movementRaw);
@@ -129,6 +128,15 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.survivalScore = computeSurvivalScore(context);
     if (breakdown.survivalScore <= 0.0) {
         return breakdown;
+    }
+
+    const auto* duck = dynamic_cast<const Duck*>(context.finalOrganism);
+    if (duck) {
+        breakdown.energyAverage = duck->getEnergyAverage();
+        breakdown.energyConsumedTotal = duck->getEnergyConsumedTotal();
+        breakdown.energyLimitedSeconds = duck->getEnergyLimitedSeconds();
+        breakdown.wingUpSeconds = duck->getWingUpSeconds();
+        breakdown.wingDownSeconds = duck->getWingDownSeconds();
     }
 
     const MovementScoring::Scores movement = computeDuckMovementScores(context);

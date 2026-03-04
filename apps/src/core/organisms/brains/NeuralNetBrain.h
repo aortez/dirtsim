@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/organisms/TreeBrain.h"
+#include "core/organisms/evolution/GenomeLayout.h"
 
 #include <cstdint>
 #include <memory>
+#include <random>
 
 class Timers;
 
@@ -29,6 +31,10 @@ public:
 
     Genome getGenome() const;
     void setGenome(const Genome& genome);
+
+    static Genome randomGenome(std::mt19937& rng);
+    static bool isGenomeCompatible(const Genome& genome);
+    static GenomeLayout getGenomeLayout();
 
 private:
     struct Impl;

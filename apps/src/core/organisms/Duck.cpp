@@ -45,41 +45,43 @@ static constexpr float SPARKLE_IMPULSE = 3.0f;  // Max random impulse magnitude.
 static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f; // Chance per frame of impulse.
 static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (cells/sec^2).
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
-static constexpr float WALK_RUN_SPLIT_THRESHOLD =
-    0.4f; // Horizontal input magnitude at or below this is walk; above is run.
-static constexpr float MOVE_INPUT_DEADZONE = 0.01f; // Ignore tiny horizontal input as no movement.
+static constexpr float MOVE_INPUT_DEADZONE = 0.01f;    // Ignore tiny input as no movement.
 
-std::string duckCommandSignature(const DirtSim::DuckInput& input)
+std::string duckCommandSignature(const DirtSim::DuckInput& input, bool onGround)
 {
+    std::string signature;
     if (input.jump) {
         if (input.move.x < -MOVE_INPUT_DEADZONE) {
-            return "JumpLeft";
+            signature = "JumpLeft";
         }
-
-        if (input.move.x > MOVE_INPUT_DEADZONE) {
-            return "JumpRight";
+        else if (input.move.x > MOVE_INPUT_DEADZONE) {
+            signature = "JumpRight";
         }
-
-        return "Jump";
+        else {
+            signature = "Jump";
+        }
+    }
+    else {
+        const float moveX = input.move.x;
+        if (moveX < -MOVE_INPUT_DEADZONE) {
+            signature = input.run ? "RunLeft" : "WalkLeft";
+        }
+        else if (moveX > MOVE_INPUT_DEADZONE) {
+            signature = input.run ? "RunRight" : "WalkRight";
+        }
+        else {
+            signature = "Wait";
+        }
     }
 
-    const float moveX = input.move.x;
-    const float absMoveX = std::fabs(moveX);
-    if (moveX < -MOVE_INPUT_DEADZONE) {
-        if (absMoveX <= WALK_RUN_SPLIT_THRESHOLD) {
-            return "WalkLeft";
-        }
-        return "RunLeft";
+    if (input.move.y > MOVE_INPUT_DEADZONE) {
+        signature += onGround ? "+UpOnGround" : "+UpInAir";
+    }
+    else if (input.move.y < -MOVE_INPUT_DEADZONE) {
+        signature += onGround ? "+DownOnGround" : "+DownInAir";
     }
 
-    if (moveX > MOVE_INPUT_DEADZONE) {
-        if (absMoveX <= WALK_RUN_SPLIT_THRESHOLD) {
-            return "WalkRight";
-        }
-        return "RunRight";
-    }
-
-    return "Wait";
+    return signature;
 }
 
 std::string duckCommandOutcomeSignature(const std::string& commandSignature, const char* outcome)
@@ -92,9 +94,21 @@ namespace DirtSim {
 
 Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
     : Organism::Body(id, OrganismType::DUCK), brain_(std::move(brain))
-{}
+{
+    energy_ = std::clamp(energyConfig_.startingEnergy, 0.0, 1.0);
+}
 
 Duck::~Duck() = default;
+
+double Duck::getWingUpSeconds() const
+{
+    return wingUpSeconds_;
+}
+
+double Duck::getWingDownSeconds() const
+{
+    return wingDownSeconds_;
+}
 
 void Duck::update(World& world, double deltaTime)
 {
@@ -171,13 +185,28 @@ void Duck::update(World& world, double deltaTime)
     // Update ground detection first.
     updateGroundDetection(world);
 
+    // Regenerate energy before the brain decides what to do this tick.
+    energy_ = std::clamp(energy_ + (energyConfig_.regenRate * deltaTime), 0.0, 1.0);
+
     // Gather sensory data and let brain decide what to do.
     if (brain_) {
         DuckSensoryData sensory = gatherSensoryData(world, deltaTime);
         brain_->think(*this, sensory, deltaTime);
     }
 
-    recordCommandSignature(duckCommandSignature(current_input_));
+    applyEnergyGating(deltaTime);
+
+    if (deltaTime > 0.0 && !on_ground_) {
+        const float moveY = current_input_.move.y;
+        if (moveY > MOVE_INPUT_DEADZONE) {
+            wingUpSeconds_ += deltaTime;
+        }
+        else if (moveY < -MOVE_INPUT_DEADZONE) {
+            wingDownSeconds_ += deltaTime;
+        }
+    }
+
+    recordCommandSignature(duckCommandSignature(current_input_, on_ground_));
 
     // Apply movement intent to the cell.
     applyMovementToCell(world, deltaTime);
@@ -211,6 +240,140 @@ void Duck::setInput(DuckInput input)
     effortJumpHeldTotal_ += input.jump ? 1.0 : 0.0;
     ++effortSampleCount_;
     current_input_ = input;
+}
+
+void Duck::applyEnergyGating(double deltaTime)
+{
+    if (deltaTime <= 0.0) {
+        energySum_ += energy_;
+        energySampleCount_ += 1;
+        return;
+    }
+
+    const DuckInput requested = current_input_;
+    DuckInput applied = requested;
+
+    bool limited = false;
+
+    // Jump burst: charge only on rising edge (press). If we can't afford it, block the press.
+    const bool requestedJumpPressed = requested.jump && !jump_input_was_held_last_frame_;
+    const bool requestedJumpWouldStart =
+        requestedJumpPressed && on_ground_ && !jump_cooldown_active_;
+    if (requestedJumpWouldStart && energy_ < energyConfig_.jumpBurstCost) {
+        applied.jump = false;
+        limited = true;
+    }
+
+    const bool jumpPressed = applied.jump && !jump_input_was_held_last_frame_;
+    const bool jumpWouldStart = jumpPressed && on_ground_ && !jump_cooldown_active_;
+    double burstCost = jumpWouldStart ? energyConfig_.jumpBurstCost : 0.0;
+
+    // Jump hold: charge only while the jump boost window is active.
+    const bool holdBoostWouldApply =
+        applied.jump && !jumpPressed && !on_ground_ && jump_boost_remaining_seconds_ > 0.0;
+    double holdCost = holdBoostWouldApply ? (energyConfig_.jumpHoldCostPerSec * deltaTime) : 0.0;
+
+    // If we can't afford the hold cost, release jump (no hold boost).
+    if (holdCost > 0.0 && (energy_ - burstCost) < holdCost) {
+        applied.jump = false;
+        limited = true;
+        holdCost = 0.0;
+    }
+
+    double energyRemaining = std::max(0.0, energy_ - burstCost - holdCost);
+
+    // Movement cost scales with |move.x| (walk is baseline; run is an optional multiplier).
+    const float absMoveX = std::abs(applied.move.x);
+    const bool hasMoveX = absMoveX > MOVE_INPUT_DEADZONE;
+    const bool effectiveRun = applied.run && on_ground_ && hasMoveX;
+    double moveCostPerSec =
+        effectiveRun ? energyConfig_.runCostPerSec : energyConfig_.walkCostPerSec;
+    double moveCost = hasMoveX ? (moveCostPerSec * static_cast<double>(absMoveX) * deltaTime) : 0.0;
+
+    // Degrade run -> walk when we can't afford the requested run.
+    if (effectiveRun && moveCost > 0.0 && energyRemaining < moveCost) {
+        applied.run = false;
+        limited = true;
+        moveCostPerSec = energyConfig_.walkCostPerSec;
+        moveCost = moveCostPerSec * static_cast<double>(absMoveX) * deltaTime;
+    }
+
+    energyRemaining = std::max(0.0, energy_ - burstCost - holdCost);
+
+    // Degrade movement magnitude to fit remaining energy budget.
+    if (moveCost > 0.0 && energyRemaining < moveCost) {
+        const double denom = moveCostPerSec * deltaTime;
+        if (denom > 0.0) {
+            const double maxAbsMove = std::clamp(energyRemaining / denom, 0.0, 1.0);
+            const float sign = applied.move.x < 0.0f ? -1.0f : 1.0f;
+            const float newAbsMove = static_cast<float>(maxAbsMove);
+            if (newAbsMove < absMoveX) {
+                applied.move.x = sign * newAbsMove;
+                limited = true;
+            }
+            if (newAbsMove <= MOVE_INPUT_DEADZONE) {
+                applied.move.x = 0.0f;
+            }
+            moveCost = moveCostPerSec * static_cast<double>(std::abs(applied.move.x)) * deltaTime;
+        }
+        else {
+            applied.move.x = 0.0f;
+            limited = true;
+            moveCost = 0.0;
+        }
+    }
+
+    // Wing cost while airborne: move.y cancels gravity (lift) or accelerates downward (dive).
+    double wingCostPerSec = 0.0;
+    double wingCost = 0.0;
+    const float absMoveY = std::abs(applied.move.y);
+    const bool hasMoveY = absMoveY > MOVE_INPUT_DEADZONE;
+    if (!on_ground_ && hasMoveY) {
+        wingCostPerSec = applied.move.y > 0.0f ? energyConfig_.wingLiftCostPerSec
+                                               : energyConfig_.wingDiveCostPerSec;
+        wingCost = wingCostPerSec * static_cast<double>(absMoveY) * deltaTime;
+
+        // Scale wing input to fit the remaining energy budget after jump + horizontal movement.
+        const double wingBudget = std::max(0.0, energy_ - burstCost - holdCost - moveCost);
+        if (wingCost > 0.0 && wingBudget < wingCost) {
+            const double denom = wingCostPerSec * deltaTime;
+            if (denom > 0.0) {
+                const double maxAbsY = std::clamp(wingBudget / denom, 0.0, 1.0);
+                const float sign = applied.move.y < 0.0f ? -1.0f : 1.0f;
+                const float newAbsY = static_cast<float>(maxAbsY);
+                if (newAbsY < absMoveY) {
+                    applied.move.y = sign * newAbsY;
+                    limited = true;
+                }
+                if (newAbsY <= MOVE_INPUT_DEADZONE) {
+                    applied.move.y = 0.0f;
+                }
+                wingCost =
+                    wingCostPerSec * static_cast<double>(std::abs(applied.move.y)) * deltaTime;
+            }
+            else {
+                applied.move.y = 0.0f;
+                wingCost = 0.0;
+                limited = true;
+            }
+        }
+    }
+
+    const double totalCost = burstCost + holdCost + moveCost + wingCost;
+    if (totalCost > 0.0 && energy_ >= totalCost) {
+        energy_ = std::max(0.0, energy_ - totalCost);
+        energyConsumedTotal_ += totalCost;
+    }
+
+    if (limited) {
+        energyLimitedSeconds_ += deltaTime;
+    }
+
+    current_input_ = applied;
+
+    // Track post-gating energy level (actual energy available after costs this tick).
+    energySum_ += energy_;
+    energySampleCount_ += 1;
 }
 
 void Duck::updateGroundDetection(const World& world)
@@ -267,7 +430,7 @@ void Duck::updateGroundDetection(const World& world)
 
 void Duck::applyMovementToCell(World& world, double deltaTime)
 {
-    const std::string commandSignature = duckCommandSignature(current_input_);
+    const std::string commandSignature = duckCommandSignature(current_input_, on_ground_);
     const auto recordOutcome = [this, &commandSignature](const char* outcome) {
         recordCommandOutcomeSignature(duckCommandOutcomeSignature(commandSignature, outcome));
     };
@@ -360,8 +523,22 @@ void Duck::applyMovementToCell(World& world, double deltaTime)
                 (move_x > 0 && facing_.x < 0) || (move_x < 0 && facing_.x > 0);
             multiplier = steering_opposes_facing ? AIR_CONTROL_OPPOSING : AIR_CONTROL_SAME;
         }
+        if (on_ground_ && current_input_.run) {
+            multiplier *= 2.0f;
+        }
         Vector2d walk_force(move_x * WALK_FORCE * multiplier, 0.0);
         cell.addPendingForce(walk_force);
+    }
+
+    // Apply gentle wing lift/dive while airborne. move.y=+1 cancels gravity; move.y=-1 doubles it.
+    if (!on_ground_) {
+        const float move_y = current_input_.move.y;
+        if (std::abs(move_y) > MOVE_INPUT_DEADZONE) {
+            const double gravity = world.getPhysicsSettings().gravity;
+            const double clampedY = std::clamp(static_cast<double>(move_y), -1.0, 1.0);
+            const double wing_force_y = -static_cast<double>(cell.getMass()) * gravity * clampedY;
+            cell.addPendingForce(Vector2d{ 0.0, wing_force_y });
+        }
     }
 
     // Update facing direction based on move input or velocity.
@@ -431,6 +608,7 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
     data.position = anchor_cell_;
     data.on_ground = on_ground_;
     data.facing_x = facing_.x;
+    data.energy = static_cast<float>(std::clamp(energy_, 0.0, 1.0));
     data.delta_time_seconds = deltaTime;
 
     // Get velocity from our cell.

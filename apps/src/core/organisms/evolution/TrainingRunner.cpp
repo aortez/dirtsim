@@ -260,12 +260,23 @@ TrainingRunner::TrainingRunner(
     }
 
     nesPaletteFrame_.reset();
-    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven
-        && individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
-        DIRTSIM_ASSERT(
-            individual_.genome.has_value(),
-            "TrainingRunner: NES duck recurrent controller requires a genome");
-        nesDuckBrain_ = std::make_unique<DuckNeuralNetRecurrentBrain>(individual_.genome.value());
+    nesDuckBrain_.reset();
+    nesDuckBrainV2_.reset();
+    if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
+        if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
+            DIRTSIM_ASSERT(
+                individual_.genome.has_value(),
+                "TrainingRunner: NES duck recurrent controller requires a genome");
+            nesDuckBrain_ =
+                std::make_unique<DuckNeuralNetRecurrentBrain>(individual_.genome.value());
+        }
+        else if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2) {
+            DIRTSIM_ASSERT(
+                individual_.genome.has_value(),
+                "TrainingRunner: NES duck recurrent V2 controller requires a genome");
+            nesDuckBrainV2_ =
+                std::make_unique<DuckNeuralNetRecurrentBrainV2>(individual_.genome.value());
+        }
     }
 
     nesRuntime_ = nullptr;
@@ -654,26 +665,54 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
 
 uint8_t TrainingRunner::inferNesControllerMask()
 {
-    if (individual_.brain.brainKind != TrainingBrainKind::DuckNeuralNetRecurrent
-        || !nesDuckBrain_) {
-        return 0;
-    }
-
     const DuckSensoryData sensory = makeNesDuckSensoryData();
-    const DuckInput input = nesDuckBrain_->inferInput(sensory);
-
     uint8_t mask = 0;
-    if (input.jump) {
-        mask |= NesPolicyLayout::ButtonA;
-    }
-    if (input.move.x <= -kNesDuckMoveThreshold) {
-        mask |= NesPolicyLayout::ButtonLeft;
-    }
-    else if (input.move.x >= kNesDuckMoveThreshold) {
-        mask |= NesPolicyLayout::ButtonRight;
+    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent && nesDuckBrain_) {
+        const DuckInput input = nesDuckBrain_->inferInput(sensory);
+
+        if (input.jump) {
+            mask |= NesPolicyLayout::ButtonA;
+        }
+        if (input.move.x <= -kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonLeft;
+        }
+        else if (input.move.x >= kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonRight;
+        }
+
+        return mask;
     }
 
-    return mask;
+    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
+        && nesDuckBrainV2_) {
+        const DuckNeuralNetRecurrentBrainV2::ControllerOutput output =
+            nesDuckBrainV2_->inferControllerOutput(sensory);
+
+        if (output.a) {
+            mask |= NesPolicyLayout::ButtonA;
+        }
+        if (output.b) {
+            mask |= NesPolicyLayout::ButtonB;
+        }
+
+        if (output.x <= -kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonLeft;
+        }
+        else if (output.x >= kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonRight;
+        }
+
+        if (output.y <= -kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonUp;
+        }
+        else if (output.y >= kNesDuckMoveThreshold) {
+            mask |= NesPolicyLayout::ButtonDown;
+        }
+
+        return mask;
+    }
+
+    return 0;
 }
 
 void TrainingRunner::spawnEvaluationOrganism()

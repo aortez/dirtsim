@@ -45,9 +45,12 @@ struct DuckSensoryData {
     // Scenario-provided special senses. Unused slots stay at zero.
     std::array<double, SPECIAL_SENSE_COUNT> special_senses{};
 
+    // Current energy level [0, 1].
+    float energy = 1.0f;
+
     double delta_time_seconds = 0.0;
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 void to_json(nlohmann::json& j, const DuckSensoryData& data);
