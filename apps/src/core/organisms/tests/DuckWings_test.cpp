@@ -94,7 +94,7 @@ TEST(DuckWingsTest, LiftCancelsGravityWhileAirborne)
     EXPECT_LT(liftVy, baselineVy - 1.0);
 }
 
-TEST(DuckWingsTest, LiftHoversWhenStartingStationaryAirborne)
+TEST(DuckWingsTest, LiftSlowsFallWhenStartingStationaryAirborne)
 {
     auto liftSetup = DuckTestSetup::create(10, 60, 5, 5, 0);
     auto baselineSetup = DuckTestSetup::create(10, 60, 5, 5, 0);
@@ -111,9 +111,9 @@ TEST(DuckWingsTest, LiftHoversWhenStartingStationaryAirborne)
     const double liftDeltaY = liftSetup.duck->position.y - liftStartY;
     const double baselineDeltaY = baselineSetup.duck->position.y - baselineStartY;
 
-    // Gravity pulls +Y. With full lift held and near-zero starting velocity,
-    // the duck should hover (minimal change in position.y).
-    EXPECT_LT(std::abs(liftDeltaY), 0.10);
+    // Gravity pulls +Y. With 0.5x lift, the duck should fall at roughly half the baseline rate.
+    EXPECT_GT(liftDeltaY, 0.0);
+    EXPECT_LT(liftDeltaY, baselineDeltaY * 0.75);
 
     // Baseline should fall noticeably in the same time window.
     EXPECT_GT(baselineDeltaY, 0.50);

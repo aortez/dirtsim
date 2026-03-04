@@ -22,6 +22,8 @@ struct FitnessContext {
     const Organism::Body* finalOrganism = nullptr;
     const OrganismTrackingHistory* organismTrackingHistory = nullptr;
     const TreeResourceTotals* treeResources = nullptr;
+    bool exitedThroughDoor = false;
+    double exitDoorTime = 0.0;
 };
 
 double computeFitnessForOrganism(const FitnessContext& context);
