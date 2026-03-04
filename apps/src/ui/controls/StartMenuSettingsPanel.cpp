@@ -1,5 +1,4 @@
 #include "StartMenuSettingsPanel.h"
-#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/scenarios/ClockScenario.h"
 #include "server/api/UserSettingsPatch.h"
@@ -23,18 +22,6 @@ int timeoutMsToSeconds(int timeoutMs)
 {
     const int roundedSeconds = (timeoutMs + 500) / 1000;
     return std::clamp(roundedSeconds, kIdleTimeoutMinSeconds, kIdleTimeoutMaxSeconds);
-}
-
-Scenario::EnumType defaultNesScenario(const ScenarioMetadataManager& scenarioMetadataManager)
-{
-    for (const auto& scenarioMetadata : scenarioMetadataManager.scenarios()) {
-        if (scenarioMetadata.kind == ScenarioKind::NesWorld) {
-            return scenarioMetadata.id;
-        }
-    }
-
-    DIRTSIM_ASSERT(false, "Expected at least one NES scenario");
-    return Scenario::EnumType::NesFlappyParatroopa;
 }
 
 void setActionButtonText(lv_obj_t* buttonContainer, const std::string& text)
@@ -237,13 +224,16 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_RELEASED, this);
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_PRESS_LOST, this);
 
-    trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
-                                  .label("Trainer Target:")
-                                  .options("Trees (Germination)\nDucks (Clock Scenario)\nNES Duck")
-                                  .selected(0)
-                                  .width(LV_PCT(95))
-                                  .callback(onTrainingTargetChanged, this)
-                                  .buildOrLog();
+    trainingTargetDropdown_ =
+        LVGLBuilder::actionDropdown(view)
+            .label("Trainer Target:")
+            .options(
+                "Trees (Germination)\nDucks (Clock Scenario)\nNES Flappy Paratroopa\nNES "
+                "Super Mario Bros\nNES Super Tilt Bro")
+            .selected(0)
+            .width(LV_PCT(95))
+            .callback(onTrainingTargetChanged, this)
+            .buildOrLog();
 
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
@@ -423,15 +413,18 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
         return;
     }
 
-    const auto& scenarioMetadataManager = uiServices_.scenarioMetadataManager();
     uint16_t index = 0;
-    if (settings_.trainingSpec.organismType == OrganismType::NES_DUCK
-        || scenarioMetadataManager.get(settings_.trainingSpec.scenarioId).kind
-            == ScenarioKind::NesWorld) {
+    if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
+        index = 1;
+    }
+    else if (settings_.trainingSpec.scenarioId == Scenario::EnumType::NesFlappyParatroopa) {
         index = 2;
     }
-    else if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
-        index = 1;
+    else if (settings_.trainingSpec.scenarioId == Scenario::EnumType::NesSuperMarioBros) {
+        index = 3;
+    }
+    else if (settings_.trainingSpec.scenarioId == Scenario::EnumType::NesSuperTiltBro) {
+        index = 4;
     }
 
     LVGLBuilder::ActionDropdownBuilder::setSelected(trainingTargetDropdown_, index);
@@ -518,13 +511,15 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
             break;
         case 2:
             self->settings_.trainingSpec.organismType = OrganismType::NES_DUCK;
-            if (self->uiServices_.scenarioMetadataManager()
-                    .get(self->settings_.trainingSpec.scenarioId)
-                    .kind
-                != ScenarioKind::NesWorld) {
-                self->settings_.trainingSpec.scenarioId =
-                    defaultNesScenario(self->uiServices_.scenarioMetadataManager());
-            }
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+            break;
+        case 3:
+            self->settings_.trainingSpec.organismType = OrganismType::NES_DUCK;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+            break;
+        case 4:
+            self->settings_.trainingSpec.organismType = OrganismType::NES_DUCK;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::NesSuperTiltBro;
             break;
         case 0:
         default:
