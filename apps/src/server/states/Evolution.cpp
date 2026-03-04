@@ -425,11 +425,11 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         .modelId = "duck_v2",
         .modelVersion = 2,
         .totalFitness = breakdown.totalFitness,
-        .totalFormula = "survival * (1 + movement)",
+        .totalFormula = "survival * (1 + movement) + exit_door_bonus",
         .metrics = {},
     };
 
-    report.metrics.reserve(13);
+    report.metrics.reserve(15);
     report.metrics.push_back(makeFitnessMetric(
         "survival",
         "Survival",
@@ -532,6 +532,22 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         "movement",
         breakdown.movementRaw,
         breakdown.movementScore,
+        std::nullopt,
+        "score"));
+    report.metrics.push_back(makeFitnessMetric(
+        "exit_door",
+        "Exit Door",
+        "door",
+        breakdown.exitedThroughDoor ? 1.0 : 0.0,
+        breakdown.exitDoorBonus,
+        std::nullopt,
+        "bool"));
+    report.metrics.push_back(makeFitnessMetric(
+        "exit_door_bonus",
+        "Exit Door Bonus",
+        "door",
+        breakdown.exitDoorBonus,
+        breakdown.exitDoorBonus,
         std::nullopt,
         "score"));
 
@@ -723,6 +739,8 @@ double computeFitnessForRunner(
         .commandsRejected = status.commandsRejected,
         .idleCancels = status.idleCancels,
         .nesRewardTotal = status.nesRewardTotal,
+        .exitedThroughDoor = status.exitedThroughDoor,
+        .exitDoorTime = status.exitDoorTime,
     };
 
     const auto& treeResources = runner.getTreeResourceTotals();
@@ -738,6 +756,8 @@ double computeFitnessForRunner(
         .finalOrganism = runner.getOrganism(),
         .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
         .treeResources = treeResourcesPtr,
+        .exitedThroughDoor = status.exitedThroughDoor,
+        .exitDoorTime = status.exitDoorTime,
     };
 
     if (organismType == OrganismType::TREE) {

@@ -1296,15 +1296,8 @@ TEST_F(TrainingRunnerTest, ClockDuckRandomizesSpawnSide)
         }
 
         auto& data = world->getData();
-        const int spawnY = std::max(1, data.height - 2);
-        const int leftX = 1;
-        const int rightX = std::max(0, data.width - 2);
-        if (data.inBounds(leftX, spawnY)) {
-            data.at(leftX, spawnY).clear();
-        }
-        if (data.inBounds(rightX, spawnY)) {
-            data.at(rightX, spawnY).clear();
-        }
+        const int leftX = 0;
+        const int rightX = std::max(0, data.width - 1);
 
         runner.step(0);
         const Organism::Body* organism = runner.getOrganism();
@@ -1321,7 +1314,7 @@ TEST_F(TrainingRunnerTest, ClockDuckRandomizesSpawnSide)
             sawRightSpawn = true;
         }
         else {
-            ADD_FAILURE() << "Duck spawned outside expected clock side cells";
+            ADD_FAILURE() << "Duck spawned outside expected clock door cells";
         }
     }
 
@@ -1353,17 +1346,6 @@ TEST_F(TrainingRunnerTest, ClockDuckSpawnSideOverrideRespectsRequestedSide)
             return -1;
         }
 
-        auto& data = world->getData();
-        const int spawnY = std::max(1, data.height - 2);
-        const int leftX = 1;
-        const int rightX = std::max(0, data.width - 2);
-        if (data.inBounds(leftX, spawnY)) {
-            data.at(leftX, spawnY).clear();
-        }
-        if (data.inBounds(rightX, spawnY)) {
-            data.at(rightX, spawnY).clear();
-        }
-
         runner.step(0);
         const Organism::Body* organism = runner.getOrganism();
         if (!organism) {
@@ -1377,7 +1359,7 @@ TEST_F(TrainingRunnerTest, ClockDuckSpawnSideOverrideRespectsRequestedSide)
     const int leftSpawnX = spawnWithOverride(true);
     const int rightSpawnX = spawnWithOverride(false);
 
-    EXPECT_EQ(leftSpawnX, 1);
+    EXPECT_EQ(leftSpawnX, 0);
     EXPECT_NE(rightSpawnX, leftSpawnX);
 }
 

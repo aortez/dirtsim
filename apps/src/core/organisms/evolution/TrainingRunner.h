@@ -14,6 +14,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include "core/scenarios/clock_scenario/ClockEventTypes.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include <array>
@@ -29,6 +30,7 @@
 
 namespace DirtSim {
 
+class ClockScenario;
 class GenomeRepository;
 class NesGameAdapter;
 class NesScenarioRuntime;
@@ -66,6 +68,8 @@ public:
         uint64_t nesFramesSurvived = 0;
         double nesRewardTotal = 0.0;
         uint8_t nesControllerMask = 0;
+        bool exitedThroughDoor = false;
+        double exitDoorTime = 0.0;
     };
 
     struct BrainSpec {
@@ -141,6 +145,8 @@ private:
     DuckSensoryData makeNesDuckSensoryData() const;
     uint8_t inferNesControllerMask();
     void spawnEvaluationOrganism();
+    void initDuckClockDoors();
+    void updateDuckClockDoors();
     static Config makeDefaultConfig();
     ScenarioConfig buildEffectiveScenarioConfig(const ScenarioConfig& config) const;
 
@@ -177,6 +183,19 @@ private:
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
+
+    struct DuckClockDoorState {
+        ClockScenario* clockScenario = nullptr;
+        DoorId entranceDoorId = INVALID_DOOR_ID;
+        DoorId exitDoorId = INVALID_DOOR_ID;
+        DoorSide side = DoorSide::LEFT;
+        bool entranceDoorClosed = false;
+        bool exitDoorOpened = false;
+        bool duckExitedThroughDoor = false;
+        double exitDoorOpenTime = 0.0;
+        double exitDoorTime = 0.0;
+    };
+    std::optional<DuckClockDoorState> duckClockDoors_;
 };
 
 } // namespace DirtSim
