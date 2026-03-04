@@ -16,6 +16,7 @@ namespace DirtSim {
 struct DuckInput {
     Vector2f move{};   // Movement force: x [-1,1] left/right, y [-1,1] up/down.
     bool jump = false; // Jump button held state for this frame.
+    bool run = false;  // Run button held state for this frame (NES B button semantics).
 };
 
 } // namespace DirtSim

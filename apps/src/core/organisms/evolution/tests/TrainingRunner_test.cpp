@@ -520,7 +520,7 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NeuralNet;
-    individual.genome = Genome::random(rng_);
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
 
@@ -697,7 +697,7 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NeuralNet;
-    individual.genome = Genome::random(rng_);
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
 
@@ -743,6 +743,7 @@ TEST_F(TrainingRunnerTest, UsesConfiguredBrainRegistry)
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     TrainingRunner::Config runnerConfig{
@@ -771,9 +772,9 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
     };
 
     std::vector<BrainCase> brains;
-    brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
-    brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
-    brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
+    brains.push_back({ TrainingBrainKind::NeuralNet, NeuralNetBrain::randomGenome(rng_) });
+    brains.push_back({ TrainingBrainKind::NeuralNet, NeuralNetBrain::randomGenome(rng_) });
+    brains.push_back({ TrainingBrainKind::NeuralNet, NeuralNetBrain::randomGenome(rng_) });
     brains.push_back({ TrainingBrainKind::RuleBased, std::nullopt });
     brains.push_back({ TrainingBrainKind::RuleBased2, std::nullopt });
 
@@ -802,11 +803,13 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                             return world.getOrganismManager().createTree(
                                 world, x, y, std::move(brain));
                         },
-                    .createRandomGenome = [](std::mt19937& rng) { return Genome::random(rng); },
+                    .createRandomGenome =
+                        [](std::mt19937& rng) { return NeuralNetBrain::randomGenome(rng); },
                     .isGenomeCompatible =
                         [](const Genome& genome) {
-                            return genome.weights.size() == Genome::EXPECTED_WEIGHT_COUNT;
+                            return NeuralNetBrain::isGenomeCompatible(genome);
                         },
+                    .getGenomeLayout = []() { return NeuralNetBrain::getGenomeLayout(); },
                 });
         }
         else if (brainCase.brainKind == TrainingBrainKind::RuleBased) {
@@ -827,6 +830,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                         },
                     .createRandomGenome = nullptr,
                     .isGenomeCompatible = nullptr,
+                    .getGenomeLayout = nullptr,
                 });
         }
         else if (brainCase.brainKind == TrainingBrainKind::RuleBased2) {
@@ -847,6 +851,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                         },
                     .createRandomGenome = nullptr,
                     .isGenomeCompatible = nullptr,
+                    .getGenomeLayout = nullptr,
                 });
         }
 
@@ -1003,6 +1008,7 @@ TEST_F(TrainingRunnerTest, TopCommandSignaturesAreTop20AndTieBreakBySignature)
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     TrainingRunner::Individual individual;
@@ -1074,6 +1080,7 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     TrainingRunner::Individual individual;
@@ -1149,10 +1156,10 @@ TEST_F(TrainingRunnerTest, ClockDuckPopulatesCommandSignatures)
         scriptedInputs.push_back(DuckInput{ .move = { -0.2f, 0.0f }, .jump = false });
     }
     for (int i = 0; i < 8; ++i) {
-        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false });
+        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false, .run = true });
     }
     for (int i = 0; i < 8; ++i) {
-        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false });
+        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false, .run = true });
     }
     for (int i = 0; i < 3; ++i) {
         scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = true });
@@ -1177,6 +1184,7 @@ TEST_F(TrainingRunnerTest, ClockDuckPopulatesCommandSignatures)
                 },
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
         });
 
     TrainingRunner::Individual individual;
@@ -1381,7 +1389,7 @@ TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NeuralNet;
-    individual.genome = Genome::random(rng_);
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
     World* world = runner.getWorld();
@@ -1429,7 +1437,7 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = TrainingBrainKind::NeuralNet;
-    individual.genome = Genome::random(rng_);
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
     World* world = runner.getWorld();

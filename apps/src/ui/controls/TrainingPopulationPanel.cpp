@@ -40,6 +40,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             };
         case OrganismType::DUCK:
             return {
+                { TrainingBrainKind::DuckNeuralNetRecurrentV2, true },
                 { TrainingBrainKind::DuckNeuralNetRecurrent, true },
                 { TrainingBrainKind::NeuralNet, true },
                 { TrainingBrainKind::Random, false },
@@ -48,6 +49,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             };
         case OrganismType::NES_DUCK:
             return {
+                { TrainingBrainKind::DuckNeuralNetRecurrentV2, true },
                 { TrainingBrainKind::DuckNeuralNetRecurrent, true },
             };
         case OrganismType::GOOSE:
@@ -279,6 +281,30 @@ void TrainingPopulationPanel::createMainColumn(lv_obj_t* parent)
 
     setOrganismListVisible(false);
 
+    brainButton_ = LVGLBuilder::actionButton(parent)
+                       .text("Brain: --")
+                       .icon(LV_SYMBOL_RIGHT)
+                       .width(LV_PCT(95))
+                       .height(LVGLBuilder::Style::ACTION_SIZE)
+                       .layoutRow()
+                       .alignLeft()
+                       .callback(onBrainButtonClicked, this)
+                       .buildOrLog();
+
+    brainList_ = lv_obj_create(parent);
+    lv_obj_set_width(brainList_, LV_PCT(95));
+    lv_obj_set_style_bg_opa(brainList_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(brainList_, 0, 0);
+    lv_obj_set_style_pad_all(brainList_, 0, 0);
+    lv_obj_set_style_pad_row(brainList_, 6, 0);
+    lv_obj_set_flex_flow(brainList_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        brainList_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(brainList_, LV_OBJ_FLAG_SCROLLABLE);
+
+    rebuildBrainListButtons();
+    setBrainListVisible(false);
+
     addCountStepper_ = LVGLBuilder::actionStepper(parent)
                            .label("Add Count")
                            .range(kAddCountMin, kAddCountMax)
@@ -455,10 +481,55 @@ void TrainingPopulationPanel::setOrganismListVisible(bool visible)
     }
 }
 
+void TrainingPopulationPanel::setBrainListVisible(bool visible)
+{
+    brainListVisible_ = visible;
+    if (!brainList_) {
+        return;
+    }
+
+    if (visible) {
+        lv_obj_clear_flag(brainList_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(brainList_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+    else {
+        lv_obj_add_flag(brainList_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(brainList_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+}
+
+void TrainingPopulationPanel::rebuildBrainListButtons()
+{
+    if (!brainList_) {
+        return;
+    }
+
+    brainButtonToIndex_.clear();
+    lv_obj_clean(brainList_);
+
+    for (size_t i = 0; i < brainOptions_.size(); ++i) {
+        const std::string label = brainOptions_[i].kind;
+        lv_obj_t* container = LVGLBuilder::actionButton(brainList_)
+                                  .text(label.c_str())
+                                  .width(LV_PCT(100))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+        if (container) {
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                brainButtonToIndex_[button] = i;
+                lv_obj_add_event_cb(button, onBrainSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
+}
+
 void TrainingPopulationPanel::updateControlsEnabled()
 {
     const bool enabled = !evolutionStarted_;
     const bool scenarioEnabled = enabled;
+    setControlEnabled(brainButton_, enabled);
     setControlEnabled(scenarioButton_, scenarioEnabled);
     setControlEnabled(organismButton_, enabled);
     setControlEnabled(addCountStepper_, enabled);
@@ -470,6 +541,7 @@ void TrainingPopulationPanel::updateControlsEnabled()
             button, enabled && isScenarioCompatibleWithOrganism(scenarioId, selectedOrganism_));
     }
     if (!enabled) {
+        setBrainListVisible(false);
         setOrganismListVisible(false);
         setScenarioColumnVisible(false);
     }
@@ -494,6 +566,7 @@ void TrainingPopulationPanel::setControlEnabled(lv_obj_t* control, bool enabled)
 void TrainingPopulationPanel::updateSelectorLabels()
 {
     const auto& scenarioMetadata = uiServices_.scenarioMetadataManager().get(selectedScenario_);
+    setActionButtonText(brainButton_, std::string("Brain: ") + brainKind_);
     setActionButtonText(scenarioButton_, std::string("Scenario: ") + scenarioMetadata.name);
     setActionButtonText(
         organismButton_, std::string("Organism Type: ") + organismLabel(selectedOrganism_));
@@ -652,6 +725,18 @@ void TrainingPopulationPanel::refreshFromSpec()
     selectedScenario_ = coerceScenarioToOrganism(selectedScenario_, selectedOrganism_);
     setBrainOptionsForOrganism(selectedOrganism_);
 
+    if (!trainingSpec_.population.empty()) {
+        const std::string& storedKind = trainingSpec_.population.front().brainKind;
+        auto it =
+            std::find_if(brainOptions_.begin(), brainOptions_.end(), [&](const BrainOption& opt) {
+                return opt.kind == storedKind;
+            });
+        if (it != brainOptions_.end()) {
+            brainKind_ = it->kind;
+            brainRequiresGenome_ = it->requiresGenome;
+        }
+    }
+
     if (trainingSpec_.population.empty() && evolutionConfig_.populationSize > 0) {
         PopulationSpec& spec = ensurePopulationSpec();
         if (brainRequiresGenome_) {
@@ -664,26 +749,23 @@ void TrainingPopulationPanel::refreshFromSpec()
     }
 
     for (auto& spec : trainingSpec_.population) {
-        const BrainOption resolvedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
-        const bool specRequiresGenome = resolvedBrain.requiresGenome;
-
-        if (specRequiresGenome && spec.seedGenomes.empty() && spec.randomCount == 0
+        if (brainRequiresGenome_ && spec.seedGenomes.empty() && spec.randomCount == 0
             && spec.count > 0) {
             spec.randomCount = spec.count;
         }
         else if (
-            !specRequiresGenome && spec.count == 0
+            !brainRequiresGenome_ && spec.count == 0
             && (!spec.seedGenomes.empty() || spec.randomCount > 0)) {
             spec.count = static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
         }
 
-        spec.brainKind = resolvedBrain.kind;
+        spec.brainKind = brainKind_;
         spec.brainVariant.reset();
-        if (!specRequiresGenome) {
+        if (!brainRequiresGenome_) {
             spec.seedGenomes.clear();
             spec.randomCount = 0;
         }
-        if (specRequiresGenome) {
+        if (brainRequiresGenome_) {
             const int seedCount = static_cast<int>(spec.seedGenomes.size());
             if (spec.count < seedCount) {
                 spec.count = seedCount;
@@ -706,12 +788,9 @@ void TrainingPopulationPanel::applySpecUpdates()
     selectedScenario_ = coerceScenarioToOrganism(selectedScenario_, selectedOrganism_);
     trainingSpec_.scenarioId = selectedScenario_;
     for (auto& spec : trainingSpec_.population) {
-        const BrainOption resolvedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
-        const bool specRequiresGenome = resolvedBrain.requiresGenome;
-
-        spec.brainKind = resolvedBrain.kind;
+        spec.brainKind = brainKind_;
         spec.brainVariant.reset();
-        if (specRequiresGenome) {
+        if (brainRequiresGenome_) {
             if (spec.randomCount < 0) {
                 spec.randomCount = 0;
             }
@@ -725,10 +804,6 @@ void TrainingPopulationPanel::applySpecUpdates()
             }
         }
     }
-
-    const BrainOption selectedBrain = resolveBrainOptionForScenario(trainingSpec_.scenarioId);
-    brainKind_ = selectedBrain.kind;
-    brainRequiresGenome_ = selectedBrain.requiresGenome;
 
     populationTotal_ = computeTotalPopulation();
     evolutionConfig_.populationSize = populationTotal_;
@@ -758,12 +833,23 @@ void TrainingPopulationPanel::setBrainOptionsForOrganism(OrganismType organismTy
     if (brainOptions_.empty()) {
         brainKind_ = TrainingBrainKind::Random;
         brainRequiresGenome_ = false;
+        rebuildBrainListButtons();
         return;
     }
 
-    const BrainOption resolvedBrain = resolveBrainOptionForScenario(selectedScenario_);
-    brainKind_ = resolvedBrain.kind;
-    brainRequiresGenome_ = resolvedBrain.requiresGenome;
+    auto it = std::find_if(brainOptions_.begin(), brainOptions_.end(), [&](const BrainOption& opt) {
+        return opt.kind == brainKind_;
+    });
+    if (it != brainOptions_.end()) {
+        brainKind_ = it->kind;
+        brainRequiresGenome_ = it->requiresGenome;
+    }
+    else {
+        brainKind_ = brainOptions_.front().kind;
+        brainRequiresGenome_ = brainOptions_.front().requiresGenome;
+    }
+
+    rebuildBrainListButtons();
 }
 
 void TrainingPopulationPanel::syncUiFromState()
@@ -1232,10 +1318,43 @@ void TrainingPopulationPanel::updateClearAllState()
     setControlEnabled(clearAllButton_, hasPopulation && confirmed && !evolutionStarted_);
 }
 
+void TrainingPopulationPanel::onBrainButtonClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingPopulationPanel*>(lv_event_get_user_data(e));
+    if (!self || self->ignoreEvents_) return;
+    self->setOrganismListVisible(false);
+    self->setScenarioColumnVisible(false);
+    self->setBrainListVisible(!self->brainListVisible_);
+}
+
+void TrainingPopulationPanel::onBrainSelected(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingPopulationPanel*>(lv_event_get_user_data(e));
+    if (!self || self->ignoreEvents_) return;
+
+    lv_obj_t* button = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    auto it = self->brainButtonToIndex_.find(button);
+    if (it == self->brainButtonToIndex_.end()) {
+        return;
+    }
+    const size_t index = it->second;
+    if (index >= self->brainOptions_.size()) {
+        return;
+    }
+
+    const BrainOption& option = self->brainOptions_[index];
+    self->brainKind_ = option.kind;
+    self->brainRequiresGenome_ = option.requiresGenome;
+    self->setBrainListVisible(false);
+    self->applySpecUpdates();
+    self->syncUiFromState();
+}
+
 void TrainingPopulationPanel::onScenarioButtonClicked(lv_event_t* e)
 {
     auto* self = static_cast<TrainingPopulationPanel*>(lv_event_get_user_data(e));
     if (!self || self->ignoreEvents_) return;
+    self->setBrainListVisible(false);
     self->setOrganismListVisible(false);
     self->setScenarioColumnVisible(true);
 }
@@ -1244,6 +1363,7 @@ void TrainingPopulationPanel::onOrganismButtonClicked(lv_event_t* e)
 {
     auto* self = static_cast<TrainingPopulationPanel*>(lv_event_get_user_data(e));
     if (!self || self->ignoreEvents_) return;
+    self->setBrainListVisible(false);
     self->setScenarioColumnVisible(false);
     self->setOrganismListVisible(!self->organismListVisible_);
 }

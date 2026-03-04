@@ -20,24 +20,27 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
 
     const auto& input = gamepad_input_.value();
 
-    // Determine movement direction (d-pad takes priority over stick).
+    // Determine horizontal direction (d-pad takes priority over stick).
     float horizontal = input.dpad_x;
-    if (horizontal == 0.0f) {
-        // Use stick if d-pad is neutral.
-        if (std::abs(input.stick_x) > STICK_DEADZONE) {
-            horizontal = input.stick_x;
-        }
+    if (horizontal == 0.0f && std::abs(input.stick_x) > STICK_DEADZONE) {
+        horizontal = input.stick_x;
     }
 
-    // Convert to continuous force: walk (60%) or run (100%) based on B button.
-    float move_x = 0.0f;
-    if (horizontal < -STICK_DEADZONE) {
-        move_x = input.button_b ? -1.0f : -0.6f;
-        current_action_ = DuckAction::RUN_LEFT;
+    // Determine vertical direction (d-pad takes priority over stick).
+    // Gamepad Y is negative-up, duck move.y is positive-up, so negate.
+    float vertical = -input.dpad_y;
+    if (vertical == 0.0f && std::abs(input.stick_y) > STICK_DEADZONE) {
+        vertical = -input.stick_y;
     }
-    else if (horizontal > STICK_DEADZONE) {
-        move_x = input.button_b ? 1.0f : 0.6f;
-        current_action_ = DuckAction::RUN_RIGHT;
+
+    // Walk (60%) or run (100%) based on B button.
+    const bool run = input.button_b;
+    const float speed_scale = run ? 1.0f : 0.6f;
+
+    float move_x = 0.0f;
+    if (std::abs(horizontal) > STICK_DEADZONE) {
+        move_x = horizontal * speed_scale;
+        current_action_ = horizontal < 0.0f ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
     }
     else {
         current_action_ = DuckAction::WAIT;
@@ -57,8 +60,8 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
     }
     last_jump_pressed_ = jump_held;
 
-    // Send combined input (movement AND jump together).
-    duck.setInput({ .move = { move_x, 0.0f }, .jump = jump_held });
+    // Send combined input matching the NES-style controller model (x, y, A, B).
+    duck.setInput({ .move = { move_x, vertical }, .jump = jump_held, .run = run });
 
     // Clear input after consuming (brain receives fresh input each tick).
     gamepad_input_.reset();

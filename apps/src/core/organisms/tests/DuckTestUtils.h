@@ -38,10 +38,10 @@ public:
         // Legacy action-based mode.
         switch (current_action_) {
             case DuckAction::RUN_LEFT:
-                duck.setInput({ .move = { -1.0f, 0.0f }, .jump = false });
+                duck.setInput({ .move = { -1.0f, 0.0f }, .jump = false, .run = true });
                 break;
             case DuckAction::RUN_RIGHT:
-                duck.setInput({ .move = { 1.0f, 0.0f }, .jump = false });
+                duck.setInput({ .move = { 1.0f, 0.0f }, .jump = false, .run = true });
                 break;
             case DuckAction::JUMP:
                 duck.setInput({ .move = {}, .jump = true });

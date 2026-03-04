@@ -8,6 +8,11 @@ struct DuckFitnessBreakdown {
     double survivalRaw = 0.0;
     double survivalReference = 0.0;
     double survivalScore = 0.0;
+    double energyAverage = 0.0;
+    double energyConsumedTotal = 0.0;
+    double energyLimitedSeconds = 0.0;
+    double wingUpSeconds = 0.0;
+    double wingDownSeconds = 0.0;
     double movementRaw = 0.0;
     double movementScore = 0.0;
     double displacementScore = 0.0;

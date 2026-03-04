@@ -2,7 +2,6 @@
 
 #include "WeightType.h"
 
-#include <random>
 #include <vector>
 
 namespace DirtSim {
@@ -13,14 +12,9 @@ namespace DirtSim {
 struct Genome {
     std::vector<WeightType> weights;
 
-    Genome();
+    Genome() = default;
     explicit Genome(size_t weightCount);
-
-    static Genome random(std::mt19937& rng);
-    static Genome constant(WeightType value);
-
-    static constexpr size_t EXPECTED_WEIGHT_COUNT = 130791;
-    static constexpr size_t EXPECTED_SIZE_BYTES = EXPECTED_WEIGHT_COUNT * sizeof(WeightType);
+    Genome(size_t weightCount, WeightType value);
 
     size_t getSizeBytes() const { return weights.size() * sizeof(WeightType); }
 

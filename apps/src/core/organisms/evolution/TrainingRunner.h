@@ -6,6 +6,7 @@
 #include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
@@ -132,6 +133,8 @@ public:
     double getCurrentMaxEnergy() const;
     bool isOrganismAlive() const;
 
+    static constexpr double TIMESTEP = 0.016;
+
 private:
     void resolveBrainEntry();
     void runScenarioDrivenStep();
@@ -168,13 +171,12 @@ private:
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
     std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
+    std::unique_ptr<DuckNeuralNetRecurrentBrainV2> nesDuckBrainV2_;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
-
-    static constexpr double TIMESTEP = 0.016;
 };
 
 } // namespace DirtSim

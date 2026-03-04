@@ -1,5 +1,7 @@
 #include "TreeSensoryData.h"
 
+#include "core/ReflectSerializer.h"
+
 namespace DirtSim {
 
 void to_json(nlohmann::json& j, const GrowthStage& stage)
@@ -14,40 +16,12 @@ void from_json(const nlohmann::json& j, GrowthStage& stage)
 
 void to_json(nlohmann::json& j, const TreeSensoryData& data)
 {
-    j = nlohmann::json{ { "material_histograms", data.material_histograms },
-                        { "light_levels", data.light_levels },
-                        { "actual_width", data.actual_width },
-                        { "actual_height", data.actual_height },
-                        { "scale_factor", data.scale_factor },
-                        { "world_offset", data.world_offset },
-                        { "seed_position", data.seed_position },
-                        { "age_seconds", data.age_seconds },
-                        { "stage", data.stage },
-                        { "total_energy", data.total_energy },
-                        { "total_water", data.total_water },
-                        { "current_thought", data.current_thought },
-                        { "last_action_result", data.last_action_result } };
+    j = ReflectSerializer::to_json(data);
 }
 
 void from_json(const nlohmann::json& j, TreeSensoryData& data)
 {
-    j.at("material_histograms").get_to(data.material_histograms);
-    if (j.contains("light_levels")) {
-        j.at("light_levels").get_to(data.light_levels);
-    }
-    j.at("actual_width").get_to(data.actual_width);
-    j.at("actual_height").get_to(data.actual_height);
-    j.at("scale_factor").get_to(data.scale_factor);
-    j.at("world_offset").get_to(data.world_offset);
-    j.at("seed_position").get_to(data.seed_position);
-    j.at("age_seconds").get_to(data.age_seconds);
-    j.at("stage").get_to(data.stage);
-    j.at("total_energy").get_to(data.total_energy);
-    j.at("total_water").get_to(data.total_water);
-    j.at("current_thought").get_to(data.current_thought);
-    if (j.contains("last_action_result")) {
-        j.at("last_action_result").get_to(data.last_action_result);
-    }
+    data = ReflectSerializer::from_json<TreeSensoryData>(j);
 }
 
 } // namespace DirtSim
