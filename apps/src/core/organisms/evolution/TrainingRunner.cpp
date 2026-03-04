@@ -6,10 +6,14 @@
 #include "core/LoggingChannels.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/Duck.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/clock_scenario/DoorEntrySpawn.h"
+#include "core/scenarios/clock_scenario/DoorManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
@@ -257,6 +261,8 @@ TrainingRunner::TrainingRunner(
         scenario_->setConfig(scenarioConfig, *world_);
         scenario_->setup(*world_);
         world_->setScenario(scenario_.get());
+
+        initDuckClockDoors();
     }
 
     nesPaletteFrame_.reset();
@@ -328,6 +334,7 @@ TrainingRunner::Status TrainingRunner::step(int frames)
 
         world_->advanceTime(TIMESTEP);
         simTime_ += TIMESTEP;
+        updateDuckClockDoors();
 
         Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
         if (!organism) {
@@ -384,6 +391,10 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     status.nesFramesSurvived = nesFramesSurvived_;
     status.nesRewardTotal = nesRewardTotal_;
     status.nesControllerMask = nesControllerMask_;
+    if (duckClockDoors_) {
+        status.exitedThroughDoor = duckClockDoors_->duckExitedThroughDoor;
+        status.exitDoorTime = duckClockDoors_->exitDoorTime;
+    }
 
     if (const Organism::Body* organism = getOrganism()) {
         status.lifespan = organism->getAge();
@@ -545,6 +556,88 @@ ScenarioConfig TrainingRunner::buildEffectiveScenarioConfig(const ScenarioConfig
         clockConfig->duckEnabled = false;
     }
     return effectiveConfig;
+}
+
+void TrainingRunner::initDuckClockDoors()
+{
+    if (trainingSpec_.organismType != OrganismType::DUCK
+        || individual_.scenarioId != Scenario::EnumType::Clock) {
+        return;
+    }
+    if (!scenario_ || !world_) {
+        return;
+    }
+
+    auto* clockScenario = dynamic_cast<ClockScenario*>(scenario_.get());
+    if (!clockScenario) {
+        return;
+    }
+
+    DuckClockDoorState doors;
+    doors.clockScenario = clockScenario;
+    doors.exitDoorOpenTime = std::max(0.0, maxTime_ - 10.0);
+    duckClockDoors_ = doors;
+}
+
+void TrainingRunner::updateDuckClockDoors()
+{
+    if (!duckClockDoors_ || !world_) {
+        return;
+    }
+
+    auto& doors = *duckClockDoors_;
+    DoorManager& doorMgr = doors.clockScenario->getDoorManager();
+    const WorldData& data = world_->getData();
+
+    doorMgr.update();
+
+    Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
+    if (!organism) {
+        return;
+    }
+
+    Duck* duck = world_->getOrganismManager().getDuck(organismId_);
+    if (!duck) {
+        return;
+    }
+
+    const Vector2i duckCell = duck->getAnchorCell();
+
+    // Close entrance door once duck moves away. Don't remove it - we reuse it as exit.
+    if (!doors.entranceDoorClosed && doorMgr.isValidDoor(doors.entranceDoorId)
+        && doorMgr.isOpen(doors.entranceDoorId)) {
+        const Vector2i entrancePos = doorMgr.getDoorPosition(doors.entranceDoorId, data);
+        if (duckCell != entrancePos) {
+            doorMgr.closeDoor(doors.entranceDoorId, *world_);
+            doors.entranceDoorClosed = true;
+        }
+    }
+
+    // Reopen entrance door as exit door once entrance is closed and time is reached.
+    if (!doors.exitDoorOpened && doors.entranceDoorClosed && simTime_ >= doors.exitDoorOpenTime) {
+        doors.exitDoorId = doors.entranceDoorId;
+        doorMgr.openDoor(doors.exitDoorId, *world_);
+        doors.exitDoorOpened = true;
+    }
+
+    // Check if duck reached exit door.
+    if (doors.exitDoorOpened && !doors.duckExitedThroughDoor
+        && doorMgr.isValidDoor(doors.exitDoorId) && doorMgr.isOpen(doors.exitDoorId)) {
+        const Vector2i exitPos = doorMgr.getDoorPosition(doors.exitDoorId, data);
+        if (duckCell == exitPos) {
+            Vector2d duckCom{ 0.0, 0.0 };
+            if (data.inBounds(duckCell.x, duckCell.y)) {
+                duckCom = data.at(duckCell.x, duckCell.y).com;
+            }
+            const bool pastMiddle =
+                (doors.side == DoorSide::LEFT) ? (duckCom.x < 0.0) : (duckCom.x > 0.0);
+            if (pastMiddle) {
+                doors.duckExitedThroughDoor = true;
+                doors.exitDoorTime = simTime_;
+                world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
+            }
+        }
+    }
 }
 
 void TrainingRunner::resolveBrainEntry()
@@ -727,14 +820,8 @@ void TrainingRunner::spawnEvaluationOrganism()
     const WorldData& data = world_->getData();
     if (trainingSpec_.organismType == OrganismType::DUCK
         && individual_.scenarioId == Scenario::EnumType::Clock) {
-        const int spawnY = std::max(1, data.height - 2);
-        const int leftX = 1;
-        const int rightX = std::max(0, data.width - 2);
-        std::array<Vector2i, 2> sideCandidates{
-            Vector2i{ leftX, spawnY },
-            Vector2i{ rightX, spawnY },
-        };
 
+        // Determine spawn side.
         bool spawnLeftFirst = false;
         if (duckClockSpawnLeftFirst_.has_value()) {
             spawnLeftFirst = duckClockSpawnLeftFirst_.value();
@@ -743,23 +830,48 @@ void TrainingRunner::spawnEvaluationOrganism()
             std::bernoulli_distribution sideDist(0.5);
             spawnLeftFirst = sideDist(spawnRng_);
         }
-        if (!spawnLeftFirst) {
-            std::swap(sideCandidates[0], sideCandidates[1]);
-        }
 
-        const auto isSpawnable = [&data, this](const Vector2i& cell) {
-            return data.inBounds(cell.x, cell.y) && data.at(cell.x, cell.y).isAir()
-                && !world_->getOrganismManager().hasOrganism(cell);
-        };
+        const DoorSide side = spawnLeftFirst ? DoorSide::LEFT : DoorSide::RIGHT;
 
-        if (isSpawnable(sideCandidates[0])) {
-            spawnCell = sideCandidates[0];
-        }
-        else if (isSpawnable(sideCandidates[1])) {
-            spawnCell = sideCandidates[1];
+        // Spawn through entrance door when door state is active.
+        if (duckClockDoors_) {
+            auto& doors = *duckClockDoors_;
+            doors.side = side;
+
+            constexpr uint32_t kCellsAboveFloor = 1;
+            DoorManager& doorMgr = doors.clockScenario->getDoorManager();
+            doors.entranceDoorId = doorMgr.createDoor(side, kCellsAboveFloor);
+            doorMgr.openDoor(doors.entranceDoorId, *world_);
+
+            spawnCell = doorMgr.getDoorPosition(doors.entranceDoorId, data);
         }
         else {
-            spawnCell = findSpawnCell(*world_);
+            // Fallback without doors.
+            const int spawnY = std::max(1, data.height - 2);
+            const int leftX = 1;
+            const int rightX = std::max(0, data.width - 2);
+            std::array<Vector2i, 2> sideCandidates{
+                Vector2i{ leftX, spawnY },
+                Vector2i{ rightX, spawnY },
+            };
+            if (!spawnLeftFirst) {
+                std::swap(sideCandidates[0], sideCandidates[1]);
+            }
+
+            const auto isSpawnable = [&data, this](const Vector2i& cell) {
+                return data.inBounds(cell.x, cell.y) && data.at(cell.x, cell.y).isAir()
+                    && !world_->getOrganismManager().hasOrganism(cell);
+            };
+
+            if (isSpawnable(sideCandidates[0])) {
+                spawnCell = sideCandidates[0];
+            }
+            else if (isSpawnable(sideCandidates[1])) {
+                spawnCell = sideCandidates[1];
+            }
+            else {
+                spawnCell = findSpawnCell(*world_);
+            }
         }
     }
     else {

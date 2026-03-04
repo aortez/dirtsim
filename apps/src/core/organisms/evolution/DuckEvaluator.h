@@ -32,6 +32,8 @@ struct DuckFitnessBreakdown {
     double coverageCellRaw = 0.0;
     double coverageCellReference = 0.0;
     double coverageCellScore = 0.0;
+    bool exitedThroughDoor = false;
+    double exitDoorBonus = 0.0;
     double totalFitness = 0.0;
 };
 

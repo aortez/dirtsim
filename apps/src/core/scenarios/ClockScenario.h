@@ -80,6 +80,8 @@ public:
     const EventTimingConfig& getEventTiming(ClockEventType type) const;
     bool triggerEvent(World& world, ClockEventType type);
 
+    DoorManager& getDoorManager() { return door_manager_; }
+
     // Time override for testing.
     void setTimeOverride(const std::string& time_str);
     void clearTimeOverride();

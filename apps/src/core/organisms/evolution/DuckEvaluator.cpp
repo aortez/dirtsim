@@ -159,7 +159,15 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.efficiencyScore = movement.efficiencyScore;
     breakdown.movementRaw = movement.movementRaw;
     breakdown.movementScore = movement.movementScore;
-    breakdown.totalFitness = breakdown.survivalScore * (1.0 + breakdown.movementScore);
+
+    // Exit door bonus: additive reward for exiting through the door.
+    breakdown.exitedThroughDoor = context.exitedThroughDoor;
+    if (context.exitedThroughDoor) {
+        breakdown.exitDoorBonus = 0.5;
+    }
+
+    breakdown.totalFitness =
+        breakdown.survivalScore * (1.0 + breakdown.movementScore) + breakdown.exitDoorBonus;
     return breakdown;
 }
 
