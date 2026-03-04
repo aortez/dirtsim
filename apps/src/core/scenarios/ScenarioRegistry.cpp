@@ -27,6 +27,7 @@ ScenarioMetadata makeNesFlappyParatroopaMetadata()
         .category = "organisms",
         .requiredWidth = 0,
         .requiredHeight = 0,
+        .deterministicEvaluation = true,
     };
 }
 
@@ -40,6 +41,7 @@ ScenarioMetadata makeNesSuperMarioBrosMetadata()
         .category = "organisms",
         .requiredWidth = 0,
         .requiredHeight = 0,
+        .deterministicEvaluation = true,
     };
 }
 
@@ -53,6 +55,7 @@ ScenarioMetadata makeNesSuperTiltBroMetadata()
         .category = "organisms",
         .requiredWidth = 0,
         .requiredHeight = 0,
+        .deterministicEvaluation = true,
     };
 }
 

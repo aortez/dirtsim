@@ -22,8 +22,9 @@ struct ScenarioMetadata {
     std::string category;
     uint32_t requiredWidth = 0;
     uint32_t requiredHeight = 0;
+    bool deterministicEvaluation = false;
 
-    using serialize = zpp::bits::members<7>;
+    using serialize = zpp::bits::members<8>;
 };
 
 void to_json(nlohmann::json& j, const ScenarioMetadata& meta);
