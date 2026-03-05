@@ -107,9 +107,32 @@ SMOLNES_TLS uint8_t frame_buffer_palette[61440];
 
 SMOLNES_TLS int shift_at = 0;
 
+SMOLNES_TLS uint16_t scanline_fb_offset;
+
+static const uint16_t nes_palette_bgr565[64] = {
+    25356, 34816, 39011, 30854, 24714, 4107,  106,   2311,
+    2468,  2561,  4642,  6592,  20832, 0,     0,     0,
+    44373, 49761, 55593, 51341, 43186, 18675, 434,   654,
+    4939,  5058,  3074,  19362, 37667, 0,     0,     0,
+    65535, 64716, 64497, 64342, 62331, 43932, 23612, 9465,
+    1429,  1550,  20075, 36358, 52713, 16904, 0,     0,
+    65535, 65207, 65113, 65083, 65053, 58911, 50814, 42620,
+    40667, 40729, 48951, 53078, 61238, 44405, 0,     0};
+
+typedef struct {
+    uint8_t x;
+    uint8_t attr;
+    uint8_t pattern_lo;
+    uint8_t pattern_hi;
+    uint8_t is_sprite0;
+} ScanlineSprite;
+
+SMOLNES_TLS ScanlineSprite scanline_sprites[64];
+SMOLNES_TLS uint8_t scanline_sprite_count;
+
 // Read a byte from CHR ROM or CHR RAM.
-uint8_t *get_chr_byte(uint16_t a) {
-  return &chrrom[chr[a >> chrbits] << chrbits | a % (1 << chrbits)];
+static inline uint8_t *get_chr_byte(uint16_t a) {
+  return &chrrom[chr[a >> chrbits] << chrbits | a & ((1 << chrbits) - 1)];
 }
 
 // Read a byte from nametable RAM.
@@ -118,6 +141,44 @@ uint8_t *get_nametable_byte(uint16_t a) {
                : mirror == 1 ? a % 1024 + 1024           // single bank 1
                : mirror == 2 ? a & 2047                  // vertical mirroring
                              : a / 2 & 1024 | a % 1024]; // horizontal mirroring
+}
+
+static void evaluate_scanline_sprites(void) {
+  scanline_sprite_count = 0;
+  uint16_t sprite_h = ppuctrl & 32 ? 16 : 8;
+  for (uint8_t *sprite = oam; sprite < oam + 256; sprite += 4) {
+    uint16_t sprite_y = scany - sprite[0] - 1;
+    if (sprite_y >= sprite_h)
+      continue;
+
+    uint16_t sy = sprite_y ^ (sprite[2] & 128 ? sprite_h - 1 : 0);
+    uint16_t sprite_tile = sprite[1];
+    uint16_t sprite_addr =
+        (ppuctrl & 32
+             ? sprite_tile % 2 << 12 |
+                   sprite_tile << 4 & -32 | sy * 2 & 16
+             : (ppuctrl & 8) << 9 | sprite_tile << 4) |
+        sy & 7;
+
+    uint8_t pattern_lo = *get_chr_byte(sprite_addr);
+    uint8_t pattern_hi = *get_chr_byte(sprite_addr + 8);
+
+    if (sprite[2] & 64) {
+      pattern_lo = (pattern_lo & 0xF0) >> 4 | (pattern_lo & 0x0F) << 4;
+      pattern_lo = (pattern_lo & 0xCC) >> 2 | (pattern_lo & 0x33) << 2;
+      pattern_lo = (pattern_lo & 0xAA) >> 1 | (pattern_lo & 0x55) << 1;
+      pattern_hi = (pattern_hi & 0xF0) >> 4 | (pattern_hi & 0x0F) << 4;
+      pattern_hi = (pattern_hi & 0xCC) >> 2 | (pattern_hi & 0x33) << 2;
+      pattern_hi = (pattern_hi & 0xAA) >> 1 | (pattern_hi & 0x55) << 1;
+    }
+
+    ScanlineSprite *s = &scanline_sprites[scanline_sprite_count++];
+    s->x = sprite[3];
+    s->attr = sprite[2];
+    s->pattern_lo = pattern_lo;
+    s->pattern_hi = pattern_hi;
+    s->is_sprite0 = (sprite == oam);
+  }
 }
 
 // If `write` is non-zero, writes `val` to the address `hi:lo`, otherwise reads
@@ -636,110 +697,102 @@ loop:
   SMOLNES_CPU_STEP_END();
   SMOLNES_PPU_STEP_BEGIN();
   for (tmp = cycles * 3 + 6; tmp--;) {
-    if (ppumask & 24 && scany < 240) {
-      if (dot < 256) {
-        SMOLNES_PPU_PHASE_SET(1);
-      } else if (dot >= 320) {
-        SMOLNES_PPU_PHASE_SET(2);
-      } else {
-        SMOLNES_PPU_PHASE_SET(3);
-      }
-    } else {
-      SMOLNES_PPU_PHASE_SET(3);
-    }
-
-    if (ppumask & 24) { // If background or sprites are enabled.
+    if (ppumask & 24) {
       if (scany < 240) {
-        if (dot - 256 > 63u) {  // dot [0..255,320..340]
-          // Draw a pixel to the framebuffer.
-          if (dot < 256) {
-            // Read color and palette from shift registers.
-            uint8_t color = shift_hi >> 14 - fine_x & 2 |
-                            shift_lo >> 15 - fine_x & 1,
-                    palette = shift_at >> 28 - fine_x * 2 & 12;
+        if (dot < 256) {
+          if (dot == 0) {
+            scanline_fb_offset = scany * 256;
+            evaluate_scanline_sprites();
+          }
 
-            // If sprites are enabled.
-            if (ppumask & 16) {
-              SMOLNES_PPU_PHASE_SET(4);
-              // Loop through all sprites.
-              for (uint8_t *sprite = oam; sprite < oam + 256; sprite += 4) {
-                uint16_t sprite_h = ppuctrl & 32 ? 16 : 8,
-                         sprite_x = dot - sprite[3],
-                         sprite_y = scany - sprite[0] - 1,
-                         sx = sprite_x ^ !(sprite[2] & 64) * 7,
-                         sy = sprite_y ^ (sprite[2] & 128 ? sprite_h - 1 : 0);
-                if (sprite_x < 8 && sprite_y < sprite_h) {
-                  uint16_t sprite_tile = sprite[1],
-                           sprite_addr =
-                               (ppuctrl & 32
-                                    // 8x16 sprites
-                                    ? sprite_tile % 2 << 12 |
-                                          sprite_tile << 4 & -32 | sy * 2 & 16
-                                    // 8x8 sprites
-                                    : (ppuctrl & 8) << 9 | sprite_tile << 4) |
-                               sy & 7,
-                           sprite_color =
-                               *get_chr_byte(sprite_addr + 8) >> sx << 1 & 2 |
-                               *get_chr_byte(sprite_addr) >> sx & 1;
-                  // Only draw sprite if color is not 0 (transparent)
-                  if (sprite_color) {
-                    // Don't draw sprite if BG has priority.
-                    if (!(sprite[2] & 32 && color)) {
-                      color = sprite_color;
-                      palette = 16 | sprite[2] * 4 & 12;
-                    }
-                    // Maybe set sprite0 hit flag.
-                    if (sprite == oam && color)
-                      ppustatus |= 64;
-                    break;
+          uint8_t color = shift_hi >> 14 - fine_x & 2 |
+                          shift_lo >> 15 - fine_x & 1,
+                  palette = shift_at >> 28 - fine_x * 2 & 12;
+
+          if (ppumask & 16) {
+            for (uint8_t i = 0; i < scanline_sprite_count; ++i) {
+              ScanlineSprite *s = &scanline_sprites[i];
+              uint16_t sprite_x = dot - s->x;
+              if (sprite_x < 8) {
+                uint8_t offset = 7 - sprite_x;
+                uint8_t sprite_color =
+                    (s->pattern_hi >> offset & 1) << 1 |
+                    (s->pattern_lo >> offset & 1);
+                if (sprite_color) {
+                  if (!(s->attr & 32 && color)) {
+                    color = sprite_color;
+                    palette = 16 | s->attr * 4 & 12;
                   }
+                  if (s->is_sprite0 && color)
+                    ppustatus |= 64;
+                  break;
                 }
               }
-              SMOLNES_PPU_PHASE_SET(1);
             }
-
-            // Write pixel to framebuffer. Always use palette 0 for color 0.
-            // BGR565 palette is used instead of RGBA32 to reduce source code
-            // size.
-            uint8_t palette_index = palette_ram[color ? palette | color : 0];
-            frame_buffer_palette[scany * 256 + dot] = palette_index;
-            frame_buffer[scany * 256 + dot] =
-                (uint16_t[64]){
-                    25356, 34816, 39011, 30854, 24714, 4107,  106,   2311,
-                    2468,  2561,  4642,  6592,  20832, 0,     0,     0,
-                    44373, 49761, 55593, 51341, 43186, 18675, 434,   654,
-                    4939,  5058,  3074,  19362, 37667, 0,     0,     0,
-                    ~0,    ~819,  64497, 64342, 62331, 43932, 23612, 9465,
-                    1429,  1550,  20075, 36358, 52713, 16904, 0,     0,
-                    ~0,    ~328,  ~422,  ~452,  ~482,  58911, 50814, 42620,
-                    40667, 40729, 48951, 53078, 61238, 44405}
-                    [palette_index];
           }
 
-          // Update shift registers every cycle.
-          if (dot < 336) {
-            shift_hi *= 2;
-            shift_lo *= 2;
-            shift_at *= 4;
-          }
+          uint8_t palette_index = palette_ram[color ? palette | color : 0];
+          frame_buffer_palette[scanline_fb_offset + dot] = palette_index;
+          frame_buffer[scanline_fb_offset + dot] =
+              nes_palette_bgr565[palette_index];
+
+          shift_hi <<= 1;
+          shift_lo <<= 1;
+          shift_at <<= 2;
 
           int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
           switch (dot & 7) {
-          case 1: // Read nametable byte.
+          case 1:
             ntb = *get_nametable_byte(V);
             break;
-          case 3: // Read attribute byte.
+          case 3:
             atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
                                        V / 4 & 7) >>
                    (V >> 5 & 2 | V / 2 & 1) * 2) %
                   4 * 0x5555;
             break;
-          case 5: // Read pattern table low byte.
+          case 5:
             ptb_lo = *get_chr_byte(temp);
             break;
-          case 7: { // Read pattern table high byte.
+          case 7: {
             uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            // Increment horizontal VRAM read address.
+            V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
+            shift_hi |= ptb_hi;
+            shift_lo |= ptb_lo;
+            shift_at |= atb;
+            break;
+          }
+          }
+        } else if (dot == 256) {
+          V = ((V & 7 << 12) != 7 << 12 ? V + 4096
+               : (V & 0x3e0) == 928     ? V & 0x8c1f ^ 2048
+               : (V & 0x3e0) == 0x3e0   ? V & 0x8c1f
+                                        : V & 0x8c1f | V + 32 & 0x3e0) &
+                  ~0x41f |
+              T & 0x41f;
+        } else if (dot >= 320) {
+          if (dot < 336) {
+            shift_hi <<= 1;
+            shift_lo <<= 1;
+            shift_at <<= 2;
+          }
+
+          int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
+          switch (dot & 7) {
+          case 1:
+            ntb = *get_nametable_byte(V);
+            break;
+          case 3:
+            atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
+                                       V / 4 & 7) >>
+                   (V >> 5 & 2 | V / 2 & 1) * 2) %
+                  4 * 0x5555;
+            break;
+          case 5:
+            ptb_lo = *get_chr_byte(temp);
+            break;
+          case 7: {
+            uint8_t ptb_hi = *get_chr_byte(temp | 8);
             V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
             shift_hi |= ptb_hi;
             shift_lo |= ptb_lo;
@@ -748,17 +801,6 @@ loop:
           }
           }
         }
-
-        // Increment vertical VRAM address.
-        if (dot == 256) {
-          V = ((V & 7 << 12) != 7 << 12 ? V + 4096
-               : (V & 0x3e0) == 928     ? V & 0x8c1f ^ 2048
-               : (V & 0x3e0) == 0x3e0   ? V & 0x8c1f
-                                        : V & 0x8c1f | V + 32 & 0x3e0) &
-                  // Reset horizontal VRAM address to T value.
-                  ~0x41f |
-              T & 0x41f;
-        }
       }
 
       // Check for MMC3 IRQ.
@@ -766,13 +808,12 @@ loop:
         nmi_irq = 1;
 
       // Reset vertical VRAM address to T value.
-      if (scany == 261 && dot - 280 < 25u)  // dot [280..304]
+      if (scany == 261 && dot - 280 < 25u)
         V = V & 0x841f | T & 0x7be0;
     }
 
     if (dot == 1) {
       if (scany == 241) {
-        // If NMI is enabled, trigger NMI.
         if (ppuctrl & 128)
           nmi_irq = 4;
         ppustatus |= 128;
@@ -780,13 +821,10 @@ loop:
         SMOLNES_PPU_STEP_END();
         SMOLNES_FRAME_EXEC_END();
         SMOLNES_FRAME_SUBMIT_BEGIN();
-        // Render frame, skipping the top and bottom 8 pixels (they're often
-        // garbage).
         SDL_UpdateTexture(texture, 0, frame_buffer + 2048, 512);
         SDL_RenderCopy(renderer, texture, 0, 0);
         SDL_RenderPresent(renderer);
         SMOLNES_FRAME_SUBMIT_END();
-        // Handle SDL events.
         SMOLNES_EVENT_POLL_BEGIN();
         for (SDL_Event event; SDL_PollEvent(&event);)
           if (event.type == SDL_QUIT) {
@@ -798,13 +836,10 @@ loop:
         SMOLNES_FRAME_EXEC_BEGIN();
       }
 
-      // Clear ppustatus.
       if (scany == 261)
         ppustatus = 0;
     }
 
-    // Increment to next dot/scany. 341 dots per scanline, 262 scanlines per
-    // frame. Scanline 261 is represented as -1.
     if (++dot == 341) {
       dot = 0;
       scany++;

@@ -836,6 +836,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
+    src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp
