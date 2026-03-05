@@ -24,11 +24,11 @@ struct Rgb8 {
     int b = 0;
 };
 
-Rgb8 decodeBgr565(uint16_t value)
+Rgb8 decodeRgb565(uint16_t value)
 {
-    const int blue5 = (value >> 11) & 0x1F;
+    const int red5 = (value >> 11) & 0x1F;
     const int green6 = (value >> 5) & 0x3F;
-    const int red5 = value & 0x1F;
+    const int blue5 = value & 0x1F;
 
     const int r = (red5 * 255 + 15) / 31;
     const int g = (green6 * 255 + 31) / 63;
@@ -54,7 +54,7 @@ std::array<Rgb8, kPaletteIndexCount> makePaletteRgb()
 {
     std::array<Rgb8, kPaletteIndexCount> rgb{};
     for (size_t i = 0; i < rgb.size(); ++i) {
-        rgb[i] = decodeBgr565(kNesBgr565Palette[i]);
+        rgb[i] = decodeRgb565(kNesRgb565Palette[i]);
     }
     return rgb;
 }

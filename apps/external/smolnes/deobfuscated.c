@@ -109,15 +109,15 @@ SMOLNES_TLS int shift_at = 0;
 
 SMOLNES_TLS uint16_t scanline_fb_offset;
 
-static const uint16_t nes_palette_bgr565[64] = {
-    25356, 34816, 39011, 30854, 24714, 4107,  106,   2311,
-    2468,  2561,  4642,  6592,  20832, 0,     0,     0,
-    44373, 49761, 55593, 51341, 43186, 18675, 434,   654,
-    4939,  5058,  3074,  19362, 37667, 0,     0,     0,
-    65535, 64716, 64497, 64342, 62331, 43932, 23612, 9465,
-    1429,  1550,  20075, 36358, 52713, 16904, 0,     0,
-    65535, 65207, 65113, 65083, 65053, 58911, 50814, 42620,
-    40667, 40729, 48951, 53078, 61238, 44405, 0,     0};
+static const uint16_t nes_palette_rgb565[64] = {
+    25356,    17,  6259, 12431, 20620, 22530, 20576, 14593,
+     8609,  2561,  4642,   451,   362,     0,     0,     0,
+    44373,  2680, 18747, 26777, 37045, 39145, 37280, 29312,
+    23362,  5058,  5121,  5033,  6962,     0,     0,     0,
+    65535, 25823, 35839, 45919, 56190, 58261, 58411, 52452,
+    44416, 30208, 24169, 13841, 19961, 16904,     0,     0,
+    65535, 48831, 52831, 56895, 60959, 65052, 63096, 58996,
+    57043, 53011, 48951, 46937, 46909, 44405,     0,     0};
 
 typedef struct {
     uint8_t x;
@@ -414,7 +414,7 @@ int main(int argc, char **argv) {
   void *renderer = SDL_CreateRenderer(
       SDL_CreateWindow("smolnes", 0, 0, 1024, 840, SDL_WINDOW_SHOWN), -1,
       SDL_RENDERER_PRESENTVSYNC);
-  void *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGR565,
+  void *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB565,
                                     SDL_TEXTUREACCESS_STREAMING, 256, 224);
   SMOLNES_FRAME_EXEC_BEGIN();
 
@@ -734,7 +734,7 @@ loop:
           uint8_t palette_index = palette_ram[color ? palette | color : 0];
           frame_buffer_palette[scanline_fb_offset + dot] = palette_index;
           frame_buffer[scanline_fb_offset + dot] =
-              nes_palette_bgr565[palette_index];
+              nes_palette_rgb565[palette_index];
 
           shift_hi <<= 1;
           shift_lo <<= 1;
