@@ -19,6 +19,8 @@
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/clock_scenario/DoorManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <algorithm>
@@ -155,6 +157,28 @@ public:
 private:
     std::vector<DuckInput> inputs_;
     size_t nextInputIndex_ = 0;
+};
+
+// Brain that runs away from the entrance door, then reverses to exit through it.
+class DoorExitDuckBrain : public DuckBrain {
+public:
+    explicit DoorExitDuckBrain(DoorSide entranceSide) : entranceSide_(entranceSide) {}
+
+    void think(Duck& duck, const DuckSensoryData& /*sensory*/, double /*deltaTime*/) override
+    {
+        // Run away from entrance, or back toward it when told to return.
+        float direction = (entranceSide_ == DoorSide::LEFT) ? 1.0f : -1.0f;
+        if (returnToEntrance_) {
+            direction = -direction;
+        }
+        duck.setInput(DuckInput{ .move = { direction, 0.0f }, .run = true });
+    }
+
+    void setReturnToEntrance() { returnToEntrance_ = true; }
+
+private:
+    DoorSide entranceSide_;
+    bool returnToEntrance_ = false;
 };
 
 class RecordingNesAdapter : public NesGameAdapter {
@@ -1361,6 +1385,146 @@ TEST_F(TrainingRunnerTest, ClockDuckSpawnSideOverrideRespectsRequestedSide)
 
     EXPECT_EQ(leftSpawnX, 0);
     EXPECT_NE(rightSpawnX, leftSpawnX);
+}
+
+TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
+{
+    // Short sim so exitDoorOpenTime = max(0, 12 - 10) = 2.0 seconds.
+    config_.maxSimulationTime = 12.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    // We need a raw pointer to flip the brain's direction mid-test.
+    DoorExitDuckBrain* brainPtr = nullptr;
+
+    const std::string brainKind = "DoorExitBrain";
+    TrainingBrainRegistry registry;
+    registry.registerBrain(
+        OrganismType::DUCK,
+        brainKind,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [&brainPtr](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    auto brain = std::make_unique<DoorExitDuckBrain>(DoorSide::LEFT);
+                    brainPtr = brain.get();
+                    return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
+                },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
+        });
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = brainKind;
+    individual.scenarioId = Scenario::EnumType::Clock;
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = true,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+    const WorldData& data = world->getData();
+
+    // Expected door position: left wall, one cell above the floor wall.
+    const Vector2i doorPos{ 0, data.height - 2 };
+    const Vector2i roofPos{ 1, data.height - 3 };
+
+    // Access the DoorManager through the ClockScenario.
+    auto* clockScenario = dynamic_cast<ClockScenario*>(world->getScenario());
+    ASSERT_NE(clockScenario, nullptr);
+    DoorManager& doorMgr = clockScenario->getDoorManager();
+
+    // ----------------------------------------------------------------
+    // Phase 1: Spawn — duck should be at the open door cell.
+    // ----------------------------------------------------------------
+    runner.step(0);
+    const Organism::Body* organism = runner.getOrganism();
+    ASSERT_NE(organism, nullptr) << "Duck must spawn during first step";
+    ASSERT_NE(brainPtr, nullptr) << "Brain must be created during spawn";
+
+    EXPECT_EQ(organism->getAnchorCell(), doorPos) << "Duck should spawn at the open door cell";
+    // The door cell is not AIR because the duck now occupies it. Verify the
+    // door is logically open and the cell is not WALL (i.e. the wall was removed).
+    EXPECT_NE(data.at(doorPos.x, doorPos.y).material_type, Material::EnumType::Wall)
+        << "Door cell should not be WALL (door should be open)";
+    EXPECT_TRUE(doorMgr.isOpenDoorAt(doorPos, data))
+        << "DoorManager should report door as open at door position";
+    EXPECT_EQ(data.at(roofPos.x, roofPos.y).material_type, Material::EnumType::Wall)
+        << "Roof cell should be WALL when door is open";
+
+    // ----------------------------------------------------------------
+    // Phase 2: Step until entrance door closes (duck moves away).
+    // ----------------------------------------------------------------
+    bool entranceClosed = false;
+    for (int i = 0; i < 500; ++i) {
+        runner.step(1);
+        organism = runner.getOrganism();
+        ASSERT_NE(organism, nullptr) << "Duck died before entrance closed (step " << i << ")";
+
+        if (organism->getAnchorCell() != doorPos) {
+            // Duck has left the door cell. The door should close this frame or next.
+            runner.step(1);
+            if (!data.at(doorPos.x, doorPos.y).isAir()) {
+                entranceClosed = true;
+                break;
+            }
+        }
+    }
+    ASSERT_TRUE(entranceClosed) << "Entrance door never closed";
+    EXPECT_EQ(data.at(doorPos.x, doorPos.y).material_type, Material::EnumType::Wall)
+        << "Entrance door cell should be WALL after closing";
+    EXPECT_TRUE(data.at(roofPos.x, roofPos.y).isAir())
+        << "Roof cell should be AIR after door closes";
+
+    // Reverse the duck so it heads back toward the entrance (now exit).
+    brainPtr->setReturnToEntrance();
+
+    // ----------------------------------------------------------------
+    // Phase 3: Step until exit door reopens (simTime >= 2.0).
+    // ----------------------------------------------------------------
+    const double exitDoorOpenTime = std::max(0.0, config_.maxSimulationTime - 10.0);
+    bool exitDoorOpened = false;
+    for (int i = 0; i < 2000; ++i) {
+        const TrainingRunner::Status status = runner.step(1);
+        if (status.state != TrainingRunner::State::Running) {
+            break;
+        }
+        if (runner.getSimTime() >= exitDoorOpenTime && data.at(doorPos.x, doorPos.y).isAir()) {
+            exitDoorOpened = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(exitDoorOpened) << "Exit door never reopened (simTime=" << runner.getSimTime()
+                                << ")";
+
+    // ----------------------------------------------------------------
+    // Phase 4: Step until duck exits through the door.
+    // ----------------------------------------------------------------
+    bool exitedThroughDoor = false;
+    for (int i = 0; i < 2000; ++i) {
+        const TrainingRunner::Status status = runner.step(1);
+        if (status.exitedThroughDoor) {
+            exitedThroughDoor = true;
+            break;
+        }
+        if (status.state != TrainingRunner::State::Running) {
+            break;
+        }
+    }
+    ASSERT_TRUE(exitedThroughDoor) << "Duck never exited through the door";
+    EXPECT_EQ(runner.getOrganism(), nullptr) << "Duck should be removed after exiting";
+
+    const TrainingRunner::Status finalStatus = runner.getStatus();
+    EXPECT_TRUE(finalStatus.exitedThroughDoor);
+    EXPECT_GT(finalStatus.exitDoorTime, 0.0);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
