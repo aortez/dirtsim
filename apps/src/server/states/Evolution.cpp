@@ -1340,6 +1340,8 @@ void Evolution::onEnter(StateMachine& dsm)
             break;
         case Scenario::EnumType::NesFlappyParatroopa:
             break;
+        case Scenario::EnumType::NesSuperMarioBros:
+            break;
         case Scenario::EnumType::NesSuperTiltBro:
             break;
         case Scenario::EnumType::Sandbox:
@@ -1354,6 +1356,14 @@ void Evolution::onEnter(StateMachine& dsm)
         case Scenario::EnumType::WaterEqualization:
             break;
     }
+
+    // Deterministic scenarios don't benefit from repeated robust evaluations.
+    const auto* scenarioMeta = dsm.getScenarioRegistry().getMetadata(trainingSpec.scenarioId);
+    if (scenarioMeta && scenarioMeta->deterministicEvaluation) {
+        evolutionConfig.robustFitnessEvaluationCount = 1;
+        evolutionConfig.warmStartMinRobustEvalCount = 1;
+    }
+
     visible_.reset();
     bestPlayback_.reset();
     workerState_ = std::make_unique<WorkerState>();
