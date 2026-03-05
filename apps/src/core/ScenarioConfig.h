@@ -28,8 +28,9 @@ using ScenarioConfig = std::variant<
     Config::Sandbox,
     Config::TreeGermination,
     Config::NesFlappyParatroopa,
-    Config::WaterEqualization,
-    Config::NesSuperTiltBro>;
+    Config::NesSuperMarioBros,
+    Config::NesSuperTiltBro,
+    Config::WaterEqualization>;
 
 // Map variant index to Scenario::EnumType enum (must stay in sync with variant order).
 Scenario::EnumType getScenarioId(const ScenarioConfig& config);

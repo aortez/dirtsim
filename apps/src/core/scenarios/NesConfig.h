@@ -16,6 +16,16 @@ struct NesFlappyParatroopa {
     bool requireSmolnesMapper = true;
 };
 
+struct NesSuperMarioBros {
+    using serialize = zpp::bits::members<5>;
+
+    std::string romId = "smb";
+    std::string romDirectory = "testdata/roms";
+    std::string romPath = "testdata/roms/smb.nes";
+    uint32_t maxEpisodeFrames = 108000;
+    bool requireSmolnesMapper = true;
+};
+
 struct NesSuperTiltBro {
     using serialize = zpp::bits::members<5>;
 

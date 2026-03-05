@@ -404,6 +404,8 @@ std::optional<ScenarioConfig> makeScenarioConfigFromUserSettings(
             return std::nullopt;
         case Scenario::EnumType::NesFlappyParatroopa:
             return std::nullopt;
+        case Scenario::EnumType::NesSuperMarioBros:
+            return std::nullopt;
         case Scenario::EnumType::NesSuperTiltBro:
             return std::nullopt;
         case Scenario::EnumType::Sandbox:
@@ -440,6 +442,8 @@ bool isScenarioConfigTouched(
         case Scenario::EnumType::Lights:
             return false;
         case Scenario::EnumType::NesFlappyParatroopa:
+            return false;
+        case Scenario::EnumType::NesSuperMarioBros:
             return false;
         case Scenario::EnumType::NesSuperTiltBro:
             return false;
