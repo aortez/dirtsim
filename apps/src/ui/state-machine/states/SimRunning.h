@@ -39,6 +39,13 @@ struct SimRunning {
     uint64_t updateCount = 0;
     bool stateGetPending = false;
 
+    // Frame interval jitter tracking (reset every 1000 updates).
+    double frameIntervalTotalMs = 0.0;
+    double frameIntervalTotalMsSq = 0.0;
+    double frameIntervalMinMs = 1e9;
+    double frameIntervalMaxMs = 0.0;
+    uint32_t frameIntervalCount = 0;
+
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
 

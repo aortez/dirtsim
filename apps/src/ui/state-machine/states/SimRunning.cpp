@@ -15,6 +15,7 @@
 #include "ui/state-machine/StateMachine.h"
 #include <atomic>
 #include <cassert>
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include <optional>
 
@@ -429,6 +430,44 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime);
 
+    // Measure queue delay: time from WebSocket receive to processEvents pickup.
+    if (evt.timestamp.time_since_epoch().count() > 0) {
+        const double queueDelayMs =
+            std::chrono::duration<double, std::milli>(now - evt.timestamp).count();
+        static double totalQueueDelayMs = 0.0;
+        static double totalQueueDelayMsSq = 0.0;
+        static double minQueueDelayMs = 1e9;
+        static double maxQueueDelayMs = 0.0;
+        static uint32_t queueDelayCount = 0;
+        totalQueueDelayMs += queueDelayMs;
+        totalQueueDelayMsSq += queueDelayMs * queueDelayMs;
+        if (queueDelayMs < minQueueDelayMs) {
+            minQueueDelayMs = queueDelayMs;
+        }
+        if (queueDelayMs > maxQueueDelayMs) {
+            maxQueueDelayMs = queueDelayMs;
+        }
+        queueDelayCount++;
+        if (queueDelayCount >= 1000) {
+            const double avg = totalQueueDelayMs / queueDelayCount;
+            const double var = (totalQueueDelayMsSq / queueDelayCount) - (avg * avg);
+            const double sd = var > 0.0 ? std::sqrt(var) : 0.0;
+            LOG_INFO(
+                State,
+                "  Queue delay: {:.2f}ms avg (min={:.2f} max={:.2f} stddev={:.2f}, {} frames)",
+                avg,
+                minQueueDelayMs,
+                maxQueueDelayMs,
+                sd,
+                queueDelayCount);
+            totalQueueDelayMs = 0.0;
+            totalQueueDelayMsSq = 0.0;
+            minQueueDelayMs = 1e9;
+            maxQueueDelayMs = 0.0;
+            queueDelayCount = 0;
+        }
+    }
+
     if (elapsed.count() > 0) {
         measuredUiFps = 1000.0 / elapsed.count();
 
@@ -439,6 +478,19 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
         else {
             smoothedUiFps = 0.9 * smoothedUiFps + 0.1 * measuredUiFps;
         }
+
+        // Track frame interval jitter.
+        const double intervalMs =
+            std::chrono::duration<double, std::milli>(now - lastFrameTime).count();
+        frameIntervalTotalMs += intervalMs;
+        frameIntervalTotalMsSq += intervalMs * intervalMs;
+        if (intervalMs < frameIntervalMinMs) {
+            frameIntervalMinMs = intervalMs;
+        }
+        if (intervalMs > frameIntervalMaxMs) {
+            frameIntervalMaxMs = intervalMs;
+        }
+        frameIntervalCount++;
 
         LOG_DEBUG(State, "UI FPS: {:.1f} (smoothed: {:.1f})", measuredUiFps, smoothedUiFps);
     }
@@ -508,6 +560,27 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
             intervalRenderCount > 0 ? intervalRenderTime / intervalRenderCount : 0.0,
             intervalRenderCount,
             intervalRenderTime);
+
+        // Frame interval jitter.
+        if (frameIntervalCount > 0) {
+            const double avgInterval = frameIntervalTotalMs / frameIntervalCount;
+            const double variance =
+                (frameIntervalTotalMsSq / frameIntervalCount) - (avgInterval * avgInterval);
+            const double stddev = variance > 0.0 ? std::sqrt(variance) : 0.0;
+            LOG_INFO(
+                State,
+                "  Frame interval: {:.2f}ms avg (min={:.2f} max={:.2f} stddev={:.2f}, {} frames)",
+                avgInterval,
+                frameIntervalMinMs,
+                frameIntervalMaxMs,
+                stddev,
+                frameIntervalCount);
+        }
+        frameIntervalTotalMs = 0.0;
+        frameIntervalTotalMsSq = 0.0;
+        frameIntervalMinMs = 1e9;
+        frameIntervalMaxMs = 0.0;
+        frameIntervalCount = 0;
 
         lastCopyTotal = copyTotal;
         lastCopyCount = copyCount;
