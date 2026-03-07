@@ -13,7 +13,7 @@ WorkingDirectory=/data/dirtsim
 # Needs to run as root (+ prefix) since vtconsole sysfs requires elevated privileges.
 ExecStartPre=+/bin/sh -c 'test -e /sys/class/vtconsole/vtcon1/bind && echo 0 > /sys/class/vtconsole/vtcon1/bind || true'
 
-ExecStart=/usr/bin/dirtsim-ui -b fbdev --connect localhost:8080
+ExecStart=/usr/bin/dirtsim-ui -b drm --connect localhost:8080
 Restart=no
 
 # Display rotation and touchscreen device are set per-device via EnvironmentFile.

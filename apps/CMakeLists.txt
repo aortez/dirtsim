@@ -214,6 +214,15 @@ if (LV_USE_LINUX_FBDEV)
 
 endif()
 
+if (LV_USE_LINUX_DRM)
+    message("Including DRM display backend support")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBDRM REQUIRED libdrm)
+    list(APPEND PKG_CONFIG_INC ${LIBDRM_INCLUDE_DIRS})
+    list(APPEND PKG_CONFIG_LIB ${LIBDRM_LIBRARIES})
+    list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/drm.cpp)
+endif()
+
 foreach(arg ${PKG_CONFIG_LIB})
     string(APPEND LVGL_PKG_CONFIG_EXT_LIB " -l${arg}")
 endforeach()
