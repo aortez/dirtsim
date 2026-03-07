@@ -21,6 +21,7 @@
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/clock_scenario/DoorManager.h"
+#include "core/scenarios/clock_scenario/ObstacleManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <algorithm>
@@ -1608,6 +1609,99 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
     runner.step(0);
 
     EXPECT_TRUE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
+}
+
+TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)
+{
+    config_.maxSimulationTime = 10.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    // Brain that does nothing — duck stands still.
+    const std::string brainKind = "IdleDuckBrain";
+    TrainingBrainRegistry registry;
+    registry.registerBrain(
+        OrganismType::DUCK,
+        brainKind,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    return world.getOrganismManager().createDuck(
+                        world, x, y, std::make_unique<ScriptedDuckBrain>(std::vector<DuckInput>{}));
+                },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
+            .getGenomeLayout = nullptr,
+        });
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = brainKind;
+    individual.scenarioId = Scenario::EnumType::Clock;
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = true,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    // Enable obstacle course so the scenario doesn't clear our pit.
+    auto* clockScenario = dynamic_cast<ClockScenario*>(world->getScenario());
+    ASSERT_NE(clockScenario, nullptr);
+    ScenarioConfig scenarioConfig = clockScenario->getConfig();
+    auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig);
+    ASSERT_NE(clockConfig, nullptr);
+    clockConfig->obstacleCourseEnabled = true;
+    clockScenario->setConfig(scenarioConfig, *world);
+
+    // Spawn the duck.
+    runner.step(0);
+    const Organism::Body* organism = runner.getOrganism();
+    ASSERT_NE(organism, nullptr) << "Duck must spawn during first step";
+
+    // Let the duck settle onto the floor.
+    for (int i = 0; i < 30; ++i) {
+        runner.step(1);
+        organism = runner.getOrganism();
+        ASSERT_NE(organism, nullptr) << "Duck died before pit was created";
+    }
+
+    // Create a wide pit under and around the duck so it falls in.
+    const Vector2i duckCell = organism->getAnchorCell();
+    WorldData& data = world->getData();
+    const int floorY = data.height - 1;
+    const int pitStart = std::max(0, duckCell.x - 2);
+    const int pitEnd = std::min(static_cast<int>(data.width) - 1, duckCell.x + 2);
+    const int pitWidth = pitEnd - pitStart + 1;
+    clockScenario->obstacle_manager.addObstacle(
+        FloorObstacle{
+            .start_x = pitStart,
+            .width = pitWidth,
+            .type = FloorObstacleType::PIT,
+        });
+    for (int x = pitStart; x <= pitEnd; ++x) {
+        data.at(x, floorY).clear();
+    }
+
+    // Step until the duck dies from pit damage. At 1.0 hp/sec with regen at 0.10/sec,
+    // net damage is 0.90/sec, so death takes ~1.1 seconds (~67 frames at 1/60 timestep).
+    bool duckDied = false;
+    for (int i = 0; i < 200; ++i) {
+        const TrainingRunner::Status status = runner.step(1);
+        if (status.state == TrainingRunner::State::OrganismDied) {
+            duckDied = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(duckDied) << "Duck should die from standing in a pit";
+    EXPECT_EQ(runner.getOrganism(), nullptr) << "Dead duck should be removed";
 }
 
 } // namespace DirtSim

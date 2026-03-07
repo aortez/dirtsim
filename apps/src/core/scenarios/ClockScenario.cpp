@@ -432,7 +432,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         updateDigitMaterialOverride();
         if (obstacle_course_changed && !config_.obstacleCourseEnabled) {
             obstacleSpawnTimer_ = 0.0;
-            obstacle_manager_.clearAll(world);
+            obstacle_manager.clearAll(world);
         }
 
         spdlog::info("ClockScenario: Config updated");
@@ -537,6 +537,26 @@ void ClockScenario::tick(World& world, double deltaTime)
     }
     drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
     updateFloorObstacles(world, deltaTime);
+
+    // Apply pit damage to any duck standing in a pit.
+    {
+        constexpr double PIT_DAMAGE_PER_SECOND = 1.0;
+        const WorldData& pitData = world.getData();
+        world.getOrganismManager().forEachOrganism([&](Organism::Body& body) {
+            if (body.getType() != OrganismType::DUCK) {
+                return;
+            }
+            auto* duck = dynamic_cast<Duck*>(&body);
+            if (!duck || duck->isDead()) {
+                return;
+            }
+            const Vector2i cell = duck->getAnchorCell();
+            if (cell.y == pitData.height - 1
+                && obstacle_manager.isPitAt(static_cast<uint32_t>(cell.x)) && duck->isOnGround()) {
+                duck->applyDamage(PIT_DAMAGE_PER_SECOND * deltaTime);
+            }
+        });
+    }
 
     // Manage storm lighting (lightning flashes based on water in top third).
     if (isEventActive(ClockEventType::RAIN)) {
@@ -649,7 +669,7 @@ void ClockScenario::clearDigits(World& world)
             }
 
             // Skip hurdle obstacle cells (one row above floor).
-            if (y == data.height - 2 && obstacle_manager_.isHurdleAt(x)) {
+            if (y == data.height - 2 && obstacle_manager.isHurdleAt(x)) {
                 continue;
             }
 
@@ -1438,16 +1458,16 @@ void ClockScenario::updateFloorObstacles(World& world, double deltaTime)
 {
     if (!config_.obstacleCourseEnabled) {
         obstacleSpawnTimer_ = 0.0;
-        if (!obstacle_manager_.getObstacles().empty()) {
-            obstacle_manager_.clearAll(world);
+        if (!obstacle_manager.getObstacles().empty()) {
+            obstacle_manager.clearAll(world);
         }
         return;
     }
 
     if (drain_manager_.isOpen()) {
         obstacleSpawnTimer_ = 0.0;
-        if (!obstacle_manager_.getObstacles().empty()) {
-            obstacle_manager_.clearAll(world);
+        if (!obstacle_manager.getObstacles().empty()) {
+            obstacle_manager.clearAll(world);
         }
         return;
     }
@@ -1459,7 +1479,7 @@ void ClockScenario::updateFloorObstacles(World& world, double deltaTime)
     }
 
     obstacleSpawnTimer_ = 0.0;
-    obstacle_manager_.spawnObstacle(world, rng_, uniform_dist_);
+    obstacle_manager.spawnObstacle(world, rng_, uniform_dist_);
 }
 
 void ClockScenario::updateMarqueeEvent(
@@ -1706,13 +1726,6 @@ void ClockScenario::updateDuckEvent(
         spdlog::info("\n{}", diagram);
     }
 
-    // Apply pit damage when duck is standing in a pit.
-    constexpr double PIT_DAMAGE_PER_SECOND = 0.5;
-    if (obstacle_manager_.isPitAt(static_cast<uint32_t>(duck_cell.x))
-        && duck_cell.y == data.height - 1 && duck_organism->isOnGround()) {
-        duck_organism->applyDamage(PIT_DAMAGE_PER_SECOND * deltaTime);
-    }
-
     // Check if duck entered the exit door and passed the middle of the cell.
     Vector2i exit_pos = door_manager_.getDoorPosition(state.exit_door_id, data);
     if (door_manager_.isOpen(state.exit_door_id) && duck_cell == exit_pos) {
@@ -1823,7 +1836,7 @@ void ClockScenario::cancelAllEvents(World& world)
     event_manager_.clear();
     door_manager_.closeAllDoors(world);
     door_manager_.clear();
-    obstacle_manager_.clearAll(world);
+    obstacle_manager.clearAll(world);
     drain_manager_.reset();
     storm_manager_.reset();
     redrawWalls(world);
@@ -1930,7 +1943,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
         // Skip open doors, drain cells, and pit cells.
         bool is_drain_cell = drain_manager_.isOpen() && x >= drain_manager_.getStartX()
             && x <= drain_manager_.getEndX();
-        bool is_pit_cell = obstacle_manager_.isPitAt(x);
+        bool is_pit_cell = obstacle_manager.isPitAt(x);
 
         if (!door_manager_.isOpenDoorAt(pos, data) && !is_drain_cell && !is_pit_cell) {
             walls.push_back({ x, static_cast<int16_t>(height - 1), Material::EnumType::Dirt });
@@ -1956,7 +1969,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     // Hurdle obstacles (one row above floor, render as wall/gray).
     if (height > 2) {
         for (int16_t x = 0; x < width; ++x) {
-            if (obstacle_manager_.isHurdleAt(x)) {
+            if (obstacle_manager.isHurdleAt(x)) {
                 walls.push_back({ x, static_cast<int16_t>(height - 2), Material::EnumType::Wall });
             }
         }
@@ -2000,7 +2013,7 @@ void ClockScenario::redrawWalls(World& world)
     // Clear pit cells that shouldn't have walls.
     int16_t height = data.height;
     for (int16_t x = 0; x < data.width; ++x) {
-        bool is_pit_cell = obstacle_manager_.isPitAt(x);
+        bool is_pit_cell = obstacle_manager.isPitAt(x);
         bool is_drain_cell = drain_manager_.isOpen() && x >= drain_manager_.getStartX()
             && x <= drain_manager_.getEndX();
 

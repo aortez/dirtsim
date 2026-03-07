@@ -82,6 +82,8 @@ public:
 
     DoorManager& getDoorManager() { return door_manager_; }
 
+    ObstacleManager obstacle_manager;
+
     // Time override for testing.
     void setTimeOverride(const std::string& time_str);
     void clearTimeOverride();
@@ -100,7 +102,6 @@ private:
     // Managers for sub-systems.
     DoorManager door_manager_;
     DrainManager drain_manager_;
-    ObstacleManager obstacle_manager_;
     StormManager storm_manager_;
 
     std::mt19937 rng_{ std::random_device{}() };
