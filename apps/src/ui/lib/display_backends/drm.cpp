@@ -93,10 +93,6 @@ static lv_display_t* init_drm(void)
     return disp;
 }
 
-/**
- * DRM run loop. lv_timer_handler() blocks on vsync (~16.7ms at 60Hz) via the
- * DRM page flip wait, so no usleep or condvar is needed for frame pacing.
- */
 static void run_loop_drm(DirtSim::Ui::StateMachine& sm)
 {
     DirtSim::Ui::LoopTimingStats stats;
@@ -114,13 +110,19 @@ static void run_loop_drm(DirtSim::Ui::StateMachine& sm)
 
         // Renders into DRM buffer, submits page flip, blocks on vsync.
         auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
-        lv_timer_handler();
+        uint32_t idle_time = lv_timer_handler();
         double timerMs = std::chrono::duration<double, std::milli>(
                              DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
                              .count();
 
         // Drain events that arrived during the vsync wait.
         sm.processEvents();
+
+        if (timerMs < 1.0 && idle_time > 0) {
+            constexpr uint32_t MAX_IDLE_MS = 1;
+            sm.waitForEvents(
+                std::chrono::milliseconds(idle_time < MAX_IDLE_MS ? idle_time : MAX_IDLE_MS));
+        }
 
         double loopMs = std::chrono::duration<double, std::milli>(
                             DirtSim::Ui::LoopTimingStats::Clock::now() - loopStart)
