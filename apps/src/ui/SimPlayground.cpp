@@ -268,7 +268,6 @@ void SimPlayground::render(const WorldData& data, bool debugDraw)
 
     // Switching from video to cell rendering — clean up VideoSurface.
     if (videoSurface_) {
-        videoSurface_->cleanup();
         videoSurface_.reset();
     }
 
@@ -337,8 +336,8 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
     // Check VideoSurface first (active for NES scenarios).
     if (videoSurface_) {
         const uint8_t* buffer = videoSurface_->getCanvasBuffer();
-        uint32_t width = videoSurface_->getCanvasWidth();
-        uint32_t height = videoSurface_->getCanvasHeight();
+        const uint32_t width = videoSurface_->getCanvasWidth();
+        const uint32_t height = videoSurface_->getCanvasHeight();
 
         if (buffer && width > 0 && height > 0) {
             size_t dataSize = static_cast<size_t>(width) * height * 4;
@@ -353,8 +352,8 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
     }
 
     const uint8_t* buffer = renderer_->getCanvasBuffer();
-    uint32_t width = renderer_->getCanvasWidth();
-    uint32_t height = renderer_->getCanvasHeight();
+    const uint32_t width = renderer_->getCanvasWidth();
+    const uint32_t height = renderer_->getCanvasHeight();
 
     if (!buffer || width == 0 || height == 0) {
         LOG_ERROR(Controls, "Cannot capture screenshot, canvas not initialized");
@@ -458,6 +457,11 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
 {
     SimPlayground* self = static_cast<SimPlayground*>(lv_event_get_user_data(e));
     if (!self) return;
+
+    // NES video doesn't support draw/erase.
+    if (self->videoSurface_) {
+        return;
+    }
 
     InteractionMode mode = self->coreControlsState_.interactionMode;
 

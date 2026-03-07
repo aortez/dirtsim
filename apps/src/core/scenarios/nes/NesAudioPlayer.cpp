@@ -118,10 +118,6 @@ bool NesAudioPlayer::start(int sampleRate)
     deviceChannels_ = obtained.channels;
     deviceFormat_ = obtained.format;
 
-    const size_t maxSamples =
-        static_cast<size_t>(obtained.samples) * static_cast<size_t>(deviceChannels_);
-    s16Buffer_.resize(maxSamples, 0);
-
     readPos_.store(0, std::memory_order_relaxed);
     writePos_.store(0, std::memory_order_relaxed);
     underrunCount_.store(0, std::memory_order_relaxed);

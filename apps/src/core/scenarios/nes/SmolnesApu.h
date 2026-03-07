@@ -10,7 +10,6 @@ extern "C" {
 typedef void (*SmolnesApuSampleCallback)(float sample, void* userdata);
 
 #define SMOLNES_APU_SAMPLE_BUFFER_SIZE 4096u
-#define SMOLNES_APU_SAMPLE_COPY_MAX 1024u
 
 typedef struct SmolnesApuEnvelope {
     bool start;

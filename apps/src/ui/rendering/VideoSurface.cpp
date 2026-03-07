@@ -86,7 +86,7 @@ uint32_t VideoSurface::getCanvasWidth() const
     return canvasWidth_;
 }
 
-uint16_t VideoSurface::getCanvasHeight() const
+uint32_t VideoSurface::getCanvasHeight() const
 {
     return canvasHeight_;
 }

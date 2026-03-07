@@ -188,7 +188,7 @@ void Disconnected::updateStatusLabel()
     if (retry_pending_) {
         const double retryIntervalSeconds = getCurrentRetryIntervalSeconds();
         auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
+        const double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
         double remaining = retryIntervalSeconds - elapsed;
         if (remaining < 0) {
             remaining = 0;

@@ -1,7 +1,7 @@
 #include "MessageParser.h"
+#include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/WorldData.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -22,12 +22,12 @@ std::optional<Event> MessageParser::parse(const std::string& message)
             return parseWorldDataResponse(json);
         }
 
-        spdlog::warn("MessageParser: Unknown message format: {}", message);
+        LOG_WARN(Network, "Unknown message format: {}", message);
         return std::nullopt;
     }
     catch (const std::exception& e) {
-        spdlog::error("MessageParser: Failed to parse message: {}", e.what());
-        spdlog::debug("MessageParser: Invalid message: {}", message);
+        LOG_ERROR(Network, "Failed to parse message: {}", e.what());
+        LOG_DEBUG(Network, "Invalid message: {}", message);
         return std::nullopt;
     }
 }
@@ -37,7 +37,7 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
     // All successful responses now include response_type.
     if (!json.contains("response_type")) {
         // Empty responses (monostate) or untyped responses - just log and ignore.
-        spdlog::debug("MessageParser: Received response without type: {}", json.dump());
+        LOG_DEBUG(Network, "Received response without type: {}", json.dump());
         return std::nullopt;
     }
 
@@ -66,8 +66,9 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
         // PhysicsSettings response (wrapped in Okay struct).
         PhysicsSettings settings = value["settings"].get<PhysicsSettings>();
 
-        spdlog::info(
-            "MessageParser: Parsed PhysicsSettings (gravity={:.2f}, hydrostatic={:.2f})",
+        LOG_INFO(
+            Network,
+            "Parsed PhysicsSettings (gravity={:.2f}, hydrostatic={:.2f})",
             settings.gravity,
             settings.pressure_hydrostatic_strength);
 
@@ -75,8 +76,7 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
     }
     else {
         // Unknown response type - log for debugging.
-        spdlog::debug(
-            "MessageParser: Unhandled response_type '{}': {}", responseType, value.dump());
+        LOG_DEBUG(Network, "Unhandled response_type '{}': {}", responseType, value.dump());
         return std::nullopt;
     }
 }
@@ -84,7 +84,7 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
 void MessageParser::handleError(const nlohmann::json& json)
 {
     std::string errorMsg = json["error"].get<std::string>();
-    spdlog::error("MessageParser: DSSM error: {}", errorMsg);
+    LOG_ERROR(Network, "DSSM error: {}", errorMsg);
     // TODO: Could queue an ErrorEvent here if we add one.
 }
 

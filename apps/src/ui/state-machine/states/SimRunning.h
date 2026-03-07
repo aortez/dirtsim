@@ -10,9 +10,6 @@ namespace DirtSim {
 struct WorldData;
 
 namespace Ui {
-
-class SimPlayground;
-
 namespace State {
 
 /**
@@ -45,6 +42,23 @@ struct SimRunning {
     double frameIntervalMinMs = 1e9;
     double frameIntervalMaxMs = 0.0;
     uint32_t frameIntervalCount = 0;
+
+    // Queue delay tracking (reset every 1000 frames).
+    double totalQueueDelayMs = 0.0;
+    double totalQueueDelayMsSq = 0.0;
+    double minQueueDelayMs = 1e9;
+    double maxQueueDelayMs = 0.0;
+    uint32_t queueDelayCount = 0;
+
+    // Performance stats interval tracking (reset every 1000 updates).
+    double lastParseTotal = 0.0;
+    uint32_t lastParseCount = 0;
+    double lastRenderTotal = 0.0;
+    uint32_t lastRenderCount = 0;
+    double lastCopyTotal = 0.0;
+    uint32_t lastCopyCount = 0;
+    double lastUpdateTotal = 0.0;
+    uint32_t lastUpdateCount = 0;
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);

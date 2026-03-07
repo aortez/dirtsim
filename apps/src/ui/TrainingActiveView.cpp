@@ -525,6 +525,9 @@ void TrainingActiveView::destroyUI()
     lastGenerationDistributionPlot_.reset();
     scenarioControls_.reset();
 
+    videoSurface_.reset();
+    bestVideoSurface_.reset();
+    bestVideoFrame_.reset();
     starfield_.reset();
     if (container_) {
         lv_obj_clean(container_);
@@ -594,7 +597,6 @@ void TrainingActiveView::renderWorld(
     }
 
     if (videoSurface_) {
-        videoSurface_->cleanup();
         videoSurface_.reset();
     }
 
@@ -621,6 +623,9 @@ void TrainingActiveView::updateBestSnapshot(
     hasBestSnapshot_ = true;
     if (scenarioVideoFrame.has_value()) {
         bestVideoFrame_ = scenarioVideoFrame;
+    }
+    else {
+        bestVideoFrame_.reset();
     }
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
@@ -1086,6 +1091,9 @@ void TrainingActiveView::updateBestPlaybackFrame(
     bestWorldData_ = std::make_unique<WorldData>(worldData);
     if (scenarioVideoFrame.has_value()) {
         bestVideoFrame_ = scenarioVideoFrame;
+    }
+    else {
+        bestVideoFrame_.reset();
     }
     bestFitness_ = fitness;
     bestGeneration_ = generation;

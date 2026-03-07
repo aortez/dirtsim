@@ -13,7 +13,6 @@
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
-#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -60,13 +59,12 @@ void SimRunning::onEnter(StateMachine& sm)
     // Subscribe to render messages from the server (synchronous call).
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
-        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format =
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(wsService.allocateRequestId(), cmd);
         auto result = wsService.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -189,13 +187,13 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     // Auto-switch render format based on debug mode (synchronous call).
     auto& wsServiceRef = sm.getWebSocketService();
     if (wsServiceRef.isConnected()) {
-        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format =
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope =
+            DirtSim::Network::make_command_envelope(wsServiceRef.allocateRequestId(), cmd);
         auto result = wsServiceRef.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -259,9 +257,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto envelope = DirtSim::Network::make_command_envelope(
+                sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
 
             LOG_INFO(State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, toString(material));
@@ -296,9 +294,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto envelope = DirtSim::Network::make_command_envelope(
+                sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
         }
     }
@@ -428,17 +426,12 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
 
     // Calculate UI FPS based on time between updates.
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime);
 
     // Measure queue delay: time from WebSocket receive to processEvents pickup.
     if (evt.timestamp.time_since_epoch().count() > 0) {
         const double queueDelayMs =
             std::chrono::duration<double, std::milli>(now - evt.timestamp).count();
-        static double totalQueueDelayMs = 0.0;
-        static double totalQueueDelayMsSq = 0.0;
-        static double minQueueDelayMs = 1e9;
-        static double maxQueueDelayMs = 0.0;
-        static uint32_t queueDelayCount = 0;
         totalQueueDelayMs += queueDelayMs;
         totalQueueDelayMsSq += queueDelayMs * queueDelayMs;
         if (queueDelayMs < minQueueDelayMs) {
@@ -503,37 +496,27 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
         auto& timers = sm.getTimers();
 
         // Get current stats.
-        double parseTotal = timers.getAccumulatedTime("parse_message");
-        uint32_t parseCount = timers.getCallCount("parse_message");
-        double renderTotal = timers.getAccumulatedTime("render_world");
-        uint32_t renderCount = timers.getCallCount("render_world");
+        const double parseTotal = timers.getAccumulatedTime("parse_message");
+        const uint32_t parseCount = timers.getCallCount("parse_message");
+        const double renderTotal = timers.getAccumulatedTime("render_world");
+        const uint32_t renderCount = timers.getCallCount("render_world");
 
         // Calculate interval stats.
-        static double lastParseTotal = 0.0;
-        static uint32_t lastParseCount = 0;
-        static double lastRenderTotal = 0.0;
-        static uint32_t lastRenderCount = 0;
-
-        double intervalParseTime = parseTotal - lastParseTotal;
-        uint32_t intervalParseCount = parseCount - lastParseCount;
-        double intervalRenderTime = renderTotal - lastRenderTotal;
-        uint32_t intervalRenderCount = renderCount - lastRenderCount;
+        const double intervalParseTime = parseTotal - lastParseTotal;
+        const uint32_t intervalParseCount = parseCount - lastParseCount;
+        const double intervalRenderTime = renderTotal - lastRenderTotal;
+        const uint32_t intervalRenderCount = renderCount - lastRenderCount;
 
         // Get additional timing info.
-        double copyTotal = timers.getAccumulatedTime("copy_worlddata");
-        uint32_t copyCount = timers.getCallCount("copy_worlddata");
-        double updateTotal = timers.getAccumulatedTime("update_controls");
-        uint32_t updateCount_ = timers.getCallCount("update_controls");
+        const double copyTotal = timers.getAccumulatedTime("copy_worlddata");
+        const uint32_t copyCount = timers.getCallCount("copy_worlddata");
+        const double updateTotal = timers.getAccumulatedTime("update_controls");
+        const uint32_t updateCount_ = timers.getCallCount("update_controls");
 
-        static double lastCopyTotal = 0.0;
-        static uint32_t lastCopyCount = 0;
-        static double lastUpdateTotal = 0.0;
-        static uint32_t lastUpdateCount = 0;
-
-        double intervalCopyTime = copyTotal - lastCopyTotal;
-        uint32_t intervalCopyCount = copyCount - lastCopyCount;
-        double intervalUpdateTime = updateTotal - lastUpdateTotal;
-        uint32_t intervalUpdateCount = updateCount_ - lastUpdateCount;
+        const double intervalCopyTime = copyTotal - lastCopyTotal;
+        const uint32_t intervalCopyCount = copyCount - lastCopyCount;
+        const double intervalUpdateTime = updateTotal - lastUpdateTotal;
+        const uint32_t intervalUpdateCount = updateCount_ - lastUpdateCount;
 
         LOG_INFO(State, "UI Performance Stats (last n updates, total {}):", updateCount);
         LOG_INFO(

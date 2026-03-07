@@ -28,7 +28,7 @@ public:
 
     lv_obj_t* getCanvas() const;
     uint32_t getCanvasWidth() const;
-    uint16_t getCanvasHeight() const;
+    uint32_t getCanvasHeight() const;
     const uint8_t* getCanvasBuffer() const;
 
 private:
