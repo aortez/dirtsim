@@ -90,6 +90,7 @@ struct SimRunning {
     Any onEvent(const DirtSim::Api::FingerMove::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::FingerUp::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::GravitySet::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::NesApuGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::NesInputSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::PerfStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);

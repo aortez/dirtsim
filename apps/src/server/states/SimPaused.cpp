@@ -62,6 +62,50 @@ State::Any SimPaused::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     return std::move(*this);
 }
 
+State::Any SimPaused::onEvent(const Api::NesApuGet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::NesApuGet::Response;
+
+    auto nes = previousState.session.requireNesWorld();
+    if (nes.isError()) {
+        cwc.sendResponse(Response::error(ApiError("NesApuGet requires active NES scenario")));
+        return std::move(*this);
+    }
+
+    const auto snapshot = nes.value().driver->copyRuntimeApuSnapshot();
+    if (!snapshot.has_value()) {
+        cwc.sendResponse(Response::error(ApiError("APU snapshot not available")));
+        return std::move(*this);
+    }
+
+    Api::NesApuGet::Okay okay;
+    okay.pulse1_enabled = snapshot->pulse1Enabled;
+    okay.pulse2_enabled = snapshot->pulse2Enabled;
+    okay.triangle_enabled = snapshot->triangleEnabled;
+    okay.noise_enabled = snapshot->noiseEnabled;
+    okay.pulse1_length_counter = snapshot->pulse1LengthCounter;
+    okay.pulse2_length_counter = snapshot->pulse2LengthCounter;
+    okay.triangle_length_counter = snapshot->triangleLengthCounter;
+    okay.noise_length_counter = snapshot->noiseLengthCounter;
+    okay.pulse1_timer_period = snapshot->pulse1TimerPeriod;
+    okay.pulse2_timer_period = snapshot->pulse2TimerPeriod;
+    okay.triangle_timer_period = snapshot->triangleTimerPeriod;
+    okay.noise_timer_period = snapshot->noiseTimerPeriod;
+    okay.pulse1_duty = snapshot->pulse1Duty;
+    okay.pulse2_duty = snapshot->pulse2Duty;
+    okay.noise_mode = snapshot->noiseMode;
+    okay.frame_counter_mode_5step = snapshot->frameCounterMode5Step;
+    okay.register_write_count = snapshot->registerWriteCount;
+    okay.total_samples_generated = snapshot->totalSamplesGenerated;
+    okay.audio_underruns = snapshot->audioUnderruns;
+    okay.audio_overruns = snapshot->audioOverruns;
+    okay.audio_callback_calls = snapshot->audioCallbackCalls;
+    okay.audio_samples_dropped = snapshot->audioSamplesDropped;
+
+    cwc.sendResponse(Response::okay(okay));
+    return std::move(*this);
+}
+
 State::Any SimPaused::onEvent(const Api::PerfStatsGet::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::PerfStatsGet::Response;

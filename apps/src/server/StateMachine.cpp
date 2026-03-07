@@ -1101,6 +1101,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GenomeSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::NesApuGet::Cwc>(
+        [this](Api::NesApuGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesInputSet::Cwc>(
         [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
