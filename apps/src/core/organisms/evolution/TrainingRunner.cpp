@@ -341,6 +341,17 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             state_ = State::OrganismDied;
             break;
         }
+
+        if (trainingSpec_.organismType == OrganismType::DUCK) {
+            Duck* duck = world_->getOrganismManager().getDuck(organismId_);
+            if (duck && duck->isDead()) {
+                snapshotDuckStats();
+                world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
+                state_ = State::OrganismDied;
+                break;
+            }
+        }
+
         organismTracker_.track(simTime_, organism->position);
 
         if (trainingSpec_.organismType == OrganismType::TREE) {
@@ -449,6 +460,32 @@ std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandOutcomeSig
 double TrainingRunner::getCurrentMaxEnergy() const
 {
     return treeEvaluator_.getMaxEnergy();
+}
+
+const DuckStatsSnapshot* TrainingRunner::getDuckStatsSnapshot() const
+{
+    return duckStatsSnapshot_.has_value() ? &duckStatsSnapshot_.value() : nullptr;
+}
+
+void TrainingRunner::snapshotDuckStats()
+{
+    Duck* duck = world_->getOrganismManager().getDuck(organismId_);
+    if (!duck) {
+        return;
+    }
+    duckStatsSnapshot_ = DuckStatsSnapshot{
+        .collisionDamageTotal = duck->getCollisionDamageTotal(),
+        .damageTotal = duck->getDamageTotal(),
+        .effortAbsMoveInputTotal = duck->getEffortAbsMoveInputTotal(),
+        .effortJumpHeldTotal = duck->getEffortJumpHeldTotal(),
+        .energyAverage = duck->getEnergyAverage(),
+        .energyConsumedTotal = duck->getEnergyConsumedTotal(),
+        .energyLimitedSeconds = duck->getEnergyLimitedSeconds(),
+        .healthAverage = duck->getHealthAverage(),
+        .wingDownSeconds = duck->getWingDownSeconds(),
+        .wingUpSeconds = duck->getWingUpSeconds(),
+        .effortSampleCount = duck->getEffortSampleCount(),
+    };
 }
 
 const Organism::Body* TrainingRunner::getOrganism() const
@@ -613,8 +650,19 @@ void TrainingRunner::updateDuckClockDoors()
         }
     }
 
-    // Reopen entrance door as exit door once entrance is closed and time is reached.
-    if (!doors.exitDoorOpened && doors.entranceDoorClosed && simTime_ >= doors.exitDoorOpenTime) {
+    // Track whether duck has crossed the world midpoint.
+    if (!doors.duckReachedMiddle) {
+        const int midX = data.width / 2;
+        const bool crossedMiddle =
+            (doors.side == DoorSide::LEFT) ? (duckCell.x >= midX) : (duckCell.x < midX);
+        if (crossedMiddle) {
+            doors.duckReachedMiddle = true;
+        }
+    }
+
+    // Reopen entrance door as exit door once duck has reached middle and time is reached.
+    if (!doors.exitDoorOpened && doors.entranceDoorClosed && doors.duckReachedMiddle
+        && simTime_ >= doors.exitDoorOpenTime) {
         doors.exitDoorId = doors.entranceDoorId;
         doorMgr.openDoor(doors.exitDoorId, *world_);
         doors.exitDoorOpened = true;
@@ -634,6 +682,7 @@ void TrainingRunner::updateDuckClockDoors()
             if (pastMiddle) {
                 doors.duckExitedThroughDoor = true;
                 doors.exitDoorTime = simTime_;
+                snapshotDuckStats();
                 world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
             }
         }

@@ -48,9 +48,12 @@ struct DuckSensoryData {
     // Current energy level [0, 1].
     float energy = 1.0f;
 
+    // Current health level [0, 1].
+    float health = 1.0f;
+
     double delta_time_seconds = 0.0;
 
-    using serialize = zpp::bits::members<14>;
+    using serialize = zpp::bits::members<15>;
 };
 
 void to_json(nlohmann::json& j, const DuckSensoryData& data);

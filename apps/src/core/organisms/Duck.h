@@ -56,6 +56,14 @@ public:
         double jumpHoldCostPerSec = 0.30; // Energy per second while jump boost is active.
     };
 
+    struct HealthConfig {
+        double startingHealth = 1.0;
+        double regenRate = 0.10;
+        double impactEnergyThreshold = 5.0;
+        double impactDamageExponent = 2.0;
+        double impactDamageScale = 0.000128;
+    };
+
     /**
      * Construct a new duck with a given brain implementation.
      *
@@ -105,6 +113,22 @@ public:
     double getEnergyConsumedTotal() const { return energyConsumedTotal_; }
     double getEnergyLimitedSeconds() const { return energyLimitedSeconds_; }
 
+    double getHealth() const { return health_; }
+    double getHealthAverage() const
+    {
+        if (healthSampleCount_ == 0) {
+            return health_;
+        }
+        return healthSum_ / static_cast<double>(healthSampleCount_);
+    }
+    bool isDead() const { return dead_; }
+    void applyDamage(double amount);
+    double getCollisionDamageTotal() const { return collisionDamageTotal_; }
+    double getDamageTotal() const { return damageTotal_; }
+
+    void snapshotPreCollisionVelocity(Vector2d velocity) { preCollisionVelocity_ = velocity; }
+    Vector2d getPreCollisionVelocity() const { return preCollisionVelocity_; }
+
     double getWingUpSeconds() const;
     double getWingDownSeconds() const;
 
@@ -143,6 +167,15 @@ private:
     double energyLimitedSeconds_ = 0.0;
     double energySum_ = 0.0;
     uint64_t energySampleCount_ = 0;
+
+    HealthConfig healthConfig_{};
+    double health_ = 1.0;
+    double healthSum_ = 0.0;
+    uint64_t healthSampleCount_ = 0;
+    double collisionDamageTotal_ = 0.0;
+    double damageTotal_ = 0.0;
+    bool dead_ = false;
+    Vector2d preCollisionVelocity_{ 0.0, 0.0 };
 
     double wingUpSeconds_ = 0.0;
     double wingDownSeconds_ = 0.0;
