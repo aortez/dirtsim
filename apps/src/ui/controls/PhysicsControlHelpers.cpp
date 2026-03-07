@@ -335,30 +335,6 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.ambient_intensity);
                             } },
-                      { .label = "Sky Falloff",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 200,
-                        .defaultValue = 100,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.sky_access_falloff = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.sky_access_falloff);
-                            } },
-                      { .label = "Sky Probes",
-                        .type = ControlType::SWITCH_ONLY,
-                        .enableSetter = [](PhysicsSettings& s,
-                                           bool e) { s.light.sky_access_multi_directional = e; },
-                        .enableGetter =
-                            [](const PhysicsSettings& s) {
-                                return s.light.sky_access_multi_directional;
-                            } },
                       { .label = "D Iters",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,

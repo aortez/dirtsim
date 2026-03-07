@@ -38,7 +38,7 @@ void WorldLightCalculator::calculate(
         clearLight(world);
     }
 
-    // Add ambient light (with optional sky access attenuation).
+    // Add ambient light.
     {
         ScopeTimer t(timers, "light_ambient");
         applyAmbient(world, grid, config);
@@ -49,6 +49,18 @@ void WorldLightCalculator::calculate(
     if (config.sun_enabled) {
         ScopeTimer t(timers, "light_sunlight");
         applySunlight(world, grid, config.sun_color, config.sun_intensity);
+    }
+
+    // Add side light (horizontal from left and right edges).
+    if (config.side_light_enabled) {
+        ScopeTimer t(timers, "light_side");
+        applySideLight(world, grid, config.sun_color, config.side_light_intensity);
+    }
+
+    // Add diagonal light (45-degree from top-left and top-right).
+    if (config.diagonal_light_enabled) {
+        ScopeTimer t(timers, "light_diagonal");
+        applyDiagonalLight(world, grid, config.sun_color, config.diagonal_light_intensity);
     }
 
     // Add emissive material contributions.
@@ -102,151 +114,19 @@ void WorldLightCalculator::applyAmbient(
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
 
+    (void)grid;
+
     auto& data = world.getData();
     const RgbF base_ambient =
         toRgbF(config.ambient_color) * config.ambient_intensity + ambient_boost_;
 
-    if (!config.sky_access_enabled) {
-        // Simple uniform ambient - parallelize.
-        const size_t count = data.colors.size();
+    // Uniform ambient across the entire grid.
+    const size_t count = data.colors.size();
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && count >= 2500)
 #endif
-        for (size_t i = 0; i < count; ++i) {
-            data.colors.data[i] += base_ambient;
-        }
-        return;
-    }
-
-    const int width = data.width;
-    const int height = data.height;
-    const float falloff = config.sky_access_falloff;
-
-    if (config.sky_access_multi_directional) {
-        // Prefix-scan implementation: O(W×H) instead of O(W×H×3×ProbeSteps).
-        //
-        // For each probe direction, the transmittance at (x, y) is the product of
-        // per-cell attenuation factors along the probe path from row 0 down to row y.
-        // That product satisfies a prefix-product recurrence that propagates row by row:
-        //
-        //   attenuate(x, y) = clamp(1 - opacity(x,y) * fill(x,y) * falloff, 0, 1)
-        //
-        //   tV[x][y]   = tV[x][y-1]     * attenuate(x,   y-1)   // straight up
-        //   tUL[x][y]  = tUL[x-1][y-1]  * attenuate(x-1, y-1)   // upper-left diagonal
-        //   tUR[x][y]  = tUR[x+1][y-1]  * attenuate(x+1, y-1)   // upper-right diagonal
-        //
-        // Boundary conditions (probe exits the world = full sky):
-        //   tV[x][0] = tUL[x][0] = tUR[x][0] = 1.0  (top row: look up, exit immediately)
-        //   tUL[0][y] = 1.0  (left column: UL probe exits world left)
-        //   tUR[W-1][y] = 1.0  (right column: UR probe exits world right)
-        //
-        // Within each row, all x values are independent → safe to parallelize with OMP.
-
-        // Helper: single-cell attenuation factor used in the prefix scan.
-        auto attenuate = [falloff](const WorldData& d, int x, int y) -> float {
-            const Cell& cell = d.cells[static_cast<size_t>(y) * d.width + static_cast<size_t>(x)];
-            const float opacity = Material::getProperties(cell.material_type).light.opacity;
-            const float a = 1.0f - opacity * cell.fill_ratio * falloff;
-            return (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
-        };
-
-        // Two rows of transmittance buffers (prev and curr), each holding tV/tUL/tUR.
-        std::vector<float> prev_tV(width, 1.0f);
-        std::vector<float> prev_tUL(width, 1.0f);
-        std::vector<float> prev_tUR(width, 1.0f);
-        std::vector<float> curr_tV(width);
-        std::vector<float> curr_tUL(width);
-        std::vector<float> curr_tUR(width);
-
-        // Row 0: all transmittances start at 1.0 (probes exit top immediately).
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
-#endif
-        for (int x = 0; x < width; ++x) {
-            data.colors.at(x, 0) += base_ambient; // sky_factor = 1.0
-        }
-
-        // Rows 1 … height-1: propagate prefix products from the previous row.
-        for (int y = 1; y < height; ++y) {
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
-#endif
-            for (int x = 0; x < width; ++x) {
-                // tV: straight upward — depends on cell directly above.
-                curr_tV[x] = prev_tV[x] * attenuate(data, x, y - 1);
-
-                // tUL: upper-left diagonal — depends on cell at (x-1, y-1).
-                curr_tUL[x] = (x == 0) ? 1.0f : prev_tUL[x - 1] * attenuate(data, x - 1, y - 1);
-
-                // tUR: upper-right diagonal — depends on cell at (x+1, y-1).
-                curr_tUR[x] =
-                    (x == width - 1) ? 1.0f : prev_tUR[x + 1] * attenuate(data, x + 1, y - 1);
-
-                const float sky_factor =
-                    0.5f * curr_tV[x] + 0.25f * curr_tUL[x] + 0.25f * curr_tUR[x];
-                data.colors.at(x, y) += base_ambient * sky_factor;
-            }
-
-            prev_tV.swap(curr_tV);
-            prev_tUL.swap(curr_tUL);
-            prev_tUR.swap(curr_tUR);
-        }
-        return;
-    }
-
-    // Helper to apply ambient with sky attenuation for a single cell.
-    // Opacity scales with fill ratio - partially filled cells are more transparent.
-    auto processCell = [&data, &base_ambient, falloff, width](
-                           Material::EnumType mat, int x, int y, float& sky_factor) {
-        data.colors.at(x, y) += base_ambient * sky_factor;
-        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-        const float fill = cell.fill_ratio;
-        const float base_opacity = Material::getProperties(mat).light.opacity;
-        const float effective_opacity = base_opacity * fill;
-        sky_factor *= (1.0f - effective_opacity * falloff);
-        if (sky_factor < 0.0f) {
-            sky_factor = 0.0f;
-        }
-    };
-
-    // Sky access attenuation: ambient diminishes with depth based on opacity above.
-    // Use material neighborhood cache to process 3 cells per lookup.
-    // Columns are independent - parallelize with OpenMP.
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
-#endif
-    for (int x = 0; x < width; ++x) {
-        float sky_factor = 1.0f;
-
-        // Process row 0 separately (top edge).
-        {
-            const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
-            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, 0, sky_factor);
-        }
-
-        // Process 3 cells at a time using the column from each neighborhood lookup.
-        int y = 1; // Loop variable, incremented.
-        for (; y + 2 < height; y += 3) {
-            const uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
-            const Material::EnumType mat0 =
-                static_cast<Material::EnumType>((packed >> 4) & 0xF); // y
-            const Material::EnumType mat1 =
-                static_cast<Material::EnumType>((packed >> 16) & 0xF); // y+1
-            const Material::EnumType mat2 =
-                static_cast<Material::EnumType>((packed >> 28) & 0xF); // y+2
-
-            processCell(mat0, x, y, sky_factor);
-            processCell(mat1, x, y + 1, sky_factor);
-            processCell(mat2, x, y + 2, sky_factor);
-        }
-
-        // Handle remaining rows.
-        for (; y < height; ++y) {
-            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sky_factor);
-        }
+    for (size_t i = 0; i < count; ++i) {
+        data.colors.data[i] += base_ambient;
     }
 }
 
@@ -317,6 +197,230 @@ void WorldLightCalculator::applySunlight(
 
         // Handle remaining rows (0-2 cells).
         for (; y < height; ++y) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sun);
+        }
+    }
+}
+
+void WorldLightCalculator::applySideLight(
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    auto& data = world.getData();
+    const RgbF scaled_sun = toRgbF(sun_color) * intensity;
+    const int width = data.width;
+    const int height = data.height;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
+
+    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
+        data.colors.at(x, y) += sun;
+        const auto& light_props = Material::getProperties(mat).light;
+        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const float fill = cell.fill_ratio;
+        const float effective_opacity = light_props.opacity * fill;
+        const float transmittance = 1.0f - effective_opacity;
+        sun *= transmittance;
+        const RgbF base_tint = toRgbF(light_props.tint);
+        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+        sun *= effective_tint;
+    };
+
+    // Two passes per row: left-to-right and right-to-left.
+    // Rows are independent — parallelize with OpenMP.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (int y = 0; y < height; ++y) {
+        // Left-to-right pass.
+        {
+            RgbF sun = scaled_sun;
+
+            // Process column 0 separately (left edge).
+            {
+                const uint64_t packed = grid.getMaterialNeighborhood(0, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                processCell(mat, 0, y, sun);
+            }
+
+            // Process 3 cells at a time using the center row from each neighborhood lookup.
+            // Neighborhood at (x+1, y): W=bits 12-15 (x), C=bits 16-19 (x+1), E=bits 20-23 (x+2).
+            int x = 1;
+            for (; x + 2 < width; x += 3) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x + 1, y).raw();
+                const Material::EnumType mat0 =
+                    static_cast<Material::EnumType>((packed >> 12) & 0xF);
+                const Material::EnumType mat1 =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                const Material::EnumType mat2 =
+                    static_cast<Material::EnumType>((packed >> 20) & 0xF);
+
+                processCell(mat0, x, y, sun);
+                processCell(mat1, x + 1, y, sun);
+                processCell(mat2, x + 2, y, sun);
+            }
+
+            for (; x < width; ++x) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                processCell(mat, x, y, sun);
+            }
+        }
+
+        // Right-to-left pass.
+        {
+            RgbF sun = scaled_sun;
+
+            // Process last column separately (right edge).
+            {
+                const uint64_t packed = grid.getMaterialNeighborhood(width - 1, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                processCell(mat, width - 1, y, sun);
+            }
+
+            // Process 3 cells at a time in reverse.
+            // Neighborhood at (x-1, y): E=bits 20-23 (x), C=bits 16-19 (x-1), W=bits 12-15 (x-2).
+            int x = width - 2;
+            for (; x - 2 >= 0; x -= 3) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x - 1, y).raw();
+                const Material::EnumType mat0 =
+                    static_cast<Material::EnumType>((packed >> 20) & 0xF);
+                const Material::EnumType mat1 =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                const Material::EnumType mat2 =
+                    static_cast<Material::EnumType>((packed >> 12) & 0xF);
+
+                processCell(mat0, x, y, sun);
+                processCell(mat1, x - 1, y, sun);
+                processCell(mat2, x - 2, y, sun);
+            }
+
+            for (; x >= 0; --x) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                processCell(mat, x, y, sun);
+            }
+        }
+    }
+}
+
+void WorldLightCalculator::applyDiagonalLight(
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    auto& data = world.getData();
+    const RgbF scaled_sun = toRgbF(sun_color) * intensity;
+    const int width = data.width;
+    const int height = data.height;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
+
+    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
+        data.colors.at(x, y) += sun;
+        const auto& light_props = Material::getProperties(mat).light;
+        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const float fill = cell.fill_ratio;
+        const float effective_opacity = light_props.opacity * fill;
+        const float transmittance = 1.0f - effective_opacity;
+        sun *= transmittance;
+        const RgbF base_tint = toRgbF(light_props.tint);
+        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+        sun *= effective_tint;
+    };
+
+    // Total diagonals = width + height - 1. Each diagonal is independent.
+    const int num_diags = width + height - 1;
+
+    // Top-left to bottom-right pass.
+    // Diagonal d: starts at (d, 0) if d < width, else (0, d - width + 1).
+    // Neighborhood at (x+1, y+1): NW=bits 0-3 (x,y), C=bits 16-19 (x+1,y+1), SE=bits 32-35
+    // (x+2,y+2).
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (int d = 0; d < num_diags; ++d) {
+        const int start_x = (d < width) ? d : 0;
+        const int start_y = (d < width) ? 0 : d - width + 1;
+
+        RgbF sun = scaled_sun;
+        int x = start_x;
+        int y = start_y;
+
+        // Process first cell on the diagonal.
+        if (x < width && y < height) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sun);
+            x++;
+            y++;
+        }
+
+        // Process 3 cells at a time using NW/C/SE from neighborhood.
+        for (; x + 2 < width && y + 2 < height; x += 3, y += 3) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x + 1, y + 1).raw();
+            const Material::EnumType mat0 = static_cast<Material::EnumType>((packed >> 0) & 0xF);
+            const Material::EnumType mat1 = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            const Material::EnumType mat2 = static_cast<Material::EnumType>((packed >> 32) & 0xF);
+
+            processCell(mat0, x, y, sun);
+            processCell(mat1, x + 1, y + 1, sun);
+            processCell(mat2, x + 2, y + 2, sun);
+        }
+
+        // Handle remaining cells.
+        for (; x < width && y < height; x++, y++) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sun);
+        }
+    }
+
+    // Top-right to bottom-left pass.
+    // Diagonal d: starts at (width-1-d, 0) if d < width, else (width-1, d - width + 1).
+    // Neighborhood at (x-1, y+1): NE=bits 8-11 (x,y), C=bits 16-19 (x-1,y+1), SW=bits 24-27
+    // (x-2,y+2).
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (int d = 0; d < num_diags; ++d) {
+        const int start_x = (d < width) ? width - 1 - d : width - 1;
+        const int start_y = (d < width) ? 0 : d - width + 1;
+
+        RgbF sun = scaled_sun;
+        int x = start_x;
+        int y = start_y;
+
+        // Process first cell on the diagonal.
+        if (x >= 0 && y < height) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sun);
+            x--;
+            y++;
+        }
+
+        // Process 3 cells at a time using NE/C/SW from neighborhood.
+        for (; x - 2 >= 0 && y + 2 < height; x -= 3, y += 3) {
+            const uint64_t packed = grid.getMaterialNeighborhood(x - 1, y + 1).raw();
+            const Material::EnumType mat0 = static_cast<Material::EnumType>((packed >> 8) & 0xF);
+            const Material::EnumType mat1 = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+            const Material::EnumType mat2 = static_cast<Material::EnumType>((packed >> 24) & 0xF);
+
+            processCell(mat0, x, y, sun);
+            processCell(mat1, x - 1, y + 1, sun);
+            processCell(mat2, x - 2, y + 2, sun);
+        }
+
+        // Handle remaining cells.
+        for (; x >= 0 && y < height; x--, y++) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             processCell(mat, x, y, sun);
