@@ -546,6 +546,9 @@ void World::advanceTime(double deltaTimeSeconds)
         processVelocityLimiting(scaledDeltaTime);
     }
 
+    // Snapshot duck velocities before collision resolution (material moves).
+    organism_manager_->snapshotPreCollisionState(*this);
+
     {
         ScopeTimer transfersTimer(pImpl->timers_, "update_transfers");
         pImpl->pending_moves_ = computeMaterialMoves(scaledDeltaTime);

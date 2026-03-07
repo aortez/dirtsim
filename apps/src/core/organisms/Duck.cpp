@@ -96,6 +96,7 @@ Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
     : Organism::Body(id, OrganismType::DUCK), brain_(std::move(brain))
 {
     energy_ = std::clamp(energyConfig_.startingEnergy, 0.0, 1.0);
+    health_ = std::clamp(healthConfig_.startingHealth, 0.0, 1.0);
 }
 
 Duck::~Duck() = default;
@@ -185,6 +186,37 @@ void Duck::update(World& world, double deltaTime)
     // Update ground detection first.
     updateGroundDetection(world);
 
+    // Collision damage: compare pre-collision velocity snapshot to current (post-collision).
+    if (deltaTime > 0.0 && data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+        const Cell& our_cell_for_damage = data.at(anchor_cell_.x, anchor_cell_.y);
+        const double mass = static_cast<double>(our_cell_for_damage.getMass());
+        const double vPreSq = preCollisionVelocity_.x * preCollisionVelocity_.x
+            + preCollisionVelocity_.y * preCollisionVelocity_.y;
+        const double vPostSq = our_cell_for_damage.velocity.x * our_cell_for_damage.velocity.x
+            + our_cell_for_damage.velocity.y * our_cell_for_damage.velocity.y;
+        const double kineticEnergyLost = std::max(0.0, 0.5 * mass * (vPreSq - vPostSq));
+        if (kineticEnergyLost > healthConfig_.impactEnergyThreshold) {
+            const double excess = kineticEnergyLost - healthConfig_.impactEnergyThreshold;
+            const double damage = std::pow(excess, healthConfig_.impactDamageExponent)
+                * healthConfig_.impactDamageScale;
+            applyDamage(damage);
+            collisionDamageTotal_ += damage;
+        }
+    }
+
+    // Death check before regen so zero-health isn't rescued.
+    if (health_ <= 0.0) {
+        dead_ = true;
+        return;
+    }
+
+    // Health regen.
+    health_ = std::clamp(health_ + (healthConfig_.regenRate * deltaTime), 0.0, 1.0);
+
+    // Track average health.
+    healthSum_ += health_;
+    healthSampleCount_++;
+
     // Regenerate energy before the brain decides what to do this tick.
     energy_ = std::clamp(energy_ + (energyConfig_.regenRate * deltaTime), 0.0, 1.0);
 
@@ -226,6 +258,12 @@ void Duck::update(World& world, double deltaTime)
     if (frame_counter_ % 60 == 0) {
         logPhysicsState(world);
     }
+}
+
+void Duck::applyDamage(double amount)
+{
+    health_ = std::max(0.0, health_ - amount);
+    damageTotal_ += amount;
 }
 
 DuckAction Duck::getCurrentAction() const
@@ -612,6 +650,7 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
     data.on_ground = on_ground_;
     data.facing_x = facing_.x;
     data.energy = static_cast<float>(std::clamp(energy_, 0.0, 1.0));
+    data.health = static_cast<float>(std::clamp(health_, 0.0, 1.0));
     data.delta_time_seconds = deltaTime;
 
     // Get velocity from our cell.

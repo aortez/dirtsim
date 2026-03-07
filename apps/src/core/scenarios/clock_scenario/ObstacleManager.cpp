@@ -109,6 +109,11 @@ void ObstacleManager::clearAll(World& world)
     obstacles_.clear();
 }
 
+void ObstacleManager::addObstacle(FloorObstacle obstacle)
+{
+    obstacles_.push_back(obstacle);
+}
+
 bool ObstacleManager::isHurdleAt(uint32_t x) const
 {
     for (const auto& obs : obstacles_) {

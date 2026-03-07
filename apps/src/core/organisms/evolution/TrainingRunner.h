@@ -9,6 +9,7 @@
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/organisms/evolution/OrganismTracker.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
@@ -127,6 +128,7 @@ public:
     ScenarioConfig getScenarioConfig() const;
     Result<std::monostate, std::string> setScenarioConfig(const ScenarioConfig& config);
 
+    const DuckStatsSnapshot* getDuckStatsSnapshot() const;
     const Organism::Body* getOrganism() const;
     const OrganismTrackingHistory& getOrganismTrackingHistory() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
@@ -194,6 +196,7 @@ private:
         DoorId entranceDoorId = INVALID_DOOR_ID;
         DoorId exitDoorId = INVALID_DOOR_ID;
         DoorSide side = DoorSide::LEFT;
+        bool duckReachedMiddle = false;
         bool entranceDoorClosed = false;
         bool exitDoorOpened = false;
         bool duckExitedThroughDoor = false;
@@ -201,6 +204,9 @@ private:
         double exitDoorTime = 0.0;
     };
     std::optional<DuckClockDoorState> duckClockDoors_;
+    std::optional<DuckStatsSnapshot> duckStatsSnapshot_;
+
+    void snapshotDuckStats();
 };
 
 } // namespace DirtSim
