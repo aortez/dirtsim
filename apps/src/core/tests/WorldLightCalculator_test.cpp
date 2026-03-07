@@ -39,13 +39,16 @@ protected:
         // Explicit config for testing - no ambient, pure sunlight, no diffusion.
         config = {
             .air_scatter_rate = 0.15f,
+            .bounce_intensity = 0.0f,
             .ambient_color = ColorNames::black(),
             .ambient_intensity = 0.0f,
+            .diagonal_light_enabled = false,
+            .diagonal_light_intensity = 0.0f,
             .diffusion_iterations = 0,
             .diffusion_rate = 0.0f,
-            .sky_access_enabled = false,
-            .sky_access_falloff = 0.0f,
-            .sky_access_multi_directional = false,
+            .shadow_decay_rate = 0.0f,
+            .side_light_enabled = false,
+            .side_light_intensity = 0.0f,
             .sun_color = ColorNames::white(),
             .sun_enabled = true,
             .sun_intensity = 1.0f,
@@ -255,7 +258,7 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
     // No ambient (disable sky access for uniform ambient test).
     config.ambient_color = ColorNames::black();
     config.ambient_intensity = 1.0f;
-    config.sky_access_enabled = false;
+
     calc.calculate(world, world.getGrid(), config, timers);
     float dark_brightness = ColorNames::brightness(data.colors.at(2, 3));
 
@@ -283,7 +286,6 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
     // Disable sun to isolate ambient.
     config.sun_enabled = false;
     config.ambient_color = 0x808080FF; // Mid-gray.
-    config.sky_access_enabled = false; // Uniform ambient for this test.
 
     // Intensity 1.0.
     config.ambient_intensity = 1.0f;
@@ -296,272 +298,6 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
     float brightness_2x = ColorNames::brightness(data.colors.at(2, 2));
 
     EXPECT_GT(brightness_2x, brightness_1x) << "Higher ambient intensity should be brighter";
-}
-
-TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
-{
-    World world(5, 10);
-    WorldData& data = world.getData();
-
-    // Fill with WATER (low opacity, visible color).
-    for (int y = 0; y < data.height; ++y) {
-        for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
-        }
-    }
-
-    // Wall at row 3 blocks sky access.
-    for (int x = 0; x < 5; ++x) {
-        data.at(x, 3).replaceMaterial(Material::EnumType::Wall, 1.0);
-    }
-
-    // Advance to rebuild grid cache after placing materials.
-    world.advanceTime(0.0001);
-
-    // Disable sun, use only ambient with sky access.
-    config.sun_enabled = false;
-    config.ambient_color = 0xFFFFFFFF; // White ambient.
-    config.ambient_intensity = 1.0f;
-    config.sky_access_enabled = true;
-    config.sky_access_falloff = 1.0f;
-
-    calc.calculate(world, world.getGrid(), config, timers);
-
-    // Cell above wall (row 2) should have decent ambient.
-    float above_wall = ColorNames::brightness(data.colors.at(2, 2));
-    // Cell below wall (row 5) should have reduced ambient.
-    float below_wall = ColorNames::brightness(data.colors.at(2, 5));
-
-    EXPECT_GT(above_wall, 0.2f) << "Cell above wall should have some ambient";
-    EXPECT_LT(below_wall, above_wall) << "Cell below wall should have less ambient (sky blocked)";
-}
-
-TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
-{
-    World world(10, 10);
-    WorldData& data = world.getData();
-
-    // Fill with WATER (low opacity, visible color).
-    for (int y = 0; y < data.height; ++y) {
-        for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
-        }
-    }
-
-    // Wall across row 2, but leave a gap at x=5 (vertical shaft).
-    for (int x = 0; x < 10; ++x) {
-        if (x != 5) {
-            data.at(x, 2).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-    }
-
-    // Advance to rebuild grid cache after placing materials.
-    world.advanceTime(0.0001);
-
-    // Disable sun, use only ambient with sky access.
-    config.sun_enabled = false;
-    config.ambient_color = 0xFFFFFFFF;
-    config.ambient_intensity = 1.0f;
-    config.sky_access_enabled = true;
-    config.sky_access_falloff = 1.0f;
-
-    calc.calculate(world, world.getGrid(), config, timers);
-
-    // Cell below wall (blocked) should be dimmer.
-    float blocked = ColorNames::brightness(data.colors.at(3, 5));
-    // Cell in vertical shaft should maintain higher ambient.
-    float shaft = ColorNames::brightness(data.colors.at(5, 5));
-
-    EXPECT_GT(shaft, blocked) << "Cell in shaft should be brighter than blocked cell";
-    EXPECT_GT(shaft, 0.2f) << "Cell in vertical shaft should have decent ambient";
-}
-
-TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalCreatesAtoBtoCFalloff)
-{
-    World world(21, 9);
-    WorldData& data = world.getData();
-
-    // Start with all AIR to isolate ambient sky behavior.
-    for (int y = 0; y < data.height; ++y) {
-        for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).clear();
-        }
-    }
-
-    // Roof with center opening.
-    for (int x = 0; x <= 5; ++x) {
-        data.at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0f);
-    }
-    for (int x = 14; x < data.width; ++x) {
-        data.at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0f);
-    }
-
-    // Side walls.
-    for (int y = 5; y <= 7; ++y) {
-        data.at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0f);
-        data.at(data.width - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0f);
-    }
-
-    // Floor.
-    for (int x = 0; x < data.width; ++x) {
-        data.at(x, 8).replaceMaterial(Material::EnumType::Wall, 1.0f);
-    }
-
-    // Advance to rebuild grid cache after placing materials.
-    world.advanceTime(0.0001);
-
-    config.sun_enabled = false;
-    config.ambient_color = ColorNames::white();
-    config.ambient_intensity = 1.0f;
-    config.sky_access_enabled = true;
-    config.sky_access_falloff = 1.0f;
-    config.sky_access_multi_directional = true;
-    calc.calculate(world, world.getGrid(), config, timers);
-
-    // Print lightmap with sample points for debugging.
-    spdlog::info("=== SkyAccessMultiDirectionalCreatesAtoBtoCFalloff Lightmap ===");
-    spdlog::info("Legend: X=wall, shades dark->bright, a/b/c are sampled cells");
-    std::string lightmap = calc.lightMapString(world);
-    std::istringstream iss(lightmap);
-    std::string line;
-    int row = 0;
-    while (std::getline(iss, line)) {
-        if (row == 7 && line.size() > 10) {
-            line[5] = 'b';
-            line[10] = 'a';
-        }
-        if (row == 5 && line.size() > 18) {
-            line[18] = 'c';
-        }
-        spdlog::info("{:2d}: {}", row++, line);
-    }
-
-    // a: Directly under opening (vertical and diagonal sky access).
-    const float a = ColorNames::brightness(data.colors.at(10, 7));
-    // b: Under roof edge (blocked vertically, visible through one diagonal probe).
-    const float b = ColorNames::brightness(data.colors.at(5, 7));
-    // c: Deep side pocket (blocked vertically and by both diagonals).
-    const float c = ColorNames::brightness(data.colors.at(18, 5));
-    spdlog::info("a(10,7)={:.3f}, b(5,7)={:.3f}, c(18,5)={:.3f}", a, b, c);
-
-    EXPECT_GT(a, b) << "a should be brighter than b with direct sky access";
-    EXPECT_GT(b, c) << "b should be brighter than c with one diagonal path";
-    EXPECT_GT(a, 0.95f) << "a should be near full ambient";
-    EXPECT_GT(b, 0.20f) << "b should receive measurable diagonal ambient";
-    EXPECT_LT(b, 0.30f) << "b should be dimmer than direct-lit cells";
-    EXPECT_LT(c, 0.05f) << "c should be near dark with no probe path";
-}
-
-TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalNumericalAccuracy)
-{
-    // Verify exact sky_factor values for two hand-calculable scenarios.
-    //
-    // Part 1 – All-AIR world: every cell has sky_factor = 1.0, so the result must
-    // match uniform ambient (sky_access_enabled=false) for every cell.
-    //
-    // Part 2 – Opaque wall at row 1, world 5 wide × 4 tall:
-    //   Probe weights: 0.5 vertical (V), 0.25 upper-left (UL), 0.25 upper-right (UR).
-    //   Row 0 (above wall): all probes exit the top → sky_factor = 1.0.
-    //   Row 2+ interior (0 < x < 4): V hits wall, UL hits wall, UR hits wall → 0.0.
-    //   Row 2+ left edge (x=0): V hits wall, UL exits world left (=1.0), UR hits wall
-    //     → sky_factor = 0.5×0 + 0.25×1 + 0.25×0 = 0.25.
-    //   Row 2+ right edge (x=4): symmetric → sky_factor = 0.25.
-
-    // --- Part 1: all-AIR world ---
-    {
-        World world(6, 5);
-        WorldData& data = world.getData();
-        for (int y = 0; y < data.height; ++y) {
-            for (int x = 0; x < data.width; ++x) {
-                data.at(x, y).clear();
-            }
-        }
-
-        config.sun_enabled = false;
-        config.ambient_color = ColorNames::white();
-        config.ambient_intensity = 1.0f;
-        config.sky_access_falloff = 1.0f;
-        config.diffusion_iterations = 0;
-        config.diffusion_rate = 0.0f;
-
-        // Uniform ambient (no sky access).
-        config.sky_access_enabled = false;
-        calc.calculate(world, world.getGrid(), config, timers);
-        const float uniform_brightness = ColorNames::brightness(data.colors.at(3, 2));
-
-        // Multi-directional sky access on all-AIR world should give identical brightness.
-        config.sky_access_enabled = true;
-        config.sky_access_multi_directional = true;
-        calc.calculate(world, world.getGrid(), config, timers);
-        const float sky_brightness = ColorNames::brightness(data.colors.at(3, 2));
-
-        ASSERT_GT(uniform_brightness, 0.0f) << "Uniform ambient should light the cell.";
-        EXPECT_NEAR(sky_brightness, uniform_brightness, uniform_brightness * 0.01f)
-            << "All-AIR world: multi-directional sky access should equal uniform ambient "
-               "(sky_factor=1.0 everywhere).";
-    }
-
-    // --- Part 2: opaque wall at row 1 ---
-    {
-        World world(5, 4);
-        WorldData& data = world.getData();
-
-        for (int y = 0; y < data.height; ++y) {
-            for (int x = 0; x < data.width; ++x) {
-                data.at(x, y).clear();
-            }
-        }
-        for (int x = 0; x < data.width; ++x) {
-            data.at(x, 1).replaceMaterial(Material::EnumType::Wall, 1.0f);
-        }
-        world.advanceTime(0.0001);
-
-        config.sun_enabled = false;
-        config.ambient_color = ColorNames::white();
-        config.ambient_intensity = 1.0f;
-        config.sky_access_enabled = true;
-        config.sky_access_falloff = 1.0f;
-        config.sky_access_multi_directional = true;
-        config.diffusion_iterations = 0;
-        config.diffusion_rate = 0.0f;
-        calc.calculate(world, world.getGrid(), config, timers);
-
-        // Reference brightness for cells with full sky access (row 0, all same material).
-        const float ref = ColorNames::brightness(data.colors.at(2, 0));
-        ASSERT_GT(ref, 0.0f) << "Row-0 cells must be lit (sky_factor=1.0).";
-
-        // Row 2 (immediately below the wall): all three probes hit the wall before
-        // exiting the world for every interior cell → sky_factor = 0.0.
-        // At deeper rows the diagonal probes can escape around the wall edges, so
-        // only row 2 is guaranteed to be fully blocked for interior cells.
-        {
-            constexpr int y = 2;
-            for (int x = 1; x < data.width - 1; ++x) {
-                const float b = ColorNames::brightness(data.colors.at(x, y));
-                EXPECT_LT(b, ref * 0.01f)
-                    << "Interior cell (" << x << "," << y
-                    << ") immediately below opaque wall must be dark (sky_factor=0).";
-            }
-        }
-
-        // Left-edge cells (x=0): UL probe exits world left → sky_factor = 0.25.
-        for (int y = 2; y < data.height; ++y) {
-            const float b = ColorNames::brightness(data.colors.at(0, y));
-            EXPECT_NEAR(b, ref * 0.25f, ref * 0.02f)
-                << "Left-edge cell (0," << y
-                << ") below opaque wall must have sky_factor ≈ 0.25 "
-                   "(UL probe exits world, V and UR blocked by wall).";
-        }
-
-        // Right-edge cells (x=W-1): UR probe exits world right → sky_factor = 0.25.
-        for (int y = 2; y < data.height; ++y) {
-            const float b = ColorNames::brightness(data.colors.at(data.width - 1, y));
-            EXPECT_NEAR(b, ref * 0.25f, ref * 0.02f)
-                << "Right-edge cell (" << (data.width - 1) << "," << y
-                << ") below opaque wall must have sky_factor ≈ 0.25 "
-                   "(UR probe exits world, V and UL blocked by wall).";
-        }
-    }
 }
 
 // =============================================================================
@@ -588,7 +324,6 @@ TEST_F(WorldLightCalculatorTest, PointLightIlluminatesDarkRoom)
     // Disable sun and ambient.
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
-    config.sky_access_enabled = false;
 
     // Add a point light in the center.
     PointLight torch;
@@ -650,7 +385,6 @@ TEST_F(WorldLightCalculatorTest, PointLightFalloffWithDistance)
 
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
-    config.sky_access_enabled = false;
 
     // Point light at left side.
     PointLight light;
@@ -692,7 +426,6 @@ TEST_F(WorldLightCalculatorTest, PointLightBlockedByWall)
 
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
-    config.sky_access_enabled = false;
 
     // Point light on left side of wall.
     PointLight light;
@@ -749,7 +482,6 @@ TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
 
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
-    config.sky_access_enabled = false;
 
     // Single light.
     PointLight light1;
@@ -802,7 +534,7 @@ TEST_F(WorldLightCalculatorTest, PointLightSpreadIsCircular)
     // Disable sun, ambient, and diffusion to isolate point light behavior.
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
-    config.sky_access_enabled = false;
+
     config.diffusion_iterations = 0;
     config.diffusion_rate = 0.0f;
 
@@ -949,6 +681,102 @@ TEST_F(WorldLightCalculatorTest, AirScatteringSoftensOverhangShadow)
 }
 
 // =============================================================================
+// Diagonal Light Tests
+// =============================================================================
+
+TEST_F(WorldLightCalculatorTest, DiagonalLightSoftensTopDownShadow)
+{
+    // The actual use case: an opaque object casts a shadow downward from sunlight.
+    // Diagonal light should illuminate cells in that shadow.
+    World world(20, 20);
+    WorldData& data = world.getData();
+
+    // Place a horizontal wall at row 5, spanning x=8..12 (overhang).
+    for (int x = 8; x <= 12; ++x) {
+        data.at(x, 5).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    world.advanceTime(0.0001);
+
+    // First: sunlight only, no diagonal light.
+    config.sun_enabled = true;
+    config.sun_intensity = 0.8f;
+    config.diagonal_light_enabled = false;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Cell in shadow below the wall (x=10, y=10).
+    const float shadow_no_diag = ColorNames::brightness(data.colors.at(10, 10));
+    // Cell not in shadow (x=3, y=10).
+    const float lit_no_diag = ColorNames::brightness(data.colors.at(3, 10));
+
+    spdlog::info(
+        "No diagonal light: shadow(10,10)={:.4f}, lit(3,10)={:.4f}", shadow_no_diag, lit_no_diag);
+
+    // Shadow cell should be dark, lit cell should be bright.
+    EXPECT_LT(shadow_no_diag, 0.1f) << "Shadow should be dark without diagonal light";
+    EXPECT_GT(lit_no_diag, 0.5f) << "Lit cell should be bright";
+
+    // Second: sunlight + diagonal light.
+    config.diagonal_light_enabled = true;
+    config.diagonal_light_intensity = 1.0f;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    const float shadow_with_diag = ColorNames::brightness(data.colors.at(10, 10));
+    spdlog::info("With diagonal light: shadow(10,10)={:.4f}", shadow_with_diag);
+
+    spdlog::info("=== DiagonalLightSoftensTopDownShadow Lightmap ===");
+    std::string lightmap = calc.lightMapString(world);
+    std::istringstream iss(lightmap);
+    std::string line;
+    int row = 0;
+    while (std::getline(iss, line)) {
+        spdlog::info("{:2d}: {}", row++, line);
+    }
+
+    // The shadow cell should now be significantly brighter with diagonal light.
+    EXPECT_GT(shadow_with_diag, shadow_no_diag + 0.1f)
+        << "Diagonal light should visibly brighten shadow cells. "
+        << "Without: " << shadow_no_diag << ", With: " << shadow_with_diag;
+}
+
+TEST_F(WorldLightCalculatorTest, DiagonalLightSoftensTopDownShadow200x200)
+{
+    // Same test at benchmark-scenario scale (200x200) to catch batching bugs.
+    World world(200, 200);
+    WorldData& data = world.getData();
+
+    // Place a horizontal wall at row 50, spanning x=80..120.
+    for (int x = 80; x <= 120; ++x) {
+        data.at(x, 50).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    world.advanceTime(0.0001);
+
+    // Sunlight only.
+    config.sun_enabled = true;
+    config.sun_intensity = 0.8f;
+    config.diagonal_light_enabled = false;
+    calc.calculate(world, world.getGrid(), config, timers);
+    const float shadow_no_diag = ColorNames::brightness(data.colors.at(100, 100));
+
+    // Sunlight + diagonal light.
+    config.diagonal_light_enabled = true;
+    config.diagonal_light_intensity = 1.0f;
+    calc.calculate(world, world.getGrid(), config, timers);
+    const float shadow_with_diag = ColorNames::brightness(data.colors.at(100, 100));
+
+    spdlog::info(
+        "200x200: shadow_no_diag={:.4f}, shadow_with_diag={:.4f}",
+        shadow_no_diag,
+        shadow_with_diag);
+
+    EXPECT_LT(shadow_no_diag, 0.1f) << "Shadow should be dark without diagonal light";
+    EXPECT_GT(shadow_with_diag, shadow_no_diag + 0.1f)
+        << "Diagonal light should brighten shadow at 200x200 scale. "
+        << "Without: " << shadow_no_diag << ", With: " << shadow_with_diag;
+}
+
+// =============================================================================
 // SpotLight Arc Tests (Parameterized)
 // =============================================================================
 
@@ -970,13 +798,16 @@ protected:
     {
         config = {
             .air_scatter_rate = 0.0f,
+            .bounce_intensity = 0.0f,
             .ambient_color = ColorNames::black(),
             .ambient_intensity = 0.0f,
+            .diagonal_light_enabled = false,
+            .diagonal_light_intensity = 0.0f,
             .diffusion_iterations = 0,
             .diffusion_rate = 0.0f,
-            .sky_access_enabled = false,
-            .sky_access_falloff = 0.0f,
-            .sky_access_multi_directional = false,
+            .shadow_decay_rate = 0.0f,
+            .side_light_enabled = false,
+            .side_light_intensity = 0.0f,
             .sun_color = ColorNames::white(),
             .sun_enabled = false,
             .sun_intensity = 0.0f,
