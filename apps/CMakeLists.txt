@@ -568,6 +568,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/TrainingUnsavedResultView.cpp
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
+    src/ui/rendering/VideoSurface.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/FractalAnimator.cpp
     src/ui/rendering/JuliaFractal.cpp

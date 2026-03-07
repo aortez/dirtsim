@@ -37,6 +37,7 @@ public:
         ScenarioConfig* scenarioConfig = nullptr;
         Timers* timers = nullptr;
         WorldData* worldData = nullptr;
+        std::optional<ScenarioVideoFrame>* scenarioVideoFrame = nullptr;
     };
 
     ScenarioSession() = default;
@@ -88,6 +89,7 @@ private:
         WorldData worldData;
         Timers timers;
         std::unique_ptr<NesSmolnesScenarioDriver> driver;
+        std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     };
 
     using SessionImpl = std::variant<std::monostate, GridWorldSession, NesWorldSession>;

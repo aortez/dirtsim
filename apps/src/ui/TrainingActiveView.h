@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/RenderMessage.h"
 #include "core/Result.h"
 #include "core/ScenarioConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
@@ -38,6 +39,7 @@ class Starfield;
 class TimeSeriesPlotWidget;
 class UiComponentManager;
 class UserSettingsManager;
+class VideoSurface;
 
 class TrainingActiveView {
 public:
@@ -58,7 +60,9 @@ public:
     void clearFitnessPlots();
     void updateAnimations();
 
-    void renderWorld(const WorldData& worldData);
+    void renderWorld(
+        const WorldData& worldData,
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
     void updateBestSnapshot(
         const WorldData& worldData,
         double fitness,
@@ -67,8 +71,13 @@ public:
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
         const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown);
-    void updateBestPlaybackFrame(const WorldData& worldData, double fitness, int generation);
+        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown,
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
+    void updateBestPlaybackFrame(
+        const WorldData& worldData,
+        double fitness,
+        int generation,
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
@@ -158,6 +167,9 @@ private:
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
+    std::unique_ptr<VideoSurface> videoSurface_;
+    std::unique_ptr<VideoSurface> bestVideoSurface_;
+    std::optional<ScenarioVideoFrame> bestVideoFrame_;
     std::unique_ptr<ScenarioControlsBase> scenarioControls_;
     std::unique_ptr<TimeSeriesPlotWidget> cpuCorePlot_;
     std::unique_ptr<Starfield> starfield_;

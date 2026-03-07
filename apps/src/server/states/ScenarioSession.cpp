@@ -22,7 +22,6 @@ WorldData makeDefaultNesWorldData()
     data.height = 240;
     data.cells.clear();
     data.colors.data.clear();
-    data.scenario_video_frame.reset();
     data.entities.clear();
     data.tree_vision.reset();
     return data;
@@ -231,6 +230,7 @@ Result<ScenarioSession::NesWorldAccess, ApiError> ScenarioSession::requireNesWor
             .scenarioConfig = &impl->scenarioConfig,
             .timers = &impl->timers,
             .worldData = &impl->worldData,
+            .scenarioVideoFrame = &impl->scenarioVideoFrame,
         });
 }
 
@@ -354,7 +354,7 @@ Result<std::monostate, ApiError> ScenarioSession::reset()
                     return Result<std::monostate, ApiError>::error(
                         ApiError(resetResult.errorValue()));
                 }
-                impl.worldData.scenario_video_frame.reset();
+                impl.scenarioVideoFrame.reset();
                 impl.worldData.timestep = 0;
                 return Result<std::monostate, ApiError>::okay(std::monostate{});
             }

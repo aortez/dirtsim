@@ -57,7 +57,8 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
                            .isPaused = false,
                            .timestamp = std::chrono::steady_clock::now(),
                            .scenario_id = Scenario::EnumType::Empty,
-                           .scenario_config = Config::Empty{} };
+                           .scenario_config = Config::Empty{},
+                           .scenarioVideoFrame = std::nullopt };
 
         return evt;
     }

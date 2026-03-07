@@ -1992,7 +1992,8 @@ void StateMachine::broadcastRenderMessage(
     const WorldData& data,
     const std::vector<OrganismId>& organism_grid,
     Scenario::EnumType scenario_id,
-    const ScenarioConfig& scenario_config)
+    const ScenarioConfig& scenario_config,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     if (pImpl->subscribedClients_.empty()) {
         spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
@@ -2037,8 +2038,8 @@ void StateMachine::broadcastRenderMessage(
             continue;
         }
 
-        RenderMessage msg =
-            RenderMessageUtils::packRenderMessage(data, client.renderFormat, organism_grid);
+        RenderMessage msg = RenderMessageUtils::packRenderMessage(
+            data, client.renderFormat, organism_grid, scenarioVideoFrame);
 
         // Bundle with scenario metadata for transport.
         RenderMessageFull fullMsg;

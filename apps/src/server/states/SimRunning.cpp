@@ -327,17 +327,17 @@ void SimRunning::tick(StateMachine& dsm)
         const auto now = std::chrono::steady_clock::now();
 
         dsm.getTimers().startTimer("physics_step");
-        nes.value().driver->tick(*nes.value().timers, nes.value().worldData->scenario_video_frame);
+        nes.value().driver->tick(*nes.value().timers, *nes.value().scenarioVideoFrame);
         dsm.getTimers().stopTimer("physics_step");
 
         stepCount++;
         nes.value().worldData->timestep = static_cast<int32_t>(stepCount);
 
-        if (nes.value().worldData->scenario_video_frame.has_value()) {
+        if (nes.value().scenarioVideoFrame->has_value()) {
             nes.value().worldData->width =
-                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->width);
+                static_cast<int16_t>((*nes.value().scenarioVideoFrame)->width);
             nes.value().worldData->height =
-                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->height);
+                static_cast<int16_t>((*nes.value().scenarioVideoFrame)->height);
         }
 
         // Calculate actual FPS (steps per second).
@@ -356,9 +356,13 @@ void SimRunning::tick(StateMachine& dsm)
         DIRTSIM_ASSERT(worldData != nullptr, "SimRunning: NES session missing WorldData");
         DIRTSIM_ASSERT(organismGrid != nullptr, "SimRunning: NES session missing organism grid");
 
-        if (dsm.getWebSocketService() && worldData->scenario_video_frame.has_value()) {
+        if (dsm.getWebSocketService() && nes.value().scenarioVideoFrame->has_value()) {
             dsm.broadcastRenderMessage(
-                *worldData, *organismGrid, session.getScenarioId(), session.getScenarioConfig());
+                *worldData,
+                *organismGrid,
+                session.getScenarioId(),
+                session.getScenarioConfig(),
+                *nes.value().scenarioVideoFrame);
 
             // Track FPS for frame send rate.
             if (lastFrameSendTime.time_since_epoch().count() > 0) {
@@ -664,7 +668,8 @@ void SimRunning::tick(StateMachine& dsm)
             world->getData(),
             world->getOrganismManager().getGrid(),
             session.getScenarioId(),
-            scenario->getConfig());
+            scenario->getConfig(),
+            std::nullopt);
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();

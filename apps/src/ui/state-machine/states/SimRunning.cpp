@@ -612,7 +612,12 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
 
     // Render world.
     sm.getTimers().startTimer("render_world");
-    playground_->render(*worldData, debugDrawEnabled);
+    if (evt.scenarioVideoFrame.has_value()) {
+        playground_->presentVideoFrame(evt.scenarioVideoFrame.value());
+    }
+    else {
+        playground_->render(*worldData, debugDrawEnabled);
+    }
     sm.getTimers().stopTimer("render_world");
 
     // Render neural grid (tree vision).
