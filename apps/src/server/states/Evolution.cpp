@@ -429,7 +429,7 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         .metrics = {},
     };
 
-    report.metrics.reserve(15);
+    report.metrics.reserve(18);
     report.metrics.push_back(makeFitnessMetric(
         "survival",
         "Survival",
@@ -534,6 +534,30 @@ Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBre
         breakdown.movementScore,
         std::nullopt,
         "score"));
+    report.metrics.push_back(makeFitnessMetric(
+        "health_avg",
+        "Health Avg",
+        "health",
+        breakdown.healthAverage,
+        breakdown.healthAverage,
+        std::nullopt,
+        "ratio"));
+    report.metrics.push_back(makeFitnessMetric(
+        "collision_damage",
+        "Collision Damage",
+        "health",
+        breakdown.collisionDamageTotal,
+        breakdown.collisionDamageTotal,
+        std::nullopt,
+        "damage"));
+    report.metrics.push_back(makeFitnessMetric(
+        "damage_total",
+        "Damage Total",
+        "health",
+        breakdown.damageTotal,
+        breakdown.damageTotal,
+        std::nullopt,
+        "damage"));
     report.metrics.push_back(makeFitnessMetric(
         "exit_door",
         "Exit Door",
@@ -754,6 +778,7 @@ double computeFitnessForRunner(
         .worldHeight = world->getData().height,
         .evolutionConfig = evolutionConfig,
         .finalOrganism = runner.getOrganism(),
+        .duckStatsSnapshot = runner.getDuckStatsSnapshot(),
         .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
         .treeResources = treeResourcesPtr,
         .exitedThroughDoor = status.exitedThroughDoor,

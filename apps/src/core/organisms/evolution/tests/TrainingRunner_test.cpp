@@ -1485,6 +1485,25 @@ TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
     EXPECT_TRUE(data.at(roofPos.x, roofPos.y).isAir())
         << "Roof cell should be AIR after door closes";
 
+    // ----------------------------------------------------------------
+    // Phase 2b: Run duck past the world midpoint (required for exit door).
+    // ----------------------------------------------------------------
+    const int midX = data.width / 2;
+    bool reachedMiddle = false;
+    for (int i = 0; i < 2000; ++i) {
+        const TrainingRunner::Status status = runner.step(1);
+        if (status.state != TrainingRunner::State::Running) {
+            break;
+        }
+        organism = runner.getOrganism();
+        ASSERT_NE(organism, nullptr) << "Duck died before reaching middle (step " << i << ")";
+        if (organism->getAnchorCell().x >= midX) {
+            reachedMiddle = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(reachedMiddle) << "Duck never reached the world midpoint";
+
     // Reverse the duck so it heads back toward the entrance (now exit).
     brainPtr->setReturnToEntrance();
 
