@@ -118,6 +118,10 @@ public:
     const World* getWorld() const { return world_.get(); }
     World* getWorld() { return world_.get(); }
     bool isNesScenario() const { return nesDriver_ != nullptr; }
+    const std::optional<ScenarioVideoFrame>& getScenarioVideoFrame() const
+    {
+        return nesScenarioVideoFrame_;
+    }
     const WorldData* getWorldData() const;
     const std::vector<OrganismId>* getOrganismGrid() const;
     const Timers* getTimers() const;
@@ -160,6 +164,7 @@ private:
     ScenarioConfig nesScenarioConfig_;
     WorldData nesWorldData_;
     Timers nesTimers_;
+    std::optional<ScenarioVideoFrame> nesScenarioVideoFrame_;
     OrganismId organismId_ = INVALID_ORGANISM_ID;
 
     double simTime_ = 0.0;

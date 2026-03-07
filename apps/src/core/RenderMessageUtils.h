@@ -151,7 +151,8 @@ inline std::vector<OrganismData> extractOrganisms(const std::vector<OrganismId>&
 inline RenderMessage packRenderMessage(
     const WorldData& data,
     RenderFormat::EnumType format,
-    const std::vector<OrganismId>& organism_grid)
+    const std::vector<OrganismId>& organism_grid,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     RenderMessage msg;
     msg.format = format;
@@ -160,7 +161,7 @@ inline RenderMessage packRenderMessage(
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
     msg.tree_vision = data.tree_vision;
-    msg.scenario_video_frame = data.scenario_video_frame;
+    msg.scenario_video_frame = scenarioVideoFrame;
 
     if (!msg.scenario_video_frame.has_value()) {
         // Pack cells based on format.

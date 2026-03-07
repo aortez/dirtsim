@@ -245,7 +245,7 @@ TrainingRunner::TrainingRunner(
         nesWorldData_.height = 240;
         nesWorldData_.cells.clear();
         nesWorldData_.colors.data.clear();
-        nesWorldData_.scenario_video_frame.reset();
+        nesScenarioVideoFrame_.reset();
         nesWorldData_.entities.clear();
         nesWorldData_.tree_vision.reset();
     }
@@ -556,7 +556,7 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         }
         nesScenarioConfig_ = effectiveConfig;
 
-        nesWorldData_.scenario_video_frame.reset();
+        nesScenarioVideoFrame_.reset();
         nesWorldData_.timestep = 0;
         const auto setupResult = nesDriver_->setup();
         if (setupResult.isError()) {
@@ -742,11 +742,11 @@ void TrainingRunner::runScenarioDrivenStep()
             return;
         }
 
-        nesDriver_->tick(nesTimers_, nesWorldData_.scenario_video_frame);
+        nesDriver_->tick(nesTimers_, nesScenarioVideoFrame_);
         nesWorldData_.timestep += 1;
-        if (nesWorldData_.scenario_video_frame.has_value()) {
-            nesWorldData_.width = static_cast<int16_t>(nesWorldData_.scenario_video_frame->width);
-            nesWorldData_.height = static_cast<int16_t>(nesWorldData_.scenario_video_frame->height);
+        if (nesScenarioVideoFrame_.has_value()) {
+            nesWorldData_.width = static_cast<int16_t>(nesScenarioVideoFrame_->width);
+            nesWorldData_.height = static_cast<int16_t>(nesScenarioVideoFrame_->height);
         }
     };
     tickNesDriver();

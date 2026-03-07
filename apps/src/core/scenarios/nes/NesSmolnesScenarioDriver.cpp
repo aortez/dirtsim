@@ -113,7 +113,6 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
         }
     }
 
-    lastPolledFrameCount_ = 0;
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -175,20 +174,12 @@ void NesSmolnesScenarioDriver::tick(
 
     const uint64_t framesRemaining = maxEpisodeFrames - renderedFrames;
 
-    const bool selfPacing = audioPlayer_ && audioPlayer_->isRunning();
-
     {
         ScopeTimer setControllerTimer(timers, "nes_runtime_set_controller");
         runtime_->setController1State(controller1State_);
     }
 
-    if (selfPacing) {
-        if (renderedFrames <= lastPolledFrameCount_) {
-            return;
-        }
-        lastPolledFrameCount_ = renderedFrames;
-    }
-    else {
+    {
         const uint32_t framesToRun = static_cast<uint32_t>(std::min<uint64_t>(1u, framesRemaining));
         constexpr uint32_t tickTimeoutMs = 2000;
         bool runFramesOk = false;
@@ -359,7 +350,6 @@ void NesSmolnesScenarioDriver::stopRuntime()
     runtime_->stop();
     audioPlayer_.reset();
     lastRuntimeProfilingSnapshot_.reset();
-    lastPolledFrameCount_ = 0;
 }
 
 void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)

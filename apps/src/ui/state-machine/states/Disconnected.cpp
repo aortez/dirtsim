@@ -188,7 +188,7 @@ void Disconnected::updateStatusLabel()
     if (retry_pending_) {
         const double retryIntervalSeconds = getCurrentRetryIntervalSeconds();
         auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
+        const double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
         double remaining = retryIntervalSeconds - elapsed;
         if (remaining < 0) {
             remaining = 0;
@@ -432,9 +432,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             // Copy entities (duck, sparkle, etc.).
             worldData.entities = renderMsg.entities;
 
-            // Copy scenario-native video frame if present.
-            worldData.scenario_video_frame = renderMsg.scenario_video_frame;
-
             // Create UiUpdateEvent and queue to EventSink.
             auto now = std::chrono::steady_clock::now();
             UiUpdateEvent evt{ .sequenceNum = 0,
@@ -444,7 +441,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                                .isPaused = false,
                                .timestamp = now,
                                .scenario_id = fullMsg.scenario_id,
-                               .scenario_config = fullMsg.scenario_config };
+                               .scenario_config = fullMsg.scenario_config,
+                               .scenarioVideoFrame = renderMsg.scenario_video_frame };
 
             sm.queueEvent(evt);
         }

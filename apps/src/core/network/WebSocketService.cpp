@@ -706,8 +706,8 @@ void WebSocketService::broadcastRenderMessage(
     for (const auto& [ws, format] : renderFormats) {
         if (ws && ws->isOpen()) {
             try {
-                RenderMessage msg =
-                    RenderMessageUtils::packRenderMessage(data, format, organism_grid);
+                RenderMessage msg = RenderMessageUtils::packRenderMessage(
+                    data, format, organism_grid, std::nullopt);
 
                 std::vector<std::byte> msgData;
                 zpp::bits::out out(msgData);

@@ -1,11 +1,11 @@
 /**
  * @file fbdev.c
  *
- * Legacy framebuffer device
+ * Legacy framebuffer device.
  *
- * Based on the original file from the repository
+ * Based on the original file from the repository.
  *
- * Move to a separate file
+ * Move to a separate file.
  * 2025 EDGEMTech Ltd.
  *
  * Author: EDGEMTech Ltd, Erik Tagirov (erik.tagirov@edgemtech.ch)
@@ -15,11 +15,13 @@
 /*********************
  *      INCLUDES
  *********************/
-#include <stdbool.h>
+#include <chrono>
+#include <cmath>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "lvgl/lvgl.h"
+#include "ui/lib/LoopTimingStats.h"
 #include "ui/state-machine/StateMachine.h"
 #include <spdlog/spdlog.h>
 
@@ -27,14 +29,6 @@
 #include "ui/lib/backends.h"
 #include "ui/lib/simulator_settings.h"
 #include "ui/lib/simulator_util.h"
-
-/*********************
- *      DEFINES
- *********************/
-
-/**********************
- *      TYPEDEFS
- **********************/
 
 /**********************
  *  EXTERNAL VARIABLES
@@ -55,22 +49,10 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm);
 static const char* backend_name = "FBDEV";
 
 /**********************
- *  EXTERNAL VARIABLES
- **********************/
-/**********************
- *      MACROS
- **********************/
-
-/**********************
  *   GLOBAL FUNCTIONS
  **********************/
 
-/**
- * Register the backend
- *
- * @param backend the backend descriptor
- * @description configures the descriptor
- */
+/// Register the backend.
 int backend_init_fbdev(backend_t* backend)
 {
     LV_ASSERT_NULL(backend);
@@ -90,11 +72,7 @@ int backend_init_fbdev(backend_t* backend)
  *   STATIC FUNCTIONS
  **********************/
 
-/**
- * Initialize the fbdev driver
- *
- * @return the LVGL display
- */
+/// Initialize the fbdev driver.
 static lv_display_t* init_fbdev(void)
 {
     const char* device = getenv_default("LV_LINUX_FBDEV_DEVICE", "/dev/fb0");
@@ -165,22 +143,64 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
     // objects that need to be flushed.
     constexpr uint32_t MAX_IDLE_MS = 33;
 
+    DirtSim::Ui::LoopTimingStats stats;
+    DirtSim::Ui::PhaseStats sleepStats;
+
     /* Handle LVGL tasks. */
     while (!sm.shouldExit()) {
+        auto loopStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+
         // Process UI state machine events.
+        auto eventsStart = DirtSim::Ui::LoopTimingStats::Clock::now();
         sm.processEvents();
+        double eventsMs = std::chrono::duration<double, std::milli>(
+                              DirtSim::Ui::LoopTimingStats::Clock::now() - eventsStart)
+                              .count();
 
         // Update background animations (event-driven, no timer).
         sm.updateAnimations();
 
         /* Returns the time to the next timer execution. */
+        auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
         idle_time = lv_timer_handler();
+        double timerMs = std::chrono::duration<double, std::milli>(
+                             DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
+                             .count();
+
+        // Drain events that arrived during lv_timer_handler (reduces queue delay).
+        sm.processEvents();
 
         // Cap idle time to maintain responsiveness for background-invalidated objects.
         if (idle_time > MAX_IDLE_MS) {
             idle_time = MAX_IDLE_MS;
         }
-        usleep(idle_time * 1000);
+        auto sleepStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        // Wait on event queue condvar instead of blind usleep. Wakes immediately
+        // when WebSocket thread pushes a new frame, or after idle_time — whichever first.
+        sm.waitForEvents(std::chrono::milliseconds(idle_time));
+        double sleepMs = std::chrono::duration<double, std::milli>(
+                             DirtSim::Ui::LoopTimingStats::Clock::now() - sleepStart)
+                             .count();
+
+        double loopMs = std::chrono::duration<double, std::milli>(
+                            DirtSim::Ui::LoopTimingStats::Clock::now() - loopStart)
+                            .count();
+        stats.processEvents.record(eventsMs);
+        stats.timerHandler.record(timerMs);
+        sleepStats.record(sleepMs);
+        stats.recordLoop(loopMs);
+
+        if (stats.shouldLog()) {
+            stats.log("FBDEV");
+            if (stats.loopCount > 0) {
+                spdlog::info(
+                    "  usleep: {:.2f}ms avg (max={:.2f})",
+                    sleepStats.totalMs / stats.loopCount,
+                    sleepStats.maxMs);
+            }
+            stats.reset();
+            sleepStats.reset();
+        }
     }
 
     // Process any final UI updates.

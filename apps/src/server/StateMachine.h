@@ -107,7 +107,8 @@ public:
         const WorldData& data,
         const std::vector<OrganismId>& organism_grid,
         Scenario::EnumType scenario_id,
-        const ScenarioConfig& scenario_config);
+        const ScenarioConfig& scenario_config,
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
 
     void broadcastCommand(const std::string& messageType);
     void broadcastEventData(const std::string& messageType, const std::vector<std::byte>& payload);

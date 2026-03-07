@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -81,6 +82,17 @@ public:
     {
         std::unique_lock lock(mutex_);
         return queue_.empty();
+    }
+
+    /**
+     * @brief Wait until the queue has items or the timeout expires.
+     * @param timeout Maximum time to wait.
+     * @return true if the queue has items, false if timed out.
+     */
+    bool waitFor(std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock(mutex_);
+        return cv_.wait_for(lock, timeout, [this] { return !queue_.empty() || shouldStop_; });
     }
 
     /**
