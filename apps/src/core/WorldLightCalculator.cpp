@@ -17,6 +17,51 @@
 
 namespace DirtSim {
 
+namespace {
+
+// Shared attenuation logic for directional light casts (sun, side, diagonal).
+// Adds current ray intensity to the cell, then attenuates the ray through the cell's material.
+// In air, shadows optionally decay toward full intensity (simulating sun angular width).
+void attenuateDirectionalRay(
+    WorldData& data,
+    int width,
+    const ColorNames::RgbF& scaled_sun,
+    float decay,
+    Material::EnumType mat,
+    int x,
+    int y,
+    ColorNames::RgbF& sun)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+    static const RgbF white{ 1.0f, 1.0f, 1.0f };
+
+    data.colors.at(x, y) += sun;
+
+    if (mat == Material::EnumType::Air) {
+        if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
+            sun = ColorNames::lerp(sun, scaled_sun, decay);
+        }
+        return;
+    }
+
+    const auto& light_props = Material::getProperties(mat).light;
+    const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+    const float fill = cell.fill_ratio;
+
+    // Scale opacity by fill ratio — a 50% filled cell blocks 50% as much light.
+    const float effective_opacity = light_props.opacity * fill;
+    const float transmittance = 1.0f - effective_opacity;
+    sun *= transmittance;
+
+    // Scale tinting by fill ratio — a 50% filled cell tints 50% as much.
+    const RgbF base_tint = toRgbF(light_props.tint);
+    const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+    sun *= effective_tint;
+}
+
+} // namespace
+
 void WorldLightCalculator::calculate(
     World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
 {
@@ -72,7 +117,7 @@ void WorldLightCalculator::calculate(
     // Add ambient light (after bounce so ambient isn't amplified by reflections).
     {
         ScopeTimer t(timers, "light_ambient");
-        applyAmbient(world, grid, config);
+        applyAmbient(world, config);
         ambient_boost_ = {};
     }
 
@@ -121,13 +166,10 @@ void WorldLightCalculator::clearLight(World& world)
     data.colors.clear(ColorNames::RgbF{});
 }
 
-void WorldLightCalculator::applyAmbient(
-    World& world, const GridOfCells& grid, const LightConfig& config)
+void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
-
-    (void)grid;
 
     auto& data = world.getData();
     const RgbF base_ambient =
@@ -153,37 +195,6 @@ void WorldLightCalculator::applySunlight(
     const RgbF scaled_sun = toRgbF(sun_color) * intensity;
     const int width = data.width;
     const int height = data.height;
-    const RgbF white{ 1.0f, 1.0f, 1.0f };
-
-    // Helper to apply sunlight attenuation for a single cell.
-    // Opacity and tinting scale with fill ratio - partially filled cells are more transparent.
-    // In air, shadows decay — light recovers toward full intensity, simulating sun angular width.
-    // Decay only applies when the ray still has meaningful energy (not fully blocked by a wall).
-    auto processCell = [&data, &white, width, &scaled_sun, decay](
-                           Material::EnumType mat, int x, int y, RgbF& sun) {
-        data.colors.at(x, y) += sun;
-
-        if (mat == Material::EnumType::Air) {
-            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
-                sun = ColorNames::lerp(sun, scaled_sun, decay);
-            }
-            return;
-        }
-
-        const auto& light_props = Material::getProperties(mat).light;
-        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-        const float fill = cell.fill_ratio;
-
-        // Scale opacity by fill ratio - a 50% filled cell blocks 50% as much light.
-        const float effective_opacity = light_props.opacity * fill;
-        const float transmittance = 1.0f - effective_opacity;
-        sun *= transmittance;
-
-        // Scale tinting by fill ratio - a 50% filled cell tints 50% as much.
-        const RgbF base_tint = toRgbF(light_props.tint);
-        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
-        sun *= effective_tint;
-    };
 
     // Cast sunlight from top of world downward per column.
     // Use material neighborhood cache to process 3 cells per lookup.
@@ -198,7 +209,7 @@ void WorldLightCalculator::applySunlight(
         {
             const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, 0, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, 0, sun);
         }
 
         // Process 3 cells at a time using the column from each neighborhood lookup.
@@ -214,16 +225,16 @@ void WorldLightCalculator::applySunlight(
             const Material::EnumType mat2 =
                 static_cast<Material::EnumType>((packed >> 28) & 0xF); // y+2
 
-            processCell(mat0, x, y, sun);
-            processCell(mat1, x, y + 1, sun);
-            processCell(mat2, x, y + 2, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat0, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat1, x, y + 1, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat2, x, y + 2, sun);
         }
 
         // Handle remaining rows (0-2 cells).
         for (; y < height; ++y) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
         }
     }
 }
@@ -238,29 +249,6 @@ void WorldLightCalculator::applySideLight(
     const RgbF scaled_sun = toRgbF(sun_color) * intensity;
     const int width = data.width;
     const int height = data.height;
-    const RgbF white{ 1.0f, 1.0f, 1.0f };
-
-    auto processCell = [&data, &white, width, &scaled_sun, decay](
-                           Material::EnumType mat, int x, int y, RgbF& sun) {
-        data.colors.at(x, y) += sun;
-
-        if (mat == Material::EnumType::Air) {
-            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
-                sun = ColorNames::lerp(sun, scaled_sun, decay);
-            }
-            return;
-        }
-
-        const auto& light_props = Material::getProperties(mat).light;
-        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-        const float fill = cell.fill_ratio;
-        const float effective_opacity = light_props.opacity * fill;
-        const float transmittance = 1.0f - effective_opacity;
-        sun *= transmittance;
-        const RgbF base_tint = toRgbF(light_props.tint);
-        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
-        sun *= effective_tint;
-    };
 
     // Two passes per row: left-to-right and right-to-left.
     // Rows are independent — parallelize with OpenMP.
@@ -277,7 +265,7 @@ void WorldLightCalculator::applySideLight(
                 const uint64_t packed = grid.getMaterialNeighborhood(0, y).raw();
                 const Material::EnumType mat =
                     static_cast<Material::EnumType>((packed >> 16) & 0xF);
-                processCell(mat, 0, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat, 0, y, sun);
             }
 
             // Process 3 cells at a time using the center row from each neighborhood lookup.
@@ -292,16 +280,16 @@ void WorldLightCalculator::applySideLight(
                 const Material::EnumType mat2 =
                     static_cast<Material::EnumType>((packed >> 20) & 0xF);
 
-                processCell(mat0, x, y, sun);
-                processCell(mat1, x + 1, y, sun);
-                processCell(mat2, x + 2, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat0, x, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat1, x + 1, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat2, x + 2, y, sun);
             }
 
             for (; x < width; ++x) {
                 const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
                 const Material::EnumType mat =
                     static_cast<Material::EnumType>((packed >> 16) & 0xF);
-                processCell(mat, x, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
             }
         }
 
@@ -314,7 +302,7 @@ void WorldLightCalculator::applySideLight(
                 const uint64_t packed = grid.getMaterialNeighborhood(width - 1, y).raw();
                 const Material::EnumType mat =
                     static_cast<Material::EnumType>((packed >> 16) & 0xF);
-                processCell(mat, width - 1, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat, width - 1, y, sun);
             }
 
             // Process 3 cells at a time in reverse.
@@ -329,16 +317,16 @@ void WorldLightCalculator::applySideLight(
                 const Material::EnumType mat2 =
                     static_cast<Material::EnumType>((packed >> 12) & 0xF);
 
-                processCell(mat0, x, y, sun);
-                processCell(mat1, x - 1, y, sun);
-                processCell(mat2, x - 2, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat0, x, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat1, x - 1, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat2, x - 2, y, sun);
             }
 
             for (; x >= 0; --x) {
                 const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
                 const Material::EnumType mat =
                     static_cast<Material::EnumType>((packed >> 16) & 0xF);
-                processCell(mat, x, y, sun);
+                attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
             }
         }
     }
@@ -477,29 +465,6 @@ void WorldLightCalculator::applyDiagonalLight(
     const RgbF scaled_sun = toRgbF(sun_color) * intensity;
     const int width = data.width;
     const int height = data.height;
-    const RgbF white{ 1.0f, 1.0f, 1.0f };
-
-    auto processCell = [&data, &white, width, &scaled_sun, decay](
-                           Material::EnumType mat, int x, int y, RgbF& sun) {
-        data.colors.at(x, y) += sun;
-
-        if (mat == Material::EnumType::Air) {
-            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
-                sun = ColorNames::lerp(sun, scaled_sun, decay);
-            }
-            return;
-        }
-
-        const auto& light_props = Material::getProperties(mat).light;
-        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-        const float fill = cell.fill_ratio;
-        const float effective_opacity = light_props.opacity * fill;
-        const float transmittance = 1.0f - effective_opacity;
-        sun *= transmittance;
-        const RgbF base_tint = toRgbF(light_props.tint);
-        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
-        sun *= effective_tint;
-    };
 
     // Total diagonals = width + height - 1. Each diagonal is independent.
     const int num_diags = width + height - 1;
@@ -523,7 +488,7 @@ void WorldLightCalculator::applyDiagonalLight(
         if (x < width && y < height) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
             x++;
             y++;
         }
@@ -535,16 +500,16 @@ void WorldLightCalculator::applyDiagonalLight(
             const Material::EnumType mat1 = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             const Material::EnumType mat2 = static_cast<Material::EnumType>((packed >> 32) & 0xF);
 
-            processCell(mat0, x, y, sun);
-            processCell(mat1, x + 1, y + 1, sun);
-            processCell(mat2, x + 2, y + 2, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat0, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat1, x + 1, y + 1, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat2, x + 2, y + 2, sun);
         }
 
         // Handle remaining cells.
         for (; x < width && y < height; x++, y++) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
         }
     }
 
@@ -567,7 +532,7 @@ void WorldLightCalculator::applyDiagonalLight(
         if (x >= 0 && y < height) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
             x--;
             y++;
         }
@@ -579,16 +544,16 @@ void WorldLightCalculator::applyDiagonalLight(
             const Material::EnumType mat1 = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             const Material::EnumType mat2 = static_cast<Material::EnumType>((packed >> 24) & 0xF);
 
-            processCell(mat0, x, y, sun);
-            processCell(mat1, x - 1, y + 1, sun);
-            processCell(mat2, x - 2, y + 2, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat0, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat1, x - 1, y + 1, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat2, x - 2, y + 2, sun);
         }
 
         // Handle remaining cells.
         for (; x >= 0 && y < height; x--, y++) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
             const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
-            processCell(mat, x, y, sun);
+            attenuateDirectionalRay(data, width, scaled_sun, decay, mat, x, y, sun);
         }
     }
 }

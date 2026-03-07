@@ -46,7 +46,7 @@ public:
     void setAmbientBoost(ColorNames::RgbF boost);
 
 private:
-    void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);
+    void applyAmbient(World& world, const LightConfig& config);
     void applyBounce(World& world, const GridOfCells& grid, float bounce_intensity);
     void applyDiagonalLight(
         World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay);

@@ -319,7 +319,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return getAmbientColorIndex(s.light.ambient_color);
                             } },
-                      { .label = "Ambient",
+                      { .label = "Ambient Int",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,
@@ -429,6 +429,22 @@ AllColumnConfigs createAllColumnConfigs()
                                            bool e) { s.light.side_light_enabled = e; },
                         .enableGetter =
                             [](const PhysicsSettings& s) { return s.light.side_light_enabled; } },
+                      { .label = "Shadow Decay",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 0,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.shadow_decay_rate = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.shadow_decay_rate);
+                            } },
                       { .label = "Side",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
