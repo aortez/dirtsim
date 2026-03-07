@@ -69,13 +69,6 @@ void BenchmarkScenario::setup(World& world)
             .at(x, world.getData().height - 1)
             .replaceMaterial(Material::EnumType::Wall, 1.0); // Bottom wall.
     }
-    for (int y = 0; y < world.getData().height; ++y) {
-        world.getData().at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0); // Left wall.
-        world.getData()
-            .at(world.getData().width - 1, y)
-            .replaceMaterial(Material::EnumType::Wall, 1.0); // Right wall.
-    }
-
     // Fill bottom 1/3 with water.
     int waterStartY = world.getData().height - (world.getData().height / 3);
     for (int y = waterStartY; y < world.getData().height - 1; ++y) {

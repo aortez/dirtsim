@@ -182,13 +182,14 @@ Launch server, UI, and audio with a single command:
 Capture PNG screenshots from the UI display:
 
 ```bash
-# Capture from local UI (default: localhost:7070)
+# Capture from local UI (default: localhost:7070).
 ./build-debug/bin/cli screenshot output.png
 
-# Capture from remote UI (Raspberry Pi)
-./build-debug/bin/cli screenshot --address ws://dirtsim.local:7070 screenshot.png
+# Capture from remote UI via SSH.
+ssh dirtsim.local "dirtsim-cli screenshot /tmp/screenshot.png" && \
+  scp dirtsim.local:/tmp/screenshot.png screenshot.png
 
-# Custom timeout (default: 5000ms)
+# Custom timeout (default: 5000ms).
 ./build-debug/bin/cli screenshot --timeout 10000 output.png
 ```
 

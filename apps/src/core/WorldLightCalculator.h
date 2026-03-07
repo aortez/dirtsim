@@ -46,7 +46,10 @@ public:
     void setAmbientBoost(ColorNames::RgbF boost);
 
 private:
-    void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);
+    void applyAmbient(World& world, const LightConfig& config);
+    void applyBounce(World& world, const GridOfCells& grid, float bounce_intensity);
+    void applyDiagonalLight(
+        World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay);
     void applyDiffusion(
         World& world, const GridOfCells& grid, int iterations, float rate, float air_scatter_rate);
     void applyEmissiveCells(World& world);
@@ -54,9 +57,12 @@ private:
     void applyMaterialColors(World& world);
     void applyPointLight(const PointLight& light, World& world);
     void applyPointLights(World& world, const GridOfCells& grid);
+    void applySideLight(
+        World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay);
     void applyRotatingLight(const RotatingLight& light, World& world);
     void applySpotLight(const SpotLight& light, World& world);
-    void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
+    void applySunlight(
+        World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay);
     void buildOpticalBuffer(const WorldData& data);
     void clearLight(World& world);
     float getSpotAngularFactor(
