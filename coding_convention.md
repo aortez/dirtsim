@@ -91,7 +91,6 @@ SLOG_INFO("Cleaning up processes");
 Make illegal states impossible to represent (e.g. ASSERT rather than returning early).
 
 ## Misc
-- don't use std::move unless required, just make a copy
 - switches: strategy is to handle every case and try to assert if they're missed
 - designated initializers please
 - Exit early to reduce scope and nesting! It makes things easier to understand, due to less nesting and shorter variable lifespans.

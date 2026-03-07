@@ -65,6 +65,12 @@ void attenuateDirectionalRay(
 void WorldLightCalculator::calculate(
     World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
 {
+    ScopeTimer total_timer(timers, "light_calculation");
+
+    if (!config.enabled) {
+        return;
+    }
+
     auto& data = world.getData();
 
     // Ensure colors buffer is sized correctly.

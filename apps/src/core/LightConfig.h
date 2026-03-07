@@ -14,6 +14,7 @@ struct LightConfig {
     float diagonal_light_intensity;
     int diffusion_iterations;
     float diffusion_rate;
+    bool enabled;
     float shadow_decay_rate;
     bool side_light_enabled;
     float side_light_intensity;

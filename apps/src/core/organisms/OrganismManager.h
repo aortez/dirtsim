@@ -28,7 +28,6 @@ enum class MultiCellShape;
  * - Create/destroy organisms (trees, ducks, etc.)
  * - Track cell-to-organism mapping
  * - Update all organisms each tick
- * - Apply bone forces for structural integrity
  * - Handle cell transfers from physics system
  */
 class OrganismManager {
@@ -103,9 +102,6 @@ public:
     void removeCellsFromOrganism(OrganismId id, const std::vector<Vector2i>& positions);
     void swapOrganisms(Vector2i pos1, Vector2i pos2);
     void moveOrganismCell(Vector2i from, Vector2i to, OrganismId organism_id);
-
-    // Physics integration.
-    void applyBoneForces(World& world, double deltaTime);
 
     // Snapshot pre-collision velocities for all active ducks.
     void snapshotPreCollisionState(const World& world);
