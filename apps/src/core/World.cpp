@@ -1205,10 +1205,6 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
         friction_calc.calculateAndApplyFrictionForces(*this, deltaTime);
     }
 
-    // Apply organism bone forces.
-    ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-    organism_manager_->applyBoneForces(*this, deltaTime);
-
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
         ScopeTimer viscosityTimer(timers, "apply_viscous_forces");
@@ -1263,7 +1259,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 }
 
                 // Get the total pending force (includes gravity, pressure, cohesion,
-                // adhesion, friction, viscosity, bones, etc).
+                // adhesion, friction, viscosity, etc).
                 Vector2d net_force = cell.pending_force;
 
                 // Apply F = ma: acceleration = force / mass.

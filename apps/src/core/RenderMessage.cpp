@@ -13,16 +13,6 @@ void from_json(const nlohmann::json& j, BasicCell& cell)
     cell = ReflectSerializer::from_json<BasicCell>(j);
 }
 
-void to_json(nlohmann::json& j, const BoneData& bone)
-{
-    j = ReflectSerializer::to_json(bone);
-}
-
-void from_json(const nlohmann::json& j, BoneData& bone)
-{
-    bone = ReflectSerializer::from_json<BoneData>(j);
-}
-
 void to_json(nlohmann::json& j, const DebugCell& cell)
 {
     j = ReflectSerializer::to_json(cell);

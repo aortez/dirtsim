@@ -426,9 +426,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.organism_ids =
                 RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
 
-            // Copy bone data for structural visualization.
-            worldData.bones = renderMsg.bones;
-
             // Copy tree vision data if present.
             worldData.tree_vision = renderMsg.tree_vision;
 
