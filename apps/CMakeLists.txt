@@ -693,6 +693,15 @@ target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread ${AVAHI_LI
 target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-os-manager PRIVATE ${DIRTSIM_WARNINGS})
 
+# APU WAV writer tool (standalone, for audible testing).
+add_executable(apu-wav-writer
+    src/core/scenarios/nes/SmolnesApuWavWriter.c
+    src/core/scenarios/nes/SmolnesApu.c
+)
+target_include_directories(apu-wav-writer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_options(apu-wav-writer PRIVATE ${DIRTSIM_WARNINGS})
+target_link_libraries(apu-wav-writer PRIVATE m)
+
 # Audio synthesis executable.
 add_executable(dirtsim-audio
     src/audio/main.cpp
