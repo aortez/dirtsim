@@ -191,7 +191,6 @@ advanceTime(deltaTime)
 ├── Pressure phases
 ├── resolveForces()
 │   ├── Accumulate forces (gravity, pressure, cohesion, etc.)
-│   ├── applyBoneForces()  [DISABLED - bones not created]
 │   └── Apply F=ma to each cell → velocity
 ├── organism_manager->update()  [MOVED EARLIER]
 ├── Velocity limiting
@@ -215,7 +214,7 @@ advanceTime(deltaTime)
 └── processMaterialMoves()
 ```
 
-**Note:** The bones system is disabled during rigid body implementation. Bones are not created (createBonesForCell is a no-op), so applyBoneForces does nothing. The rigid body system replaces bones for structural integrity and bones will instead be used for other kinds of connections.
+**Note:** The bones system was removed. The rigid body system replaced bones for structural integrity.
 
 ### Phase 3: Ground Support (DEFERRED - Simpler approach implemented)
 
@@ -290,7 +289,7 @@ Once multi-cell validation passes:
 - All multi-cell tests passing (10/10)
 
 #### Phase 1: Cleanup (Complete)
-- ✅ Disabled bones - `Organism::createBonesForCell()` returns early
+- ✅ Removed bones system entirely
 - ✅ Removed support system - Cleaned up legacy support code
 - ✅ is_rigid never existed - Design doc updated
 
@@ -477,7 +476,7 @@ advanceTime(deltaTime)
 ### 🎯 Next Steps
 
 **Completed (Phases 1-4.1):**
-1. ✅ Cleanup: Removed support system, disabled bones
+1. ✅ Cleanup: Removed support system and bones
 2. ✅ Rigid body foundation: Unified velocity, skip organism cells in world physics
 3. ✅ Ground support & friction: Contact-based support, material-specific friction
 4. ✅ Component extraction: 3 base components with 49 tests

@@ -26,6 +26,7 @@ LightConfig getDefaultLightConfig()
         .diagonal_light_intensity = 0.4f,
         .diffusion_iterations = 2,
         .diffusion_rate = 0.6f,
+        .enabled = true,
         .shadow_decay_rate = 0.0f,
         .side_light_enabled = true,
         .side_light_intensity = 0.2f,
