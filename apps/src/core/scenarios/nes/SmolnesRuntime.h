@@ -64,8 +64,31 @@ public:
     bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    struct ApuSnapshot {
+        bool pulse1Enabled = false;
+        bool pulse2Enabled = false;
+        bool triangleEnabled = false;
+        bool noiseEnabled = false;
+        uint8_t pulse1LengthCounter = 0;
+        uint8_t pulse2LengthCounter = 0;
+        uint8_t triangleLengthCounter = 0;
+        uint8_t noiseLengthCounter = 0;
+        uint16_t pulse1TimerPeriod = 0;
+        uint16_t pulse2TimerPeriod = 0;
+        uint16_t triangleTimerPeriod = 0;
+        uint16_t noiseTimerPeriod = 0;
+        uint8_t pulse1Duty = 0;
+        uint8_t pulse2Duty = 0;
+        bool noiseMode = false;
+        bool frameCounterMode5Step = false;
+        uint64_t registerWriteCount = 0;
+        uint64_t totalSamplesGenerated = 0;
+    };
+
     std::optional<MemorySnapshot> copyMemorySnapshot() const;
     std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
+    std::optional<ApuSnapshot> copyApuSnapshot() const;
+    uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
     std::string getLastError() const;
 
 private:

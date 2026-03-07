@@ -1,5 +1,6 @@
 #include "SmolnesRuntimeBackend.h"
 
+#include "SmolnesApu.h"
 #include <SDL2/SDL.h>
 #include <errno.h>
 #include <pthread.h>
@@ -17,6 +18,8 @@
 #endif
 
 extern SMOLNES_THREAD_LOCAL uint8_t frame_buffer_palette[61440];
+
+static SMOLNES_THREAD_LOCAL SmolnesApuState gApuState;
 
 struct SmolnesRuntimeHandle {
     pthread_cond_t runtimeCond;
@@ -70,6 +73,12 @@ struct SmolnesRuntimeHandle {
     uint8_t rendererStub;
     uint8_t textureStub;
     uint8_t windowStub;
+
+    SmolnesApuSnapshot apuSnapshot;
+    bool hasApuSnapshot;
+    float apuSampleBuffer[SMOLNES_APU_SAMPLE_COPY_MAX];
+    uint32_t apuSampleBufferCount;
+    uint64_t apuSampleBufferLastIndex;
 
     char lastError[256];
     char romPath[1024];
@@ -265,6 +274,7 @@ static void* runtimeThreadMain(void* arg)
     resetPpuPhaseBreakdown();
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
+    smolnesApuInit(&gApuState, 48000.0);
     char* argv[] = { "smolnes", runtime->romPath };
     const int exitCode = smolnesRuntimeEntryPoint(2, argv);
 
@@ -695,6 +705,24 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
 #define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
 #define SMOLNES_EVENT_POLL_END smolnesRuntimeWrappedEventPollEnd
+static void smolnesRuntimeWrappedApuWrite(uint16_t addr, uint8_t value)
+{
+    smolnesApuWrite(&gApuState, addr, value);
+}
+
+static uint8_t smolnesRuntimeWrappedApuRead(uint16_t addr)
+{
+    return smolnesApuRead(&gApuState, addr);
+}
+
+static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
+{
+    smolnesApuClock(&gApuState, cycles);
+}
+
+#define SMOLNES_APU_WRITE(addr, value) smolnesRuntimeWrappedApuWrite(addr, value)
+#define SMOLNES_APU_READ(addr) smolnesRuntimeWrappedApuRead(addr)
+#define SMOLNES_APU_CLOCK(cycles) smolnesRuntimeWrappedApuClock(cycles)
 #define SMOLNES_TLS SMOLNES_THREAD_LOCAL
 #define main smolnesRuntimeEntryPoint
 
@@ -721,6 +749,9 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
 #undef SMOLNES_EVENT_POLL_END
+#undef SMOLNES_APU_WRITE
+#undef SMOLNES_APU_READ
+#undef SMOLNES_APU_CLOCK
 #undef SMOLNES_TLS
 #undef main
 
@@ -729,6 +760,17 @@ static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
     const double snapshotStartMs = monotonicNowMs();
     memcpy(runtime->cpuRamSnapshot, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
     memcpy(runtime->prgRamSnapshot, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+
+    // Copy APU snapshot and samples.
+    smolnesApuGetSnapshot(&gApuState, &runtime->apuSnapshot);
+    runtime->apuSampleBufferCount = smolnesApuCopySamples(
+        &gApuState,
+        runtime->apuSampleBuffer,
+        SMOLNES_APU_SAMPLE_COPY_MAX,
+        runtime->apuSampleBufferLastIndex);
+    runtime->apuSampleBufferLastIndex = smolnesApuGetSampleCount(&gApuState);
+    runtime->hasApuSnapshot = true;
+
     runtime->memorySnapshotCopyMs += monotonicNowMs() - snapshotStartMs;
     runtime->memorySnapshotCopyCalls++;
     runtime->hasMemorySnapshot = true;
@@ -837,6 +879,11 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     memset(runtime->latestPaletteFrame, 0, sizeof(runtime->latestPaletteFrame));
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
+    memset(&runtime->apuSnapshot, 0, sizeof(runtime->apuSnapshot));
+    runtime->hasApuSnapshot = false;
+    memset(runtime->apuSampleBuffer, 0, sizeof(runtime->apuSampleBuffer));
+    runtime->apuSampleBufferCount = 0;
+    runtime->apuSampleBufferLastIndex = 0;
     runtime->controller1State = 0;
     runtime->threadRunning = true;
 
@@ -1117,4 +1164,51 @@ void smolnesRuntimeGetLastErrorCopy(
     pthread_mutex_lock(&mutableRuntime->runtimeMutex);
     snprintf(buffer, bufferSize, "%s", mutableRuntime->lastError);
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+}
+
+bool smolnesRuntimeCopyApuSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut)
+{
+    if (runtime == NULL || snapshotOut == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->hasApuSnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    *snapshotOut = mutableRuntime->apuSnapshot;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyApuSamples(
+    const SmolnesRuntimeHandle* runtime,
+    float* buffer,
+    uint32_t maxSamples,
+    uint32_t* samplesOut)
+{
+    if (runtime == NULL || buffer == NULL || samplesOut == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->hasApuSnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        *samplesOut = 0;
+        return false;
+    }
+
+    uint32_t count = mutableRuntime->apuSampleBufferCount;
+    if (count > maxSamples) {
+        count = maxSamples;
+    }
+    memcpy(buffer, mutableRuntime->apuSampleBuffer, count * sizeof(float));
+    *samplesOut = count;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
 }

@@ -50,6 +50,8 @@ public:
     std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const override;
     std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const override;
     std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const override;
+    std::optional<SmolnesRuntime::ApuSnapshot> copyRuntimeApuSnapshot() const;
+    uint32_t copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const;
     std::string getRuntimeResolvedRomId() const override;
     std::string getRuntimeLastError() const override;
     void setController1State(uint8_t buttonMask) override;

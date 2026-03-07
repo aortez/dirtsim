@@ -415,6 +415,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
     src/core/scenarios/nes/NesSuperTiltBroGameAdapter.cpp
+    src/core/scenarios/nes/SmolnesApu.c
     src/core/scenarios/nes/SmolnesRuntime.cpp
     src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
@@ -838,6 +839,9 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
+    src/core/scenarios/tests/SmolnesApu_test.cpp
+    src/core/scenarios/tests/SmolnesApuRegisterCapture_test.cpp
+    src/core/scenarios/tests/SmolnesApuSampleBuffer_test.cpp
     src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
 
     # Organism tests.
