@@ -614,6 +614,7 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
     sm.getTimers().startTimer("render_world");
     if (evt.scenarioVideoFrame.has_value()) {
         playground_->presentVideoFrame(evt.scenarioVideoFrame.value());
+        sm.eventProcessor.requestYield();
     }
     else {
         playground_->render(*worldData, debugDrawEnabled);

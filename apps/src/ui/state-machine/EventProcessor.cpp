@@ -22,7 +22,8 @@ void EventProcessor::processEvent(StateMachine& sm, const Event& eventVariant)
 
 void EventProcessor::processEventsFromQueue(StateMachine& sm)
 {
-    while (!eventQueue->queue.empty()) {
+    yieldRequested_ = false;
+    while (!eventQueue->queue.empty() && !yieldRequested_) {
         auto event = eventQueue->queue.tryPop();
         if (event.has_value()) {
             LOG_DEBUG(State, "Processing event: {}", getEventName(event.value()));
@@ -45,6 +46,11 @@ bool EventProcessor::hasEvents() const
 bool EventProcessor::waitForEvents(std::chrono::milliseconds timeout)
 {
     return eventQueue->queue.waitFor(timeout);
+}
+
+void EventProcessor::requestYield()
+{
+    yieldRequested_ = true;
 }
 
 size_t EventProcessor::queueSize() const

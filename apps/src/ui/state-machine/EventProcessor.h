@@ -22,8 +22,12 @@ public:
     bool waitForEvents(std::chrono::milliseconds timeout);
     size_t queueSize() const;
     void clearQueue();
+    void requestYield();
 
     std::shared_ptr<EventQueue> eventQueue;
+
+private:
+    bool yieldRequested_ = false;
 };
 
 } // namespace Ui
