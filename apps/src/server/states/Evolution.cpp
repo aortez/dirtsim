@@ -2838,14 +2838,6 @@ void Evolution::adjustConcurrency()
     }
 }
 
-// void Evolution::clearBestPlaybackRunner()
-// {
-//     bestPlaybackRunner_.reset();
-//     bestPlaybackDuckSecondPassActive_ = false;
-//     bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
-//     lastBestPlaybackStepTime_ = {};
-// }
-
 void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
 {
     bestPlayback_.individual = individual;
