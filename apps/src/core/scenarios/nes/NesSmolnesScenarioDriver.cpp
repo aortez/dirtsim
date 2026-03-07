@@ -2,6 +2,8 @@
 
 #include "core/LoggingChannels.h"
 #include "core/ScopeTimer.h"
+#include "core/scenarios/nes/NesAudioPlayer.h"
+#include "core/scenarios/nes/SmolnesApu.h"
 
 #include <algorithm>
 #include <limits>
@@ -94,6 +96,15 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 
     runtime_->setController1State(controller1State_);
     lastRuntimeProfilingSnapshot_ = runtime_->copyProfilingSnapshot();
+
+    if (audioPlaybackEnabled_ && !audioPlayer_) {
+        audioPlayer_ = std::make_unique<NesAudioPlayer>();
+        if (!audioPlayer_->start()) {
+            LOG_WARN(Scenario, "NesSmolnesScenarioDriver: Audio playback failed to start.");
+            audioPlayer_.reset();
+        }
+    }
+
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -199,6 +210,16 @@ void NesSmolnesScenarioDriver::tick(
         scenarioVideoFrame.reset();
     }
 
+    if (audioPlayer_ && audioPlayer_->isRunning()) {
+        ScopeTimer audioTimer(timers, "nes_audio_push_samples");
+        float apuSamples[SMOLNES_APU_SAMPLE_COPY_MAX];
+        const uint32_t sampleCount =
+            runtime_->copyApuSamples(apuSamples, SMOLNES_APU_SAMPLE_COPY_MAX);
+        if (sampleCount > 0) {
+            audioPlayer_->pushSamples(apuSamples, sampleCount);
+        }
+    }
+
     updateRuntimeProfilingTimers(timers);
 }
 
@@ -282,11 +303,34 @@ void NesSmolnesScenarioDriver::setController1State(uint8_t buttonMask)
     }
 }
 
+void NesSmolnesScenarioDriver::setAudioPlaybackEnabled(bool enabled)
+{
+    audioPlaybackEnabled_ = enabled;
+    if (enabled && runtime_ && runtime_->isRunning() && !audioPlayer_) {
+        audioPlayer_ = std::make_unique<NesAudioPlayer>();
+        if (!audioPlayer_->start()) {
+            LOG_WARN(Scenario, "NesSmolnesScenarioDriver: Audio playback failed to start.");
+            audioPlayer_.reset();
+        }
+    }
+    if (!enabled) {
+        audioPlayer_.reset();
+    }
+}
+
+void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
+{
+    if (audioPlayer_) {
+        audioPlayer_->setVolumePercent(percent);
+    }
+}
+
 void NesSmolnesScenarioDriver::stopRuntime()
 {
     if (!runtime_) {
         return;
     }
+    audioPlayer_.reset();
     runtime_->stop();
     lastRuntimeProfilingSnapshot_.reset();
 }

@@ -15,6 +15,8 @@
 
 namespace DirtSim {
 
+class NesAudioPlayer;
+
 /**
  * Shared, composition-based driver for NES scenarios that run via SmolNES.
  *
@@ -56,6 +58,9 @@ public:
     std::string getRuntimeLastError() const override;
     void setController1State(uint8_t buttonMask) override;
 
+    void setAudioPlaybackEnabled(bool enabled);
+    void setAudioVolumePercent(int percent);
+
 private:
     void stopRuntime();
     void updateRuntimeProfilingTimers(Timers& timers);
@@ -66,7 +71,9 @@ private:
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
     std::unique_ptr<SmolnesRuntime> runtime_;
+    std::unique_ptr<NesAudioPlayer> audioPlayer_;
     std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
+    bool audioPlaybackEnabled_ = false;
     uint8_t controller1State_ = 0;
 };
 

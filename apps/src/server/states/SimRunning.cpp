@@ -258,10 +258,20 @@ void SimRunning::onEnter(StateMachine& dsm)
                 toString(defaultScenarioId),
                 startResult.errorValue().message);
         }
+        else if (session.isNesSession()) {
+            auto nes = session.requireNesWorld();
+            if (nes.isValue()) {
+                nes.value().driver->setAudioPlaybackEnabled(true);
+            }
+        }
         return;
     }
 
     if (session.isNesSession()) {
+        auto nes = session.requireNesWorld();
+        if (nes.isValue()) {
+            nes.value().driver->setAudioPlaybackEnabled(true);
+        }
         spdlog::info(
             "SimRunning: Resuming NES session (scenario='{}')", toString(session.getScenarioId()));
         spdlog::info("SimRunning: Ready to run simulation (stepCount={})", stepCount);
@@ -312,6 +322,7 @@ void SimRunning::tick(StateMachine& dsm)
         }
 
         nes.value().driver->setController1State(controller1Buttons);
+        nes.value().driver->setAudioVolumePercent(dsm.getUserSettings().volumePercent);
 
         const auto now = std::chrono::steady_clock::now();
 
@@ -1011,7 +1022,13 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
     prev_start_button_.clear();
     prev_back_button_.clear();
     prev_y_button_.clear();
-    if (!session.isNesSession()) {
+    if (session.isNesSession()) {
+        auto nes = session.requireNesWorld();
+        if (nes.isValue()) {
+            nes.value().driver->setAudioPlaybackEnabled(true);
+        }
+    }
+    else {
         nes_controller1_override_.reset();
     }
 
