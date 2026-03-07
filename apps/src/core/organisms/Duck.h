@@ -124,6 +124,7 @@ public:
     bool isDead() const { return dead_; }
     void applyDamage(double amount);
     double getCollisionDamageTotal() const { return collisionDamageTotal_; }
+    double getDamageTotal() const { return damageTotal_; }
 
     void snapshotPreCollisionVelocity(Vector2d velocity) { preCollisionVelocity_ = velocity; }
     Vector2d getPreCollisionVelocity() const { return preCollisionVelocity_; }
@@ -172,6 +173,7 @@ private:
     double healthSum_ = 0.0;
     uint64_t healthSampleCount_ = 0;
     double collisionDamageTotal_ = 0.0;
+    double damageTotal_ = 0.0;
     bool dead_ = false;
     Vector2d preCollisionVelocity_{ 0.0, 0.0 };
 

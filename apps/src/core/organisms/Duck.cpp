@@ -207,6 +207,7 @@ void Duck::update(World& world, double deltaTime)
     // Death check before regen so zero-health isn't rescued.
     if (health_ <= 0.0) {
         dead_ = true;
+        return;
     }
 
     // Health regen.
@@ -262,6 +263,7 @@ void Duck::update(World& world, double deltaTime)
 void Duck::applyDamage(double amount)
 {
     health_ = std::max(0.0, health_ - amount);
+    damageTotal_ += amount;
 }
 
 DuckAction Duck::getCurrentAction() const
