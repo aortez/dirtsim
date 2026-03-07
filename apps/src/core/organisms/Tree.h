@@ -114,6 +114,7 @@ private:
 
     void executeCommand(World& world);
     void processBrainDecision(World& world);
+    void pruneDisconnectedCells(World& world);
     void updateResources(const World& world, double deltaTime);
 };
 

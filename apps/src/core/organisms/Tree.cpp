@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <queue>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -250,6 +251,8 @@ bool Tree::isEnergyReservedForCommand(const TreeCommand& cmd, double energyCost)
 
 void Tree::update(World& world, double deltaTime)
 {
+    pruneDisconnectedCells(world);
+
     age_seconds_ += deltaTime;
 
     // Tick down current command timer.
@@ -754,6 +757,98 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     }
 
     return data;
+}
+
+void Tree::pruneDisconnectedCells(World& world)
+{
+    WorldData& data = world.getData();
+    const Vector2i anchor = getAnchorCell();
+
+    // Flood fill from anchor to find connected structural cells.
+    std::unordered_set<Vector2i> connected;
+    std::queue<Vector2i> frontier;
+
+    frontier.push(anchor);
+
+    while (!frontier.empty()) {
+        Vector2i pos = frontier.front();
+        frontier.pop();
+
+        // Bounds check.
+        if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
+            continue;
+        }
+
+        // Already visited.
+        if (connected.count(pos)) {
+            continue;
+        }
+
+        // Must belong to this organism.
+        if (world.getOrganismManager().at(pos) != id_) {
+            continue;
+        }
+
+        Cell& cell = data.at(pos.x, pos.y);
+
+        // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
+        if (cell.material_type != Material::EnumType::Seed
+            && cell.material_type != Material::EnumType::Root
+            && cell.material_type != Material::EnumType::Wood) {
+            continue;
+        }
+
+        connected.insert(pos);
+
+        // Add 4 cardinal neighbors to frontier.
+        frontier.push({ pos.x - 1, pos.y });
+        frontier.push({ pos.x + 1, pos.y });
+        frontier.push({ pos.x, pos.y - 1 });
+        frontier.push({ pos.x, pos.y + 1 });
+    }
+
+    // Prune disconnected and empty cells.
+    std::vector<Vector2i> to_remove;
+    for (const auto& pos : getCells()) {
+        if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
+            to_remove.push_back(pos); // Out of bounds.
+            continue;
+        }
+
+        Cell& cell = data.at(pos.x, pos.y);
+
+        // Remove empty cells (cleanup after transfers).
+        if (cell.isEmpty()) {
+            to_remove.push_back(pos);
+            spdlog::debug("Pruned empty cell: organism {} cell ({},{}) now AIR", id_, pos.x, pos.y);
+            continue;
+        }
+
+        // Remove cells that lost organism ownership (transferred to another organism).
+        OrganismId cell_owner = world.getOrganismManager().at(pos);
+        if (cell_owner != id_) {
+            to_remove.push_back(pos);
+            spdlog::debug(
+                "Pruned transferred cell: organism {} cell ({},{}) now belongs to organism {}",
+                id_,
+                pos.x,
+                pos.y,
+                cell_owner);
+            continue;
+        }
+
+        // TODO: Prune structurally disconnected ROOT/WOOD cells.
+        // Disabled until Phase 4 (Structure Movement) is implemented.
+        // Without position constraints, organism cells can create temporary gaps
+        // during transfers, causing false disconnection detections.
+        // For now, we only clean up empty cells and transferred cells above.
+        (void)connected; // Suppress unused variable warning.
+    }
+
+    // Update organism's cell tracking.
+    if (!to_remove.empty()) {
+        world.getOrganismManager().removeCellsFromOrganism(id_, to_remove);
+    }
 }
 
 void Tree::addCellToLocalShape(Vector2i localPos, Material::EnumType material, double fillRatio)
