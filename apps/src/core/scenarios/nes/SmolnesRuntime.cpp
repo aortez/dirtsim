@@ -193,6 +193,22 @@ uint32_t SmolnesRuntime::copyApuSamples(float* buffer, uint32_t maxSamples) cons
     return samplesOut;
 }
 
+void SmolnesRuntime::setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetApuSampleCallback(runtimeHandle_, callback, userdata);
+}
+
+void SmolnesRuntime::setSelfPacing(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetSelfPacing(runtimeHandle_, enabled);
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {

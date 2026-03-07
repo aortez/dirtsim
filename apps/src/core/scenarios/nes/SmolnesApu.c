@@ -203,6 +203,8 @@ void smolnesApuInit(SmolnesApuState* state, double outputSampleRate)
     state->noise.shiftRegister = 1;
     state->outputSampleRate = outputSampleRate;
     state->cyclesPerSample = kCpuClockRate / outputSampleRate;
+    state->sampleCallback = NULL;
+    state->sampleCallbackUserdata = NULL;
 }
 
 void smolnesApuWrite(SmolnesApuState* state, uint16_t addr, uint8_t value)
@@ -467,6 +469,9 @@ void smolnesApuClock(SmolnesApuState* state, uint32_t cpuCycles)
             state->writePos =
                 (state->writePos + 1) % SMOLNES_APU_SAMPLE_BUFFER_SIZE;
             state->totalSampleCount++;
+            if (state->sampleCallback) {
+                state->sampleCallback(averaged, state->sampleCallbackUserdata);
+            }
             state->sampleAccumulator = 0.0;
             state->sampleAccumulatorCount = 0;
         }

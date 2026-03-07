@@ -3,6 +3,7 @@
 #include "SmolnesApu.h"
 #include <SDL2/SDL.h>
 #include <errno.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -82,7 +83,17 @@ struct SmolnesRuntimeHandle {
 
     char lastError[256];
     char romPath[1024];
+
+    SmolnesApuSampleCallback apuSampleCallback;
+    void* apuSampleCallbackUserdata;
+
+    bool selfPacing;
+    double selfPacingOriginMs;
+    uint64_t selfPacingOriginFrame;
 };
+
+// NTSC NES frame period: CPU clock 1789773 Hz / 29780.5 cycles per frame ≈ 60.0988 fps.
+static const double kNtscFramePeriodMs = 1000.0 / 60.0988;
 
 static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
 static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
@@ -644,22 +655,63 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
-    while (!runtime->stopRequested && runtime->renderedFrames >= runtime->targetFrames) {
-        const double waitStartMs = monotonicNowMs();
-        pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
-        runtime->runtimeThreadIdleWaitMs += monotonicNowMs() - waitStartMs;
-        runtime->runtimeThreadIdleWaitCalls++;
+
+    if (runtime->selfPacing) {
+        double sleepMs = 0.0;
+        if (!runtime->stopRequested) {
+            gApuState.sampleCallback = runtime->apuSampleCallback;
+            gApuState.sampleCallbackUserdata = runtime->apuSampleCallbackUserdata;
+            const double presentStartMs = monotonicNowMs();
+            refreshMemorySnapshotLocked(runtime);
+            ++runtime->renderedFrames;
+            runtime->latestFrameId = runtime->renderedFrames;
+            if (runtime->targetFrames < runtime->renderedFrames) {
+                runtime->targetFrames = runtime->renderedFrames;
+            }
+            runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
+            runtime->runtimeThreadPresentCalls++;
+            pthread_cond_broadcast(&runtime->runtimeCond);
+
+            if (runtime->selfPacingOriginMs == 0.0) {
+                runtime->selfPacingOriginMs = monotonicNowMs();
+                runtime->selfPacingOriginFrame = runtime->renderedFrames;
+            }
+            const double elapsed =
+                (double)(runtime->renderedFrames - runtime->selfPacingOriginFrame);
+            const double nextFrameMs =
+                runtime->selfPacingOriginMs + elapsed * kNtscFramePeriodMs;
+            sleepMs = nextFrameMs - monotonicNowMs();
+        }
+        pthread_mutex_unlock(&runtime->runtimeMutex);
+
+        if (sleepMs > 0.5) {
+            struct timespec ts;
+            ts.tv_sec = (time_t)(sleepMs / 1000.0);
+            ts.tv_nsec = (long)(fmod(sleepMs, 1000.0) * 1000000.0);
+            clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
+        }
     }
-    if (!runtime->stopRequested) {
-        const double presentStartMs = monotonicNowMs();
-        refreshMemorySnapshotLocked(runtime);
-        ++runtime->renderedFrames;
-        runtime->latestFrameId = runtime->renderedFrames;
-        runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
-        runtime->runtimeThreadPresentCalls++;
-        pthread_cond_broadcast(&runtime->runtimeCond);
+    else {
+        while (!runtime->stopRequested && !runtime->selfPacing
+            && runtime->renderedFrames >= runtime->targetFrames) {
+            const double waitStartMs = monotonicNowMs();
+            pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
+            runtime->runtimeThreadIdleWaitMs += monotonicNowMs() - waitStartMs;
+            runtime->runtimeThreadIdleWaitCalls++;
+        }
+        if (!runtime->stopRequested && !runtime->selfPacing) {
+            gApuState.sampleCallback = runtime->apuSampleCallback;
+            gApuState.sampleCallbackUserdata = runtime->apuSampleCallbackUserdata;
+            const double presentStartMs = monotonicNowMs();
+            refreshMemorySnapshotLocked(runtime);
+            ++runtime->renderedFrames;
+            runtime->latestFrameId = runtime->renderedFrames;
+            runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
+            runtime->runtimeThreadPresentCalls++;
+            pthread_cond_broadcast(&runtime->runtimeCond);
+        }
+        pthread_mutex_unlock(&runtime->runtimeMutex);
     }
-    pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
 int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
@@ -884,6 +936,11 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     memset(runtime->apuSampleBuffer, 0, sizeof(runtime->apuSampleBuffer));
     runtime->apuSampleBufferCount = 0;
     runtime->apuSampleBufferLastIndex = 0;
+    runtime->apuSampleCallback = NULL;
+    runtime->apuSampleCallbackUserdata = NULL;
+    runtime->selfPacing = false;
+    runtime->selfPacingOriginMs = 0.0;
+    runtime->selfPacingOriginFrame = 0;
     runtime->controller1State = 0;
     runtime->threadRunning = true;
 
@@ -1211,4 +1268,31 @@ bool smolnesRuntimeCopyApuSamples(
     *samplesOut = count;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
+}
+
+void smolnesRuntimeSetApuSampleCallback(
+    SmolnesRuntimeHandle* runtime,
+    SmolnesApuSampleCallback callback,
+    void* userdata)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->apuSampleCallback = callback;
+    runtime->apuSampleCallbackUserdata = userdata;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->selfPacing = enabled;
+    runtime->selfPacingOriginMs = 0.0;
+    runtime->selfPacingOriginFrame = 0;
+    pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
 }

@@ -95,6 +95,8 @@ public:
     std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
     std::optional<ApuSnapshot> copyApuSnapshot() const;
     uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
+    void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
+    void setSelfPacing(bool enabled);
     std::string getLastError() const;
 
 private:

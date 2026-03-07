@@ -86,6 +86,9 @@ bool smolnesRuntimeCopyApuSamples(
     const SmolnesRuntimeHandle* runtime, float* buffer, uint32_t maxSamples, uint32_t* samplesOut);
 void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
+void smolnesRuntimeSetApuSampleCallback(
+    SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
+void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled);
 
 #ifdef __cplusplus
 }

@@ -177,6 +177,19 @@ NesAudioPlayer::Stats NesAudioPlayer::getStats() const
     return s;
 }
 
+void NesAudioPlayer::pushSample(float sample)
+{
+    uint32_t wp = writePos_.load(std::memory_order_relaxed);
+    const uint32_t rp = readPos_.load(std::memory_order_acquire);
+    if (wp - rp >= kRingCapacity) {
+        overrunCount_.fetch_add(1, std::memory_order_relaxed);
+        samplesDroppedCount_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    ring_[wp % kRingCapacity] = sample;
+    writePos_.store(wp + 1, std::memory_order_release);
+}
+
 void NesAudioPlayer::pushSamples(const float* samples, uint32_t count)
 {
     uint32_t wp = writePos_.load(std::memory_order_relaxed);

@@ -25,6 +25,7 @@ public:
     void stop();
     bool isRunning() const;
 
+    void pushSample(float sample);
     void pushSamples(const float* samples, uint32_t count);
     void setVolumePercent(int percent);
 
