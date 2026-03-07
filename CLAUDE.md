@@ -16,7 +16,8 @@ Read:
 - yocto/README.md - how to deploy
 
 Don't add code to support backwards compatibility unless I tell you to.
-If you're going to edit any code, first read coding_convention.md.
+
+Use extended thinking always, otherwise your responses aren't good enough.
 
 ## Building
 ```bash
