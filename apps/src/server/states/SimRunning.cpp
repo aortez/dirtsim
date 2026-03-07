@@ -258,10 +258,20 @@ void SimRunning::onEnter(StateMachine& dsm)
                 toString(defaultScenarioId),
                 startResult.errorValue().message);
         }
+        else if (session.isNesSession()) {
+            auto nes = session.requireNesWorld();
+            if (nes.isValue()) {
+                nes.value().driver->setAudioPlaybackEnabled(true);
+            }
+        }
         return;
     }
 
     if (session.isNesSession()) {
+        auto nes = session.requireNesWorld();
+        if (nes.isValue()) {
+            nes.value().driver->setAudioPlaybackEnabled(true);
+        }
         spdlog::info(
             "SimRunning: Resuming NES session (scenario='{}')", toString(session.getScenarioId()));
         spdlog::info("SimRunning: Ready to run simulation (stepCount={})", stepCount);
@@ -312,6 +322,7 @@ void SimRunning::tick(StateMachine& dsm)
         }
 
         nes.value().driver->setController1State(controller1Buttons);
+        nes.value().driver->setAudioVolumePercent(dsm.getUserSettings().volumePercent);
 
         const auto now = std::chrono::steady_clock::now();
 
@@ -849,6 +860,50 @@ State::Any SimRunning::onEvent(const Api::GravitySet::Cwc& cwc, StateMachine& /*
     return std::move(*this);
 }
 
+State::Any SimRunning::onEvent(const Api::NesApuGet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::NesApuGet::Response;
+
+    auto nes = session.requireNesWorld();
+    if (nes.isError()) {
+        cwc.sendResponse(Response::error(ApiError("NesApuGet requires active NES scenario")));
+        return std::move(*this);
+    }
+
+    const auto snapshot = nes.value().driver->copyRuntimeApuSnapshot();
+    if (!snapshot.has_value()) {
+        cwc.sendResponse(Response::error(ApiError("APU snapshot not available")));
+        return std::move(*this);
+    }
+
+    Api::NesApuGet::Okay okay;
+    okay.pulse1_enabled = snapshot->pulse1Enabled;
+    okay.pulse2_enabled = snapshot->pulse2Enabled;
+    okay.triangle_enabled = snapshot->triangleEnabled;
+    okay.noise_enabled = snapshot->noiseEnabled;
+    okay.pulse1_length_counter = snapshot->pulse1LengthCounter;
+    okay.pulse2_length_counter = snapshot->pulse2LengthCounter;
+    okay.triangle_length_counter = snapshot->triangleLengthCounter;
+    okay.noise_length_counter = snapshot->noiseLengthCounter;
+    okay.pulse1_timer_period = snapshot->pulse1TimerPeriod;
+    okay.pulse2_timer_period = snapshot->pulse2TimerPeriod;
+    okay.triangle_timer_period = snapshot->triangleTimerPeriod;
+    okay.noise_timer_period = snapshot->noiseTimerPeriod;
+    okay.pulse1_duty = snapshot->pulse1Duty;
+    okay.pulse2_duty = snapshot->pulse2Duty;
+    okay.noise_mode = snapshot->noiseMode;
+    okay.frame_counter_mode_5step = snapshot->frameCounterMode5Step;
+    okay.register_write_count = snapshot->registerWriteCount;
+    okay.total_samples_generated = snapshot->totalSamplesGenerated;
+    okay.audio_underruns = snapshot->audioUnderruns;
+    okay.audio_overruns = snapshot->audioOverruns;
+    okay.audio_callback_calls = snapshot->audioCallbackCalls;
+    okay.audio_samples_dropped = snapshot->audioSamplesDropped;
+
+    cwc.sendResponse(Response::okay(okay));
+    return std::move(*this);
+}
+
 State::Any SimRunning::onEvent(const Api::NesInputSet::Cwc& cwc, StateMachine& /*dsm*/)
 {
     using Response = Api::NesInputSet::Response;
@@ -1010,7 +1065,13 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
     prev_start_button_.clear();
     prev_back_button_.clear();
     prev_y_button_.clear();
-    if (!session.isNesSession()) {
+    if (session.isNesSession()) {
+        auto nes = session.requireNesWorld();
+        if (nes.isValue()) {
+            nes.value().driver->setAudioPlaybackEnabled(true);
+        }
+    }
+    else {
         nes_controller1_override_.reset();
     }
 

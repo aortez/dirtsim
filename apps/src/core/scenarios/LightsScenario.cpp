@@ -56,7 +56,6 @@ void LightsScenario::setup(World& world)
     // Enable sun with full light.
     world.getPhysicsSettings().light.sun_enabled = true;
     world.getPhysicsSettings().light.sun_intensity = 1.0;
-    world.getPhysicsSettings().light.sky_access_enabled = true;
 
     // Bottom row: 4 5x5 groups of materials.
     // Water (x=0-4, y=15-19).

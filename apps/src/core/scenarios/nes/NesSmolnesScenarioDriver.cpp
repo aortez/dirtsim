@@ -2,9 +2,15 @@
 
 #include "core/LoggingChannels.h"
 #include "core/ScopeTimer.h"
+#include "core/scenarios/nes/NesAudioPlayer.h"
 
 #include <algorithm>
 #include <limits>
+
+extern "C" void nesApuSampleCallback(float sample, void* userdata)
+{
+    static_cast<DirtSim::NesAudioPlayer*>(userdata)->pushSample(sample);
+}
 
 namespace DirtSim {
 
@@ -94,6 +100,20 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 
     runtime_->setController1State(controller1State_);
     lastRuntimeProfilingSnapshot_ = runtime_->copyProfilingSnapshot();
+
+    if (audioPlaybackEnabled_ && !audioPlayer_) {
+        audioPlayer_ = std::make_unique<NesAudioPlayer>();
+        if (!audioPlayer_->start()) {
+            LOG_WARN(Scenario, "NesSmolnesScenarioDriver: Audio playback failed to start.");
+            audioPlayer_.reset();
+        }
+        else {
+            runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
+            runtime_->setSelfPacing(true);
+        }
+    }
+
+    lastPolledFrameCount_ = 0;
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -154,35 +174,45 @@ void NesSmolnesScenarioDriver::tick(
     }
 
     const uint64_t framesRemaining = maxEpisodeFrames - renderedFrames;
-    const uint32_t framesToRun = static_cast<uint32_t>(std::min<uint64_t>(1u, framesRemaining));
 
-    constexpr uint32_t tickTimeoutMs = 2000;
+    const bool selfPacing = audioPlayer_ && audioPlayer_->isRunning();
+
     {
         ScopeTimer setControllerTimer(timers, "nes_runtime_set_controller");
         runtime_->setController1State(controller1State_);
     }
 
-    bool runFramesOk = false;
-    {
-        ScopeTimer runFramesTimer(timers, "nes_runtime_run_frames");
-        runFramesOk = runtime_->runFrames(framesToRun, tickTimeoutMs);
-    }
-    if (!runFramesOk) {
-        updateRuntimeProfilingTimers(timers);
-        uint64_t failureRenderedFrameCount = 0;
-        {
-            ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
-            failureRenderedFrameCount = runtime_->getRenderedFrameCount();
+    if (selfPacing) {
+        if (renderedFrames <= lastPolledFrameCount_) {
+            return;
         }
-        LOG_ERROR(
-            Scenario,
-            "NesSmolnesScenarioDriver: smolnes frame step failed for '{}' after {} frames: {}",
-            toString(scenarioId_),
-            failureRenderedFrameCount,
-            runtime_->getLastError());
-        scenarioVideoFrame.reset();
-        stopRuntime();
-        return;
+        lastPolledFrameCount_ = renderedFrames;
+    }
+    else {
+        const uint32_t framesToRun = static_cast<uint32_t>(std::min<uint64_t>(1u, framesRemaining));
+        constexpr uint32_t tickTimeoutMs = 2000;
+        bool runFramesOk = false;
+        {
+            ScopeTimer runFramesTimer(timers, "nes_runtime_run_frames");
+            runFramesOk = runtime_->runFrames(framesToRun, tickTimeoutMs);
+        }
+        if (!runFramesOk) {
+            updateRuntimeProfilingTimers(timers);
+            uint64_t failureRenderedFrameCount = 0;
+            {
+                ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
+                failureRenderedFrameCount = runtime_->getRenderedFrameCount();
+            }
+            LOG_ERROR(
+                Scenario,
+                "NesSmolnesScenarioDriver: smolnes frame step failed for '{}' after {} frames: {}",
+                toString(scenarioId_),
+                failureRenderedFrameCount,
+                runtime_->getLastError());
+            scenarioVideoFrame.reset();
+            stopRuntime();
+            return;
+        }
     }
 
     const bool hadScenarioFrame = scenarioVideoFrame.has_value();
@@ -245,6 +275,30 @@ std::optional<SmolnesRuntime::MemorySnapshot> NesSmolnesScenarioDriver::copyRunt
     return runtime_->copyMemorySnapshot();
 }
 
+std::optional<SmolnesRuntime::ApuSnapshot> NesSmolnesScenarioDriver::copyRuntimeApuSnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    auto snapshot = runtime_->copyApuSnapshot();
+    if (snapshot.has_value() && audioPlayer_) {
+        const auto stats = audioPlayer_->getStats();
+        snapshot->audioUnderruns = stats.underruns;
+        snapshot->audioOverruns = stats.overruns;
+        snapshot->audioCallbackCalls = stats.callbackCalls;
+        snapshot->audioSamplesDropped = stats.samplesDropped;
+    }
+    return snapshot;
+}
+
+uint32_t NesSmolnesScenarioDriver::copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return 0;
+    }
+    return runtime_->copyApuSamples(buffer, maxSamples);
+}
+
 std::string NesSmolnesScenarioDriver::getRuntimeResolvedRomId() const
 {
     return runtimeResolvedRomId_;
@@ -266,13 +320,46 @@ void NesSmolnesScenarioDriver::setController1State(uint8_t buttonMask)
     }
 }
 
+void NesSmolnesScenarioDriver::setAudioPlaybackEnabled(bool enabled)
+{
+    audioPlaybackEnabled_ = enabled;
+    if (enabled && runtime_ && runtime_->isRunning() && !audioPlayer_) {
+        audioPlayer_ = std::make_unique<NesAudioPlayer>();
+        if (!audioPlayer_->start()) {
+            LOG_WARN(Scenario, "NesSmolnesScenarioDriver: Audio playback failed to start.");
+            audioPlayer_.reset();
+        }
+        else {
+            runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
+            runtime_->setSelfPacing(true);
+        }
+    }
+    if (!enabled) {
+        if (runtime_) {
+            runtime_->setSelfPacing(false);
+            runtime_->setApuSampleCallback(nullptr, nullptr);
+        }
+        audioPlayer_.reset();
+    }
+}
+
+void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
+{
+    if (audioPlayer_) {
+        audioPlayer_->setVolumePercent(percent);
+    }
+}
+
 void NesSmolnesScenarioDriver::stopRuntime()
 {
     if (!runtime_) {
         return;
     }
+    runtime_->setSelfPacing(false);
     runtime_->stop();
+    audioPlayer_.reset();
     lastRuntimeProfilingSnapshot_.reset();
+    lastPolledFrameCount_ = 0;
 }
 
 void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)

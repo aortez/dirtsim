@@ -53,6 +53,18 @@
 #define SMOLNES_PPU_PHASE_CLEAR()
 #endif
 
+#ifndef SMOLNES_APU_WRITE
+#define SMOLNES_APU_WRITE(addr, value)
+#endif
+
+#ifndef SMOLNES_APU_READ
+#define SMOLNES_APU_READ(addr) 0
+#endif
+
+#ifndef SMOLNES_APU_CLOCK
+#define SMOLNES_APU_CLOCK(cycles)
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -241,6 +253,11 @@ uint8_t mem(uint8_t lo, uint8_t hi, uint8_t val, uint8_t write) {
     break;
 
   case 4:
+    // APU registers: $4000-$4013, $4015 (write+read), $4017 (write).
+    if (write && lo <= 19) { SMOLNES_APU_WRITE(addr, val); }
+    if (write && lo == 21) { SMOLNES_APU_WRITE(addr, val); }
+    if (write && lo == 23) { SMOLNES_APU_WRITE(addr, val); }
+    if (!write && lo == 21) { return SMOLNES_APU_READ(addr); }
     if (write && lo == 20) // $4014 OAM DMA
       for (uint16_t i = 256; i--;)
         oam[i] = mem(i, val, 0, 0);
@@ -695,6 +712,7 @@ loop:
   // Update PPU, which runs 3 times faster than CPU. Each CPU instruction
   // takes at least 2 cycles.
   SMOLNES_CPU_STEP_END();
+  SMOLNES_APU_CLOCK(cycles + 2);
   SMOLNES_PPU_STEP_BEGIN();
   for (tmp = cycles * 3 + 6; tmp--;) {
     if (ppumask & 24) {
