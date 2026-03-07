@@ -196,7 +196,8 @@ void Duck::update(World& world, double deltaTime)
             + our_cell_for_damage.velocity.y * our_cell_for_damage.velocity.y;
         const double kineticEnergyLost = std::max(0.0, 0.5 * mass * (vPreSq - vPostSq));
         if (kineticEnergyLost > healthConfig_.impactEnergyThreshold) {
-            const double damage = (kineticEnergyLost - healthConfig_.impactEnergyThreshold)
+            const double excess = kineticEnergyLost - healthConfig_.impactEnergyThreshold;
+            const double damage = std::pow(excess, healthConfig_.impactDamageExponent)
                 * healthConfig_.impactDamageScale;
             applyDamage(damage);
             collisionDamageTotal_ += damage;

@@ -58,9 +58,10 @@ public:
 
     struct HealthConfig {
         double startingHealth = 1.0;
-        double regenRate = 0.05;
+        double regenRate = 0.10;
         double impactEnergyThreshold = 5.0;
-        double impactDamageScale = 0.003;
+        double impactDamageExponent = 2.0;
+        double impactDamageScale = 0.000128;
     };
 
     /**
