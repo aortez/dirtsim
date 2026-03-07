@@ -124,6 +124,10 @@ bool NesAudioPlayer::start(int sampleRate)
 
     readPos_.store(0, std::memory_order_relaxed);
     writePos_.store(0, std::memory_order_relaxed);
+    underrunCount_.store(0, std::memory_order_relaxed);
+    overrunCount_.store(0, std::memory_order_relaxed);
+    callbackCount_.store(0, std::memory_order_relaxed);
+    samplesDroppedCount_.store(0, std::memory_order_relaxed);
 
     SDL_PauseAudioDevice(deviceId_, 0);
 
@@ -163,19 +167,36 @@ void NesAudioPlayer::setVolumePercent(int percent)
     volumePercent_.store(std::clamp(percent, 0, 100), std::memory_order_relaxed);
 }
 
+NesAudioPlayer::Stats NesAudioPlayer::getStats() const
+{
+    Stats s;
+    s.underruns = underrunCount_.load(std::memory_order_relaxed);
+    s.overruns = overrunCount_.load(std::memory_order_relaxed);
+    s.callbackCalls = callbackCount_.load(std::memory_order_relaxed);
+    s.samplesDropped = samplesDroppedCount_.load(std::memory_order_relaxed);
+    return s;
+}
+
 void NesAudioPlayer::pushSamples(const float* samples, uint32_t count)
 {
     uint32_t wp = writePos_.load(std::memory_order_relaxed);
-    uint32_t rp = readPos_.load(std::memory_order_acquire);
+    const uint32_t rp = readPos_.load(std::memory_order_acquire);
+    const uint32_t available = kRingCapacity - (wp - rp);
 
-    for (uint32_t i = 0; i < count; ++i) {
-        // If ring is full, drop oldest sample.
-        if (wp - rp >= kRingCapacity) {
-            rp++;
-            readPos_.store(rp, std::memory_order_release);
+    if (count <= available) {
+        for (uint32_t i = 0; i < count; ++i) {
+            ring_[wp % kRingCapacity] = samples[i];
+            wp++;
         }
-        ring_[wp % kRingCapacity] = samples[i];
-        wp++;
+    }
+    else {
+        // Write what fits, drop the rest.
+        overrunCount_.fetch_add(1, std::memory_order_relaxed);
+        samplesDroppedCount_.fetch_add(count - available, std::memory_order_relaxed);
+        for (uint32_t i = 0; i < available; ++i) {
+            ring_[wp % kRingCapacity] = samples[i];
+            wp++;
+        }
     }
 
     writePos_.store(wp, std::memory_order_release);
@@ -204,17 +225,20 @@ void NesAudioPlayer::renderToStream(Uint8* stream, int len)
     const uint32_t wp = writePos_.load(std::memory_order_acquire);
     const uint32_t available = wp - rp;
 
+    callbackCount_.fetch_add(1, std::memory_order_relaxed);
     const int samplesToRead = std::min(static_cast<int>(available), frames);
-    const float gain =
-        kVolumeBoost * static_cast<float>(volumePercent_.load(std::memory_order_relaxed)) / 100.0f;
+    if (samplesToRead < frames) {
+        underrunCount_.fetch_add(1, std::memory_order_relaxed);
+    }
+    const float gain = static_cast<float>(volumePercent_.load(std::memory_order_relaxed)) / 100.0f;
 
     if (deviceFormat_ == AUDIO_F32SYS) {
         auto* out = reinterpret_cast<float*>(stream);
         for (int i = 0; i < samplesToRead; ++i) {
-            const float boosted = std::clamp(ring_[rp % kRingCapacity] * gain, -1.0f, 1.0f);
+            const float scaled = std::clamp(ring_[rp % kRingCapacity] * gain, -1.0f, 1.0f);
             rp++;
             for (int ch = 0; ch < deviceChannels_; ++ch) {
-                out[i * deviceChannels_ + ch] = boosted;
+                out[i * deviceChannels_ + ch] = scaled;
             }
         }
         // Fill remainder with silence.
@@ -228,9 +252,9 @@ void NesAudioPlayer::renderToStream(Uint8* stream, int len)
         // S16SYS.
         auto* out = reinterpret_cast<int16_t*>(stream);
         for (int i = 0; i < samplesToRead; ++i) {
-            const float boosted = std::clamp(ring_[rp % kRingCapacity] * gain, -1.0f, 1.0f);
+            const float scaled = std::clamp(ring_[rp % kRingCapacity] * gain, -1.0f, 1.0f);
             rp++;
-            const int16_t sample = static_cast<int16_t>(std::lround(boosted * 32767.0f));
+            const int16_t sample = static_cast<int16_t>(std::lround(scaled * 32767.0f));
             for (int ch = 0; ch < deviceChannels_; ++ch) {
                 out[i * deviceChannels_ + ch] = sample;
             }

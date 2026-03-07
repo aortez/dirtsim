@@ -83,6 +83,12 @@ public:
         bool frameCounterMode5Step = false;
         uint64_t registerWriteCount = 0;
         uint64_t totalSamplesGenerated = 0;
+
+        // Audio playback stats (from NesAudioPlayer, not the APU itself).
+        uint64_t audioUnderruns = 0;
+        uint64_t audioOverruns = 0;
+        uint64_t audioCallbackCalls = 0;
+        uint64_t audioSamplesDropped = 0;
     };
 
     std::optional<MemorySnapshot> copyMemorySnapshot() const;

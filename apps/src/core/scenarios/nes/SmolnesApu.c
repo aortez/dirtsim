@@ -178,10 +178,22 @@ static uint8_t noiseOutput(const SmolnesApuNoise* noise)
     return envelopeOutput(&noise->envelope);
 }
 
+// Non-linear mixer from NESDev wiki. Models the NES DAC more accurately than a
+// linear approximation — prevents volume compression when multiple channels are
+// active simultaneously.
 static float mixSamples(uint8_t p1, uint8_t p2, uint8_t tri, uint8_t nse)
 {
-    float pulseOut = 0.00752f * (float)(p1 + p2);
-    float tndOut = 0.00851f * (float)tri + 0.00494f * (float)nse;
+    float pulseOut = 0.0f;
+    if (p1 + p2 > 0) {
+        pulseOut = 95.88f / (8128.0f / (float)(p1 + p2) + 100.0f);
+    }
+
+    float tndOut = 0.0f;
+    float tndSum = (float)tri / 8227.0f + (float)nse / 12241.0f;
+    if (tndSum > 0.0f) {
+        tndOut = 159.79f / (1.0f / tndSum + 100.0f);
+    }
+
     return pulseOut + tndOut;
 }
 
@@ -409,19 +421,19 @@ void smolnesApuClock(SmolnesApuState* state, uint32_t cpuCycles)
                 state->pulse2.timerValue = state->pulse2.timerPeriod;
                 state->pulse2.dutyPosition = (state->pulse2.dutyPosition + 1) & 7;
             }
+        }
 
-            // Noise.
-            if (state->noise.timerValue > 0) {
-                state->noise.timerValue--;
-            } else {
-                state->noise.timerValue = state->noise.timerPeriod;
-                uint8_t bit = state->noise.mode ? 6 : 1;
-                uint16_t feedback =
-                    (state->noise.shiftRegister & 1) ^
-                    ((state->noise.shiftRegister >> bit) & 1);
-                state->noise.shiftRegister =
-                    (state->noise.shiftRegister >> 1) | (feedback << 14);
-            }
+        // Noise clocks every CPU cycle.
+        if (state->noise.timerValue > 0) {
+            state->noise.timerValue--;
+        } else {
+            state->noise.timerValue = state->noise.timerPeriod;
+            uint8_t bit = state->noise.mode ? 6 : 1;
+            uint16_t feedback =
+                (state->noise.shiftRegister & 1) ^
+                ((state->noise.shiftRegister >> bit) & 1);
+            state->noise.shiftRegister =
+                (state->noise.shiftRegister >> 1) | (feedback << 14);
         }
 
         // Triangle clocks every CPU cycle.

@@ -65,8 +65,7 @@ static void drainApuSamples(SmolnesApuState* state, PcmBuffer* buf, uint64_t* la
             buf->capacity *= 2;
             buf->data = (int16_t*)realloc(buf->data, buf->capacity * sizeof(int16_t));
         }
-        // Boost volume — raw APU linear mix is quiet.
-        float s = chunk[i] * 10.0f;
+        float s = chunk[i];
         if (s > 1.0f) {
             s = 1.0f;
         }

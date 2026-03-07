@@ -1,38 +1,14 @@
+#include "NesTestRomPath.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
-#include <cstdlib>
-#include <filesystem>
 #include <gtest/gtest.h>
-#include <optional>
 
 using namespace DirtSim;
 
-namespace {
-
-std::optional<std::filesystem::path> resolveFlappyRomPath()
-{
-    if (const char* env = std::getenv("DIRTSIM_NES_TEST_ROM_PATH"); env != nullptr) {
-        const std::filesystem::path romPath{ env };
-        if (std::filesystem::exists(romPath)) {
-            return romPath;
-        }
-    }
-
-    const std::filesystem::path repoRelative =
-        std::filesystem::path("testdata") / "roms" / "Flappy.Paratroopa.World.Unl.nes";
-    if (std::filesystem::exists(repoRelative)) {
-        return repoRelative;
-    }
-
-    return std::nullopt;
-}
-
-} // namespace
-
 TEST(SmolnesApuRegisterCapture, FlappyParatroopaProducesApuWrites)
 {
-    const auto romPath = resolveFlappyRomPath();
+    const auto romPath = DirtSim::Test::resolveFlappyRomPath();
     if (!romPath.has_value()) {
         GTEST_SKIP() << "ROM fixture missing. Set DIRTSIM_NES_TEST_ROM_PATH or run "
                         "'cd apps && make fetch-nes-test-rom'.";

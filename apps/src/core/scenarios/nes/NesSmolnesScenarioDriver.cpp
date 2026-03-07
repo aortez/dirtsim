@@ -271,7 +271,15 @@ std::optional<SmolnesRuntime::ApuSnapshot> NesSmolnesScenarioDriver::copyRuntime
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
         return std::nullopt;
     }
-    return runtime_->copyApuSnapshot();
+    auto snapshot = runtime_->copyApuSnapshot();
+    if (snapshot.has_value() && audioPlayer_) {
+        const auto stats = audioPlayer_->getStats();
+        snapshot->audioUnderruns = stats.underruns;
+        snapshot->audioOverruns = stats.overruns;
+        snapshot->audioCallbackCalls = stats.callbackCalls;
+        snapshot->audioSamplesDropped = stats.samplesDropped;
+    }
+    return snapshot;
 }
 
 uint32_t NesSmolnesScenarioDriver::copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const

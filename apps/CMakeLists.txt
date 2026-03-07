@@ -349,6 +349,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/GenomeList.cpp
     src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
+    src/server/api/NesApuGet.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
