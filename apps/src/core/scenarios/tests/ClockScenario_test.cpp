@@ -386,10 +386,13 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     int entrance_door_x = -1;
     int exit_door_x = -1;
 
-    // Start duck event.
+    // Start duck event. Disable rain and meltdown to prevent water from
+    // accumulating and triggering the floor drain, which can kill the duck.
     auto config = std::get<Config::Clock>(test_scenario->getConfig());
     config.duckEnabled = true;
     config.eventFrequency = 1.0;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     test_scenario->setConfig(config, *test_world);
 
     double start_wait = 0.0;
