@@ -18,7 +18,7 @@ constexpr int NUM_MATERIALS = DuckSensoryData::NUM_MATERIALS;
 constexpr int SPECIAL_SENSE_COUNT = DuckSensoryData::SPECIAL_SENSE_COUNT;
 
 constexpr int INPUT_HISTOGRAM_SIZE = GRID_SIZE * GRID_SIZE * NUM_MATERIALS;
-constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + 4 + SPECIAL_SENSE_COUNT + 1;
+constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + 4 + SPECIAL_SENSE_COUNT + 2;
 constexpr int H1_SIZE = 64;
 constexpr int H2_SIZE = 32;
 constexpr int OUTPUT_SIZE = 4;
@@ -202,6 +202,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
             input_buffer[index++] = static_cast<WeightType>(sensory.special_senses[sense]);
         }
         input_buffer[index++] = static_cast<WeightType>(sensory.energy);
+        input_buffer[index++] = static_cast<WeightType>(sensory.health);
 
         DIRTSIM_ASSERT(index == INPUT_SIZE, "DuckNeuralNetRecurrentBrainV2: Input size mismatch");
 

@@ -28,6 +28,7 @@ public:
 
     void clearAll(World& world);
 
+    void addObstacle(FloorObstacle obstacle);
     bool isHurdleAt(uint32_t x) const;
     bool isPitAt(uint32_t x) const;
     const std::vector<FloorObstacle>& getObstacles() const;

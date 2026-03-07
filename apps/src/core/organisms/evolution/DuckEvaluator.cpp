@@ -81,10 +81,17 @@ MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
         + (kDuckScoringConfig.cellCoverageWeight * scores.coverageCellScore);
 
     const auto* duck = dynamic_cast<const Duck*>(context.finalOrganism);
-    if (duck && duck->getEffortSampleCount() > 0) {
-        const double sampleCount = static_cast<double>(duck->getEffortSampleCount());
-        const double averageAbsMoveInput = duck->getEffortAbsMoveInputTotal() / sampleCount;
-        const double jumpHeldRatio = duck->getEffortJumpHeldTotal() / sampleCount;
+    const auto* snap = context.duckStatsSnapshot;
+    const uint64_t effortSamples =
+        duck ? duck->getEffortSampleCount() : (snap ? snap->effortSampleCount : 0);
+    if (effortSamples > 0) {
+        const double sampleCount = static_cast<double>(effortSamples);
+        const double absMoveTotal =
+            duck ? duck->getEffortAbsMoveInputTotal() : snap->effortAbsMoveInputTotal;
+        const double jumpHeldTotal =
+            duck ? duck->getEffortJumpHeldTotal() : snap->effortJumpHeldTotal;
+        const double averageAbsMoveInput = absMoveTotal / sampleCount;
+        const double jumpHeldRatio = jumpHeldTotal / sampleCount;
         const double combinedEffort = std::max(0.0, averageAbsMoveInput)
             + (kDuckScoringConfig.jumpHeldEffortWeight * std::max(0.0, jumpHeldRatio));
         scores.effortRaw = combinedEffort;
@@ -131,12 +138,26 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     }
 
     const auto* duck = dynamic_cast<const Duck*>(context.finalOrganism);
+    const auto* snap = context.duckStatsSnapshot;
     if (duck) {
         breakdown.energyAverage = duck->getEnergyAverage();
         breakdown.energyConsumedTotal = duck->getEnergyConsumedTotal();
         breakdown.energyLimitedSeconds = duck->getEnergyLimitedSeconds();
+        breakdown.healthAverage = duck->getHealthAverage();
+        breakdown.collisionDamageTotal = duck->getCollisionDamageTotal();
+        breakdown.damageTotal = duck->getDamageTotal();
         breakdown.wingUpSeconds = duck->getWingUpSeconds();
         breakdown.wingDownSeconds = duck->getWingDownSeconds();
+    }
+    else if (snap) {
+        breakdown.energyAverage = snap->energyAverage;
+        breakdown.energyConsumedTotal = snap->energyConsumedTotal;
+        breakdown.energyLimitedSeconds = snap->energyLimitedSeconds;
+        breakdown.healthAverage = snap->healthAverage;
+        breakdown.collisionDamageTotal = snap->collisionDamageTotal;
+        breakdown.damageTotal = snap->damageTotal;
+        breakdown.wingUpSeconds = snap->wingUpSeconds;
+        breakdown.wingDownSeconds = snap->wingDownSeconds;
     }
 
     const MovementScoring::Scores movement = computeDuckMovementScores(context);

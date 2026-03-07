@@ -651,6 +651,21 @@ void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
     }
 }
 
+void OrganismManager::snapshotPreCollisionState(const World& world)
+{
+    const WorldData& data = world.getData();
+    for (auto& [id, organism] : organisms_) {
+        if (!organism->isActive() || organism->getType() != OrganismType::DUCK) {
+            continue;
+        }
+        Duck* duck = static_cast<Duck*>(organism.get());
+        Vector2i anchor = duck->getAnchorCell();
+        if (data.inBounds(anchor.x, anchor.y)) {
+            duck->snapshotPreCollisionVelocity(data.at(anchor.x, anchor.y).velocity);
+        }
+    }
+}
+
 void OrganismManager::syncEntitiesToWorldData(World& world)
 {
     WorldData& data = world.getData();
