@@ -201,12 +201,17 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
         double timerMs =
             std::chrono::duration<double, std::milli>(Clock::now() - timerStart).count();
 
+        // Drain events that arrived during lv_timer_handler (reduces queue delay).
+        sm.processEvents();
+
         // Cap idle time to maintain responsiveness for background-invalidated objects.
         if (idle_time > MAX_IDLE_MS) {
             idle_time = MAX_IDLE_MS;
         }
         auto sleepStart = Clock::now();
-        usleep(idle_time * 1000);
+        // Wait on event queue condvar instead of blind usleep. Wakes immediately
+        // when WebSocket thread pushes a new frame, or after idle_time — whichever first.
+        sm.waitForEvents(std::chrono::milliseconds(idle_time));
         double sleepMs =
             std::chrono::duration<double, std::milli>(Clock::now() - sleepStart).count();
 

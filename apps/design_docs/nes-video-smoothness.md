@@ -66,6 +66,23 @@ No vsync. Writes to /dev/fb0 are immediate.
 
 ## Analysis
 
+### Oversized LVGL canvas (major finding)
+
+For NES, CellRenderer creates a **1024x896** canvas (256x224 at 4px/cell),
+then LVGL scales it back **down** 0.54x to fit the 800x480 display. This
+is a 917,504 pixel intermediate buffer — nearly 4x the display resolution.
+
+- `renderScenarioVideoFrameToCanvas()` iterates 917K pixels doing
+  RGB565→ARGB8888 conversion: **~5ms**
+- `lv_timer_handler()` processes the oversized dirty canvas and scales it
+  down to the framebuffer: **~6.4ms**
+
+If the canvas were 256x224 (1px/cell) and LVGL scaled up, the render loop
+would be 57K pixels instead of 917K — a 16x reduction in work. With the
+direct fbdev path this is eliminated entirely.
+
+### Frame delivery jitter
+
 The server produces frames with 0.24ms stddev, but by the time the UI
 processes them the interval stddev is 3.29ms — 14x worse.
 
@@ -90,16 +107,23 @@ others for ~23ms — a 1.77:1 ratio, which is perceptible as judder.
 
 ## Potential Fix Directions
 
-### 1. Process events more frequently
-Add a second `sm.processEvents()` call after `lv_timer_handler()` (before
-usleep). This would halve the maximum queue wait time from ~12ms to ~6ms.
-Simple change, measurable improvement.
+### 1. Process events more frequently — DONE
 
-### 2. Replace usleep with event-aware wait
-Instead of blind `usleep(idle_time)`, wait on a condition variable that the
-WebSocket thread signals when a new event arrives. Wake immediately on new
-frame, or after idle_time — whichever comes first. Eliminates the usleep
-portion of queue delay entirely.
+Added a second `sm.processEvents()` call after `lv_timer_handler()` in the
+fbdev run loop. Frames that arrive during the ~4.5ms flush are now drained
+immediately instead of waiting for the next loop iteration.
+
+### 2. Replace usleep with event-aware wait — DONE
+
+Replaced blind `usleep(idle_time)` with a condvar-based timed wait on the
+event queue (`SynchronizedQueue::waitFor`). The WebSocket receive thread's
+`push()` already calls `cv_.notify_one()`, so the UI loop wakes instantly
+when a new frame arrives instead of sleeping for the full LVGL-suggested
+idle time. Falls back to the idle timeout when no events arrive.
+
+Together fixes #1 and #2 should nearly eliminate queue delay: frames arriving
+during lv_timer_handler get picked up by the second processEvents() call,
+and frames arriving during the wait phase wake the loop immediately.
 
 ### 3. Decouple NES video from the LVGL render path
 The NES frame is a raw pixel buffer that doesn't need LVGL's widget system.
@@ -107,11 +131,17 @@ Write NES frames directly to the framebuffer (bypassing LVGL canvas +
 lv_timer_handler flush), and only use LVGL for the UI overlay. This would
 eliminate the 6.4ms lv_timer_handler cost for the video region.
 
-### 4. Reduce lv_timer_handler cost
-The 6.4ms average for lv_timer_handler is high. Investigate whether the NES
-canvas invalidation is causing unnecessary full-screen redraws. The NES
-frame is 256x224 scaled to maybe 480x420 — partial render should only flush
-that region, not the full 800x480 display.
+### 4. Fix oversized NES canvas — DONE (VideoSurface)
+
+Created `VideoSurface` class that renders NES frames at native 256x224
+resolution, doing a 1:1 RGB565→ARGB8888 blit (57K pixels instead of 917K).
+LVGL transform scaling handles the upscale to the display container.
+
+Also removed `scenario_video_frame` from `WorldData` entirely — NES frames
+are pre-rendered pixel buffers with no relation to cells/grids/physics.
+The video frame now flows as a standalone `std::optional<ScenarioVideoFrame>`
+through the server, transport, and UI layers. `SimPlayground` swaps between
+`CellRenderer` and `VideoSurface` based on scenario type.
 
 ### 5. Server-side: use runFrames(1) in self-pacing mode — DONE
 
@@ -127,5 +157,10 @@ remaining latency is in the UI pipeline.
 
 ## Recommended Order
 
-Phase 1 (direct fbdev write, bypass LVGL) and Phase 2 (shared memory) are
-where the real latency improvement lives. Phase 3/fix #5 is done.
+Fixes #1, #2, #4, and #5 are done. The remaining win is fix #3 (direct
+fbdev bypass for NES video), which would eliminate the ~4.5ms
+lv_timer_handler cost entirely. A larger undertaking would be switching
+from fbdev to DRM (the Pi5's `/dev/fb0` is already a `drm-rp1-dpidrmf`
+compatibility shim). DRM would provide hardware page flipping (zero-copy
+buffer swap) and vsync events, replacing the CPU memcpy flush and
+eliminating tearing.

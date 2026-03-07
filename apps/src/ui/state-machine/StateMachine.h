@@ -12,6 +12,7 @@
 #include "ui/UiServices.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -67,6 +68,9 @@ public:
     std::string getCurrentStateName() const override;
 
     void processEvents() override;
+
+    // Wait up to `timeout` for new events (replaces blind usleep in run loops).
+    bool waitForEvents(std::chrono::milliseconds timeout);
 
     void setupWebSocketService();
 

@@ -42,6 +42,11 @@ bool EventProcessor::hasEvents() const
     return !eventQueue->queue.empty();
 }
 
+bool EventProcessor::waitForEvents(std::chrono::milliseconds timeout)
+{
+    return eventQueue->queue.waitFor(timeout);
+}
+
 size_t EventProcessor::queueSize() const
 {
     return eventQueue->queue.size();
