@@ -149,6 +149,66 @@ std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot
     return snapshot;
 }
 
+std::optional<SmolnesRuntime::ApuSnapshot> SmolnesRuntime::copyApuSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    SmolnesApuSnapshot raw{};
+    if (!smolnesRuntimeCopyApuSnapshot(runtimeHandle_, &raw)) {
+        return std::nullopt;
+    }
+
+    ApuSnapshot snapshot{};
+    snapshot.pulse1Enabled = raw.pulse1Enabled;
+    snapshot.pulse2Enabled = raw.pulse2Enabled;
+    snapshot.triangleEnabled = raw.triangleEnabled;
+    snapshot.noiseEnabled = raw.noiseEnabled;
+    snapshot.pulse1LengthCounter = raw.pulse1LengthCounter;
+    snapshot.pulse2LengthCounter = raw.pulse2LengthCounter;
+    snapshot.triangleLengthCounter = raw.triangleLengthCounter;
+    snapshot.noiseLengthCounter = raw.noiseLengthCounter;
+    snapshot.pulse1TimerPeriod = raw.pulse1TimerPeriod;
+    snapshot.pulse2TimerPeriod = raw.pulse2TimerPeriod;
+    snapshot.triangleTimerPeriod = raw.triangleTimerPeriod;
+    snapshot.noiseTimerPeriod = raw.noiseTimerPeriod;
+    snapshot.pulse1Duty = raw.pulse1Duty;
+    snapshot.pulse2Duty = raw.pulse2Duty;
+    snapshot.noiseMode = raw.noiseMode;
+    snapshot.frameCounterMode5Step = raw.frameCounterMode5Step;
+    snapshot.registerWriteCount = raw.registerWriteCount;
+    snapshot.totalSamplesGenerated = raw.totalSamplesGenerated;
+    return snapshot;
+}
+
+uint32_t SmolnesRuntime::copyApuSamples(float* buffer, uint32_t maxSamples) const
+{
+    if (runtimeHandle_ == nullptr) {
+        return 0;
+    }
+
+    uint32_t samplesOut = 0;
+    smolnesRuntimeCopyApuSamples(runtimeHandle_, buffer, maxSamples, &samplesOut);
+    return samplesOut;
+}
+
+void SmolnesRuntime::setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetApuSampleCallback(runtimeHandle_, callback, userdata);
+}
+
+void SmolnesRuntime::setSelfPacing(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetSelfPacing(runtimeHandle_, enabled);
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {

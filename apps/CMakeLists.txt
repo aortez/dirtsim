@@ -349,6 +349,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/GenomeList.cpp
     src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
+    src/server/api/NesApuGet.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
@@ -404,6 +405,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
+    src/core/scenarios/nes/NesAudioPlayer.cpp
     src/core/scenarios/nes/NesDuckSensoryBuilder.cpp
     src/core/scenarios/nes/NesGameAdapterRegistry.cpp
     src/core/scenarios/nes/NesSmolnesScenarioDriver.cpp
@@ -415,6 +417,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
     src/core/scenarios/nes/NesSuperTiltBroGameAdapter.cpp
+    src/core/scenarios/nes/SmolnesApu.c
     src/core/scenarios/nes/SmolnesRuntime.cpp
     src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
@@ -692,6 +695,15 @@ target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread ${AVAHI_LI
 target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-os-manager PRIVATE ${DIRTSIM_WARNINGS})
 
+# APU WAV writer tool (standalone, for audible testing).
+add_executable(apu-wav-writer
+    src/core/scenarios/nes/SmolnesApuWavWriter.c
+    src/core/scenarios/nes/SmolnesApu.c
+)
+target_include_directories(apu-wav-writer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_options(apu-wav-writer PRIVATE ${DIRTSIM_WARNINGS})
+target_link_libraries(apu-wav-writer PRIVATE m)
+
 # Audio synthesis executable.
 add_executable(dirtsim-audio
     src/audio/main.cpp
@@ -838,6 +850,9 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
+    src/core/scenarios/tests/SmolnesApu_test.cpp
+    src/core/scenarios/tests/SmolnesApuRegisterCapture_test.cpp
+    src/core/scenarios/tests/SmolnesApuSampleBuffer_test.cpp
     src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
 
     # Organism tests.
