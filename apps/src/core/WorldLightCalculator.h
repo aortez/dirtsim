@@ -3,8 +3,8 @@
 #include "ColorNames.h"
 #include "GridBuffer.h"
 #include "LightBuffer.h"
+#include "LightCalculatorBase.h"
 #include "LightConfig.h"
-#include "WorldCalculatorBase.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -29,21 +29,21 @@ struct WorldData;
  * ambient, directional sunlight, emissive materials, and an emissive overlay.
  * Scenarios can use the overlay to make specific cells glow (e.g., clock digits).
  */
-class WorldLightCalculator : public WorldCalculatorBase {
+class WorldLightCalculator : public LightCalculatorBase {
 public:
     WorldLightCalculator() = default;
 
     void calculate(
-        World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers);
-    std::string lightMapString(const World& world) const;
-    const LightBuffer& getRawLightBuffer() const;
+        World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers) override;
+    std::string lightMapString(const World& world) const override;
+    const LightBuffer& getRawLightBuffer() const override;
 
     // Emissive overlay for scenario-controlled per-cell emission.
-    void setEmissive(int x, int y, uint32_t color, float intensity = 1.0f);
-    void clearEmissive(int x, int y);
-    void clearAllEmissive();
-    void resize(int width, int height);
-    void setAmbientBoost(ColorNames::RgbF boost);
+    void setEmissive(int x, int y, uint32_t color, float intensity = 1.0f) override;
+    void clearEmissive(int x, int y) override;
+    void clearAllEmissive() override;
+    void resize(int width, int height) override;
+    void setAmbientBoost(ColorNames::RgbF boost) override;
 
 private:
     void applyAmbient(World& world, const LightConfig& config);

@@ -235,6 +235,9 @@ uint32_t uiGrayDark();
 uint32_t uiGrayLight();
 uint32_t uiGrayMedium();
 
+// Sky.
+uint32_t skyBlue();
+
 // Utility.
 uint32_t white();
 uint32_t black();

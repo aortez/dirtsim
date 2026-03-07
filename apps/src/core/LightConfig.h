@@ -17,6 +17,9 @@ struct LightConfig {
     float shadow_decay_rate;
     bool side_light_enabled;
     float side_light_intensity;
+    uint32_t sky_color;
+    float sky_intensity;
+    int steps_per_frame;
     uint32_t sun_color;
     bool sun_enabled;
     float sun_intensity;

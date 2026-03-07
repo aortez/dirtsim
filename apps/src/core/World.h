@@ -17,6 +17,7 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
+class LightCalculatorBase;
 class LightManager;
 class WorldAdhesionCalculator;
 class WorldCollisionCalculator;
@@ -98,8 +99,10 @@ public:
     WorldCollisionCalculator& getCollisionCalculator();
     const WorldCollisionCalculator& getCollisionCalculator() const;
 
-    WorldLightCalculator& getLightCalculator();
-    const WorldLightCalculator& getLightCalculator() const;
+    LightCalculatorBase& getLightCalculator();
+    const LightCalculatorBase& getLightCalculator() const;
+
+    void setUsePropagator(bool use_propagator);
 
     // Light management.
     LightManager& getLightManager();

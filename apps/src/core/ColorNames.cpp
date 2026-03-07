@@ -108,6 +108,12 @@ uint32_t uiGrayMedium()
     return 0x303030FF;
 }
 
+// Sky.
+uint32_t skyBlue()
+{
+    return 0x87CEEBFF;
+}
+
 // Utility.
 uint32_t white()
 {
