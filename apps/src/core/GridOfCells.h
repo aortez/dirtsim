@@ -50,6 +50,7 @@ private:
     int16_t width_;
     int16_t height_;
 
+    void populateAll();
     void populateMaps();
     void buildEmptyCellMap();
     void buildWallCellMap();
@@ -57,6 +58,8 @@ private:
     void precomputeMaterialNeighborhoods();
 
 public:
+    // Rebuild caches using the three-pass approach (for test comparison).
+    void rebuildSeparatePasses();
     GridOfCells(
         std::vector<Cell>& cells, std::vector<CellDebug>& debug_info, int width, int height);
 
