@@ -67,6 +67,7 @@ struct Evolution {
     struct EvaluationSnapshot {
         WorldData worldData;
         std::vector<OrganismId> organismIds;
+        std::optional<ScenarioVideoFrame> scenarioVideoFrame;
     };
 
     struct TimerAggregate {

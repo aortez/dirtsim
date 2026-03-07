@@ -455,14 +455,14 @@ public:
         DirtSim::Api::StateGet::Cwc,
         DirtSim::Api::StatusGet::Cwc,
         DirtSim::Api::TimerStatsGet::Cwc,
+        DirtSim::Api::TrainingResultDelete::Cwc,
+        DirtSim::Api::TrainingResultDiscard::Cwc,
+        DirtSim::Api::TrainingResultSave::Cwc,
+        DirtSim::Api::TrainingResultSet::Cwc,
         DirtSim::Api::UserSettingsGet::Cwc,
         DirtSim::Api::UserSettingsPatch::Cwc,
         DirtSim::Api::UserSettingsReset::Cwc,
         DirtSim::Api::UserSettingsSet::Cwc,
-        DirtSim::Api::TrainingResultDiscard::Cwc,
-        DirtSim::Api::TrainingResultDelete::Cwc,
-        DirtSim::Api::TrainingResultSave::Cwc,
-        DirtSim::Api::TrainingResultSet::Cwc,
         DirtSim::Api::WorldResize::Cwc,
 
         // State transitions.

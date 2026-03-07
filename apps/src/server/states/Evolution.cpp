@@ -854,6 +854,7 @@ std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
     Evolution::EvaluationSnapshot snapshot;
     snapshot.worldData = *worldData;
     snapshot.organismIds = *organismGrid;
+    snapshot.scenarioVideoFrame = runner.getScenarioVideoFrame();
     return snapshot;
 }
 
@@ -1197,7 +1198,7 @@ void broadcastTrainingBestSnapshot(
                 .count = count,
             });
     }
-    bestSnapshot.scenarioVideoFrame = bestSnapshot.worldData.scenario_video_frame;
+    bestSnapshot.scenarioVideoFrame = std::move(snapshot.scenarioVideoFrame);
     bestSnapshot.fitnessBreakdown = fitnessBreakdown;
 
     dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
@@ -1210,14 +1211,15 @@ void broadcastTrainingBestPlaybackFrame(
     WorldData worldData,
     std::vector<OrganismId> organismIds,
     double fitness,
-    int generation)
+    int generation,
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame)
 {
     Api::TrainingBestPlaybackFrame frame;
     frame.worldData = std::move(worldData);
     frame.organismIds = std::move(organismIds);
     frame.fitness = fitness;
     frame.generation = generation;
-    frame.scenarioVideoFrame = frame.worldData.scenario_video_frame;
+    frame.scenarioVideoFrame = std::move(scenarioVideoFrame);
 
     dsm.broadcastEventData(
         Api::TrainingBestPlaybackFrame::name(), Network::serialize_payload(frame));
@@ -1864,9 +1866,10 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Visible runner missing WorldData");
         DIRTSIM_ASSERT(organismGrid != nullptr, "Evolution: Visible runner missing organism grid");
 
-        if (!visible_.runner->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+        const auto& videoFrame = visible_.runner->getScenarioVideoFrame();
+        if (!visible_.runner->isNesScenario() || videoFrame.has_value()) {
             dsm.broadcastRenderMessage(
-                *worldData, *organismGrid, visibleScenarioId_, visibleScenarioConfig_);
+                *worldData, *organismGrid, visibleScenarioId_, visibleScenarioConfig_, videoFrame);
         }
     }
 
@@ -2909,9 +2912,15 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         DIRTSIM_ASSERT(
             organismGrid != nullptr, "Evolution: Best playback runner missing organism grid");
 
-        if (!bestPlayback_.runner->isNesScenario() || worldData->scenario_video_frame.has_value()) {
+        const auto& videoFrame = bestPlayback_.runner->getScenarioVideoFrame();
+        if (!bestPlayback_.runner->isNesScenario() || videoFrame.has_value()) {
             broadcastTrainingBestPlaybackFrame(
-                dsm, *worldData, *organismGrid, bestPlayback_.fitness, bestPlayback_.generation);
+                dsm,
+                *worldData,
+                *organismGrid,
+                bestPlayback_.fitness,
+                bestPlayback_.generation,
+                videoFrame);
         }
     }
 

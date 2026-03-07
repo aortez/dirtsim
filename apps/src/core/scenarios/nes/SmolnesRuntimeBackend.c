@@ -18,6 +18,8 @@
 #define SMOLNES_THREAD_LOCAL __thread
 #endif
 
+#define SMOLNES_APU_SAMPLE_COPY_MAX 1024u
+
 extern SMOLNES_THREAD_LOCAL uint8_t frame_buffer_palette[61440];
 
 static SMOLNES_THREAD_LOCAL SmolnesApuState gApuState;
@@ -673,7 +675,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             pthread_cond_broadcast(&runtime->runtimeCond);
 
             if (runtime->selfPacingOriginMs == 0.0) {
-                runtime->selfPacingOriginMs = monotonicNowMs();
+                runtime->selfPacingOriginMs = presentStartMs;
                 runtime->selfPacingOriginFrame = runtime->renderedFrames;
             }
             const double elapsed =

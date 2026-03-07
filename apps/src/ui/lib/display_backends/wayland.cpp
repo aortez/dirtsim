@@ -1,12 +1,12 @@
 /**
  * @file wayland.c
  *
- * The wayland backend
+ * The wayland backend.
  *
- * Based on the original file from the repository
+ * Based on the original file from the repository.
  *
- * - Move to a seperate file
- *   2025 EDGEMTech Ltd.
+ * Move to a separate file.
+ * 2025 EDGEMTech Ltd.
  *
  * Author: EDGEMTech Ltd, Erik Tagirov (erik.tagirov@edgemtech.ch)
  *
@@ -15,13 +15,13 @@
 /*********************
  *      INCLUDES
  *********************/
-#include "stdio.h"
-#include <iostream>
-#include <stdbool.h>
+#include <chrono>
+#include <cmath>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "lvgl/lvgl.h"
+#include "ui/lib/LoopTimingStats.h"
 #include "ui/state-machine/StateMachine.h"
 #include <spdlog/spdlog.h>
 
@@ -29,14 +29,6 @@
 #include "ui/lib/backends.h"
 #include "ui/lib/simulator_settings.h"
 #include "ui/lib/simulator_util.h"
-
-/*********************
- *      DEFINES
- *********************/
-
-/**********************
- *      TYPEDEFS
- **********************/
 
 /**********************
  *  EXTERNAL VARIABLES
@@ -55,24 +47,10 @@ static void run_loop_wayland(DirtSim::Ui::StateMachine& sm);
 static const char* backend_name = "WAYLAND";
 
 /**********************
- *  EXTERNAL VARIABLES
- **********************/
-extern simulator_settings_t settings;
-
-/**********************
- *      MACROS
- **********************/
-
-/**********************
  *   GLOBAL FUNCTIONS
  **********************/
 
-/**
- * Register the backend
- *
- * @param backend the backend descriptor
- * @description configures the descriptor
- */
+/// Register the backend.
 int backend_init_wayland(backend_t* backend)
 {
     LV_ASSERT_NULL(backend);
@@ -91,11 +69,7 @@ int backend_init_wayland(backend_t* backend)
  *   STATIC FUNCTIONS
  **********************/
 
-/**
- * Initialize the Wayland display driver
- *
- * @return the LVGL display
- */
+/// Initialize the Wayland display driver.
 static lv_display_t* init_wayland(void)
 {
     lv_display_t* disp;
@@ -130,20 +104,72 @@ static void run_loop_wayland(DirtSim::Ui::StateMachine& sm)
 {
     bool completed;
 
+    DirtSim::Ui::LoopTimingStats stats;
+    int completedCount = 0;
+
     /* Handle LVGL tasks. */
     while (!sm.shouldExit()) {
+        auto loopStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+
         // Process UI state machine events.
+        auto eventsStart = DirtSim::Ui::LoopTimingStats::Clock::now();
         sm.processEvents();
+        double eventsMs = std::chrono::duration<double, std::milli>(
+                              DirtSim::Ui::LoopTimingStats::Clock::now() - eventsStart)
+                              .count();
 
         // Update background animations (event-driven, no timer).
         sm.updateAnimations();
 
         // Process LVGL timer events.
+        auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
         completed = lv_wayland_timer_handler();
+        double timerMs = std::chrono::duration<double, std::milli>(
+                             DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
+                             .count();
 
         if (completed) {
             /* Wait to avoid busy-looping and consuming 100% CPU. */
             usleep(1000);
+        }
+
+        double loopMs = std::chrono::duration<double, std::milli>(
+                            DirtSim::Ui::LoopTimingStats::Clock::now() - loopStart)
+                            .count();
+        stats.processEvents.record(eventsMs);
+        stats.timerHandler.record(timerMs);
+        if (completed) {
+            completedCount++;
+        }
+        stats.recordLoop(loopMs);
+
+        if (stats.shouldLog()) {
+            // Override default log to include idle count.
+            stats.lastLogTime = DirtSim::Ui::LoopTimingStats::Clock::now();
+            if (stats.loopCount > 0) {
+                const double avgLoop = stats.totalLoopMs / stats.loopCount;
+                const double variance =
+                    (stats.totalLoopMsSq / stats.loopCount) - (avgLoop * avgLoop);
+                const double stddev = variance > 0.0 ? std::sqrt(variance) : 0.0;
+                spdlog::info(
+                    "UI loop timing ({} iters, {} idle):", stats.loopCount, completedCount);
+                spdlog::info(
+                    "  Loop: {:.2f}ms avg (min={:.2f} max={:.2f} stddev={:.2f})",
+                    avgLoop,
+                    stats.minLoopMs,
+                    stats.maxLoopMs,
+                    stddev);
+                spdlog::info(
+                    "  processEvents: {:.2f}ms avg (max={:.2f})",
+                    stats.processEvents.totalMs / stats.loopCount,
+                    stats.processEvents.maxMs);
+                spdlog::info(
+                    "  lv_wayland_timer_handler: {:.2f}ms avg (max={:.2f})",
+                    stats.timerHandler.totalMs / stats.loopCount,
+                    stats.timerHandler.maxMs);
+            }
+            stats.reset();
+            completedCount = 0;
         }
 
         /* Run until the last window closes. */

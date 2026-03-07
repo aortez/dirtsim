@@ -39,9 +39,20 @@ jobs:
 
     - name: Prune build cache
       run: |
-        echo "Pruning Docker build cache..."
-        docker builder prune -f --filter until=24h
+        echo "Pruning Docker build cache (keeping up to 5GB)..."
+        docker builder prune -f --keep-storage 5gb
         echo "Done."
+
+    - name: Registry garbage collection
+      run: |
+        if docker ps -q -f name=dirtsim-registry | grep -q .; then
+          echo "Running registry garbage collection..."
+          docker exec dirtsim-registry bin/registry garbage-collect \
+            /etc/docker/registry/config.yml --delete-untagged 2>&1 || true
+          echo "Done."
+        else
+          echo "Registry container not running, skipping."
+        fi
 
     - name: Report disk usage after cleanup
       run: |

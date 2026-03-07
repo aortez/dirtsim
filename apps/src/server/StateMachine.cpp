@@ -43,6 +43,7 @@
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -1280,6 +1281,9 @@ void StateMachine::mainLoopRun()
             static double totalTickMs = 0.0;
             static double totalSleepMs = 0.0;
             static double totalIterationMs = 0.0;
+            static double totalIterationMsSq = 0.0;
+            static double minIterationMs = 1e9;
+            static double maxIterationMs = 0.0;
             static auto lastTimingLog = std::chrono::steady_clock::now();
 
             double eventProcessMs =
@@ -1302,8 +1306,8 @@ void StateMachine::mainLoopRun()
                 if (remainingMs > 0) {
                     auto sleepStart = std::chrono::steady_clock::now();
 
-                    // Break sleep into 5ms chunks to allow quick exit on signal.
-                    constexpr int SLEEP_CHUNK_MS = 5;
+                    // Break sleep into chunks to allow quick exit on signal.
+                    constexpr int SLEEP_CHUNK_MS = 1;
                     while (remainingMs > 0 && !shouldExit()) {
                         int sleepNow = std::min(remainingMs, SLEEP_CHUNK_MS);
                         std::this_thread::sleep_for(std::chrono::milliseconds(sleepNow));
@@ -1322,19 +1326,43 @@ void StateMachine::mainLoopRun()
                 std::chrono::duration<double, std::milli>(loopIterationEnd - loopIterationStart)
                     .count();
             totalIterationMs += iterationMs;
+            totalIterationMsSq += iterationMs * iterationMs;
+            if (iterationMs < minIterationMs) {
+                minIterationMs = iterationMs;
+            }
+            if (iterationMs > maxIterationMs) {
+                maxIterationMs = iterationMs;
+            }
 
             frameCount++;
             if (loopIterationEnd - lastTimingLog >= std::chrono::seconds(10)) {
                 lastTimingLog = loopIterationEnd;
+                const double avgIteration = totalIterationMs / frameCount;
+                const double variance =
+                    (totalIterationMsSq / frameCount) - (avgIteration * avgIteration);
+                const double stddev = variance > 0.0 ? std::sqrt(variance) : 0.0;
                 spdlog::info("Main loop timing (avg over {} frames):", frameCount);
                 spdlog::info("  Event processing: {:.2f}ms", totalEventProcessMs / frameCount);
                 spdlog::info("  Simulation tick: {:.2f}ms", totalTickMs / frameCount);
                 spdlog::info("  Sleep: {:.2f}ms", totalSleepMs / frameCount);
-                spdlog::info("  Total iteration: {:.2f}ms", totalIterationMs / frameCount);
+                spdlog::info(
+                    "  Total iteration: {:.2f}ms (min={:.2f} max={:.2f} stddev={:.2f})",
+                    avgIteration,
+                    minIterationMs,
+                    maxIterationMs,
+                    stddev);
                 spdlog::info(
                     "  Unaccounted: {:.2f}ms",
                     (totalIterationMs - totalEventProcessMs - totalTickMs - totalSleepMs)
                         / frameCount);
+                frameCount = 0;
+                totalEventProcessMs = 0.0;
+                totalTickMs = 0.0;
+                totalSleepMs = 0.0;
+                totalIterationMs = 0.0;
+                totalIterationMsSq = 0.0;
+                minIterationMs = 1e9;
+                maxIterationMs = 0.0;
             }
 
             // If frameLimit == 0, no sleep (run as fast as possible).
@@ -1964,7 +1992,8 @@ void StateMachine::broadcastRenderMessage(
     const WorldData& data,
     const std::vector<OrganismId>& organism_grid,
     Scenario::EnumType scenario_id,
-    const ScenarioConfig& scenario_config)
+    const ScenarioConfig& scenario_config,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     if (pImpl->subscribedClients_.empty()) {
         spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
@@ -2009,8 +2038,8 @@ void StateMachine::broadcastRenderMessage(
             continue;
         }
 
-        RenderMessage msg =
-            RenderMessageUtils::packRenderMessage(data, client.renderFormat, organism_grid);
+        RenderMessage msg = RenderMessageUtils::packRenderMessage(
+            data, client.renderFormat, organism_grid, scenarioVideoFrame);
 
         // Bundle with scenario metadata for transport.
         RenderMessageFull fullMsg;

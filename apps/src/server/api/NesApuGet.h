@@ -4,6 +4,7 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/scenarios/nes/SmolnesRuntime.h"
 #include <nlohmann/json.hpp>
 #include <zpp_bits.h>
 
@@ -48,6 +49,8 @@ struct Okay {
     uint64_t audio_overruns = 0;
     uint64_t audio_callback_calls = 0;
     uint64_t audio_samples_dropped = 0;
+
+    static Okay fromSnapshot(const SmolnesRuntime::ApuSnapshot& s);
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

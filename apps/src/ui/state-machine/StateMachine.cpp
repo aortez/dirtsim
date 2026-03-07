@@ -376,6 +376,11 @@ void StateMachine::processEvents()
     eventProcessor.processEventsFromQueue(*this);
 }
 
+bool StateMachine::waitForEvents(std::chrono::milliseconds timeout)
+{
+    return eventProcessor.waitForEvents(timeout);
+}
+
 void StateMachine::updateAnimations()
 {
     // Track how often main loop runs (debug).

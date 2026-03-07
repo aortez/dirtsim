@@ -74,7 +74,6 @@ private:
     std::unique_ptr<NesAudioPlayer> audioPlayer_;
     std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
     bool audioPlaybackEnabled_ = false;
-    uint64_t lastPolledFrameCount_ = 0;
     uint8_t controller1State_ = 0;
 };
 

@@ -7,6 +7,7 @@
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
+#include "rendering/VideoSurface.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/FitnessBreakdownReport.h"
 #include "state-machine/Event.h"
@@ -524,6 +525,9 @@ void TrainingActiveView::destroyUI()
     lastGenerationDistributionPlot_.reset();
     scenarioControls_.reset();
 
+    videoSurface_.reset();
+    bestVideoSurface_.reset();
+    bestVideoFrame_.reset();
     starfield_.reset();
     if (container_) {
         lv_obj_clean(container_);
@@ -574,12 +578,31 @@ void TrainingActiveView::destroyUI()
     scenarioControlsOverlayVisible_ = false;
 }
 
-void TrainingActiveView::renderWorld(const WorldData& worldData)
+void TrainingActiveView::renderWorld(
+    const WorldData& worldData, const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
-    if (!renderer_ || !worldContainer_) {
+    if (!worldContainer_) {
         return;
     }
 
+    if (scenarioVideoFrame.has_value()) {
+        if (!videoSurface_) {
+            if (renderer_) {
+                renderer_->cleanup();
+            }
+            videoSurface_ = std::make_unique<VideoSurface>();
+        }
+        videoSurface_->present(scenarioVideoFrame.value(), worldContainer_);
+        return;
+    }
+
+    if (videoSurface_) {
+        videoSurface_.reset();
+    }
+
+    if (!renderer_) {
+        return;
+    }
     renderer_->renderWorldData(worldData, worldContainer_, false, RenderMode::SHARP);
 }
 
@@ -591,12 +614,19 @@ void TrainingActiveView::updateBestSnapshot(
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
     const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown)
+    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     bestSnapshotWorldData_ = std::make_unique<WorldData>(worldData);
     bestSnapshotFitness_ = fitness;
     bestSnapshotGeneration_ = generation;
     hasBestSnapshot_ = true;
+    if (scenarioVideoFrame.has_value()) {
+        bestVideoFrame_ = scenarioVideoFrame;
+    }
+    else {
+        bestVideoFrame_.reset();
+    }
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
         bestFitness_ = fitness;
@@ -1049,13 +1079,22 @@ void TrainingActiveView::updateScenarioButtonState()
 }
 
 void TrainingActiveView::updateBestPlaybackFrame(
-    const WorldData& worldData, double fitness, int generation)
+    const WorldData& worldData,
+    double fitness,
+    int generation,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         return;
     }
 
     bestWorldData_ = std::make_unique<WorldData>(worldData);
+    if (scenarioVideoFrame.has_value()) {
+        bestVideoFrame_ = scenarioVideoFrame;
+    }
+    else {
+        bestVideoFrame_.reset();
+    }
     bestFitness_ = fitness;
     bestGeneration_ = generation;
     scheduleBestRender();
@@ -1324,6 +1363,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     if (started) {
         bestWorldData_.reset();
         bestSnapshotWorldData_.reset();
+        bestVideoFrame_.reset();
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
         bestSnapshotFitness_ = 0.0;
@@ -1391,41 +1431,55 @@ void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
 
 void TrainingActiveView::renderBestWorld()
 {
-    if (!bestRenderer_ || !bestWorldContainer_ || !bestWorldData_) {
+    if (!bestWorldContainer_ || !bestWorldData_) {
         LOG_WARN(
             Controls,
-            "TrainingActiveView: renderBestWorld skipped (renderer={}, container={}, data={})",
-            static_cast<const void*>(bestRenderer_.get()),
+            "TrainingActiveView: renderBestWorld skipped (container={}, data={})",
             static_cast<const void*>(bestWorldContainer_),
             static_cast<const void*>(bestWorldData_.get()));
         return;
     }
 
-    if (bestWorldData_->width <= 0 || bestWorldData_->height <= 0
-        || bestWorldData_->cells.empty()) {
-        LOG_WARN(
-            Controls,
-            "TrainingActiveView: renderBestWorld invalid data (world={}x{} cells={} colors={} "
-            "organism_ids={})",
-            bestWorldData_->width,
-            bestWorldData_->height,
-            bestWorldData_->cells.size(),
-            bestWorldData_->colors.size(),
-            bestWorldData_->organism_ids.size());
-        return;
+    // Use VideoSurface for NES frames.
+    if (bestVideoFrame_.has_value()) {
+        if (!bestVideoSurface_) {
+            bestVideoSurface_ = std::make_unique<VideoSurface>();
+        }
+        bestVideoSurface_->present(bestVideoFrame_.value(), bestWorldContainer_);
     }
+    else {
+        if (!bestRenderer_) {
+            LOG_WARN(Controls, "TrainingActiveView: renderBestWorld skipped (no renderer)");
+            return;
+        }
 
-    const int32_t containerWidth = lv_obj_get_width(bestWorldContainer_);
-    const int32_t containerHeight = lv_obj_get_height(bestWorldContainer_);
-    LOG_INFO(
-        Controls,
-        "TrainingActiveView: renderBestWorld container={}x{} world={}x{}",
-        containerWidth,
-        containerHeight,
-        bestWorldData_->width,
-        bestWorldData_->height);
+        if (bestWorldData_->width <= 0 || bestWorldData_->height <= 0
+            || bestWorldData_->cells.empty()) {
+            LOG_WARN(
+                Controls,
+                "TrainingActiveView: renderBestWorld invalid data (world={}x{} cells={} colors={} "
+                "organism_ids={})",
+                bestWorldData_->width,
+                bestWorldData_->height,
+                bestWorldData_->cells.size(),
+                bestWorldData_->colors.size(),
+                bestWorldData_->organism_ids.size());
+            return;
+        }
 
-    bestRenderer_->renderWorldData(*bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
+        const int32_t containerWidth = lv_obj_get_width(bestWorldContainer_);
+        const int32_t containerHeight = lv_obj_get_height(bestWorldContainer_);
+        LOG_INFO(
+            Controls,
+            "TrainingActiveView: renderBestWorld container={}x{} world={}x{}",
+            containerWidth,
+            containerHeight,
+            bestWorldData_->width,
+            bestWorldData_->height);
+
+        bestRenderer_->renderWorldData(
+            *bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
+    }
     if (!hasShownBestSnapshot_) {
         lv_refr_now(lv_display_get_default());
         hasShownBestSnapshot_ = true;
@@ -1440,7 +1494,10 @@ void TrainingActiveView::renderBestWorld()
 
 void TrainingActiveView::scheduleBestRender()
 {
-    if (!bestWorldContainer_ || !bestRenderer_ || !bestWorldData_) {
+    if (!bestWorldContainer_ || !bestWorldData_) {
+        return;
+    }
+    if (!bestVideoFrame_.has_value() && !bestRenderer_) {
         return;
     }
 

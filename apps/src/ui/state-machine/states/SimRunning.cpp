@@ -13,8 +13,8 @@
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
-#include <atomic>
 #include <cassert>
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include <optional>
 
@@ -59,13 +59,12 @@ void SimRunning::onEnter(StateMachine& sm)
     // Subscribe to render messages from the server (synchronous call).
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
-        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format =
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(wsService.allocateRequestId(), cmd);
         auto result = wsService.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -188,13 +187,13 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     // Auto-switch render format based on debug mode (synchronous call).
     auto& wsServiceRef = sm.getWebSocketService();
     if (wsServiceRef.isConnected()) {
-        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format =
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope =
+            DirtSim::Network::make_command_envelope(wsServiceRef.allocateRequestId(), cmd);
         auto result = wsServiceRef.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -258,9 +257,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto envelope = DirtSim::Network::make_command_envelope(
+                sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
 
             LOG_INFO(State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, toString(material));
@@ -295,9 +294,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto envelope = DirtSim::Network::make_command_envelope(
+                sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
         }
     }
@@ -427,7 +426,40 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
 
     // Calculate UI FPS based on time between updates.
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime);
+
+    // Measure queue delay: time from WebSocket receive to processEvents pickup.
+    if (evt.timestamp.time_since_epoch().count() > 0) {
+        const double queueDelayMs =
+            std::chrono::duration<double, std::milli>(now - evt.timestamp).count();
+        totalQueueDelayMs += queueDelayMs;
+        totalQueueDelayMsSq += queueDelayMs * queueDelayMs;
+        if (queueDelayMs < minQueueDelayMs) {
+            minQueueDelayMs = queueDelayMs;
+        }
+        if (queueDelayMs > maxQueueDelayMs) {
+            maxQueueDelayMs = queueDelayMs;
+        }
+        queueDelayCount++;
+        if (queueDelayCount >= 1000) {
+            const double avg = totalQueueDelayMs / queueDelayCount;
+            const double var = (totalQueueDelayMsSq / queueDelayCount) - (avg * avg);
+            const double sd = var > 0.0 ? std::sqrt(var) : 0.0;
+            LOG_INFO(
+                State,
+                "  Queue delay: {:.2f}ms avg (min={:.2f} max={:.2f} stddev={:.2f}, {} frames)",
+                avg,
+                minQueueDelayMs,
+                maxQueueDelayMs,
+                sd,
+                queueDelayCount);
+            totalQueueDelayMs = 0.0;
+            totalQueueDelayMsSq = 0.0;
+            minQueueDelayMs = 1e9;
+            maxQueueDelayMs = 0.0;
+            queueDelayCount = 0;
+        }
+    }
 
     if (elapsed.count() > 0) {
         measuredUiFps = 1000.0 / elapsed.count();
@@ -440,6 +472,19 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
             smoothedUiFps = 0.9 * smoothedUiFps + 0.1 * measuredUiFps;
         }
 
+        // Track frame interval jitter.
+        const double intervalMs =
+            std::chrono::duration<double, std::milli>(now - lastFrameTime).count();
+        frameIntervalTotalMs += intervalMs;
+        frameIntervalTotalMsSq += intervalMs * intervalMs;
+        if (intervalMs < frameIntervalMinMs) {
+            frameIntervalMinMs = intervalMs;
+        }
+        if (intervalMs > frameIntervalMaxMs) {
+            frameIntervalMaxMs = intervalMs;
+        }
+        frameIntervalCount++;
+
         LOG_DEBUG(State, "UI FPS: {:.1f} (smoothed: {:.1f})", measuredUiFps, smoothedUiFps);
     }
 
@@ -451,37 +496,27 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
         auto& timers = sm.getTimers();
 
         // Get current stats.
-        double parseTotal = timers.getAccumulatedTime("parse_message");
-        uint32_t parseCount = timers.getCallCount("parse_message");
-        double renderTotal = timers.getAccumulatedTime("render_world");
-        uint32_t renderCount = timers.getCallCount("render_world");
+        const double parseTotal = timers.getAccumulatedTime("parse_message");
+        const uint32_t parseCount = timers.getCallCount("parse_message");
+        const double renderTotal = timers.getAccumulatedTime("render_world");
+        const uint32_t renderCount = timers.getCallCount("render_world");
 
         // Calculate interval stats.
-        static double lastParseTotal = 0.0;
-        static uint32_t lastParseCount = 0;
-        static double lastRenderTotal = 0.0;
-        static uint32_t lastRenderCount = 0;
-
-        double intervalParseTime = parseTotal - lastParseTotal;
-        uint32_t intervalParseCount = parseCount - lastParseCount;
-        double intervalRenderTime = renderTotal - lastRenderTotal;
-        uint32_t intervalRenderCount = renderCount - lastRenderCount;
+        const double intervalParseTime = parseTotal - lastParseTotal;
+        const uint32_t intervalParseCount = parseCount - lastParseCount;
+        const double intervalRenderTime = renderTotal - lastRenderTotal;
+        const uint32_t intervalRenderCount = renderCount - lastRenderCount;
 
         // Get additional timing info.
-        double copyTotal = timers.getAccumulatedTime("copy_worlddata");
-        uint32_t copyCount = timers.getCallCount("copy_worlddata");
-        double updateTotal = timers.getAccumulatedTime("update_controls");
-        uint32_t updateCount_ = timers.getCallCount("update_controls");
+        const double copyTotal = timers.getAccumulatedTime("copy_worlddata");
+        const uint32_t copyCount = timers.getCallCount("copy_worlddata");
+        const double updateTotal = timers.getAccumulatedTime("update_controls");
+        const uint32_t updateCount_ = timers.getCallCount("update_controls");
 
-        static double lastCopyTotal = 0.0;
-        static uint32_t lastCopyCount = 0;
-        static double lastUpdateTotal = 0.0;
-        static uint32_t lastUpdateCount = 0;
-
-        double intervalCopyTime = copyTotal - lastCopyTotal;
-        uint32_t intervalCopyCount = copyCount - lastCopyCount;
-        double intervalUpdateTime = updateTotal - lastUpdateTotal;
-        uint32_t intervalUpdateCount = updateCount_ - lastUpdateCount;
+        const double intervalCopyTime = copyTotal - lastCopyTotal;
+        const uint32_t intervalCopyCount = copyCount - lastCopyCount;
+        const double intervalUpdateTime = updateTotal - lastUpdateTotal;
+        const uint32_t intervalUpdateCount = updateCount_ - lastUpdateCount;
 
         LOG_INFO(State, "UI Performance Stats (last n updates, total {}):", updateCount);
         LOG_INFO(
@@ -508,6 +543,27 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
             intervalRenderCount > 0 ? intervalRenderTime / intervalRenderCount : 0.0,
             intervalRenderCount,
             intervalRenderTime);
+
+        // Frame interval jitter.
+        if (frameIntervalCount > 0) {
+            const double avgInterval = frameIntervalTotalMs / frameIntervalCount;
+            const double variance =
+                (frameIntervalTotalMsSq / frameIntervalCount) - (avgInterval * avgInterval);
+            const double stddev = variance > 0.0 ? std::sqrt(variance) : 0.0;
+            LOG_INFO(
+                State,
+                "  Frame interval: {:.2f}ms avg (min={:.2f} max={:.2f} stddev={:.2f}, {} frames)",
+                avgInterval,
+                frameIntervalMinMs,
+                frameIntervalMaxMs,
+                stddev,
+                frameIntervalCount);
+        }
+        frameIntervalTotalMs = 0.0;
+        frameIntervalTotalMsSq = 0.0;
+        frameIntervalMinMs = 1e9;
+        frameIntervalMaxMs = 0.0;
+        frameIntervalCount = 0;
 
         lastCopyTotal = copyTotal;
         lastCopyCount = copyCount;
@@ -539,7 +595,13 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
 
     // Render world.
     sm.getTimers().startTimer("render_world");
-    playground_->render(*worldData, debugDrawEnabled);
+    if (evt.scenarioVideoFrame.has_value()) {
+        playground_->presentVideoFrame(evt.scenarioVideoFrame.value());
+        sm.eventProcessor.requestYield();
+    }
+    else {
+        playground_->render(*worldData, debugDrawEnabled);
+    }
     sm.getTimers().stopTimer("render_world");
 
     // Render neural grid (tree vision).

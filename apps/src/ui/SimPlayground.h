@@ -36,6 +36,7 @@ class EventSink;
 class ExpandablePanel;
 class FractalAnimator;
 class UiServices;
+class VideoSurface;
 
 /**
  * @brief Coordinates the simulation playground view.
@@ -81,6 +82,7 @@ public:
         double uiFPS = 0.0);
 
     void render(const WorldData& data, bool debugDraw);
+    void presentVideoFrame(const ScenarioVideoFrame& frame);
 
     void setRenderMode(RenderMode mode);
 
@@ -115,9 +117,10 @@ private:
     // State for CoreControls that persists across panel switches.
     CoreControlsState coreControlsState_;
 
-    // Renderers (always active).
+    // Renderers (always active, mutually exclusive for cell vs video).
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<NeuralGridRenderer> neuralGridRenderer_;
+    std::unique_ptr<VideoSurface> videoSurface_;
 
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;

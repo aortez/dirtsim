@@ -273,9 +273,9 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.frame.worldData;
-    worldData.scenario_video_frame = evt.frame.scenarioVideoFrame;
     worldData.organism_ids = evt.frame.organismIds;
-    view_->updateBestPlaybackFrame(worldData, evt.frame.fitness, evt.frame.generation);
+    view_->updateBestPlaybackFrame(
+        worldData, evt.frame.fitness, evt.frame.generation, evt.frame.scenarioVideoFrame);
     return std::move(*this);
 }
 
@@ -285,7 +285,6 @@ State::Any TrainingActive::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.snapshot.worldData;
-    worldData.scenario_video_frame = evt.snapshot.scenarioVideoFrame;
     worldData.organism_ids = evt.snapshot.organismIds;
     LOG_INFO(
         State,
@@ -321,7 +320,8 @@ State::Any TrainingActive::onEvent(
         evt.snapshot.commandsRejected,
         topCommandSignatures,
         topCommandOutcomeSignatures,
-        evt.snapshot.fitnessBreakdown);
+        evt.snapshot.fitnessBreakdown,
+        evt.snapshot.scenarioVideoFrame);
 
     return std::move(*this);
 }
@@ -466,7 +466,7 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
     }
 
     view_->updateScenarioConfig(evt.scenario_id, evt.scenario_config);
-    view_->renderWorld(evt.worldData);
+    view_->renderWorld(evt.worldData, evt.scenarioVideoFrame);
     return std::move(*this);
 }
 
