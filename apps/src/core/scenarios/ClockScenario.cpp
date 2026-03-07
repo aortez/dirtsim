@@ -1654,6 +1654,15 @@ void ClockScenario::updateDuckEvent(
     Duck* duck_organism = world.getOrganismManager().getDuck(state.organism_id);
     if (!duck_organism) return;
 
+    // Duck death ends the event.
+    if (duck_organism->isDead()) {
+        world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
+        state.organism_id = INVALID_ORGANISM_ID;
+        state.phase = DuckEventPhase::DOOR_CLOSING;
+        state.door_close_timer = 0.0;
+        return;
+    }
+
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
     // Get duck's cell COM for sub-cell positioning.
@@ -1695,6 +1704,13 @@ void ClockScenario::updateDuckEvent(
         spdlog::info("ClockScenario: Exit door opened at ({}, {})", exit_pos.x, exit_pos.y);
         std::string diagram = WorldDiagramGeneratorEmoji::generateEmojiDiagram(world);
         spdlog::info("\n{}", diagram);
+    }
+
+    // Apply pit damage when duck is standing in a pit.
+    constexpr double PIT_DAMAGE_PER_SECOND = 0.5;
+    if (obstacle_manager_.isPitAt(static_cast<uint32_t>(duck_cell.x))
+        && duck_cell.y == data.height - 1 && duck_organism->isOnGround()) {
+        duck_organism->applyDamage(PIT_DAMAGE_PER_SECOND * deltaTime);
     }
 
     // Check if duck entered the exit door and passed the middle of the cell.

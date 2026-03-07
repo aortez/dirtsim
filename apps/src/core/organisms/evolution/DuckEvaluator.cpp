@@ -135,6 +135,8 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
         breakdown.energyAverage = duck->getEnergyAverage();
         breakdown.energyConsumedTotal = duck->getEnergyConsumedTotal();
         breakdown.energyLimitedSeconds = duck->getEnergyLimitedSeconds();
+        breakdown.healthAverage = duck->getHealthAverage();
+        breakdown.collisionDamageTotal = duck->getCollisionDamageTotal();
         breakdown.wingUpSeconds = duck->getWingUpSeconds();
         breakdown.wingDownSeconds = duck->getWingDownSeconds();
     }

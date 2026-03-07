@@ -341,6 +341,16 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             state_ = State::OrganismDied;
             break;
         }
+
+        if (trainingSpec_.organismType == OrganismType::DUCK) {
+            Duck* duck = world_->getOrganismManager().getDuck(organismId_);
+            if (duck && duck->isDead()) {
+                world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
+                state_ = State::OrganismDied;
+                break;
+            }
+        }
+
         organismTracker_.track(simTime_, organism->position);
 
         if (trainingSpec_.organismType == OrganismType::TREE) {

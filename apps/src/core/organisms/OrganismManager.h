@@ -107,6 +107,9 @@ public:
     // Physics integration.
     void applyBoneForces(World& world, double deltaTime);
 
+    // Snapshot pre-collision velocities for all active ducks.
+    void snapshotPreCollisionState(const World& world);
+
     // Sync organism render data to WorldData.entities.
     // Called automatically by World::advanceTime() - scenarios don't need to manage this.
     void syncEntitiesToWorldData(World& world);
