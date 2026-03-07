@@ -10,6 +10,7 @@ jobs:
     env:
       YOCTO_CACHE_ROOT: /home/data/linux1/yocto-cache
       YOCTO_CACHE_RETENTION_DAYS: 7
+      YOCTO_LOG_RETENTION_DAYS: 3
       YOCTO_BUILD_RETENTION_DAYS: 7
 
     steps:
@@ -38,6 +39,18 @@ jobs:
         if [ -d "${CACHE_ROOT}/.ccache/dirtsim-yocto" ]; then
           find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +"${DAYS}" -delete || true
         fi
+        echo "Done."
+
+    - name: Prune Yocto build logs
+      run: |
+        CACHE_ROOT="${YOCTO_CACHE_ROOT}"
+        DAYS="${YOCTO_LOG_RETENTION_DAYS}"
+        echo "Pruning Yocto build logs older than ${DAYS} days..."
+        for dir in "${CACHE_ROOT}"/kas-build-*/tmp/log; do
+          if [ -d "${dir}" ]; then
+            find "${dir}" -type f -mtime +"${DAYS}" -delete || true
+          fi
+        done
         echo "Done."
 
     - name: Remove old Yocto build directories

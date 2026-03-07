@@ -21,6 +21,15 @@ jobs:
       KAS_REPOS_DIR: /home/data/linux1/yocto-cache/kas-repos
 
     steps:
+    - name: Check disk space
+      run: |
+        avail_gb=$(df --output=avail /home/data/linux1 | tail -1 | awk '{printf "%d", $1/1024/1024}')
+        echo "Available disk space: ${avail_gb}GB"
+        if [ "$avail_gb" -lt 10 ]; then
+          echo "::error::Insufficient disk space: ${avail_gb}GB available, need at least 10GB"
+          exit 1
+        fi
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -61,5 +70,10 @@ jobs:
 
   docker-cleanup:
     uses: ./.github/workflows/docker-cleanup.yml
+    needs: yocto-build
+    if: always()
+
+  yocto-cleanup:
+    uses: ./.github/workflows/yocto-cleanup.yml
     needs: yocto-build
     if: always()
