@@ -919,6 +919,11 @@ EvaluationPassResult runEvaluationPass(
     TrainingRunner runner(
         trainingSpec, individual, evolutionConfig, genomeRepository, runnerConfig);
 
+    // Disable light calculation for background clock/duck evaluations (never rendered).
+    if (trainingSpec.scenarioId == Scenario::EnumType::Clock && runner.getWorld()) {
+        runner.getWorld()->getPhysicsSettings().light.enabled = false;
+    }
+
     TrainingRunner::Status status;
     while (status.state == TrainingRunner::State::Running
            && !(stopRequested && stopRequested->load())) {

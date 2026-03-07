@@ -112,6 +112,7 @@ protected:
             .ambient_intensity = 0.3f,
             .diffusion_iterations = 3,
             .diffusion_rate = 0.3f,
+            .enabled = true,
             .sky_access_enabled = true,
             .sky_access_falloff = 0.5f,
             .sky_access_multi_directional = false,

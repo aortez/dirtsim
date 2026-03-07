@@ -11,6 +11,7 @@ struct LightConfig {
     float ambient_intensity;
     int diffusion_iterations;
     float diffusion_rate;
+    bool enabled;
     bool sky_access_enabled;
     float sky_access_falloff;
     bool sky_access_multi_directional;
