@@ -382,6 +382,68 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.air_scatter_rate);
+                            } },
+                      { .label = "Bounce",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 30,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.bounce_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.bounce_intensity);
+                            } },
+                      { .label = "Diagonal On",
+                        .type = ControlType::SWITCH_ONLY,
+                        .enableSetter = [](PhysicsSettings& s,
+                                           bool e) { s.light.diagonal_light_enabled = e; },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.light.diagonal_light_enabled;
+                            } },
+                      { .label = "Diagonal",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 40,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.diagonal_light_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.diagonal_light_intensity);
+                            } },
+                      { .label = "Side On",
+                        .type = ControlType::SWITCH_ONLY,
+                        .enableSetter = [](PhysicsSettings& s,
+                                           bool e) { s.light.side_light_enabled = e; },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.light.side_light_enabled; } },
+                      { .label = "Side",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 20,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.side_light_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.side_light_intensity);
                             } } }
     };
 

@@ -38,29 +38,42 @@ void WorldLightCalculator::calculate(
         clearLight(world);
     }
 
-    // Add ambient light.
+    // Directional light casts (sun, side, diagonal).
+    if (config.sun_enabled) {
+        ScopeTimer t(timers, "light_sunlight");
+        applySunlight(
+            world, grid, config.sun_color, config.sun_intensity, config.shadow_decay_rate);
+    }
+
+    if (config.side_light_enabled) {
+        ScopeTimer t(timers, "light_side");
+        applySideLight(
+            world, grid, config.sun_color, config.side_light_intensity, config.shadow_decay_rate);
+    }
+
+    if (config.diagonal_light_enabled) {
+        ScopeTimer t(timers, "light_diagonal");
+        applyDiagonalLight(
+            world,
+            grid,
+            config.sun_color,
+            config.diagonal_light_intensity,
+            config.shadow_decay_rate);
+    }
+
+    // Bounce: lit surfaces reflect directional light horizontally, softening narrow shadows.
+    // Runs after directional casts but before ambient/emissive so only directional light is
+    // bounced.
+    if (config.bounce_intensity > 0.0f) {
+        ScopeTimer t(timers, "light_bounce");
+        applyBounce(world, grid, config.bounce_intensity);
+    }
+
+    // Add ambient light (after bounce so ambient isn't amplified by reflections).
     {
         ScopeTimer t(timers, "light_ambient");
         applyAmbient(world, grid, config);
         ambient_boost_ = {};
-    }
-
-    // Add sunlight (top-down).
-    if (config.sun_enabled) {
-        ScopeTimer t(timers, "light_sunlight");
-        applySunlight(world, grid, config.sun_color, config.sun_intensity);
-    }
-
-    // Add side light (horizontal from left and right edges).
-    if (config.side_light_enabled) {
-        ScopeTimer t(timers, "light_side");
-        applySideLight(world, grid, config.sun_color, config.side_light_intensity);
-    }
-
-    // Add diagonal light (45-degree from top-left and top-right).
-    if (config.diagonal_light_enabled) {
-        ScopeTimer t(timers, "light_diagonal");
-        applyDiagonalLight(world, grid, config.sun_color, config.diagonal_light_intensity);
     }
 
     // Add emissive material contributions.
@@ -131,7 +144,7 @@ void WorldLightCalculator::applyAmbient(
 }
 
 void WorldLightCalculator::applySunlight(
-    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -144,8 +157,19 @@ void WorldLightCalculator::applySunlight(
 
     // Helper to apply sunlight attenuation for a single cell.
     // Opacity and tinting scale with fill ratio - partially filled cells are more transparent.
-    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
+    // In air, shadows decay — light recovers toward full intensity, simulating sun angular width.
+    // Decay only applies when the ray still has meaningful energy (not fully blocked by a wall).
+    auto processCell = [&data, &white, width, &scaled_sun, decay](
+                           Material::EnumType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
+
+        if (mat == Material::EnumType::Air) {
+            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
+                sun = ColorNames::lerp(sun, scaled_sun, decay);
+            }
+            return;
+        }
+
         const auto& light_props = Material::getProperties(mat).light;
         const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
         const float fill = cell.fill_ratio;
@@ -205,7 +229,7 @@ void WorldLightCalculator::applySunlight(
 }
 
 void WorldLightCalculator::applySideLight(
-    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -216,8 +240,17 @@ void WorldLightCalculator::applySideLight(
     const int height = data.height;
     const RgbF white{ 1.0f, 1.0f, 1.0f };
 
-    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
+    auto processCell = [&data, &white, width, &scaled_sun, decay](
+                           Material::EnumType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
+
+        if (mat == Material::EnumType::Air) {
+            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
+                sun = ColorNames::lerp(sun, scaled_sun, decay);
+            }
+            return;
+        }
+
         const auto& light_props = Material::getProperties(mat).light;
         const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
         const float fill = cell.fill_ratio;
@@ -311,8 +344,131 @@ void WorldLightCalculator::applySideLight(
     }
 }
 
+void WorldLightCalculator::applyBounce(
+    World& world, const GridOfCells& grid, float bounce_intensity)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
+
+    // Snapshot current light — bounce sources are direct light only, not other bounces.
+    const size_t cell_count = static_cast<size_t>(width) * height;
+    light_buffer_.resize(cell_count);
+    std::copy(data.colors.begin(), data.colors.end(), light_buffer_.begin());
+
+    constexpr float air_falloff = 0.95f;
+
+    // Bounce cell: deposit bounce light, then either attenuate through material (and reflect)
+    // or decay through air.
+    auto bounceCell = [&data, &white, width, &light_buffer = light_buffer_, bounce_intensity](
+                          Material::EnumType mat, int x, int y, RgbF& bounce) {
+        const size_t idx = static_cast<size_t>(y) * width + x;
+        data.colors.data[idx] += bounce;
+
+        if (mat == Material::EnumType::Air) {
+            bounce *= air_falloff;
+            return;
+        }
+
+        // Attenuate bounce through material.
+        const auto& lp = Material::getProperties(mat).light;
+        const Cell& cell = data.cells[idx];
+        const float fill = cell.fill_ratio;
+        const float transmittance = 1.0f - lp.opacity * fill;
+        bounce *= transmittance;
+        const RgbF eff_tint = ColorNames::lerp(white, toRgbF(lp.tint), fill);
+        bounce *= eff_tint;
+
+        // Reflect: semi-transparent cells re-emit a fraction of received direct light.
+        // Fully opaque cells (walls, metal) block bounce entirely — a 1D scan can't
+        // distinguish the outward-facing surface from the inward face.
+        if (transmittance > 0.0f) {
+            bounce += light_buffer[idx] * bounce_intensity;
+        }
+    };
+
+    // Horizontal bounce: L→R and R→L per row.
+    // Rows are independent — parallelize with OpenMP.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (int y = 0; y < height; ++y) {
+        // Left to right.
+        {
+            RgbF bounce{};
+
+            {
+                const uint64_t packed = grid.getMaterialNeighborhood(0, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                bounceCell(mat, 0, y, bounce);
+            }
+
+            int x = 1;
+            for (; x + 2 < width; x += 3) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x + 1, y).raw();
+                const Material::EnumType mat0 =
+                    static_cast<Material::EnumType>((packed >> 12) & 0xF);
+                const Material::EnumType mat1 =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                const Material::EnumType mat2 =
+                    static_cast<Material::EnumType>((packed >> 20) & 0xF);
+
+                bounceCell(mat0, x, y, bounce);
+                bounceCell(mat1, x + 1, y, bounce);
+                bounceCell(mat2, x + 2, y, bounce);
+            }
+
+            for (; x < width; ++x) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                bounceCell(mat, x, y, bounce);
+            }
+        }
+
+        // Right to left.
+        {
+            RgbF bounce{};
+
+            {
+                const uint64_t packed = grid.getMaterialNeighborhood(width - 1, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                bounceCell(mat, width - 1, y, bounce);
+            }
+
+            int x = width - 2;
+            for (; x - 2 >= 0; x -= 3) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x - 1, y).raw();
+                const Material::EnumType mat0 =
+                    static_cast<Material::EnumType>((packed >> 20) & 0xF);
+                const Material::EnumType mat1 =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                const Material::EnumType mat2 =
+                    static_cast<Material::EnumType>((packed >> 12) & 0xF);
+
+                bounceCell(mat0, x, y, bounce);
+                bounceCell(mat1, x - 1, y, bounce);
+                bounceCell(mat2, x - 2, y, bounce);
+            }
+
+            for (; x >= 0; --x) {
+                const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                const Material::EnumType mat =
+                    static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                bounceCell(mat, x, y, bounce);
+            }
+        }
+    }
+}
+
 void WorldLightCalculator::applyDiagonalLight(
-    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity, float decay)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -323,8 +479,17 @@ void WorldLightCalculator::applyDiagonalLight(
     const int height = data.height;
     const RgbF white{ 1.0f, 1.0f, 1.0f };
 
-    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
+    auto processCell = [&data, &white, width, &scaled_sun, decay](
+                           Material::EnumType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
+
+        if (mat == Material::EnumType::Air) {
+            if (decay > 0.0f && std::max({ sun.r, sun.g, sun.b }) > 0.01f) {
+                sun = ColorNames::lerp(sun, scaled_sun, decay);
+            }
+            return;
+        }
+
         const auto& light_props = Material::getProperties(mat).light;
         const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
         const float fill = cell.fill_ratio;

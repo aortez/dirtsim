@@ -19,12 +19,14 @@ LightConfig getDefaultLightConfig()
 {
     return LightConfig{
         .air_scatter_rate = 0.15f,
+        .bounce_intensity = 0.3f,
         .ambient_color = ColorNames::dayAmbient(),
         .ambient_intensity = 0.7f,
         .diagonal_light_enabled = true,
         .diagonal_light_intensity = 0.4f,
         .diffusion_iterations = 2,
         .diffusion_rate = 0.6f,
+        .shadow_decay_rate = 0.0f,
         .side_light_enabled = true,
         .side_light_intensity = 0.2f,
         .sun_color = ColorNames::warmSunlight(),

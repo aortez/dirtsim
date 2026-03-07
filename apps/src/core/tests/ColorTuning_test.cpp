@@ -108,12 +108,14 @@ protected:
         // Full light config with sun enabled.
         config = {
             .air_scatter_rate = 0.15f,
+            .bounce_intensity = 0.0f,
             .ambient_color = ColorNames::dayAmbient(),
             .ambient_intensity = 0.3f,
             .diagonal_light_enabled = false,
             .diagonal_light_intensity = 0.0f,
             .diffusion_iterations = 3,
             .diffusion_rate = 0.3f,
+            .shadow_decay_rate = 0.0f,
             .side_light_enabled = false,
             .side_light_intensity = 0.0f,
             .sun_color = ColorNames::warmSunlight(),
