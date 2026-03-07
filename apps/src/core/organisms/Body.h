@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Bone.h"
 #include "LocalCell.h"
 #include "OrganismType.h"
 #include "core/LightManager.h"
@@ -62,9 +61,6 @@ public:
     // Cell body.
     const std::unordered_set<Vector2i>& getCells() const { return cells_; }
     std::unordered_set<Vector2i>& getCells() { return cells_; }
-    const std::vector<Bone>& getBones() const { return bones_; }
-    std::vector<Bone>& getBones() { return bones_; }
-
     // Anchor cell - primary position.
     virtual Vector2i getAnchorCell() const = 0;
     virtual void setAnchorCell(Vector2i pos) = 0;
@@ -93,9 +89,6 @@ public:
     // Called when a cell transfers to a new position (physics movement).
     virtual void onCellTransfer(Vector2i from, Vector2i to);
 
-    // Create bones connecting a new cell to existing organism cells.
-    void createBonesForCell(Vector2i new_cell, Material::EnumType material, const World& world);
-
     // Rigid body state.
     Vector2d position{ 0.0, 0.0 };
     Vector2d velocity{ 0.0, 0.0 };
@@ -118,7 +111,6 @@ protected:
     bool active_ = true;
 
     std::unordered_set<Vector2i> cells_;
-    std::vector<Bone> bones_;
     Vector2<float> facing_{ 1.0f, 0.0f };
     double age_seconds_ = 0.0;
     std::vector<LightAttachment> attached_lights_;

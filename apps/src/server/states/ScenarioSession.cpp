@@ -342,7 +342,6 @@ Result<std::monostate, ApiError> ScenarioSession::reset()
                 }
                 impl.scenario->reset(*impl.world);
                 impl.world->getData().tree_vision.reset();
-                impl.world->getData().bones.clear();
                 return Result<std::monostate, ApiError>::okay(std::monostate{});
             }
             else {

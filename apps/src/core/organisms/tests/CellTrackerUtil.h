@@ -25,7 +25,6 @@ public:
         Vector2d com;
         Vector2d velocity;
         Vector2d pending_force;
-        Vector2d bone_force;
         Vector2d gravity_force;
         Vector2d cohesion_force;
         Vector2d adhesion_force;

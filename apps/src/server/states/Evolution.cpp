@@ -920,6 +920,11 @@ EvaluationPassResult runEvaluationPass(
     TrainingRunner runner(
         trainingSpec, individual, evolutionConfig, genomeRepository, runnerConfig);
 
+    // Disable light calculation for background clock/duck evaluations (never rendered).
+    if (trainingSpec.scenarioId == Scenario::EnumType::Clock && runner.getWorld()) {
+        runner.getWorld()->getPhysicsSettings().light.enabled = false;
+    }
+
     TrainingRunner::Status status;
     while (status.state == TrainingRunner::State::Running
            && !(stopRequested && stopRequested->load())) {
@@ -2835,14 +2840,6 @@ void Evolution::adjustConcurrency()
         workerState_->taskCv.notify_all(); // Wake workers to re-evaluate concurrency predicate.
     }
 }
-
-// void Evolution::clearBestPlaybackRunner()
-// {
-//     bestPlaybackRunner_.reset();
-//     bestPlaybackDuckSecondPassActive_ = false;
-//     bestPlaybackDuckPrimarySpawnLeftFirst_ = true;
-//     lastBestPlaybackStepTime_ = {};
-// }
 
 void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
 {

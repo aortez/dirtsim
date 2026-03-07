@@ -197,3 +197,105 @@ TEST(GridOfCellsTest, CacheConstructionOverhead)
 
     EXPECT_LT(duration.count(), 5000) << "Cache construction too slow!";
 }
+
+/**
+ * Verify single-pass populateAll() produces identical caches to three-pass approach.
+ */
+TEST(GridOfCellsTest, SinglePassMatchesSeparatePasses)
+{
+    World world(30, 30);
+
+    // Populate with varied materials including edges and corners.
+    world.addMaterialAtCell({ 1, 1 }, Material::EnumType::Dirt, 1.0);
+    world.addMaterialAtCell({ 5, 5 }, Material::EnumType::Water, 0.7f);
+    world.addMaterialAtCell({ 10, 3 }, Material::EnumType::Metal, 0.9f);
+    world.addMaterialAtCell({ 15, 15 }, Material::EnumType::Sand, 0.5f);
+    world.addMaterialAtCell({ 28, 28 }, Material::EnumType::Dirt, 0.8f);
+    world.addMaterialAtCell({ 0, 15 }, Material::EnumType::Water, 0.6f);
+    world.addMaterialAtCell({ 29, 0 }, Material::EnumType::Metal, 1.0);
+
+    // Scatter more materials with RNG.
+    std::mt19937 rng(99);
+    std::uniform_int_distribution<> coord_dist(0, 29);
+    std::uniform_int_distribution<> mat_dist(1, 8);
+    std::uniform_real_distribution<> fill_dist(0.2, 1.0);
+
+    for (int i = 0; i < 50; ++i) {
+        int16_t x = static_cast<int16_t>(coord_dist(rng));
+        int16_t y = static_cast<int16_t>(coord_dist(rng));
+        Material::EnumType mat = static_cast<Material::EnumType>(mat_dist(rng));
+        float fill = static_cast<float>(fill_dist(rng));
+        world.addMaterialAtCell({ x, y }, mat, fill);
+    }
+
+    const int w = world.getData().width;
+    const int h = world.getData().height;
+
+    // Single-pass (constructor uses populateAll).
+    GridOfCells single_pass(world.getData().cells, world.getData().debug_info, w, h);
+
+    // Three-pass (rebuild using separate passes).
+    GridOfCells three_pass(world.getData().cells, world.getData().debug_info, w, h);
+    three_pass.rebuildSeparatePasses();
+
+    // Compare all four data structures.
+    int empty_bitmap_mismatches = 0;
+    int wall_bitmap_mismatches = 0;
+    int empty_neighborhood_mismatches = 0;
+    int material_neighborhood_mismatches = 0;
+
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (single_pass.emptyCells().isSet(x, y) != three_pass.emptyCells().isSet(x, y)) {
+                ++empty_bitmap_mismatches;
+                if (empty_bitmap_mismatches <= 3) {
+                    EXPECT_EQ(
+                        single_pass.emptyCells().isSet(x, y), three_pass.emptyCells().isSet(x, y))
+                        << "empty_cells_ mismatch at (" << x << "," << y << ")";
+                }
+            }
+
+            if (single_pass.wallCells().isSet(x, y) != three_pass.wallCells().isSet(x, y)) {
+                ++wall_bitmap_mismatches;
+                if (wall_bitmap_mismatches <= 3) {
+                    EXPECT_EQ(
+                        single_pass.wallCells().isSet(x, y), three_pass.wallCells().isSet(x, y))
+                        << "wall_cells_ mismatch at (" << x << "," << y << ")";
+                }
+            }
+
+            auto sp_en = single_pass.getEmptyNeighborhood(x, y);
+            auto tp_en = three_pass.getEmptyNeighborhood(x, y);
+            if (sp_en.raw().data != tp_en.raw().data) {
+                ++empty_neighborhood_mismatches;
+                if (empty_neighborhood_mismatches <= 3) {
+                    EXPECT_EQ(sp_en.raw().data, tp_en.raw().data)
+                        << "empty_neighborhoods_ mismatch at (" << x << "," << y << ")"
+                        << " single_pass=0x" << std::hex << sp_en.raw().data << " three_pass=0x"
+                        << tp_en.raw().data << std::dec;
+                }
+            }
+
+            auto sp_mn = single_pass.getMaterialNeighborhood(x, y);
+            auto tp_mn = three_pass.getMaterialNeighborhood(x, y);
+            if (sp_mn.raw() != tp_mn.raw()) {
+                ++material_neighborhood_mismatches;
+                if (material_neighborhood_mismatches <= 3) {
+                    EXPECT_EQ(sp_mn.raw(), tp_mn.raw())
+                        << "material_neighborhoods_ mismatch at (" << x << "," << y << ")"
+                        << " single_pass=0x" << std::hex << sp_mn.raw() << " three_pass=0x"
+                        << tp_mn.raw() << std::dec;
+                }
+            }
+        }
+    }
+
+    EXPECT_EQ(empty_bitmap_mismatches, 0)
+        << "Total empty bitmap mismatches: " << empty_bitmap_mismatches;
+    EXPECT_EQ(wall_bitmap_mismatches, 0)
+        << "Total wall bitmap mismatches: " << wall_bitmap_mismatches;
+    EXPECT_EQ(empty_neighborhood_mismatches, 0)
+        << "Total empty neighborhood mismatches: " << empty_neighborhood_mismatches;
+    EXPECT_EQ(material_neighborhood_mismatches, 0)
+        << "Total material neighborhood mismatches: " << material_neighborhood_mismatches;
+}

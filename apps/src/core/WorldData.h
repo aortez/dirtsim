@@ -60,7 +60,6 @@ struct WorldData {
 
     // ===== NOT binary serialized (runtime/debug only) =====
     std::vector<CellDebug> debug_info; // Debug/viz info: debug_info[y * width + x]
-    std::vector<BoneData> bones;       // Bone connections for organism structural visualization.
 
     // Bounds checking.
     inline bool inBounds(int x, int y) const { return x >= 0 && y >= 0 && x < width && y < height; }
@@ -83,7 +82,7 @@ struct WorldData {
     inline Cell& at(Vector2s pos) { return at(pos.x, pos.y); }
     inline const Cell& at(Vector2s pos) const { return at(pos.x, pos.y); }
 
-    // Custom zpp_bits serialization (excludes debug_info and bones).
+    // Custom zpp_bits serialization (excludes debug_info).
     constexpr static auto serialize(auto& archive, auto& self)
     {
         return archive(
@@ -98,7 +97,7 @@ struct WorldData {
             self.entities,
             self.colors,
             self.organism_debug);
-        // debug_info and bones are intentionally excluded from binary serialization.
+        // debug_info is intentionally excluded from binary serialization.
     }
 };
 

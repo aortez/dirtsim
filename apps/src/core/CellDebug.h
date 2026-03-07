@@ -16,7 +16,6 @@ struct CellDebug {
     // Force accumulation for visualization.
     Vector2d accumulated_viscous_force = {};
     Vector2d accumulated_adhesion_force = {};
-    Vector2d accumulated_bone_force = {};
     Vector2d accumulated_com_cohesion_force = {};
     Vector2d accumulated_friction_force = {};
     Vector2d accumulated_gravity_force = {};

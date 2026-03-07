@@ -115,6 +115,7 @@ protected:
             .diagonal_light_intensity = 0.0f,
             .diffusion_iterations = 3,
             .diffusion_rate = 0.3f,
+            .enabled = true,
             .shadow_decay_rate = 0.0f,
             .side_light_enabled = false,
             .side_light_intensity = 0.0f,

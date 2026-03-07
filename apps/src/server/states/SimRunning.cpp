@@ -469,7 +469,6 @@ void SimRunning::tick(StateMachine& dsm)
                 if (scenario) {
                     scenario->reset(*world);
                     world->getData().tree_vision.reset();
-                    world->getData().bones.clear();
                     gamepad_to_duck_.clear();
                     stepCount = 0;
                 }

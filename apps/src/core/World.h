@@ -277,7 +277,6 @@ private:
     void applyPressureForces();
     void resolveForces(double deltaTime, const GridOfCells& grid);
     void resolveRigidBodies(double deltaTime);
-    void pruneDisconnectedFragments();
     Vector2d computeOrganismSupportForce(
         const std::vector<Vector2i>& organism_cells, OrganismId organism_id) const;
     void processVelocityLimiting(double deltaTime);

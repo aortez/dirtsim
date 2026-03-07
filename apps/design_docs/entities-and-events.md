@@ -69,7 +69,7 @@ Location: `src/ui/rendering/EntityRenderer.{h,cpp}`
 - **DUCK**: Renders 101×112 duck sprite scaled to 1 cell, flips horizontally based on facing.x
 - **SPARKLE**: Renders as yellow cross (5 pixels), opacity from velocity.magnitude()
 
-Entities render on top of cells (after bones, before bilinear filter).
+Entities render on top of cells (before bilinear filter).
 
 ## Duck Entity
 
@@ -247,9 +247,8 @@ Entities render after all cell rendering but before post-processing:
 1. Clear canvas
 2. Draw cells (material colors, borders)
 3. Draw debug overlays (COM, velocity, pressure)
-4. Draw bones
-5. **Draw entities** ← Duck and sparkles
-6. Apply bilinear filter (SMOOTH mode only)
+4. **Draw entities** ← Duck and sparkles
+5. Apply bilinear filter (SMOOTH mode only)
 7. Invalidate canvas
 
 ## Constants Reference
