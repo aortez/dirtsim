@@ -554,25 +554,22 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->pending_moves_ = computeMaterialMoves(scaledDeltaTime);
     }
 
-    // Process material moves - detects collisions for next frame's dynamic pressure.
-    processMaterialMoves();
-
-    // Refresh cache after transfers only when moves actually invalidated occupancy maps.
-    ensureGridCacheFresh("grid_cache_rebuild_post_moves");
-
-    // Prune disconnected organism fragments AFTER transfers complete.
-    // This ensures connectivity checks use current positions, not stale pre-transfer positions.
-    pruneDisconnectedFragments();
-
-    // Inject organism emissions before light calculation.
+    // Inject organism emissions and calculate lighting before material moves.
+    // Lighting is cosmetic and doesn't feed back into physics, so it can use the
+    // already-fresh grid cache from the start of the frame.
     organism_manager_->injectEmissions(pImpl->light_calculator_);
-
-    // Calculate lighting for rendering.
     {
         ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
         pImpl->light_calculator_.calculate(
             *this, *pImpl->grid_, pImpl->physicsSettings_.light, pImpl->timers_);
     }
+
+    // Process material moves - detects collisions for next frame's dynamic pressure.
+    processMaterialMoves();
+
+    // Prune disconnected organism fragments AFTER transfers complete.
+    // This ensures connectivity checks use current positions, not stale pre-transfer positions.
+    pruneDisconnectedFragments();
 
     // Sync organism render data to WorldData.entities for UI.
     organism_manager_->syncEntitiesToWorldData(*this);
