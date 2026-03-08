@@ -35,6 +35,7 @@ struct DuckFitnessBreakdown {
     double collisionDamageTotal = 0.0;
     double damageTotal = 0.0;
     bool exitedThroughDoor = false;
+    double exitDoorRaw = 0.0;
     double healthAverage = 0.0;
     double exitDoorBonus = 0.0;
     double totalFitness = 0.0;

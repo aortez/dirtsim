@@ -266,6 +266,10 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
         context.organismType == OrganismType::TREE, "TreeEvaluator: Non-tree fitness context");
 
     TreeFitnessBreakdown breakdown{};
+    breakdown.survivalRaw = std::max(0.0, context.result.lifespan);
+    breakdown.survivalReference = context.evolutionConfig.maxSimulationTime;
+    breakdown.energyReference = context.evolutionConfig.energyReference;
+    breakdown.waterReference = context.evolutionConfig.waterReference;
     breakdown.survivalScore = computeSurvivalScore(context);
     if (breakdown.survivalScore <= 0.0) {
         return breakdown;
@@ -278,6 +282,21 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
     if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
         tree = static_cast<const Tree*>(context.finalOrganism);
         metrics = computeTreeStructureMetrics(*tree);
+
+        breakdown.maxEnergyRaw = std::max(0.0, context.result.maxEnergy);
+        breakdown.maxEnergyNormalized = computeMaxEnergyScore(context);
+        breakdown.finalEnergyRaw = std::max(0.0, tree->getEnergy());
+        breakdown.finalEnergyNormalized =
+            clamp01(normalize(breakdown.finalEnergyRaw, context.evolutionConfig.energyReference));
+        const TreeResourceTotals* resources = resolveTreeResources(context, *tree);
+        if (resources) {
+            breakdown.producedEnergyRaw = std::max(0.0, resources->energyProduced);
+            breakdown.producedEnergyNormalized = saturatingScore(
+                breakdown.producedEnergyRaw, context.evolutionConfig.energyReference);
+            breakdown.absorbedWaterRaw = std::max(0.0, resources->waterAbsorbed);
+            breakdown.absorbedWaterNormalized =
+                saturatingScore(breakdown.absorbedWaterRaw, context.evolutionConfig.waterReference);
+        }
 
         breakdown.partialStructureBonus = computePartialStructureBonus(metrics);
         breakdown.stageBonus = computeStageBonus(*tree, metrics);

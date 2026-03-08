@@ -15,9 +15,9 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
-#include "core/organisms/evolution/TreeEvaluator.h"
 #include "server/Event.h"
-#include "server/api/FitnessBreakdownReport.h"
+#include "server/evolution/FitnessEvaluation.h"
+#include "server/evolution/FitnessModelBundle.h"
 
 #include <atomic>
 #include <chrono>
@@ -131,7 +131,7 @@ struct Evolution {
         int index = -1;
         int robustGeneration = -1;
         int robustSampleOrdinal = 0;
-        double fitness = 0.0;
+        EvolutionSupport::FitnessEvaluation fitnessEvaluation;
         double simTime = 0.0;
         int commandsAccepted = 0;
         int commandsRejected = 0;
@@ -139,8 +139,6 @@ struct Evolution {
         std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
         std::optional<EvaluationSnapshot> snapshot;
         std::unordered_map<std::string, TimerAggregate> timerStats;
-        std::optional<Api::FitnessBreakdownReport> fitnessBreakdown;
-        std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
     };
 
     struct WorkerTask {
@@ -167,6 +165,7 @@ struct Evolution {
         std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
         TrainingBrainRegistry brainRegistry;
         GenomeRepository* genomeRepository = nullptr;
+        EvolutionSupport::FitnessModelBundle fitnessModel;
     };
 
     struct VisibleEvaluationState {
@@ -204,6 +203,7 @@ struct Evolution {
     std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;
 
     TrainingBrainRegistry brainRegistry_;
+    EvolutionSupport::FitnessModelBundle fitnessModel_;
 
     struct BestPlaybackState {
         std::optional<Individual> individual;
@@ -312,7 +312,7 @@ private:
         int robustnessIndex = -1;
         double robustnessFirstSample = 0.0;
         std::optional<EvaluationSnapshot> snapshot;
-        std::optional<Api::FitnessBreakdownReport> snapshotFitnessBreakdown;
+        std::optional<EvolutionSupport::FitnessEvaluation> snapshotFitnessEvaluation;
         int snapshotCommandsAccepted = 0;
         int snapshotCommandsRejected = 0;
         std::vector<std::pair<std::string, int>> snapshotTopCommandSignatures;
