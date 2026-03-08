@@ -126,8 +126,9 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
     scenario->setup(*world);
 
     OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
-    const Tree* tree = world->getOrganismManager().getTree(id);
+    Tree* tree = world->getOrganismManager().getTree(id);
     ASSERT_NE(tree, nullptr);
+    tree->setEnergy(150.0);
 
     std::cout << "Initial state (Seed at: " << tree->getAnchorCell().x << ", "
               << tree->getAnchorCell().y << "):\n"
@@ -400,8 +401,9 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
     scenario->setup(*world);
 
     OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
-    const Tree* tree = world->getOrganismManager().getTree(id);
+    Tree* tree = world->getOrganismManager().getTree(id);
     ASSERT_NE(tree, nullptr);
+    tree->setEnergy(150.0);
 
     std::cout << "=== DEEP DEBUG: Wood Cell Physics ===\n\n";
     std::cout << "Initial state:\n"

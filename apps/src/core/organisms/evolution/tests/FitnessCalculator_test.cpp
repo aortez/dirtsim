@@ -123,8 +123,12 @@ TEST(FitnessCalculatorTest, TreeFitnessRewardsResourceCollection)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    const TreeResourceTotals low_resources{ .waterAbsorbed = 0.0, .energyProduced = 0.0 };
-    const TreeResourceTotals high_resources{ .waterAbsorbed = 100.0, .energyProduced = 100.0 };
+    const TreeResourceTotals low_resources{
+        .waterAbsorbed = 0.0, .energyProduced = 0.0, .seedsProduced = 0, .landedSeeds = {}
+    };
+    const TreeResourceTotals high_resources{
+        .waterAbsorbed = 100.0, .energyProduced = 100.0, .seedsProduced = 0, .landedSeeds = {}
+    };
     auto tree = makeTree();
     tree->addCellToLocalShape({ 0, -1 }, Material::EnumType::Wood, 1.0);
     tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Root, 1.0);
@@ -159,7 +163,9 @@ TEST(FitnessCalculatorTest, TreeResourceScoreRequiresMinimalStructure)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    const TreeResourceTotals high_resources{ .waterAbsorbed = 100.0, .energyProduced = 100.0 };
+    const TreeResourceTotals high_resources{
+        .waterAbsorbed = 100.0, .energyProduced = 100.0, .seedsProduced = 0, .landedSeeds = {}
+    };
     auto tree = makeTree();
 
     const FitnessContext context{

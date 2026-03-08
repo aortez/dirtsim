@@ -18,11 +18,7 @@ constexpr double kTreeRootBelowSeedBonus = 1.0;
 constexpr double kTreeWoodAboveSeedBonus = 1.5;
 constexpr double kTreePartialStructurePartBonus = 0.25;
 constexpr double kTreeSaplingStageBonus = 0.5;
-constexpr double kTreeMatureStageBonus = 1;
-constexpr double kTreeMatureAgeSeconds = 1000.0;
-constexpr int kTreeMatureLeafCount = 10;
-constexpr int kTreeMatureRootCount = 10;
-constexpr int kTreeMatureWoodCount = 10;
+constexpr double kTreeSeedDistanceReference = 10.0;
 
 struct TreeStructureMetrics {
     bool hasLeaf = false;
@@ -175,13 +171,10 @@ double computeMilestoneBonus(const TreeStructureMetrics& metrics)
 
 double computeStageBonus(const Tree& tree, const TreeStructureMetrics& metrics)
 {
+    (void)tree;
+
     if (!metrics.hasSeed) {
         return 0.0;
-    }
-
-    if (tree.getAge() >= kTreeMatureAgeSeconds && metrics.leafCount >= kTreeMatureLeafCount
-        && metrics.rootCount >= kTreeMatureRootCount && metrics.woodCount >= kTreeMatureWoodCount) {
-        return kTreeMatureStageBonus;
     }
 
     if (metrics.hasLeaf && metrics.hasRoot && metrics.hasWoodAboveSeed) {
@@ -189,6 +182,19 @@ double computeStageBonus(const Tree& tree, const TreeStructureMetrics& metrics)
     }
 
     return 0.0;
+}
+
+double computeSeedScore(const FitnessContext& context, const Tree& tree)
+{
+    const TreeResourceTotals* resources = resolveTreeResources(context, tree);
+    if (!resources || resources->landedSeeds.empty()) {
+        return 0.0;
+    }
+    double score = 0.0;
+    for (const auto& seed : resources->landedSeeds) {
+        score += 1.0 + saturatingScore(seed.distanceFromParent, kTreeSeedDistanceReference);
+    }
+    return score;
 }
 
 double computeMinimalStructureBonus(const TreeStructureMetrics& metrics)
@@ -277,6 +283,7 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
         breakdown.stageBonus = computeStageBonus(*tree, metrics);
         breakdown.structureBonus = computeMinimalStructureBonus(metrics);
         breakdown.milestoneBonus = computeMilestoneBonus(metrics);
+        breakdown.seedScore = computeSeedScore(context, *tree);
 
         breakdown.energyScore = computeTreeEnergyScore(context, *tree, metrics);
         breakdown.resourceScore = computeTreeResourceScore(context, *tree, metrics);
@@ -285,7 +292,7 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.totalFitness =
         breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore)
         + breakdown.partialStructureBonus + breakdown.stageBonus + breakdown.structureBonus
-        + breakdown.milestoneBonus + breakdown.commandScore;
+        + breakdown.milestoneBonus + breakdown.commandScore + breakdown.seedScore;
     if (tree) {
         tree->setLastFitness(breakdown.totalFitness);
     }

@@ -20,8 +20,8 @@
 namespace DirtSim {
 
 namespace {
-constexpr double kEnergyCap = 250.0;
-constexpr double kMaintenanceCostPerCell = 0.1;
+constexpr double kEnergyCap = 100.0;
+constexpr double kMaintenanceCostPerCell = 0.2;
 constexpr double kPhotosynthesisRate = 0.6;
 constexpr double kWaterCapacity = 120.0;
 constexpr double kWaterDecayRate = 0.02;
@@ -360,6 +360,10 @@ void Tree::executeCommand(World& world)
 
 void Tree::processBrainDecision(World& world)
 {
+    if (!brain_) {
+        return;
+    }
+
     // Gather sensory data.
     TreeSensoryData sensory;
     {

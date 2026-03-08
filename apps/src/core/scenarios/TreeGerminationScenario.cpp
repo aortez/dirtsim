@@ -17,10 +17,10 @@ TreeGerminationScenario::TreeGerminationScenario(GenomeRepository& genomeReposit
 {
     metadata_.kind = ScenarioKind::GridWorld;
     metadata_.name = "Tree Germination";
-    metadata_.description = "9x9 world with seed growing into balanced tree";
+    metadata_.description = "32x32 world with seed growing into balanced tree";
     metadata_.category = "organisms";
-    metadata_.requiredWidth = 9;
-    metadata_.requiredHeight = 9;
+    metadata_.requiredWidth = 32;
+    metadata_.requiredHeight = 32;
 }
 
 const ScenarioMetadata& TreeGerminationScenario::getMetadata() const
@@ -66,7 +66,7 @@ void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& 
 
 void TreeGerminationScenario::setup(World& world)
 {
-    spdlog::info("TreeGerminationScenario::setup - creating 9x9 world with balanced tree growth");
+    spdlog::info("TreeGerminationScenario::setup - creating 32x32 world with balanced tree growth");
 
     // Clear world to air.
     for (int y = 0; y < world.getData().height; ++y) {
@@ -75,8 +75,8 @@ void TreeGerminationScenario::setup(World& world)
         }
     }
 
-    // Dirt at bottom 3 rows.
-    for (int y = 6; y < world.getData().height; ++y) {
+    // Dirt at bottom 12 rows.
+    for (int y = world.getData().height - 12; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
             world.addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) },

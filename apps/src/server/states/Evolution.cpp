@@ -610,11 +610,11 @@ Api::FitnessBreakdownReport buildTreeFitnessBreakdownReport(
         .modelVersion = 1,
         .totalFitness = breakdown.totalFitness,
         .totalFormula =
-            "survival*(1+energy)*(1+resource)+partial+stage+structure+milestone+command",
+            "survival*(1+energy)*(1+resource)+partial+stage+structure+milestone+command+seed",
         .metrics = {},
     };
 
-    report.metrics.reserve(13);
+    report.metrics.reserve(14);
     report.metrics.push_back(makeFitnessMetric(
         "survival",
         "Survival",
@@ -709,6 +709,14 @@ Api::FitnessBreakdownReport buildTreeFitnessBreakdownReport(
         "command",
         breakdown.commandScore,
         breakdown.commandScore,
+        std::nullopt,
+        "score"));
+    report.metrics.push_back(makeFitnessMetric(
+        "seed_score",
+        "Seed Score",
+        "seed",
+        breakdown.seedScore,
+        breakdown.seedScore,
         std::nullopt,
         "score"));
     report.metrics.push_back(makeFitnessMetric(

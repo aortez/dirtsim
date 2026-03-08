@@ -18,6 +18,7 @@
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -358,6 +359,67 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
                 treeEvaluator_.update(*tree);
+
+                // Detect new child seeds (brainless trees spawned by this parent).
+                world_->getOrganismManager().forEachOrganism([&](const Organism::Body& body) {
+                    if (body.getId() == organismId_) {
+                        return;
+                    }
+                    if (body.getType() != OrganismType::TREE) {
+                        return;
+                    }
+                    const Tree* childTree = static_cast<const Tree*>(&body);
+                    if (childTree->hasBrain()) {
+                        return;
+                    }
+                    // Check if already tracked.
+                    for (const auto& cs : childSeeds_) {
+                        if (cs.id == body.getId()) {
+                            return;
+                        }
+                    }
+                    const Vector2i anchor = childTree->getAnchorCell();
+                    childSeeds_.push_back(
+                        ChildSeedState{
+                            .id = body.getId(),
+                            .spawnPosition = anchor,
+                            .lastPosition = anchor,
+                        });
+                });
+
+                // Update existing child seeds for landing detection.
+                const Vector2i parentAnchor = tree->getAnchorCell();
+                for (auto& cs : childSeeds_) {
+                    if (cs.landed) {
+                        continue;
+                    }
+                    const Tree* childTree = world_->getOrganismManager().getTree(cs.id);
+                    if (!childTree) {
+                        cs.landed = true; // Gone — treat as landed in place.
+                        continue;
+                    }
+                    const Vector2i currentPos = childTree->getAnchorCell();
+                    if (currentPos == cs.lastPosition) {
+                        cs.timeAtCurrentPosition += TIMESTEP;
+                    }
+                    else {
+                        cs.timeAtCurrentPosition = 0.0;
+                        cs.lastPosition = currentPos;
+                    }
+                    // Landed: dropped at least 1 cell (+y = down) and rested for 5s.
+                    if (currentPos.y > cs.spawnPosition.y && cs.timeAtCurrentPosition >= 5.0) {
+                        cs.landed = true;
+                        const double dx = currentPos.x - parentAnchor.x;
+                        const double dy = currentPos.y - parentAnchor.y;
+                        const double distance = std::sqrt(dx * dx + dy * dy);
+                        tree->addLandedSeed(
+                            LandedSeed{
+                                .landingPosition = currentPos,
+                                .distanceFromParent = distance,
+                            });
+                    }
+                }
+
                 const FitnessResult result{
                     .lifespan = tree->getAge(),
                     .maxEnergy = treeEvaluator_.getMaxEnergy(),

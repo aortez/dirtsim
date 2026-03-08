@@ -17,6 +17,7 @@ struct TreeFitnessBreakdown {
     double structureBonus = 0.0;
     double milestoneBonus = 0.0;
     double commandScore = 0.0;
+    double seedScore = 0.0;
     double totalFitness = 0.0;
 };
 

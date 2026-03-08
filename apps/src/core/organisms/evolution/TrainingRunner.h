@@ -206,6 +206,15 @@ private:
     std::optional<DuckClockDoorState> duckClockDoors_;
     std::optional<DuckStatsSnapshot> duckStatsSnapshot_;
 
+    struct ChildSeedState {
+        OrganismId id = INVALID_ORGANISM_ID;
+        Vector2i spawnPosition;
+        Vector2i lastPosition;
+        double timeAtCurrentPosition = 0.0;
+        bool landed = false;
+    };
+    std::vector<ChildSeedState> childSeeds_;
+
     void snapshotDuckStats();
 };
 
