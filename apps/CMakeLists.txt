@@ -426,6 +426,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosEvaluator.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosRamExtractor.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
@@ -865,6 +867,8 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
