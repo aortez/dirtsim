@@ -24,11 +24,11 @@ LightConfig getDefaultLightConfig()
         .enabled = true,
         .sky_color = ColorNames::skyBlue(),
         .sky_intensity = 0.4f,
-        .steps_per_frame = 10,
+        .steps_per_frame = 15,
         .sun_color = ColorNames::warmSunlight(),
         .sun_intensity = 0.8f,
         .temporal_decay = 0.99f,
-        .temporal_persistence = true,
+        .temporal_persistence = false,
     };
 }
 
