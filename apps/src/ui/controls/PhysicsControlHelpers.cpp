@@ -364,7 +364,7 @@ AllColumnConfigs createAllColumnConfigs()
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 1,
                         .rangeMax = 30,
-                        .defaultValue = 15,
+                        .defaultValue = 10,
                         .valueScale = 1.0,
                         .valueFormat = "%.0f",
                         .step = 1,
@@ -398,10 +398,10 @@ AllColumnConfigs createAllColumnConfigs()
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 100,
-                        .defaultValue = 85,
+                        .defaultValue = 99,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
-                        .step = 5,
+                        .step = 1,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.temporal_decay = static_cast<float>(v);
