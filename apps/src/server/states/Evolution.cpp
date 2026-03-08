@@ -10,13 +10,10 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
-#include "core/organisms/evolution/DuckEvaluator.h"
-#include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/GenomeMetadataUtils.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
-#include "core/organisms/evolution/NesEvaluator.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
@@ -24,7 +21,9 @@
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
+#include "server/evolution/LegacyTrainingBestSnapshotGenerator.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -358,379 +357,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
-double computeFitnessForRunner(
-    const TrainingRunner& runner,
-    const TrainingRunner::Status& status,
-    const std::string& brainKind,
-    OrganismType organismType,
-    const EvolutionConfig& evolutionConfig,
-    std::optional<TreeFitnessBreakdown>* treeBreakdownOut,
-    std::optional<Api::FitnessBreakdownReport>* fitnessBreakdownOut);
-
-Api::FitnessMetric makeFitnessMetric(
-    std::string key,
-    std::string label,
-    std::string group,
-    double raw,
-    double normalized,
-    std::optional<double> reference,
-    std::string unit)
-{
-    return Api::FitnessMetric{
-        .key = std::move(key),
-        .label = std::move(label),
-        .group = std::move(group),
-        .raw = raw,
-        .normalized = normalized,
-        .reference = reference,
-        .weight = std::nullopt,
-        .contribution = std::nullopt,
-        .unit = std::move(unit),
-    };
-}
-
-double clamp01(double value)
-{
-    return std::clamp(value, 0.0, 1.0);
-}
-
-double normalizeNonNegative(double value, double reference)
-{
-    if (reference <= 0.0) {
-        return 0.0;
-    }
-    return std::max(0.0, value) / reference;
-}
-
-double saturatingScore(double value, double reference)
-{
-    if (reference <= 0.0) {
-        return 0.0;
-    }
-    return 1.0 - std::exp(-std::max(0.0, value) / reference);
-}
-
-std::optional<double> optionalPositive(double value)
-{
-    if (value <= 0.0) {
-        return std::nullopt;
-    }
-    return value;
-}
-
-Api::FitnessBreakdownReport buildDuckFitnessBreakdownReport(const DuckFitnessBreakdown& breakdown)
-{
-    Api::FitnessBreakdownReport report{
-        .organismType = OrganismType::DUCK,
-        .modelId = "duck_v2",
-        .modelVersion = 2,
-        .totalFitness = breakdown.totalFitness,
-        .totalFormula = "survival * (1 + movement) + exit_door_bonus",
-        .metrics = {},
-    };
-
-    report.metrics.reserve(18);
-    report.metrics.push_back(makeFitnessMetric(
-        "survival",
-        "Survival",
-        "survival",
-        breakdown.survivalRaw,
-        breakdown.survivalScore,
-        optionalPositive(breakdown.survivalReference),
-        "seconds"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_avg",
-        "Energy Avg",
-        "energy",
-        breakdown.energyAverage,
-        breakdown.energyAverage,
-        std::nullopt,
-        "ratio"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_limited_seconds",
-        "Energy Limited",
-        "energy",
-        breakdown.energyLimitedSeconds,
-        breakdown.energyLimitedSeconds,
-        std::nullopt,
-        "seconds"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_consumed_total",
-        "Energy Consumed",
-        "energy",
-        breakdown.energyConsumedTotal,
-        breakdown.energyConsumedTotal,
-        std::nullopt,
-        "energy"));
-    report.metrics.push_back(makeFitnessMetric(
-        "wing_up_seconds",
-        "Wing Up",
-        "wings",
-        breakdown.wingUpSeconds,
-        breakdown.wingUpSeconds,
-        std::nullopt,
-        "seconds"));
-    report.metrics.push_back(makeFitnessMetric(
-        "wing_down_seconds",
-        "Wing Down",
-        "wings",
-        breakdown.wingDownSeconds,
-        breakdown.wingDownSeconds,
-        std::nullopt,
-        "seconds"));
-    report.metrics.push_back(makeFitnessMetric(
-        "coverage_columns",
-        "Coverage Columns",
-        "coverage",
-        breakdown.coverageColumnRaw,
-        breakdown.coverageColumnScore,
-        optionalPositive(breakdown.coverageColumnReference),
-        "cells"));
-    report.metrics.push_back(makeFitnessMetric(
-        "coverage_rows",
-        "Coverage Rows",
-        "coverage",
-        breakdown.coverageRowRaw,
-        breakdown.coverageRowScore,
-        optionalPositive(breakdown.coverageRowReference),
-        "cells"));
-    report.metrics.push_back(makeFitnessMetric(
-        "coverage_cells",
-        "Coverage Cells",
-        "coverage",
-        breakdown.coverageCellRaw,
-        breakdown.coverageCellScore,
-        optionalPositive(breakdown.coverageCellReference),
-        "cells"));
-    report.metrics.push_back(makeFitnessMetric(
-        "coverage_total",
-        "Coverage Total",
-        "coverage",
-        breakdown.coverageScore,
-        breakdown.coverageScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "effort",
-        "Effort",
-        "effort",
-        breakdown.effortRaw,
-        breakdown.effortScore,
-        optionalPositive(breakdown.effortReference),
-        "ratio"));
-    report.metrics.push_back(makeFitnessMetric(
-        "effort_penalty",
-        "Effort Penalty",
-        "effort",
-        breakdown.effortPenaltyRaw,
-        breakdown.effortPenaltyScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "movement",
-        "Movement",
-        "movement",
-        breakdown.movementRaw,
-        breakdown.movementScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "health_avg",
-        "Health Avg",
-        "health",
-        breakdown.healthAverage,
-        breakdown.healthAverage,
-        std::nullopt,
-        "ratio"));
-    report.metrics.push_back(makeFitnessMetric(
-        "collision_damage",
-        "Collision Damage",
-        "health",
-        breakdown.collisionDamageTotal,
-        breakdown.collisionDamageTotal,
-        std::nullopt,
-        "damage"));
-    report.metrics.push_back(makeFitnessMetric(
-        "damage_total",
-        "Damage Total",
-        "health",
-        breakdown.damageTotal,
-        breakdown.damageTotal,
-        std::nullopt,
-        "damage"));
-    report.metrics.push_back(makeFitnessMetric(
-        "exit_door",
-        "Exit Door",
-        "door",
-        breakdown.exitedThroughDoor ? 1.0 : 0.0,
-        breakdown.exitDoorBonus,
-        std::nullopt,
-        "bool"));
-    report.metrics.push_back(makeFitnessMetric(
-        "exit_door_bonus",
-        "Exit Door Bonus",
-        "door",
-        breakdown.exitDoorBonus,
-        breakdown.exitDoorBonus,
-        std::nullopt,
-        "score"));
-
-    return report;
-}
-
-Api::FitnessBreakdownReport buildTreeFitnessBreakdownReport(
-    const FitnessContext& context, const TreeFitnessBreakdown& breakdown)
-{
-    const double survivalReference = context.evolutionConfig.maxSimulationTime;
-    const double energyReference = context.evolutionConfig.energyReference;
-    const double waterReference = context.evolutionConfig.waterReference;
-
-    const auto* tree =
-        (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE)
-        ? static_cast<const Tree*>(context.finalOrganism)
-        : nullptr;
-    const double finalEnergy = tree ? std::max(0.0, tree->getEnergy()) : 0.0;
-    const TreeResourceTotals* resources = context.treeResources;
-    if (!resources && tree) {
-        resources = &tree->getResourceTotals();
-    }
-    const double producedEnergy = resources ? std::max(0.0, resources->energyProduced) : 0.0;
-    const double absorbedWater = resources ? std::max(0.0, resources->waterAbsorbed) : 0.0;
-
-    const double maxEnergyNormalized =
-        clamp01(normalizeNonNegative(context.result.maxEnergy, energyReference));
-    const double finalEnergyNormalized =
-        clamp01(normalizeNonNegative(finalEnergy, energyReference));
-    const double producedEnergyNormalized = saturatingScore(producedEnergy, energyReference);
-    const double absorbedWaterNormalized = saturatingScore(absorbedWater, waterReference);
-
-    Api::FitnessBreakdownReport report{
-        .organismType = OrganismType::TREE,
-        .modelId = "tree_v1",
-        .modelVersion = 1,
-        .totalFitness = breakdown.totalFitness,
-        .totalFormula =
-            "survival*(1+energy)*(1+resource)+partial+stage+structure+milestone+command+seed",
-        .metrics = {},
-    };
-
-    report.metrics.reserve(14);
-    report.metrics.push_back(makeFitnessMetric(
-        "survival",
-        "Survival",
-        "survival",
-        std::max(0.0, context.result.lifespan),
-        breakdown.survivalScore,
-        optionalPositive(survivalReference),
-        "seconds"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_max",
-        "Max Energy",
-        "energy",
-        std::max(0.0, context.result.maxEnergy),
-        maxEnergyNormalized,
-        optionalPositive(energyReference),
-        "energy"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_final",
-        "Final Energy",
-        "energy",
-        finalEnergy,
-        finalEnergyNormalized,
-        optionalPositive(energyReference),
-        "energy"));
-    report.metrics.push_back(makeFitnessMetric(
-        "energy_score",
-        "Energy Score",
-        "energy",
-        breakdown.energyScore,
-        breakdown.energyScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "resource_energy_produced",
-        "Energy Produced",
-        "resource",
-        producedEnergy,
-        producedEnergyNormalized,
-        optionalPositive(energyReference),
-        "energy"));
-    report.metrics.push_back(makeFitnessMetric(
-        "resource_water_absorbed",
-        "Water Absorbed",
-        "resource",
-        absorbedWater,
-        absorbedWaterNormalized,
-        optionalPositive(waterReference),
-        "water"));
-    report.metrics.push_back(makeFitnessMetric(
-        "resource_score",
-        "Resource Score",
-        "resource",
-        breakdown.resourceScore,
-        breakdown.resourceScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "partial_structure_bonus",
-        "Partial Structure Bonus",
-        "bonus",
-        breakdown.partialStructureBonus,
-        breakdown.partialStructureBonus,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "stage_bonus",
-        "Stage Bonus",
-        "bonus",
-        breakdown.stageBonus,
-        breakdown.stageBonus,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "structure_bonus",
-        "Structure Bonus",
-        "bonus",
-        breakdown.structureBonus,
-        breakdown.structureBonus,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "milestone_bonus",
-        "Milestone Bonus",
-        "bonus",
-        breakdown.milestoneBonus,
-        breakdown.milestoneBonus,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "command_score",
-        "Command Score",
-        "command",
-        breakdown.commandScore,
-        breakdown.commandScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "seed_score",
-        "Seed Score",
-        "seed",
-        breakdown.seedScore,
-        breakdown.seedScore,
-        std::nullopt,
-        "score"));
-    report.metrics.push_back(makeFitnessMetric(
-        "total_fitness",
-        "Total Fitness",
-        "total",
-        breakdown.totalFitness,
-        breakdown.totalFitness,
-        std::nullopt,
-        "score"));
-
-    return report;
-}
-
 TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
 {
     TrainingRunner::Individual runner;
@@ -741,28 +367,17 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
     return runner;
 }
 
-double computeFitnessForRunner(
+EvolutionSupport::FitnessEvaluation computeFitnessEvaluationForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
-    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
-    std::optional<TreeFitnessBreakdown>* treeBreakdownOut,
-    std::optional<Api::FitnessBreakdownReport>* fitnessBreakdownOut)
+    const EvolutionSupport::FitnessModelBundle& fitnessModel)
 {
-    (void)brainKind;
-    if (organismType == OrganismType::NES_DUCK) {
-        if (treeBreakdownOut) {
-            treeBreakdownOut->reset();
-        }
-        if (fitnessBreakdownOut) {
-            fitnessBreakdownOut->reset();
-        }
-        return NesEvaluator::evaluateFromRewardTotal(status.nesRewardTotal);
-    }
-
     const World* world = runner.getWorld();
-    DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
+    if (organismType != OrganismType::NES_DUCK) {
+        DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
+    }
 
     const FitnessResult result{
         .lifespan = status.lifespan,
@@ -782,8 +397,8 @@ double computeFitnessForRunner(
     const FitnessContext context{
         .result = result,
         .organismType = organismType,
-        .worldWidth = world->getData().width,
-        .worldHeight = world->getData().height,
+        .worldWidth = world ? world->getData().width : 0,
+        .worldHeight = world ? world->getData().height : 0,
         .evolutionConfig = evolutionConfig,
         .finalOrganism = runner.getOrganism(),
         .duckStatsSnapshot = runner.getDuckStatsSnapshot(),
@@ -792,35 +407,7 @@ double computeFitnessForRunner(
         .exitedThroughDoor = status.exitedThroughDoor,
         .exitDoorTime = status.exitDoorTime,
     };
-
-    if (organismType == OrganismType::TREE) {
-        TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
-        if (treeBreakdownOut) {
-            *treeBreakdownOut = breakdown;
-        }
-        if (fitnessBreakdownOut) {
-            *fitnessBreakdownOut = buildTreeFitnessBreakdownReport(context, breakdown);
-        }
-        return breakdown.totalFitness;
-    }
-
-    if (treeBreakdownOut) {
-        treeBreakdownOut->reset();
-    }
-
-    if (organismType == OrganismType::DUCK) {
-        const DuckFitnessBreakdown breakdown = DuckEvaluator::evaluateWithBreakdown(context);
-        if (fitnessBreakdownOut) {
-            *fitnessBreakdownOut = buildDuckFitnessBreakdownReport(breakdown);
-        }
-        return breakdown.totalFitness;
-    }
-
-    if (fitnessBreakdownOut) {
-        fitnessBreakdownOut->reset();
-    }
-
-    return computeFitnessForOrganism(context);
+    return fitnessModel.evaluate(context);
 }
 
 std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
@@ -840,14 +427,12 @@ std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(con
 struct EvaluationPassResult {
     int commandsAccepted = 0;
     int commandsRejected = 0;
-    double fitness = 0.0;
+    EvolutionSupport::FitnessEvaluation fitnessEvaluation;
     double simTime = 0.0;
     std::vector<std::pair<std::string, int>> topCommandSignatures;
     std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
     std::optional<Evolution::EvaluationSnapshot> snapshot;
     std::unordered_map<std::string, Evolution::TimerAggregate> timerStats;
-    std::optional<Api::FitnessBreakdownReport> fitnessBreakdown;
-    std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
 };
 
 std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
@@ -869,9 +454,9 @@ std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
 EvaluationPassResult buildEvaluationPassResult(
     TrainingRunner& runner,
     const TrainingRunner::Status& status,
-    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
+    const EvolutionSupport::FitnessModelBundle& fitnessModel,
     bool includeGenerationDetails)
 {
     EvaluationPassResult pass;
@@ -879,28 +464,15 @@ EvaluationPassResult buildEvaluationPassResult(
     pass.commandsRejected = status.commandsRejected;
     pass.simTime = status.simTime;
 
+    pass.fitnessEvaluation = computeFitnessEvaluationForRunner(
+        runner, status, organismType, evolutionConfig, fitnessModel);
     if (!includeGenerationDetails) {
-        pass.fitness = computeFitnessForRunner(
-            runner, status, brainKind, organismType, evolutionConfig, nullptr, nullptr);
         return pass;
     }
 
     pass.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
     pass.topCommandOutcomeSignatures =
         runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
-
-    std::optional<TreeFitnessBreakdown> treeBreakdown;
-    std::optional<Api::FitnessBreakdownReport> fitnessBreakdown;
-    pass.fitness = computeFitnessForRunner(
-        runner,
-        status,
-        brainKind,
-        organismType,
-        evolutionConfig,
-        &treeBreakdown,
-        &fitnessBreakdown);
-    pass.treeFitnessBreakdown = treeBreakdown;
-    pass.fitnessBreakdown = fitnessBreakdown;
     if (const Timers* timers = runner.getTimers()) {
         pass.timerStats = collectTimerStats(*timers);
     }
@@ -916,6 +488,7 @@ EvaluationPassResult runEvaluationPass(
     const TrainingBrainRegistry& brainRegistry,
     const std::optional<ScenarioConfig>& scenarioConfigOverride,
     std::optional<bool> duckClockSpawnLeftFirst,
+    const EvolutionSupport::FitnessModelBundle& fitnessModel,
     bool includeGenerationDetails,
     std::atomic<bool>* stopRequested)
 {
@@ -942,9 +515,9 @@ EvaluationPassResult runEvaluationPass(
     return buildEvaluationPassResult(
         runner,
         status,
-        individual.brain.brainKind,
         trainingSpec.organismType,
         evolutionConfig,
+        fitnessModel,
         includeGenerationDetails);
 }
 
@@ -975,7 +548,7 @@ Evolution::WorkerResult buildWorkerResultFromPass(
     result.simTime = pass.simTime;
     result.commandsAccepted = pass.commandsAccepted;
     result.commandsRejected = pass.commandsRejected;
-    result.fitness = pass.fitness;
+    result.fitnessEvaluation = std::move(pass.fitnessEvaluation);
 
     if (!includeGenerationDetails) {
         return result;
@@ -985,21 +558,7 @@ Evolution::WorkerResult buildWorkerResultFromPass(
     result.topCommandOutcomeSignatures = std::move(pass.topCommandOutcomeSignatures);
     result.snapshot = std::move(pass.snapshot);
     result.timerStats = std::move(pass.timerStats);
-    result.fitnessBreakdown = std::move(pass.fitnessBreakdown);
-    result.treeFitnessBreakdown = std::move(pass.treeFitnessBreakdown);
     return result;
-}
-
-std::optional<double> averageOptionalDouble(
-    const std::optional<double>& first, const std::optional<double>& second)
-{
-    if (first.has_value() && second.has_value()) {
-        return 0.5 * (first.value() + second.value());
-    }
-    if (first.has_value()) {
-        return first;
-    }
-    return second;
 }
 
 std::vector<std::pair<std::string, int>> mergeCommandSignatures(
@@ -1043,85 +602,41 @@ const Evolution::WorkerResult& selectRepresentativeDuckClockPass(
     const Evolution::WorkerResult& second,
     double targetFitness)
 {
-    const double firstDistance = std::abs(first.fitness - targetFitness);
-    const double secondDistance = std::abs(second.fitness - targetFitness);
+    const double firstDistance = std::abs(first.fitnessEvaluation.totalFitness - targetFitness);
+    const double secondDistance = std::abs(second.fitnessEvaluation.totalFitness - targetFitness);
     if (firstDistance < secondDistance) {
         return first;
     }
     if (secondDistance < firstDistance) {
         return second;
     }
-    return first.fitness <= second.fitness ? first : second;
-}
-
-std::optional<Api::FitnessBreakdownReport> averageFitnessBreakdownReports(
-    const std::optional<Api::FitnessBreakdownReport>& first,
-    const std::optional<Api::FitnessBreakdownReport>& second,
-    double totalFitness)
-{
-    if (!first.has_value() && !second.has_value()) {
-        return std::nullopt;
-    }
-    if (first.has_value() && !second.has_value()) {
-        Api::FitnessBreakdownReport report = first.value();
-        report.totalFitness = totalFitness;
-        return report;
-    }
-    if (!first.has_value() && second.has_value()) {
-        Api::FitnessBreakdownReport report = second.value();
-        report.totalFitness = totalFitness;
-        return report;
-    }
-
-    DIRTSIM_ASSERT(first.has_value(), "Evolution: first breakdown must exist");
-    DIRTSIM_ASSERT(second.has_value(), "Evolution: second breakdown must exist");
-    const Api::FitnessBreakdownReport& firstValue = first.value();
-    const Api::FitnessBreakdownReport& secondValue = second.value();
-
-    if (firstValue.organismType != secondValue.organismType
-        || firstValue.modelId != secondValue.modelId
-        || firstValue.modelVersion != secondValue.modelVersion
-        || firstValue.metrics.size() != secondValue.metrics.size()) {
-        Api::FitnessBreakdownReport report = firstValue;
-        report.totalFitness = totalFitness;
-        return report;
-    }
-
-    Api::FitnessBreakdownReport merged = firstValue;
-    merged.totalFitness = totalFitness;
-    if (firstValue.totalFormula != secondValue.totalFormula) {
-        merged.totalFormula = firstValue.totalFormula;
-    }
-
-    for (size_t i = 0; i < merged.metrics.size(); ++i) {
-        if (firstValue.metrics[i].key != secondValue.metrics[i].key) {
-            merged.totalFitness = totalFitness;
-            return merged;
-        }
-        merged.metrics[i].raw = 0.5 * (firstValue.metrics[i].raw + secondValue.metrics[i].raw);
-        merged.metrics[i].normalized =
-            0.5 * (firstValue.metrics[i].normalized + secondValue.metrics[i].normalized);
-        merged.metrics[i].reference = averageOptionalDouble(
-            firstValue.metrics[i].reference, secondValue.metrics[i].reference);
-        merged.metrics[i].weight =
-            averageOptionalDouble(firstValue.metrics[i].weight, secondValue.metrics[i].weight);
-        merged.metrics[i].contribution = averageOptionalDouble(
-            firstValue.metrics[i].contribution, secondValue.metrics[i].contribution);
-    }
-
-    return merged;
+    return first.fitnessEvaluation.totalFitness <= second.fitnessEvaluation.totalFitness ? first
+                                                                                         : second;
 }
 
 Evolution::WorkerResult mergeDuckClockGenerationPasses(
+    const EvolutionSupport::FitnessModelBundle& fitnessModel,
     const Evolution::WorkerResult& primaryPassOne,
     const Evolution::WorkerResult& oppositePassOne,
     const Evolution::WorkerResult& primaryPassTwo,
     const Evolution::WorkerResult& oppositePassTwo)
 {
-    const double primarySideAverage = 0.5 * (primaryPassOne.fitness + primaryPassTwo.fitness);
-    const double oppositeSideAverage = 0.5 * (oppositePassOne.fitness + oppositePassTwo.fitness);
+    const std::array<EvolutionSupport::FitnessEvaluation, 4> passEvaluations{
+        primaryPassOne.fitnessEvaluation,
+        oppositePassOne.fitnessEvaluation,
+        primaryPassTwo.fitnessEvaluation,
+        oppositePassTwo.fitnessEvaluation,
+    };
+    const EvolutionSupport::FitnessEvaluation mergedEvaluation =
+        fitnessModel.mergePasses(passEvaluations);
+    const double finalFitness = mergedEvaluation.totalFitness;
+    const double primarySideAverage = 0.5
+        * (primaryPassOne.fitnessEvaluation.totalFitness
+           + primaryPassTwo.fitnessEvaluation.totalFitness);
+    const double oppositeSideAverage = 0.5
+        * (oppositePassOne.fitnessEvaluation.totalFitness
+           + oppositePassTwo.fitnessEvaluation.totalFitness);
     const bool usePrimarySide = primarySideAverage <= oppositeSideAverage;
-    const double finalFitness = std::min(primarySideAverage, oppositeSideAverage);
 
     const Evolution::WorkerResult& chosenFirst = usePrimarySide ? primaryPassOne : oppositePassOne;
     const Evolution::WorkerResult& chosenSecond = usePrimarySide ? primaryPassTwo : oppositePassTwo;
@@ -1133,7 +648,7 @@ Evolution::WorkerResult mergeDuckClockGenerationPasses(
     merged.index = primaryPassOne.index;
     merged.robustGeneration = primaryPassOne.robustGeneration;
     merged.robustSampleOrdinal = primaryPassOne.robustSampleOrdinal;
-    merged.fitness = finalFitness;
+    merged.fitnessEvaluation = mergedEvaluation;
     merged.simTime = primaryPassOne.simTime + oppositePassOne.simTime + primaryPassTwo.simTime
         + oppositePassTwo.simTime;
 
@@ -1144,9 +659,6 @@ Evolution::WorkerResult mergeDuckClockGenerationPasses(
     merged.topCommandOutcomeSignatures = mergeCommandSignatures(
         chosenFirst.topCommandOutcomeSignatures, chosenSecond.topCommandOutcomeSignatures);
     merged.snapshot = representative.snapshot;
-    merged.fitnessBreakdown = averageFitnessBreakdownReports(
-        chosenFirst.fitnessBreakdown, chosenSecond.fitnessBreakdown, finalFitness);
-    merged.treeFitnessBreakdown.reset();
 
     mergeTimerStats(merged.timerStats, primaryPassOne.timerStats);
     mergeTimerStats(merged.timerStats, oppositePassOne.timerStats);
@@ -1175,40 +687,23 @@ const char* toProgressSource(Evolution::IndividualOrigin origin)
 void broadcastTrainingBestSnapshot(
     StateMachine& dsm,
     Evolution::EvaluationSnapshot snapshot,
-    double fitness,
+    const EvolutionSupport::FitnessEvaluation& fitnessEvaluation,
     int generation,
     int commandsAccepted,
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
-    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown)
+    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
 {
-    Api::TrainingBestSnapshot bestSnapshot;
-    bestSnapshot.worldData = std::move(snapshot.worldData);
-    bestSnapshot.organismIds = std::move(snapshot.organismIds);
-    bestSnapshot.fitness = fitness;
-    bestSnapshot.generation = generation;
-    bestSnapshot.commandsAccepted = commandsAccepted;
-    bestSnapshot.commandsRejected = commandsRejected;
-    bestSnapshot.topCommandSignatures.reserve(topCommandSignatures.size());
-    for (const auto& [signature, count] : topCommandSignatures) {
-        bestSnapshot.topCommandSignatures.push_back(
-            Api::TrainingBestSnapshot::CommandSignatureCount{
-                .signature = signature,
-                .count = count,
-            });
-    }
-    bestSnapshot.topCommandOutcomeSignatures.reserve(topCommandOutcomeSignatures.size());
-    for (const auto& [signature, count] : topCommandOutcomeSignatures) {
-        bestSnapshot.topCommandOutcomeSignatures.push_back(
-            Api::TrainingBestSnapshot::CommandSignatureCount{
-                .signature = signature,
-                .count = count,
-            });
-    }
-    bestSnapshot.scenarioVideoFrame = std::move(snapshot.scenarioVideoFrame);
-    bestSnapshot.fitnessBreakdown = fitnessBreakdown;
-
+    Api::TrainingBestSnapshot bestSnapshot = EvolutionSupport::trainingBestSnapshotLegacyBuild(
+        std::move(snapshot.worldData),
+        std::move(snapshot.organismIds),
+        fitnessEvaluation,
+        generation,
+        commandsAccepted,
+        commandsRejected,
+        topCommandSignatures,
+        topCommandOutcomeSignatures,
+        std::move(snapshot.scenarioVideoFrame));
     dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
     dsm.broadcastEventData(
         Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
@@ -1308,7 +803,7 @@ void Evolution::PendingBestState::reset()
     robustnessIndex = -1;
     robustnessFirstSample = 0.0;
     snapshot.reset();
-    snapshotFitnessBreakdown.reset();
+    snapshotFitnessEvaluation.reset();
     snapshotCommandsAccepted = 0;
     snapshotCommandsRejected = 0;
     snapshotTopCommandSignatures.clear();
@@ -1364,6 +859,8 @@ void Evolution::onEnter(StateMachine& dsm)
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     scenarioConfigOverride_.reset();
+    fitnessModel_ =
+        EvolutionSupport::fitnessModelResolve(trainingSpec.organismType, trainingSpec.scenarioId);
     switch (trainingSpec.scenarioId) {
         case Scenario::EnumType::Benchmark:
             break;
@@ -1640,6 +1137,7 @@ void Evolution::startWorkers(StateMachine& dsm)
     workerState_->scenarioConfigOverride = scenarioConfigOverride_;
     workerState_->brainRegistry = brainRegistry_;
     workerState_->genomeRepository = &dsm.getGenomeRepository();
+    workerState_->fitnessModel = fitnessModel_;
 
     workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
     workerState_->allowedConcurrency.store(workerState_->backgroundWorkerCount);
@@ -1891,9 +1389,9 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         EvaluationPassResult completedPass = buildEvaluationPassResult(
             *visible_.runner,
             status,
-            population[visible_.evalIndex].brainKind,
             trainingSpec.organismType,
             evolutionConfig,
+            fitnessModel_,
             includeGenerationDetails);
         WorkerResult passResult = buildWorkerResultFromPass(
             taskType,
@@ -1937,6 +1435,7 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
                 passCount == 4 && visible_.duckPassResults.size() == 4,
                 "Evolution: duck clock evaluation must complete 4 passes");
             WorkerResult result = mergeDuckClockGenerationPasses(
+                fitnessModel_,
                 visible_.duckPassResults[0],
                 visible_.duckPassResults[1],
                 visible_.duckPassResults[2],
@@ -1980,6 +1479,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
         state.brainRegistry,
         state.scenarioConfigOverride,
         primarySpawnSide,
+        state.fitnessModel,
         includeGenerationDetails,
         &state.stopRequested);
 
@@ -2011,6 +1511,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
             state.brainRegistry,
             state.scenarioConfigOverride,
             spawnSide,
+            state.fitnessModel,
             includeGenerationDetails,
             &state.stopRequested);
         passResults.push_back(buildWorkerResultFromPass(
@@ -2024,7 +1525,7 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
 
     DIRTSIM_ASSERT(passCount == 4, "Evolution: duck clock pass count must be 4");
     return mergeDuckClockGenerationPasses(
-        passResults[0], passResults[1], passResults[2], passResults[3]);
+        state.fitnessModel, passResults[0], passResults[1], passResults[2], passResults[3]);
 }
 
 void Evolution::processResult(StateMachine& dsm, WorkerResult result)
@@ -2056,7 +1557,8 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             const Individual& individual = population[result.index];
             if (individual.parentFitness.has_value()) {
                 generationTelemetry_.offspringCloneComparedCount++;
-                const double delta = result.fitness - individual.parentFitness.value();
+                const double delta =
+                    result.fitnessEvaluation.totalFitness - individual.parentFitness.value();
                 generationTelemetry_.offspringCloneDeltaFitnessSum += delta;
                 if (delta > 0.0) {
                     generationTelemetry_.offspringCloneBeatsParentCount++;
@@ -2070,7 +1572,8 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             const Individual& individual = population[result.index];
             if (individual.parentFitness.has_value()) {
                 generationTelemetry_.offspringMutatedComparedCount++;
-                const double delta = result.fitness - individual.parentFitness.value();
+                const double delta =
+                    result.fitnessEvaluation.totalFitness - individual.parentFitness.value();
                 generationTelemetry_.offspringMutatedDeltaFitnessSum += delta;
                 if (delta > 0.0) {
                     generationTelemetry_.offspringMutatedBeatsParentCount++;
@@ -2086,17 +1589,13 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             break;
     }
 
-    fitnessScores[result.index] = result.fitness;
-    sumFitnessThisGen_ += result.fitness;
+    fitnessScores[result.index] = result.fitnessEvaluation.totalFitness;
+    sumFitnessThisGen_ += result.fitnessEvaluation.totalFitness;
 
-    // Extract wing_up_seconds from fitness breakdown for diagnostics.
-    if (result.fitnessBreakdown.has_value()) {
-        for (const auto& metric : result.fitnessBreakdown->metrics) {
-            if (metric.key == "wing_up_seconds") {
-                wingUpSecondsPerIndividual[result.index] = metric.raw;
-                break;
-            }
-        }
+    const std::optional<double> wingUpSeconds =
+        EvolutionSupport::fitnessEvaluationWingUpSecondsGet(result.fitnessEvaluation);
+    if (wingUpSeconds.has_value()) {
+        wingUpSecondsPerIndividual[result.index] = wingUpSeconds.value();
     }
     completedEvaluations_++;
     currentEval++;
@@ -2116,24 +1615,25 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
     const Individual& individual = population[result.index];
     if (!individual.genome.has_value()) {
         const bool firstEvaluationThisGeneration = currentEval == 1;
-        if (firstEvaluationThisGeneration || result.fitness > bestFitnessThisGen) {
-            bestFitnessThisGen = result.fitness;
+        if (firstEvaluationThisGeneration
+            || result.fitnessEvaluation.totalFitness > bestFitnessThisGen) {
+            bestFitnessThisGen = result.fitnessEvaluation.totalFitness;
             bestThisGenOrigin_ = origin;
         }
     }
 
-    if (result.fitness > bestFitnessAllTime) {
+    if (result.fitnessEvaluation.totalFitness > bestFitnessAllTime) {
         if (individual.genome.has_value()) {
             const bool replacePendingCandidate = !pendingBest_.robustness
                 || pendingBest_.robustnessGeneration != generation
-                || result.fitness > pendingBest_.robustnessFirstSample;
+                || result.fitnessEvaluation.totalFitness > pendingBest_.robustnessFirstSample;
             if (replacePendingCandidate) {
                 pendingBest_.robustness = true;
                 pendingBest_.robustnessGeneration = generation;
                 pendingBest_.robustnessIndex = result.index;
-                pendingBest_.robustnessFirstSample = result.fitness;
+                pendingBest_.robustnessFirstSample = result.fitnessEvaluation.totalFitness;
                 pendingBest_.snapshot = std::move(result.snapshot);
-                pendingBest_.snapshotFitnessBreakdown = std::move(result.fitnessBreakdown);
+                pendingBest_.snapshotFitnessEvaluation = result.fitnessEvaluation;
                 pendingBest_.snapshotCommandsAccepted = result.commandsAccepted;
                 pendingBest_.snapshotCommandsRejected = result.commandsRejected;
                 pendingBest_.snapshotTopCommandSignatures = std::move(result.topCommandSignatures);
@@ -2150,45 +1650,38 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
                     State,
                     "Evolution: Best candidate {:.4f} at gen {} eval {} "
                     "(queued robust validation)",
-                    result.fitness,
+                    result.fitnessEvaluation.totalFitness,
                     generation,
                     result.index);
             }
         }
         else {
-            bestFitnessAllTime = result.fitness;
+            bestFitnessAllTime = result.fitnessEvaluation.totalFitness;
             pendingBest_.reset();
             bestGenomeId = INVALID_GENOME_ID;
             LOG_INFO(
                 State,
                 "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
-                result.fitness,
+                result.fitnessEvaluation.totalFitness,
                 generation,
                 result.index);
-            setBestPlaybackSource(individual, result.fitness, generation);
+            setBestPlaybackSource(individual, result.fitnessEvaluation.totalFitness, generation);
         }
     }
 
     const int generationPopulationSize = static_cast<int>(population.size());
-
-    if (result.treeFitnessBreakdown.has_value()) {
-        const auto& breakdown = result.treeFitnessBreakdown.value();
+    const std::string logSummary = fitnessModel_.formatLogSummary
+        ? fitnessModel_.formatLogSummary(result.fitnessEvaluation)
+        : std::string{};
+    if (!logSummary.empty()) {
         LOG_INFO(
             State,
-            "Evolution: gen={} eval={}/{} fitness={:.4f} (surv={:.3f} energy={:.3f} res={:.3f} "
-            "partial={:.3f} stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
+            "Evolution: gen={} eval={}/{} fitness={:.4f} ({})",
             generation,
             currentEval,
             generationPopulationSize,
-            result.fitness,
-            breakdown.survivalScore,
-            breakdown.energyScore,
-            breakdown.resourceScore,
-            breakdown.partialStructureBonus,
-            breakdown.stageBonus,
-            breakdown.structureBonus,
-            breakdown.milestoneBonus,
-            breakdown.commandScore);
+            result.fitnessEvaluation.totalFitness,
+            logSummary);
     }
     else {
         LOG_INFO(
@@ -2197,7 +1690,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             generation,
             currentEval,
             generationPopulationSize,
-            result.fitness);
+            result.fitnessEvaluation.totalFitness);
     }
 
     maybeCompleteGeneration(dsm);
@@ -2302,7 +1795,7 @@ void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResu
         return;
     }
 
-    robustnessPass_.samples.push_back(result.fitness);
+    robustnessPass_.samples.push_back(result.fitnessEvaluation.totalFitness);
     robustnessPass_.pendingSamples--;
     robustnessPass_.completedSamples++;
 
@@ -2313,7 +1806,7 @@ void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResu
         robustnessPass_.targetEvalCount,
         robustnessPass_.generation,
         robustnessPass_.index,
-        result.fitness);
+        result.fitnessEvaluation.totalFitness);
 
     broadcastProgress(dsm);
 }
@@ -2401,16 +1894,22 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
             robustFitness);
 
         if (pendingBest_.snapshot.has_value()) {
+            EvolutionSupport::FitnessEvaluation snapshotFitnessEvaluation =
+                pendingBest_.snapshotFitnessEvaluation.value_or(
+                    EvolutionSupport::FitnessEvaluation{
+                        .totalFitness = robustFitness,
+                        .details = std::monostate{},
+                    });
+            snapshotFitnessEvaluation.totalFitness = robustFitness;
             broadcastTrainingBestSnapshot(
                 dsm,
                 std::move(pendingBest_.snapshot.value()),
-                robustFitness,
+                snapshotFitnessEvaluation,
                 robustnessPass_.generation,
                 pendingBest_.snapshotCommandsAccepted,
                 pendingBest_.snapshotCommandsRejected,
                 pendingBest_.snapshotTopCommandSignatures,
-                pendingBest_.snapshotTopCommandOutcomeSignatures,
-                pendingBest_.snapshotFitnessBreakdown);
+                pendingBest_.snapshotTopCommandOutcomeSignatures);
         }
         else {
             LOG_WARN(

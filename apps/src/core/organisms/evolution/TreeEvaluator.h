@@ -9,8 +9,20 @@ class Tree;
 struct FitnessContext;
 
 struct TreeFitnessBreakdown {
+    double survivalRaw = 0.0;
+    double survivalReference = 0.0;
     double survivalScore = 0.0;
+    double maxEnergyRaw = 0.0;
+    double maxEnergyNormalized = 0.0;
+    double finalEnergyRaw = 0.0;
+    double finalEnergyNormalized = 0.0;
+    double energyReference = 0.0;
     double energyScore = 0.0;
+    double producedEnergyRaw = 0.0;
+    double producedEnergyNormalized = 0.0;
+    double absorbedWaterRaw = 0.0;
+    double absorbedWaterNormalized = 0.0;
+    double waterReference = 0.0;
     double resourceScore = 0.0;
     double partialStructureBonus = 0.0;
     double stageBonus = 0.0;
