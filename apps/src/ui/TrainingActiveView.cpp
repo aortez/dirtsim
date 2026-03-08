@@ -501,6 +501,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
             .defaultMaxY = 1.0f,
             .valueScale = 100.0f,
             .autoScaleY = true,
+            .autoScaleClampToZero = true,
             .showSecondarySeries = true,
             .showHighlights = true,
             .highlightMarkerSizePx = 8,
