@@ -11,10 +11,10 @@
 #include "core/ColorNames.h"
 #include "core/LightConfig.h"
 #include "core/LightManager.h"
+#include "core/LightPropagator.h"
 #include "core/LightTypes.h"
 #include "core/Timers.h"
 #include "core/World.h"
-#include "core/WorldLightCalculator.h"
 #include "core/organisms/Duck.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/components/LightHandHeld.h"
@@ -235,11 +235,12 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     LightConfig light_config = getDefaultLightConfig();
     light_config.ambient_color = ColorNames::black();
     light_config.ambient_intensity = 0.0f;
-    light_config.sun_enabled = false;
+    light_config.sun_intensity = 0.0f;
 
-    WorldLightCalculator calc;
+    LightPropagator prop;
+    prop.resize(world->getData().width, world->getData().height);
     Timers timers;
-    calc.calculate(*world, world->getGrid(), light_config, timers);
+    prop.calculate(*world, world->getGrid(), light_config, timers);
 
     // Print combined WORLD + LIGHTMAP side by side for visual debugging.
     spdlog::info("");
@@ -274,7 +275,7 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     }
 
     // Build lightmap string with duck marked.
-    std::string lightmap = calc.lightMapString(*world);
+    std::string lightmap = prop.lightMapString(*world);
     std::vector<std::string> light_lines;
     std::istringstream iss(lightmap);
     std::string line;

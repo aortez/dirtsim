@@ -6,7 +6,7 @@ namespace DirtSim {
 
 /**
  * Light interaction properties for materials.
- * Used by WorldLightCalculator to compute illumination.
+ * Used by the light calculator to compute illumination.
  */
 struct LightProperties {
     float opacity = 0.0f;                 // Blocks direct light [0-1].

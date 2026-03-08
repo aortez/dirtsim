@@ -25,7 +25,7 @@ struct BasicCell {
     uint8_t material_type; // Material::EnumType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
     int8_t render_as; // Render override: -1 = use material_type, 0+ = Material::EnumType value.
-    uint32_t color;   // Lit color (packed RGBA from WorldLightCalculator).
+    uint32_t color;   // Lit color (packed RGBA from light calculator).
 
     using serialize = zpp::bits::members<4>;
 };

@@ -11,27 +11,10 @@
 
 namespace {
 
-// Sun color presets.
-struct ColorPreset {
-    const char* name;
-    uint32_t color;
-};
-
-const ColorPreset sunColorPresets[] = {
-    { "Warm Sunlight", 0 }, // Filled in at runtime from ColorNames.
-    { "Cool Moonlight", 0 }, { "Torch Orange", 0 }, { "Candle Yellow", 0 }, { "White", 0 },
-};
 const int sunColorPresetCount = 5;
-
-const ColorPreset ambientColorPresets[] = {
-    { "Day", 0 },
-    { "Dusk", 0 },
-    { "Night", 0 },
-    { "Cave", 0 },
-};
 const int ambientColorPresetCount = 4;
+const int skyColorPresetCount = 3;
 
-// Initialize color values from ColorNames.
 uint32_t getSunColorByIndex(int index)
 {
     switch (index) {
@@ -78,6 +61,28 @@ int getAmbientColorIndex(uint32_t color)
 {
     for (int i = 0; i < ambientColorPresetCount; i++) {
         if (getAmbientColorByIndex(i) == color) return i;
+    }
+    return 0; // Default to first if not found.
+}
+
+uint32_t getSkyColorByIndex(int index)
+{
+    switch (index) {
+        case 0:
+            return ColorNames::skyBlue();
+        case 1:
+            return ColorNames::coolMoonlight();
+        case 2:
+            return ColorNames::white();
+        default:
+            return ColorNames::skyBlue();
+    }
+}
+
+int getSkyColorIndex(uint32_t color)
+{
+    for (int i = 0; i < skyColorPresetCount; i++) {
+        if (getSkyColorByIndex(i) == color) return i;
     }
     return 0; // Default to first if not found.
 }
@@ -277,16 +282,11 @@ AllColumnConfigs createAllColumnConfigs()
 
     configs.light = {
         .title = "Light",
-        .controls = { { .label = "Sun On",
-                        .type = ControlType::SWITCH_ONLY,
-                        .enableSetter = [](PhysicsSettings& s, bool e) { s.light.sun_enabled = e; },
-                        .enableGetter =
-                            [](const PhysicsSettings& s) { return s.light.sun_enabled; } },
-                      { .label = "Sun",
+        .controls = { { .label = "Sun",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,
-                        .defaultValue = 100,
+                        .defaultValue = 80,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .step = 5,
@@ -308,6 +308,31 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return getSunColorIndex(s.light.sun_color);
                             } },
+                      { .label = "Sky",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 1000,
+                        .defaultValue = 40,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.sky_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.sky_intensity);
+                            } },
+                      { .label = "SkyC",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "Sky Blue\nCool Moonlight\nWhite",
+                        .indexSetter = [](PhysicsSettings& s,
+                                          int idx) { s.light.sky_color = getSkyColorByIndex(idx); },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return getSkyColorIndex(s.light.sky_color);
+                            } },
                       { .label = "Ambient",
                         .type = ControlType::DROPDOWN,
                         .dropdownOptions = "Day\nDusk\nNight\nCave",
@@ -323,7 +348,7 @@ AllColumnConfigs createAllColumnConfigs()
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,
-                        .defaultValue = 100,
+                        .defaultValue = 70,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .step = 5,
@@ -334,132 +359,6 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.ambient_intensity);
-                            } },
-                      { .label = "D Iters",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 10,
-                        .defaultValue = 2,
-                        .valueScale = 1.0,
-                        .valueFormat = "%.0f",
-                        .step = 1,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.diffusion_iterations = static_cast<int>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.diffusion_iterations);
-                            } },
-                      { .label = "Diffusion",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 30,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.diffusion_rate = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.diffusion_rate);
-                            } },
-                      { .label = "Air Scatter",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 15,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.air_scatter_rate = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.air_scatter_rate);
-                            } },
-                      { .label = "Bounce",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 30,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.bounce_intensity = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.bounce_intensity);
-                            } },
-                      { .label = "Diagonal On",
-                        .type = ControlType::SWITCH_ONLY,
-                        .enableSetter = [](PhysicsSettings& s,
-                                           bool e) { s.light.diagonal_light_enabled = e; },
-                        .enableGetter =
-                            [](const PhysicsSettings& s) {
-                                return s.light.diagonal_light_enabled;
-                            } },
-                      { .label = "Diagonal",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 40,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.diagonal_light_intensity = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.diagonal_light_intensity);
-                            } },
-                      { .label = "Side On",
-                        .type = ControlType::SWITCH_ONLY,
-                        .enableSetter = [](PhysicsSettings& s,
-                                           bool e) { s.light.side_light_enabled = e; },
-                        .enableGetter =
-                            [](const PhysicsSettings& s) { return s.light.side_light_enabled; } },
-                      { .label = "Shadow Decay",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 0,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.shadow_decay_rate = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.shadow_decay_rate);
-                            } },
-                      { .label = "Side",
-                        .type = ControlType::ACTION_STEPPER,
-                        .rangeMin = 0,
-                        .rangeMax = 100,
-                        .defaultValue = 20,
-                        .valueScale = 0.01,
-                        .valueFormat = "%.2f",
-                        .step = 5,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.light.side_light_intensity = static_cast<float>(v);
-                            },
-                        .valueGetter =
-                            [](const PhysicsSettings& s) {
-                                return static_cast<double>(s.light.side_light_intensity);
                             } } }
     };
 

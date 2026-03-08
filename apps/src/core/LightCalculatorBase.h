@@ -16,7 +16,7 @@ struct LightConfig;
 
 /**
  * Abstract interface for light calculators.
- * Allows swapping between WorldLightCalculator and LightPropagator.
+ * Abstract interface for LightPropagator.
  */
 class LightCalculatorBase : public WorldCalculatorBase {
 public:

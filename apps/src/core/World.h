@@ -22,7 +22,7 @@ class LightManager;
 class WorldAdhesionCalculator;
 class WorldCollisionCalculator;
 class WorldFrictionCalculator;
-class WorldLightCalculator;
+
 class WorldPressureCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
@@ -101,8 +101,6 @@ public:
 
     LightCalculatorBase& getLightCalculator();
     const LightCalculatorBase& getLightCalculator() const;
-
-    void setUsePropagator(bool use_propagator);
 
     // Light management.
     LightManager& getLightManager();

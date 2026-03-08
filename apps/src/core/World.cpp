@@ -20,7 +20,7 @@
 #include "WorldDiagramGeneratorEmoji.h"
 #include "WorldFrictionCalculator.h"
 #include "WorldInterpolationTool.h"
-#include "WorldLightCalculator.h"
+
 #include "WorldPressureCalculator.h"
 #include "WorldRigidBodyCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
@@ -88,7 +88,7 @@ struct World::Impl {
     // Constructor.
     Impl()
         : physicsSettings_(getDefaultPhysicsSettings()),
-          light_calculator_(std::make_unique<WorldLightCalculator>())
+          light_calculator_(std::make_unique<LightPropagator>())
     {
         timers_.startTimer("total_simulation");
     }
@@ -209,17 +209,6 @@ const LightCalculatorBase& World::getLightCalculator() const
 const LightBuffer& World::getRawLightBuffer() const
 {
     return pImpl->light_calculator_->getRawLightBuffer();
-}
-
-void World::setUsePropagator(bool use_propagator)
-{
-    if (use_propagator) {
-        pImpl->light_calculator_ = std::make_unique<LightPropagator>();
-    }
-    else {
-        pImpl->light_calculator_ = std::make_unique<WorldLightCalculator>();
-    }
-    pImpl->light_calculator_->resize(pImpl->data_.width, pImpl->data_.height);
 }
 
 LightManager& World::getLightManager()

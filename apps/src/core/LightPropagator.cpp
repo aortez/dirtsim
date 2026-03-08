@@ -147,20 +147,26 @@ void LightPropagator::injectSources(World& world, const LightConfig& config)
     const ColorNames::RgbF sun_rgb = ColorNames::toRgbF(config.sun_color) * config.sun_intensity;
     const ColorNames::RgbF sky_rgb = ColorNames::toRgbF(config.sky_color) * config.sky_intensity;
 
-    // Sunlight: direct sun enters from above as strong southbound light.
-    if (config.sun_intensity > 0.0f) {
+    // Sunlight and sky dome enter from above, filtered by material at the top row.
+    if (config.sun_intensity > 0.0f || config.sky_intensity > 0.0f) {
         for (int x = 0; x < width; ++x) {
-            light_field_next_.at(x, 0).channel[static_cast<int>(LightDir::S)] += sun_rgb;
-        }
-    }
+            const Cell& cell = data.cells[static_cast<size_t>(x)];
+            const float transmit = 1.0f - cell.material().light.opacity * cell.fill_ratio;
+            if (transmit < 0.001f) {
+                continue;
+            }
 
-    // Sky dome: diffuse sky light enters from above at multiple angles.
-    if (config.sky_intensity > 0.0f) {
-        for (int x = 0; x < width; ++x) {
             auto& top = light_field_next_.at(x, 0);
-            top.channel[static_cast<int>(LightDir::S)] += sky_rgb * 0.5f;
-            top.channel[static_cast<int>(LightDir::SE)] += sky_rgb * 0.25f;
-            top.channel[static_cast<int>(LightDir::SW)] += sky_rgb * 0.25f;
+
+            if (config.sun_intensity > 0.0f) {
+                top.channel[static_cast<int>(LightDir::S)] += sun_rgb * transmit;
+            }
+
+            if (config.sky_intensity > 0.0f) {
+                top.channel[static_cast<int>(LightDir::S)] += sky_rgb * 0.5f * transmit;
+                top.channel[static_cast<int>(LightDir::SE)] += sky_rgb * 0.25f * transmit;
+                top.channel[static_cast<int>(LightDir::SW)] += sky_rgb * 0.25f * transmit;
+            }
         }
     }
 
@@ -181,12 +187,13 @@ void LightPropagator::injectSources(World& world, const LightConfig& config)
         }
     }
 
-    // Emissive overlay: scenario-controlled per-cell emission.
+    // Emissive overlay: small fraction propagates for subtle local glow.
+    constexpr float kOverlayGlowFraction = 0.03f;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const ColorNames::RgbF& overlay = emissive_overlay_.at(x, y);
             if (overlay.r > 0.0f || overlay.g > 0.0f || overlay.b > 0.0f) {
-                const ColorNames::RgbF per_dir = overlay * (1.0f / 8.0f);
+                const ColorNames::RgbF per_dir = overlay * kOverlayGlowFraction * (1.0f / 8.0f);
                 auto& dst = light_field_next_.at(x, y);
                 for (int di = 0; di < 8; ++di) {
                     dst.channel[di] += per_dir;
@@ -257,6 +264,7 @@ void LightPropagator::applyAmbient(WorldData& data, const LightConfig& config)
 
     const RgbF base_ambient =
         ColorNames::toRgbF(config.ambient_color) * config.ambient_intensity + ambient_boost_;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
 
     const int width = data.width;
     const int height = data.height;
@@ -266,8 +274,26 @@ void LightPropagator::applyAmbient(WorldData& data, const LightConfig& config)
 #endif
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            const RgbF visible = light_field_.at(x, y).total() + base_ambient;
-            data.colors.at(x, y) = visible;
+            // Propagated light already carries material tint from transport.
+            const RgbF propagated = light_field_.at(x, y).total();
+
+            // Ambient light needs material coloring since it bypasses transport.
+            const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+            const Material::EnumType mat = cell.getRenderMaterial();
+            const float saturation = Material::getProperties(mat).light.saturation;
+            const RgbF base_color = getMaterialBaseColor(mat);
+            const RgbF ambient_tinted =
+                base_ambient * ColorNames::lerp(white, base_color, saturation);
+
+            RgbF color = propagated + ambient_tinted;
+
+            // Emissive overlay adds directly to display brightness.
+            const RgbF& overlay = emissive_overlay_.at(x, y);
+            if (overlay.r > 0.0f || overlay.g > 0.0f || overlay.b > 0.0f) {
+                color += overlay;
+            }
+
+            data.colors.at(x, y) = color;
         }
     }
 }
@@ -282,31 +308,6 @@ void LightPropagator::storeRawLight(WorldData& data)
     uint32_t* dst = raw_light_.begin();
     for (size_t i = 0; i < data.colors.size(); ++i) {
         dst[i] = ColorNames::toRgba(src[i]);
-    }
-}
-
-void LightPropagator::applyMaterialColors(WorldData& data)
-{
-    using ColorNames::RgbF;
-
-    const int width = data.width;
-    const int height = data.height;
-    const RgbF white{ 1.0f, 1.0f, 1.0f };
-
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) \
-    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
-#endif
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-            const Material::EnumType mat = cell.getRenderMaterial();
-            const float saturation = Material::getProperties(mat).light.saturation;
-            const RgbF base_color = getMaterialBaseColor(mat);
-
-            const RgbF blended = ColorNames::lerp(white, base_color, saturation);
-            data.colors.at(x, y) *= blended;
-        }
     }
 }
 
@@ -341,11 +342,6 @@ void LightPropagator::calculate(
     {
         ScopeTimer t(timers, "light_store_raw");
         storeRawLight(data);
-    }
-
-    {
-        ScopeTimer t(timers, "light_material_colors");
-        applyMaterialColors(data);
     }
 }
 

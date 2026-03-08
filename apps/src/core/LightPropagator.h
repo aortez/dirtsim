@@ -88,7 +88,6 @@ private:
     void injectSources(World& world, const LightConfig& config);
     void applyAmbient(WorldData& data, const LightConfig& config);
     void storeRawLight(WorldData& data);
-    void applyMaterialColors(WorldData& data);
 
     GridBuffer<DirectionalLight> light_field_;
     GridBuffer<DirectionalLight> light_field_next_;

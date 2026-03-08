@@ -26,7 +26,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
         .is_fluid = true,
-        .light = { .opacity = 0.0f, .scatter = 0.0f, .specularity = 0.0f } },
+        .light = { .opacity = 0.001f, .scatter = 1.0f, .specularity = 0.0f } },
 
       // ========== Dirt ==========
       { .density = 1.5,
