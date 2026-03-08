@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/GenomePoolId.h"
 #include "core/ScenarioId.h"
 #include "core/UUID.h"
 #include "core/organisms/OrganismType.h"
@@ -35,8 +36,9 @@ struct GenomeMetadata {
     std::optional<std::string> brainKind;
     std::optional<std::string> brainVariant;
     std::optional<UUID> trainingSessionId;
+    GenomePoolId genomePoolId = GenomePoolId::DirtSim;
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 void to_json(nlohmann::json& j, const GenomeMetadata& meta);

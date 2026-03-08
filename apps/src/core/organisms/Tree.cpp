@@ -567,6 +567,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     int min_x = INT32_MAX, min_y = INT32_MAX;
     int max_x = INT32_MIN, max_y = INT32_MIN;
     int cell_count = 0;
+    std::vector<Vector2i> tree_cells;
 
     for (int16_t y = 0; y < worldData.height; y++) {
         for (int16_t x = 0; x < worldData.width; x++) {
@@ -577,6 +578,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                 max_x = std::max(max_x, static_cast<int>(x));
                 max_y = std::max(max_y, static_cast<int>(y));
                 cell_count++;
+                tree_cells.push_back(pos);
             }
         }
     }
@@ -696,6 +698,30 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
 
             if (light_cells > 0) {
                 data.light_levels[ny][nx] = std::clamp(light_sum / light_cells, 0.0, 1.0);
+            }
+        }
+    }
+
+    // Compute valid grow targets mask: positions cardinally adjacent to any tree cell,
+    // that are in world bounds and not already owned by this tree.
+    constexpr Vector2i kDirs[] = { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };
+    for (const auto& cell_pos : tree_cells) {
+        for (const auto& dir : kDirs) {
+            const Vector2i neighbor = cell_pos + dir;
+            if (neighbor.x < 0 || neighbor.x >= worldData.width || neighbor.y < 0
+                || neighbor.y >= worldData.height) {
+                continue;
+            }
+            // Skip positions already owned by this tree.
+            if (world.getOrganismManager().at(neighbor) == id_) {
+                continue;
+            }
+            // Reverse-map world coords to neural grid coords.
+            const int nx = static_cast<int>((neighbor.x - data.world_offset.x) / data.scale_factor);
+            const int ny = static_cast<int>((neighbor.y - data.world_offset.y) / data.scale_factor);
+            if (nx >= 0 && nx < TreeSensoryData::GRID_SIZE && ny >= 0
+                && ny < TreeSensoryData::GRID_SIZE) {
+                data.valid_grow_targets[ny * TreeSensoryData::GRID_SIZE + nx] = true;
             }
         }
     }

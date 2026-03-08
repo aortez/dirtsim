@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/GenomePoolId.h"
 #include "core/ScenarioId.h"
 
 #include <cstdint>
@@ -23,8 +24,9 @@ struct ScenarioMetadata {
     uint32_t requiredWidth = 0;
     uint32_t requiredHeight = 0;
     bool deterministicEvaluation = false;
+    GenomePoolId genomePoolId = GenomePoolId::DirtSim;
 
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<9>;
 };
 
 void to_json(nlohmann::json& j, const ScenarioMetadata& meta);

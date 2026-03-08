@@ -26,10 +26,12 @@ constexpr size_t kRobustFitnessSampleWindow = 7;
 struct ManagedGenomeBucketKey {
     int organismType = -1;
     std::string brainKind;
+    GenomePoolId genomePoolId = GenomePoolId::DirtSim;
 
     bool operator==(const ManagedGenomeBucketKey& other) const
     {
-        return organismType == other.organismType && brainKind == other.brainKind;
+        return organismType == other.organismType && brainKind == other.brainKind
+            && genomePoolId == other.genomePoolId;
     }
 };
 
@@ -38,7 +40,8 @@ struct ManagedGenomeBucketKeyHash {
     {
         const size_t typeHash = std::hash<int>{}(key.organismType);
         const size_t brainKindHash = std::hash<std::string>{}(key.brainKind);
-        return typeHash ^ (brainKindHash << 1);
+        const size_t poolHash = std::hash<uint8_t>{}(static_cast<uint8_t>(key.genomePoolId));
+        return typeHash ^ (brainKindHash << 1) ^ (poolHash << 2);
     }
 };
 
@@ -493,6 +496,7 @@ size_t GenomeRepository::pruneManagedByFitness(size_t maxManagedGenomes)
                     ? static_cast<int>(meta.organismType.value())
                     : -1,
                 .brainKind = meta.brainKind.value_or(""),
+                .genomePoolId = meta.genomePoolId,
             };
             managedBucketToIds[key].push_back(id);
         }
