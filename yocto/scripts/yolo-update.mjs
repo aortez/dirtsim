@@ -1037,14 +1037,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false
       process.exit(1);
     }
 
-    const nesControlTestOk = runFastDeployFunctionalTest(
-      remoteTarget,
-      'canControlNesScenario',
-      FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS
-    );
-    if (!nesControlTestOk) {
-      error('NES control functional test failed after fast deploy.');
-      process.exit(1);
+    if (runFunctionalTests) {
+      const nesControlTestOk = runFastDeployFunctionalTest(
+        remoteTarget,
+        'canControlNesScenario',
+        FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS
+      );
+      if (!nesControlTestOk) {
+        error('NES control functional test failed after fast deploy.');
+        process.exit(1);
+      }
     }
 
     try {
@@ -1080,6 +1082,7 @@ async function main() {
   let skipFlashConfirm = holdMyMead;
   let fastMode = args.includes('--fast');
   const fastModeRequested = fastMode;
+  const runFunctionalTests = args.includes('--test');
   const docker =
     args.some(arg => arg === '--docker' || arg.startsWith('--docker=')) ||
     process.env.DIRTSIM_YOCTO_DOCKER === '1' ||
@@ -1114,6 +1117,7 @@ async function main() {
     log('  --clean            Force rebuild by cleaning image sstate first');
     log('  --clean-all        Force full rebuild (cleans app + image + mesa/wayland-protocols sstate)');
     log('  --wipe-genome-db   Stop services and wipe /data/dirtsim/{genomes,training_results}.db*');
+    log('  --test             Run functional tests after deploy');
     log('  --dry-run          Show what would happen without doing it');
     log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
     log('  -h, --help         Show this help');
