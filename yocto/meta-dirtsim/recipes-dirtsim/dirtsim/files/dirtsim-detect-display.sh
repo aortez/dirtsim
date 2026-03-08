@@ -1,46 +1,101 @@
 #!/bin/sh
-# Detect Pi model and configure display settings for dirtsim-ui.
+# Detect connected display hardware and configure dirtsim-ui.
 # Creates /etc/dirtsim/display.conf with appropriate environment variables.
+#
+# Detects by scanning DRM connectors for a connected display, then
+# configures the DRM device, rotation, and touchscreen input accordingly.
 
 CONFIG_DIR="/etc/dirtsim"
 CONFIG_FILE="${CONFIG_DIR}/display.conf"
 
-# Create config directory if needed.
 mkdir -p "${CONFIG_DIR}"
 
-# Read Pi model from device tree.
-MODEL=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')
+# Find the first connected DRM connector (skip Writeback).
+CONNECTED_CONNECTOR=""
+DRM_CARD=""
+for status_file in /sys/class/drm/card*-*/status; do
+    connector=$(dirname "$status_file" | xargs basename)
+    case "$connector" in *Writeback*) continue ;; esac
+    if [ "$(cat "$status_file")" = "connected" ]; then
+        CONNECTED_CONNECTOR="$connector"
+        DRM_CARD=$(echo "$connector" | sed 's/-.*//')
+        break
+    fi
+done
 
-case "${MODEL}" in
-    *"Pi 4"*|*"Pi4"*)
-        # Pi4 with MPI4008 4-inch HDMI touchscreen.
-        # Display is 480x800 portrait, rotated 90 degrees for landscape.
-        cat > "${CONFIG_FILE}" << 'EOF'
-# Pi4 with MPI4008 display.
-LV_DISPLAY_ROTATION=90
-LV_EVDEV_DEVICE=/dev/input/touchscreen0
-EOF
-        echo "Configured for Pi4 with MPI4008 display"
-        ;;
-    *"Pi 5"*|*"Pi5"*)
-        # Pi5 with HyperPixel 4.0 DPI display.
-        # Display is 480x800 portrait, rotated 270 degrees for landscape.
-        cat > "${CONFIG_FILE}" << 'EOF'
-# Pi5 with HyperPixel 4.0 display.
+if [ -z "$CONNECTED_CONNECTOR" ]; then
+    echo "No connected display found, using defaults"
+    cat > "${CONFIG_FILE}" << 'EOF'
+# No connected display detected. Using DPI defaults.
+LV_LINUX_DRM_DEVICE=/dev/dri/card2
 LV_DISPLAY_ROTATION=270
 LV_EVDEV_DEVICE=/dev/input/by-path/platform-i2c@0-event
 EOF
-        echo "Configured for Pi5 with HyperPixel display"
+    chmod 644 "${CONFIG_FILE}"
+    exit 0
+fi
+
+DRM_DEVICE="/dev/dri/${DRM_CARD}"
+
+# Read the preferred mode to determine if the panel is portrait or landscape.
+MODES_FILE="/sys/class/drm/${CONNECTED_CONNECTOR}/modes"
+PREFERRED_MODE=$(head -n 1 "$MODES_FILE" 2>/dev/null)
+DISPLAY_W=$(echo "$PREFERRED_MODE" | cut -d'x' -f1)
+DISPLAY_H=$(echo "$PREFERRED_MODE" | cut -d'x' -f2)
+IS_PORTRAIT=false
+if [ -n "$DISPLAY_W" ] && [ -n "$DISPLAY_H" ] && [ "$DISPLAY_W" -lt "$DISPLAY_H" ] 2>/dev/null; then
+    IS_PORTRAIT=true
+fi
+
+# Determine rotation from connector type and panel orientation.
+# Portrait panels need rotation to display landscape; standard monitors don't.
+case "$CONNECTED_CONNECTOR" in
+    *HDMI*)
+        DISPLAY_TYPE="HDMI"
+        if [ "$IS_PORTRAIT" = true ]; then
+            # Small HDMI portrait panel (e.g. MPI4008 480x800). Rotate 90.
+            ROTATION=90
+        else
+            # Standard HDMI monitor. No rotation needed.
+            ROTATION=0
+        fi
+        ;;
+    *DPI*)
+        DISPLAY_TYPE="DPI"
+        if [ "$IS_PORTRAIT" = true ]; then
+            # DPI portrait panel (e.g. HyperPixel 4.0 480x800). Rotate 270.
+            ROTATION=270
+        else
+            # Landscape DPI display. No rotation needed.
+            ROTATION=0
+        fi
         ;;
     *)
-        # Unknown model - use Pi5 defaults.
-        echo "Unknown model: ${MODEL} - using Pi5 defaults"
-        cat > "${CONFIG_FILE}" << 'EOF'
-# Unknown model - using Pi5 defaults.
-LV_DISPLAY_ROTATION=270
-LV_EVDEV_DEVICE=/dev/input/by-path/platform-i2c@0-event
-EOF
+        DISPLAY_TYPE="unknown"
+        ROTATION=0
+        echo "Unknown connector type: $CONNECTED_CONNECTOR"
         ;;
 esac
 
+# Find touchscreen input device.
+TOUCH_DEVICE=""
+if [ -e /dev/input/touchscreen0 ]; then
+    # ADS7846 resistive touchscreen (MPI4008).
+    TOUCH_DEVICE="/dev/input/touchscreen0"
+elif [ -e /dev/input/by-path/platform-i2c@0-event ]; then
+    # Goodix capacitive touchscreen (HyperPixel 4.0).
+    TOUCH_DEVICE="/dev/input/by-path/platform-i2c@0-event"
+else
+    TOUCH_DEVICE="/dev/input/event0"
+    echo "No known touchscreen found, falling back to ${TOUCH_DEVICE}"
+fi
+
+cat > "${CONFIG_FILE}" << EOF
+# Auto-detected: ${CONNECTED_CONNECTOR} (${DISPLAY_TYPE}).
+LV_LINUX_DRM_DEVICE=${DRM_DEVICE}
+LV_DISPLAY_ROTATION=${ROTATION}
+LV_EVDEV_DEVICE=${TOUCH_DEVICE}
+EOF
+
 chmod 644 "${CONFIG_FILE}"
+echo "Configured for ${DISPLAY_TYPE} display on ${DRM_DEVICE} (${PREFERRED_MODE}, rotation: ${ROTATION}, touch: ${TOUCH_DEVICE})"
