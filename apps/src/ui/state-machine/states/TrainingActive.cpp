@@ -39,17 +39,12 @@ GenomeId getBestGenomeId(const std::vector<Api::TrainingResult::Candidate>& cand
 
 void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
-    state.hasPlottedRobustBestFitness_ = false;
-    state.plottedRobustBestFitness_ = 0.0f;
+    state.hasPlottedBestFitness_ = false;
+    state.plottedBestFitness_ = 0.0f;
     state.plotAverageSeries_.clear();
     state.plotBestSeries_.clear();
-    state.plotBestSeriesRobustHighMask_.clear();
+    state.plotBestSeriesNewHighMask_.clear();
 
-    state.plotAverageSeries_.push_back(0.0f);
-    state.plotBestSeries_.push_back(0.0f);
-    state.plotBestSeriesRobustHighMask_.push_back(0);
-
-    state.lastPlottedRobustEvaluationCount_ = 0;
     state.lastPlottedCompletedGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
@@ -63,7 +58,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
     state.view_->updateFitnessPlots(
-        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesRobustHighMask_);
+        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesNewHighMask_);
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -209,37 +204,25 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->updateProgress(progress);
 
-    const bool robustSampleAppended =
-        progress.robustEvaluationCount > lastPlottedRobustEvaluationCount_;
-    const bool nonRobustGenerationCompleted = progress.robustEvaluationCount == 0
-        && progress.lastCompletedGeneration >= 0
-        && progress.lastCompletedGeneration > lastPlottedCompletedGeneration_
-        && progress.bestThisGenSource != "none";
+    const bool generationCompleted = progress.lastCompletedGeneration >= 0
+        && progress.lastCompletedGeneration > lastPlottedCompletedGeneration_;
 
-    if (robustSampleAppended) {
-        lastPlottedRobustEvaluationCount_ = progress.robustEvaluationCount;
-    }
-    if (nonRobustGenerationCompleted) {
+    if (generationCompleted) {
         lastPlottedCompletedGeneration_ = progress.lastCompletedGeneration;
-    }
 
-    if (robustSampleAppended || nonRobustGenerationCompleted) {
-        const float plottedValue = static_cast<float>(progress.bestFitnessThisGen);
+        const float plottedValue = static_cast<float>(progress.lastGenerationFitnessMax);
         const float averagePlottedValue = static_cast<float>(progress.lastGenerationAverageFitness);
         plotAverageSeries_.push_back(averagePlottedValue);
         plotBestSeries_.push_back(plottedValue);
 
-        bool isNewRobustHigh = false;
-        constexpr float robustFitnessEpsilon = 0.0001f;
-        if (robustSampleAppended) {
-            if (!hasPlottedRobustBestFitness_
-                || plottedValue > plottedRobustBestFitness_ + robustFitnessEpsilon) {
-                hasPlottedRobustBestFitness_ = true;
-                plottedRobustBestFitness_ = plottedValue;
-                isNewRobustHigh = true;
-            }
+        bool isNewBestHigh = false;
+        constexpr float bestFitnessEpsilon = 0.0001f;
+        if (!hasPlottedBestFitness_ || plottedValue > plottedBestFitness_ + bestFitnessEpsilon) {
+            hasPlottedBestFitness_ = true;
+            plottedBestFitness_ = plottedValue;
+            isNewBestHigh = true;
         }
-        plotBestSeriesRobustHighMask_.push_back(isNewRobustHigh ? 1 : 0);
+        plotBestSeriesNewHighMask_.push_back(isNewBestHigh ? 1 : 0);
         if (plotBestSeries_.size() > plotRefreshPointCount) {
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
             if (plotAverageSeries_.size() > pruneCount) {
@@ -250,18 +233,17 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
                 plotAverageSeries_.clear();
             }
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
-            if (plotBestSeriesRobustHighMask_.size() > pruneCount) {
-                plotBestSeriesRobustHighMask_.erase(
-                    plotBestSeriesRobustHighMask_.begin(),
-                    plotBestSeriesRobustHighMask_.begin() + pruneCount);
+            if (plotBestSeriesNewHighMask_.size() > pruneCount) {
+                plotBestSeriesNewHighMask_.erase(
+                    plotBestSeriesNewHighMask_.begin(),
+                    plotBestSeriesNewHighMask_.begin() + pruneCount);
             }
             else {
-                plotBestSeriesRobustHighMask_.clear();
+                plotBestSeriesNewHighMask_.clear();
             }
         }
 
-        view_->updateFitnessPlots(
-            plotBestSeries_, plotAverageSeries_, plotBestSeriesRobustHighMask_);
+        view_->updateFitnessPlots(plotBestSeries_, plotAverageSeries_, plotBestSeriesNewHighMask_);
     }
 
     return std::move(*this);

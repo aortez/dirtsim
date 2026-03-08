@@ -493,7 +493,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     bestFitnessPlot_ = std::make_unique<TimeSeriesPlotWidget>(
         fitnessPlotsRow_,
         TimeSeriesPlotWidget::Config{
-            .title = "Robust Evaluated",
+            .title = "Fitness",
             .lineColor = lv_color_hex(0x666666),
             .secondaryLineColor = lv_color_hex(0x66BBFF),
             .highlightColor = lv_color_hex(0xFF4FA3),
@@ -1262,16 +1262,16 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     // Update fitness labels (compact format).
     if (bestThisGenLabel_) {
-        if (progress.robustEvaluationCount > 0) {
-            snprintf(buf, sizeof(buf), "Last Robust: %.2f", progress.bestFitnessThisGen);
+        if (progress.lastCompletedGeneration >= 0) {
+            snprintf(buf, sizeof(buf), "Last Gen Best: %.2f", progress.lastGenerationFitnessMax);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
-        else if (progress.bestThisGenSource != "none") {
-            snprintf(buf, sizeof(buf), "Last Eval: %.2f", progress.bestFitnessThisGen);
+        else if (progress.bestThisGenSource != "none" || progress.robustEvaluationCount > 0) {
+            snprintf(buf, sizeof(buf), "Current Best: %.2f", progress.bestFitnessThisGen);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
         else {
-            lv_label_set_text(bestThisGenLabel_, "Last Fitness: --");
+            lv_label_set_text(bestThisGenLabel_, "Last Gen Best: --");
         }
     }
 
@@ -1316,13 +1316,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 }
 
 void TrainingActiveView::updateFitnessPlots(
-    const std::vector<float>& robustFitnessSeries,
+    const std::vector<float>& bestFitnessSeries,
     const std::vector<float>& averageFitnessSeries,
-    const std::vector<uint8_t>& robustHighMask)
+    const std::vector<uint8_t>& newBestMask)
 {
     if (bestFitnessPlot_) {
         bestFitnessPlot_->setSamplesWithSecondaryAndHighlights(
-            robustFitnessSeries, averageFitnessSeries, robustHighMask);
+            bestFitnessSeries, averageFitnessSeries, newBestMask);
     }
     if (fitnessPlotsPanel_) {
         lv_obj_invalidate(fitnessPlotsPanel_);
