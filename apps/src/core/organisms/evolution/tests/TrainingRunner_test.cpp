@@ -1723,4 +1723,165 @@ TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)
     EXPECT_EQ(runner.getOrganism(), nullptr) << "Dead duck should be removed";
 }
 
+TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
+{
+    // Verify that valid_grow_targets masking forces all action brains to pick
+    // positions adjacent to tree-owned cells.
+    constexpr int kTrials = 5;
+
+    int successes = 0;
+    int wait_brains = 0;
+    int cancel_brains = 0;
+    int action_brains = 0;
+    int valid_position = 0;
+    std::map<std::string, int> rejection_reasons;
+
+    for (int trial = 0; trial < kTrials; ++trial) {
+        const Genome genome = NeuralNetBrain::randomGenome(rng_);
+
+        // Create world matching TreeGerminationScenario.
+        auto world = std::make_unique<World>(9, 9);
+        for (int y = 0; y < 9; ++y) {
+            for (int x = 0; x < 9; ++x) {
+                world->getData().at(x, y) = Cell();
+            }
+        }
+        for (int y = 6; y < 9; ++y) {
+            for (int x = 0; x < 9; ++x) {
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::Dirt,
+                    1.0);
+            }
+        }
+
+        OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
+        Tree* tree = world->getOrganismManager().getTree(id);
+        tree->setBrain(std::make_unique<NeuralNetBrain>(genome));
+
+        // Let seed fall and settle.
+        for (int i = 0; i < 200; ++i) {
+            world->advanceTime(0.016);
+        }
+        tree = world->getOrganismManager().getTree(id);
+        if (!tree) continue;
+
+        const Vector2i seed_pos = tree->getAnchorCell();
+
+        // Ask the brain for one decision and inspect it.
+        const TreeSensoryData sensory = tree->gatherSensoryData(*world);
+        NeuralNetBrain brain(genome);
+        const TreeCommand cmd = brain.decide(sensory);
+
+        std::string cmd_type;
+        Vector2i target{ -1, -1 };
+        std::visit(
+            [&](auto&& c) {
+                using T = std::decay_t<decltype(c)>;
+                if constexpr (std::is_same_v<T, WaitCommand>) {
+                    cmd_type = "Wait";
+                }
+                else if constexpr (std::is_same_v<T, CancelCommand>) {
+                    cmd_type = "Cancel";
+                }
+                else if constexpr (std::is_same_v<T, GrowWoodCommand>) {
+                    cmd_type = "GrowWood";
+                    target = c.target_pos;
+                }
+                else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
+                    cmd_type = "GrowLeaf";
+                    target = c.target_pos;
+                }
+                else if constexpr (std::is_same_v<T, GrowRootCommand>) {
+                    cmd_type = "GrowRoot";
+                    target = c.target_pos;
+                }
+                else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
+                    cmd_type = "ProduceSeed";
+                    target = c.position;
+                }
+            },
+            cmd);
+
+        if (cmd_type == "Wait") {
+            wait_brains++;
+            continue;
+        }
+        if (cmd_type == "Cancel") {
+            cancel_brains++;
+            continue;
+        }
+
+        action_brains++;
+
+        const bool in_bounds = target.x >= 0 && target.x < 9 && target.y >= 0 && target.y < 9;
+
+        // Check if target is cardinally adjacent to ANY tree-owned cell (not just seed).
+        // The tree may have grown during the settling phase.
+        bool is_adjacent = false;
+        if (in_bounds) {
+            const Vector2i dirs[] = { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };
+            for (const auto& dir : dirs) {
+                const Vector2i neighbor = target + dir;
+                if (neighbor.x >= 0 && neighbor.x < 9 && neighbor.y >= 0 && neighbor.y < 9) {
+                    if (world->getOrganismManager().at(neighbor) == id) {
+                        is_adjacent = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (is_adjacent) {
+            valid_position++;
+            successes++;
+            std::cout << "Trial " << trial << " *** VALID *** " << cmd_type << " at (" << target.x
+                      << "," << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ")\n";
+        }
+        else {
+            const int manhattan = std::abs(target.x - seed_pos.x) + std::abs(target.y - seed_pos.y);
+            std::string reason;
+            if (!in_bounds) {
+                reason = "out_of_bounds";
+            }
+            else if (manhattan == 0) {
+                reason = "targets_self";
+            }
+            else {
+                reason = "not_adjacent(d=" + std::to_string(manhattan) + ")";
+            }
+            rejection_reasons[reason]++;
+
+            if (trial < 10) {
+                std::cout << "Trial " << trial << " " << cmd_type << " at (" << target.x << ","
+                          << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ") "
+                          << reason << "\n";
+            }
+        }
+    }
+
+    std::cout << "\n=== Position diagnostic (" << kTrials << " brains) ===\n";
+    std::cout << "Wait brains:       " << wait_brains << " (" << 100.0 * wait_brains / kTrials
+              << "%)\n";
+    std::cout << "Cancel brains:     " << cancel_brains << " (" << 100.0 * cancel_brains / kTrials
+              << "%)\n";
+    std::cout << "Action brains:     " << action_brains << " (" << 100.0 * action_brains / kTrials
+              << "%)\n";
+    std::cout << "Valid position:    " << valid_position << "/" << action_brains << " ("
+              << (action_brains > 0 ? 100.0 * valid_position / action_brains : 0.0) << "%)\n";
+    std::cout << "Successes:         " << successes << "/" << kTrials << "\n";
+    std::cout << "\nRejection reasons:\n";
+    for (const auto& [reason, count] : rejection_reasons) {
+        std::cout << "  " << reason << ": " << count << "\n";
+    }
+
+    // With valid_grow_targets masking, every action brain should pick a valid position.
+    if (action_brains > 0) {
+        const double valid_rate = 100.0 * valid_position / action_brains;
+        EXPECT_EQ(valid_position, action_brains)
+            << "Expected all action brains to pick valid positions with masking, but only "
+            << valid_rate << "% did.";
+    }
+}
+
 } // namespace DirtSim

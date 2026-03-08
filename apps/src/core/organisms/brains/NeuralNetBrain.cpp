@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -207,13 +208,19 @@ struct NeuralNetBrain::Impl {
         }
 
         // Action commands need position - extract from next 225 outputs.
-        int pos_idx = 0;
-        WeightType max_pos = output[NUM_COMMANDS];
-        for (int i = 1; i < NUM_POSITIONS; i++) {
-            if (output[NUM_COMMANDS + i] > max_pos) {
+        // Mask invalid positions so the brain can only pick valid grow targets.
+        int pos_idx = -1;
+        WeightType max_pos = std::numeric_limits<WeightType>::lowest();
+        for (int i = 0; i < NUM_POSITIONS; i++) {
+            if (sensory.valid_grow_targets[i] && output[NUM_COMMANDS + i] > max_pos) {
                 max_pos = output[NUM_COMMANDS + i];
                 pos_idx = i;
             }
+        }
+
+        // No valid position exists — tree has nowhere to grow.
+        if (pos_idx < 0) {
+            return WaitCommand{};
         }
 
         int nx = pos_idx % GRID_SIZE;
