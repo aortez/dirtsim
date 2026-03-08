@@ -510,7 +510,8 @@ void printTreeFitnessBreakdown(const TreeFitnessBreakdown& breakdown)
     const double coreTerm =
         breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore);
     const double bonusTerm = breakdown.partialStructureBonus + breakdown.stageBonus
-        + breakdown.structureBonus + breakdown.milestoneBonus + breakdown.commandScore;
+        + breakdown.structureBonus + breakdown.milestoneBonus + breakdown.commandScore
+        + breakdown.seedScore;
 
     const std::ios::fmtflags oldFlags = std::cout.flags();
     const std::streamsize oldPrecision = std::cout.precision();
@@ -525,6 +526,7 @@ void printTreeFitnessBreakdown(const TreeFitnessBreakdown& breakdown)
     std::cout << "  - structure bonus: " << breakdown.structureBonus << "\n";
     std::cout << "  - milestone bonus: " << breakdown.milestoneBonus << "\n";
     std::cout << "  - command score: " << breakdown.commandScore << "\n";
+    std::cout << "  - seed score: " << breakdown.seedScore << "\n";
     std::cout << "  - core term: " << coreTerm << "\n";
     std::cout << "  - bonus term: " << bonusTerm << "\n";
 

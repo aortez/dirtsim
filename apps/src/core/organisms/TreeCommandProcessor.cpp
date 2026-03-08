@@ -292,9 +292,14 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 return { CommandResult::SUCCESS, "ROOT growth successful" };
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
-                world.getData()
-                    .at(command.position.x, command.position.y)
-                    .replaceMaterial(Material::EnumType::Seed, 1.0);
+                TreeSpawnParams seedParams{ .startingEnergy = 0.0, .passive = true };
+                world.getOrganismManager().createTree(
+                    world,
+                    static_cast<uint32_t>(command.position.x),
+                    static_cast<uint32_t>(command.position.y),
+                    nullptr,
+                    seedParams);
+                tree.incrementSeedsProduced();
 
                 LOG_INFO(
                     Tree,

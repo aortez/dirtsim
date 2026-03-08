@@ -81,6 +81,11 @@ public:
 
     // Replace the brain (for testing with custom brain implementations).
     void setBrain(std::unique_ptr<TreeBrain> brain) { brain_ = std::move(brain); }
+    bool hasBrain() const { return brain_ != nullptr; }
+
+    // Seed tracking.
+    void incrementSeedsProduced() { resourceTotals_.seedsProduced++; }
+    void addLandedSeed(const LandedSeed& seed) { resourceTotals_.landedSeeds.push_back(seed); }
 
     // Command processor (public for testing with recording/mock processors).
     std::unique_ptr<ITreeCommandProcessor> processor;
