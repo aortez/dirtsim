@@ -1,6 +1,8 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
+#include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
@@ -20,6 +22,22 @@
 using namespace DirtSim;
 
 namespace {
+
+constexpr size_t kHorizontalSpeedAddr = 0x0057;
+constexpr size_t kPlayerStateAddr = 0x000E;
+constexpr size_t kPlayerXPageAddr = 0x006D;
+constexpr size_t kPlayerXScreenAddr = 0x0086;
+constexpr size_t kPlayerYScreenAddr = 0x00CE;
+constexpr size_t kLivesAddr = 0x075A;
+constexpr size_t kPowerupStateAddr = 0x0756;
+constexpr size_t kWorldAddr = 0x075F;
+constexpr size_t kLevelAddr = 0x0760;
+constexpr size_t kGameEngineAddr = 0x0770;
+constexpr uint64_t kProbeCaptureFrames = 1100;
+constexpr uint64_t kSetupScriptEndFrame = 300;
+constexpr std::array<uint64_t, 14> kProbeScreenshotFrames = {
+    0u, 120u, 240u, 300u, 400u, 500u, 600u, 700u, 800u, 899u, 950u, 1000u, 1050u, 1099u,
+};
 
 std::optional<std::filesystem::path> resolveNesSmbFixtureRomPath()
 {
@@ -98,6 +116,16 @@ bool writeScenarioFramePpm(const ScenarioVideoFrame& frame, const std::filesyste
     return stream.good();
 }
 
+uint16_t decodeAbsoluteX(const std::vector<uint8_t>& cpuRam)
+{
+    if (kPlayerXPageAddr >= cpuRam.size() || kPlayerXScreenAddr >= cpuRam.size()) {
+        return 0;
+    }
+
+    return (static_cast<uint16_t>(cpuRam[kPlayerXPageAddr]) << 8)
+        | static_cast<uint16_t>(cpuRam[kPlayerXScreenAddr]);
+}
+
 uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
 {
     constexpr uint64_t kStartPressWidthFrames = 1;
@@ -108,13 +136,15 @@ uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
         }
     }
 
-    constexpr uint64_t kGameplayStartFrame = 300;
-    if (frameIndex < kGameplayStartFrame) {
+    if (frameIndex < kSetupScriptEndFrame) {
         return 0u;
     }
 
-    const uint64_t gameFrame = frameIndex - kGameplayStartFrame;
-    uint8_t mask = SMOLNES_RUNTIME_BUTTON_RIGHT;
+    const uint64_t gameFrame = frameIndex - kSetupScriptEndFrame;
+    const bool gradualWalkWindow = gameFrame >= 140u && gameFrame < 220u;
+    const bool pressRight = !gradualWalkWindow || ((gameFrame % 2u) == 0u);
+
+    uint8_t mask = pressRight ? SMOLNES_RUNTIME_BUTTON_RIGHT : 0u;
     if (gameFrame % 60 < 15) {
         mask |= SMOLNES_RUNTIME_BUTTON_A;
     }
@@ -128,6 +158,197 @@ struct CapturedFrame {
     std::vector<uint8_t> cpuRam;
 };
 
+struct SmbProbeReplaySummary {
+    size_t aliveGameplayFrameCount = 0;
+    std::optional<uint64_t> firstDoneFrame = std::nullopt;
+    std::optional<uint64_t> firstPositiveRewardFrame = std::nullopt;
+    size_t gameplayFrameCount = 0;
+    uint16_t maxAbsoluteX = 0;
+    size_t positiveRewardFrameCount = 0;
+    double rewardTotal = 0.0;
+};
+
+std::vector<CapturedFrame> captureSmbProbeFrames(
+    const std::filesystem::path& romPath, bool writeScreenshots)
+{
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperMarioBros);
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath.string();
+    config.requireSmolnesMapper = true;
+    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    if (setResult.isError()) {
+        ADD_FAILURE() << setResult.errorValue();
+        return {};
+    }
+
+    const auto setupResult = driver.setup();
+    if (setupResult.isError()) {
+        ADD_FAILURE() << setupResult.errorValue();
+        return {};
+    }
+
+    if (!driver.isRuntimeRunning()) {
+        ADD_FAILURE() << driver.getRuntimeLastError();
+        return {};
+    }
+
+    if (!driver.isRuntimeHealthy()) {
+        ADD_FAILURE() << driver.getRuntimeLastError();
+        return {};
+    }
+
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
+
+    if (writeScreenshots) {
+        const std::filesystem::path tempDir = ::testing::TempDir();
+        for (const auto& entry : std::filesystem::directory_iterator(tempDir)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+
+            const std::string filename = entry.path().filename().string();
+            if (filename.rfind("nes_smb_frame_", 0) == 0 && entry.path().extension() == ".ppm") {
+                std::error_code ec;
+                std::filesystem::remove(entry.path(), ec);
+            }
+        }
+    }
+
+    std::vector<CapturedFrame> frames;
+    frames.reserve(static_cast<size_t>(kProbeCaptureFrames));
+    for (uint64_t frameIndex = 0; frameIndex < kProbeCaptureFrames; ++frameIndex) {
+        const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex);
+        driver.setController1State(controllerMask);
+        driver.tick(timers, scenarioVideoFrame);
+
+        if (writeScreenshots
+            && std::find(kProbeScreenshotFrames.begin(), kProbeScreenshotFrames.end(), frameIndex)
+                != kProbeScreenshotFrames.end()) {
+            const auto scenarioFrame = driver.copyRuntimeFrameSnapshot();
+            if (scenarioFrame.has_value()) {
+                const std::filesystem::path screenshotPath =
+                    std::filesystem::path(::testing::TempDir())
+                    / ("nes_smb_frame_" + std::to_string(frameIndex) + ".ppm");
+                if (writeScenarioFramePpm(scenarioFrame.value(), screenshotPath)) {
+                    std::cout << "Wrote SMB screenshot: " << screenshotPath.string() << "\n";
+                }
+            }
+        }
+
+        const auto snapshot = driver.copyRuntimeMemorySnapshot();
+        if (!snapshot.has_value()) {
+            ADD_FAILURE() << "Missing SMB memory snapshot at frame " << frameIndex;
+            return {};
+        }
+
+        CapturedFrame frame;
+        frame.frameIndex = frameIndex;
+        frame.controllerMask = controllerMask;
+        frame.cpuRam.assign(snapshot->cpuRam.begin(), snapshot->cpuRam.end());
+        frames.push_back(frame);
+    }
+
+    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), kProbeCaptureFrames);
+    return frames;
+}
+
+std::optional<size_t> findFirstLifeDropFrameIndex(
+    const std::vector<CapturedFrame>& frames, size_t analysisStartIndex)
+{
+    for (size_t frameIndex = analysisStartIndex + 1u; frameIndex < frames.size(); ++frameIndex) {
+        const uint8_t prevLives = frames[frameIndex - 1u].cpuRam[kLivesAddr];
+        const uint8_t curLives = frames[frameIndex].cpuRam[kLivesAddr];
+        if (curLives < prevLives) {
+            return frameIndex;
+        }
+    }
+
+    return std::nullopt;
+}
+
+size_t countLifeDrops(const std::vector<CapturedFrame>& frames, size_t analysisStartIndex)
+{
+    size_t lifeDropCount = 0;
+    for (size_t frameIndex = analysisStartIndex + 1u; frameIndex < frames.size(); ++frameIndex) {
+        const uint8_t prevLives = frames[frameIndex - 1u].cpuRam[kLivesAddr];
+        const uint8_t curLives = frames[frameIndex].cpuRam[kLivesAddr];
+        if (curLives < prevLives) {
+            ++lifeDropCount;
+        }
+    }
+
+    return lifeDropCount;
+}
+
+SmolnesRuntime::MemorySnapshot makeMemorySnapshot(const CapturedFrame& frame)
+{
+    SmolnesRuntime::MemorySnapshot snapshot;
+    snapshot.cpuRam.fill(0);
+    snapshot.prgRam.fill(0);
+
+    if (frame.cpuRam.size() != snapshot.cpuRam.size()) {
+        ADD_FAILURE() << "Unexpected CPU RAM size in captured frame " << frame.frameIndex;
+        return snapshot;
+    }
+
+    std::copy(frame.cpuRam.begin(), frame.cpuRam.end(), snapshot.cpuRam.begin());
+    return snapshot;
+}
+
+SmbProbeReplaySummary replaySmbProbeFramesThroughExtractorAndEvaluator(
+    const std::vector<CapturedFrame>& frames)
+{
+    NesSuperMarioBrosRamExtractor extractor;
+    NesSuperMarioBrosEvaluator evaluator;
+    evaluator.reset();
+
+    SmbProbeReplaySummary summary;
+    uint64_t advancedFrameCount = 0;
+    for (const CapturedFrame& frame : frames) {
+        advancedFrameCount += 1u;
+
+        const SmolnesRuntime::MemorySnapshot snapshot = makeMemorySnapshot(frame);
+        const NesSuperMarioBrosState state =
+            extractor.extract(snapshot, advancedFrameCount >= kSetupScriptEndFrame);
+
+        EXPECT_EQ(state.absoluteX, decodeAbsoluteX(frame.cpuRam))
+            << "Extractor absoluteX should match the raw x-page/x-screen decode at frame "
+            << frame.frameIndex;
+
+        if (state.phase == SmbPhase::Gameplay) {
+            summary.gameplayFrameCount++;
+            summary.maxAbsoluteX = std::max(summary.maxAbsoluteX, state.absoluteX);
+            if (state.lifeState == SmbLifeState::Alive) {
+                summary.aliveGameplayFrameCount++;
+            }
+        }
+
+        const NesSuperMarioBrosEvaluatorOutput output = evaluator.evaluate(
+            {
+                .advancedFrames = 1,
+                .state = state,
+            });
+
+        summary.rewardTotal += output.rewardDelta;
+        if (output.rewardDelta > 0.0) {
+            summary.positiveRewardFrameCount++;
+            if (!summary.firstPositiveRewardFrame.has_value()) {
+                summary.firstPositiveRewardFrame = frame.frameIndex;
+            }
+        }
+
+        if (output.done) {
+            summary.firstDoneFrame = frame.frameIndex;
+            break;
+        }
+    }
+
+    return summary;
+}
+
 } // namespace
 
 TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
@@ -138,107 +359,37 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
                         "smb.nes in testdata/roms/.";
     }
 
-    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperMarioBros);
-    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
-        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
-    config.romId = "";
-    config.romPath = romPath->string();
-    config.requireSmolnesMapper = true;
-    const auto setResult = driver.setConfig(ScenarioConfig{ config });
-    ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
-    const auto setupResult = driver.setup();
-    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
-
-    ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
-    ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
-    Timers timers;
-    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
-
-    constexpr uint64_t kCaptureFrames = 1100;
-    const std::array<uint64_t, 14> screenshotFrames = {
-        0u, 120u, 240u, 300u, 400u, 500u, 600u, 700u, 800u, 899u, 950u, 1000u, 1050u, 1099u,
-    };
-
-    const std::filesystem::path tempDir = ::testing::TempDir();
-    for (const auto& entry : std::filesystem::directory_iterator(tempDir)) {
-        if (!entry.is_regular_file()) {
-            continue;
-        }
-
-        const std::string filename = entry.path().filename().string();
-        if (filename.rfind("nes_smb_frame_", 0) == 0 && entry.path().extension() == ".ppm") {
-            std::error_code ec;
-            std::filesystem::remove(entry.path(), ec);
-        }
-    }
-
-    std::vector<CapturedFrame> frames;
-    frames.reserve(static_cast<size_t>(kCaptureFrames));
-
-    for (uint64_t frameIndex = 0; frameIndex < kCaptureFrames; ++frameIndex) {
-        const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex);
-        driver.setController1State(controllerMask);
-        driver.tick(timers, scenarioVideoFrame);
-
-        for (uint64_t snapshotFrame : screenshotFrames) {
-            if (snapshotFrame != frameIndex) {
-                continue;
-            }
-
-            const auto scenarioFrame = driver.copyRuntimeFrameSnapshot();
-            if (!scenarioFrame.has_value()) {
-                continue;
-            }
-
-            const std::filesystem::path screenshotPath = std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_frame_" + std::to_string(frameIndex) + ".ppm");
-            if (writeScenarioFramePpm(scenarioFrame.value(), screenshotPath)) {
-                std::cout << "Wrote SMB screenshot: " << screenshotPath.string() << "\n";
-            }
-        }
-
-        const auto snapshot = driver.copyRuntimeMemorySnapshot();
-        ASSERT_TRUE(snapshot.has_value());
-
-        CapturedFrame frame;
-        frame.frameIndex = frameIndex;
-        frame.controllerMask = controllerMask;
-        frame.cpuRam.assign(snapshot->cpuRam.begin(), snapshot->cpuRam.end());
-        frames.push_back(frame);
-    }
-
-    ASSERT_EQ(driver.getRuntimeRenderedFrameCount(), kCaptureFrames);
+    const std::vector<CapturedFrame> frames = captureSmbProbeFrames(romPath.value(), true);
     ASSERT_FALSE(frames.empty());
     ASSERT_EQ(frames.front().cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
 
-    constexpr uint64_t kGameplayAnalysisStartFrame = 300;
-    const size_t analysisStartIndex = kGameplayAnalysisStartFrame < frames.size()
-        ? static_cast<size_t>(kGameplayAnalysisStartFrame)
+    const size_t analysisStartIndex = kSetupScriptEndFrame < frames.size()
+        ? static_cast<size_t>(kSetupScriptEndFrame)
         : (frames.size() - 1u);
 
     const std::vector<uint8_t>& gameplayStartRam = frames[analysisStartIndex].cpuRam;
-    const uint8_t gameEngineAtStart = gameplayStartRam[0x0770];
-    std::cout << "Game engine at frame " << kGameplayAnalysisStartFrame << ": "
+    const uint8_t gameEngineAtStart = gameplayStartRam[kGameEngineAddr];
+    std::cout << "Game engine at frame " << kSetupScriptEndFrame << ": "
               << static_cast<uint32_t>(gameEngineAtStart) << "\n";
 
     bool foundGameplay = false;
     bool playerXChanged = false;
     uint8_t firstGameplayX = 0;
     for (size_t i = analysisStartIndex; i < frames.size(); ++i) {
-        const uint8_t engine = frames[i].cpuRam[0x0770];
+        const uint8_t engine = frames[i].cpuRam[kGameEngineAddr];
         if (engine == 1) {
             foundGameplay = true;
-            const uint8_t lives = frames[i].cpuRam[0x075A];
+            const uint8_t lives = frames[i].cpuRam[kLivesAddr];
             EXPECT_GT(lives, 0u) << "Lives should be positive during gameplay at frame " << i;
 
-            const uint8_t world = frames[i].cpuRam[0x075F];
-            const uint8_t level = frames[i].cpuRam[0x0760];
+            const uint8_t world = frames[i].cpuRam[kWorldAddr];
+            const uint8_t level = frames[i].cpuRam[kLevelAddr];
             if (i == analysisStartIndex) {
                 EXPECT_EQ(world, 0u);
                 EXPECT_EQ(level, 0u);
             }
 
-            const uint8_t playerX = frames[i].cpuRam[0x0086];
+            const uint8_t playerX = frames[i].cpuRam[kPlayerXScreenAddr];
             if (i == analysisStartIndex) {
                 firstGameplayX = playerX;
             }
@@ -246,9 +397,9 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
                 playerXChanged = true;
             }
 
-            const uint8_t horizontalSpeed = frames[i].cpuRam[0x0057];
+            const uint8_t horizontalSpeed = frames[i].cpuRam[kHorizontalSpeedAddr];
             if (playerXChanged && horizontalSpeed > 0) {
-                const uint8_t powerup = frames[i].cpuRam[0x0756];
+                const uint8_t powerup = frames[i].cpuRam[kPowerupStateAddr];
                 EXPECT_EQ(powerup, 0u)
                     << "Powerup should be 0 (small) at world 1-1 start, frame " << i;
                 break;
@@ -259,6 +410,78 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     if (foundGameplay) {
         EXPECT_TRUE(playerXChanged) << "Player X should change when pressing RIGHT.";
     }
+
+    const std::filesystem::path signalPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_smb_ram_probe_signals.csv";
+    std::ofstream signalStream(signalPath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(signalStream.is_open())
+        << "Failed to open SMB signal trace: " << signalPath.string();
+
+    signalStream
+        << "frame,controller_mask,game_engine,player_state,lives,world,level,player_x_page,"
+           "player_x_screen,absolute_x,horizontal_speed,powerup_state,player_y_screen\n";
+    for (size_t frameIndex = analysisStartIndex; frameIndex < frames.size(); ++frameIndex) {
+        const CapturedFrame& frame = frames[frameIndex];
+        signalStream << frame.frameIndex << "," << static_cast<uint32_t>(frame.controllerMask)
+                     << "," << static_cast<uint32_t>(frame.cpuRam[kGameEngineAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kPlayerStateAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kLivesAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kWorldAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kLevelAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kPlayerXPageAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kPlayerXScreenAddr]) << ","
+                     << decodeAbsoluteX(frame.cpuRam) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kHorizontalSpeedAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kPowerupStateAddr]) << ","
+                     << static_cast<uint32_t>(frame.cpuRam[kPlayerYScreenAddr]) << "\n";
+    }
+
+    signalStream.close();
+    ASSERT_TRUE(signalStream.good());
+    EXPECT_TRUE(std::filesystem::exists(signalPath));
+    EXPECT_GT(std::filesystem::file_size(signalPath), 0u);
+    std::cout << "Wrote SMB RAM probe signals: " << signalPath.string() << "\n";
+
+    const size_t lifeDropCount = countLifeDrops(frames, analysisStartIndex);
+    const std::optional<size_t> firstLifeDropFrameIndex =
+        findFirstLifeDropFrameIndex(frames, analysisStartIndex);
+
+    EXPECT_EQ(lifeDropCount, 1u) << "Expected the scripted run to lose exactly one life.";
+    ASSERT_TRUE(firstLifeDropFrameIndex.has_value()) << "Expected the scripted run to lose a life.";
+
+    size_t playerXPageAdvanceCount = 0;
+    int16_t largestBackwardStep = 0;
+    uint16_t bestAbsoluteX = decodeAbsoluteX(frames[analysisStartIndex].cpuRam);
+    uint16_t lastAbsoluteX = bestAbsoluteX;
+    for (size_t frameIndex = analysisStartIndex + 1u; frameIndex < firstLifeDropFrameIndex.value();
+         ++frameIndex) {
+        const std::vector<uint8_t>& previous = frames[frameIndex - 1u].cpuRam;
+        const std::vector<uint8_t>& current = frames[frameIndex].cpuRam;
+        const uint16_t absoluteX = decodeAbsoluteX(current);
+        const int16_t absoluteXDelta =
+            static_cast<int16_t>(absoluteX) - static_cast<int16_t>(lastAbsoluteX);
+        if (current[kPlayerXPageAddr] > previous[kPlayerXPageAddr]) {
+            ++playerXPageAdvanceCount;
+            EXPECT_GT(absoluteX, lastAbsoluteX)
+                << "absoluteX should continue forward when x-page advances at frame "
+                << frames[frameIndex].frameIndex;
+            EXPECT_LE(absoluteXDelta, 2)
+                << "absoluteX should stay continuous across an x-page rollover at frame "
+                << frames[frameIndex].frameIndex;
+        }
+
+        largestBackwardStep = std::min(largestBackwardStep, absoluteXDelta);
+        bestAbsoluteX = std::max(bestAbsoluteX, absoluteX);
+        lastAbsoluteX = absoluteX;
+    }
+
+    EXPECT_GE(largestBackwardStep, -1)
+        << "Expected the scripted run to exhibit at most a one-pixel backward step.";
+    EXPECT_GE(bestAbsoluteX, 512u)
+        << "Expected absoluteX to cross at least two x-page boundaries before the scripted death.";
+    EXPECT_GE(playerXPageAdvanceCount, 2u)
+        << "Expected x-page to advance across at least two page boundaries before the scripted "
+           "death.";
 
     struct AddrStats {
         uint32_t changes = 0;
@@ -328,6 +551,9 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     EXPECT_TRUE(std::filesystem::exists(statsPath));
     EXPECT_GT(std::filesystem::file_size(statsPath), 0u);
     std::cout << "Wrote SMB RAM probe stats: " << statsPath.string() << "\n";
+    std::cout << "First life loss frame: " << frames[firstLifeDropFrameIndex.value()].frameIndex
+              << ", best absoluteX before death: " << bestAbsoluteX
+              << ", largest backward step: " << largestBackwardStep << "\n";
 
     std::vector<size_t> rankedAddresses(changeCounts.size(), 0);
     std::iota(rankedAddresses.begin(), rankedAddresses.end(), 0);
@@ -351,7 +577,7 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     stream << "\n";
 
     for (const CapturedFrame& frame : frames) {
-        if (frame.frameIndex < kGameplayAnalysisStartFrame) {
+        if (frame.frameIndex < kSetupScriptEndFrame) {
             continue;
         }
 
@@ -375,4 +601,42 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     std::cout << "Wrote SMB RAM probe trace: " << tracePath.string() << "\n";
     std::cout << "Top changed address: cpu_" << rankedAddresses.front() << " (changed "
               << changeCounts[rankedAddresses.front()] << " times)\n";
+}
+
+TEST(NesSuperMarioBrosRamProbeTest, ReplayThroughExtractorAndEvaluatorMatchesLiveRun)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesSmbFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Set DIRTSIM_NES_SMB_TEST_ROM_PATH or place "
+                        "smb.nes in testdata/roms/.";
+    }
+
+    const std::vector<CapturedFrame> frames = captureSmbProbeFrames(romPath.value(), false);
+    ASSERT_FALSE(frames.empty());
+
+    const size_t analysisStartIndex = kSetupScriptEndFrame < frames.size()
+        ? static_cast<size_t>(kSetupScriptEndFrame)
+        : (frames.size() - 1u);
+
+    const size_t lifeDropCount = countLifeDrops(frames, analysisStartIndex);
+    const std::optional<size_t> firstLifeDropFrameIndex =
+        findFirstLifeDropFrameIndex(frames, analysisStartIndex);
+
+    ASSERT_EQ(lifeDropCount, 1u);
+    ASSERT_TRUE(firstLifeDropFrameIndex.has_value());
+
+    const SmbProbeReplaySummary summary = replaySmbProbeFramesThroughExtractorAndEvaluator(frames);
+
+    EXPECT_GT(summary.gameplayFrameCount, 0u);
+    EXPECT_GT(summary.aliveGameplayFrameCount, 0u)
+        << "Expected the extractor to classify at least some live gameplay frames as Alive.";
+    EXPECT_GE(summary.maxAbsoluteX, 512u)
+        << "Expected the live replay to carry extracted absoluteX past two x-page boundaries.";
+    EXPECT_GT(summary.rewardTotal, 0.0)
+        << "Expected the evaluator to reward forward progress during the live scripted run.";
+    EXPECT_GT(summary.positiveRewardFrameCount, 0u)
+        << "Expected the live replay to produce at least one positive reward frame.";
+    ASSERT_TRUE(summary.firstDoneFrame.has_value());
+    EXPECT_EQ(summary.firstDoneFrame.value(), frames[firstLifeDropFrameIndex.value()].frameIndex)
+        << "Expected the evaluator to terminate on the first life loss in the live replay.";
 }

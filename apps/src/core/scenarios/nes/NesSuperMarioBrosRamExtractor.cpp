@@ -22,8 +22,10 @@ constexpr size_t kWorldAddr = 0x075F;
 
 constexpr uint8_t kFacingLeft = 2;
 constexpr uint8_t kGameEngineGameplay = 1;
-constexpr uint8_t kPlayerStateDying = 0x06;
-constexpr uint8_t kPlayerStateDead = 0x0B;
+constexpr uint8_t kPlayerStateActiveGameplay = 0x08;
+constexpr uint8_t kPlayerStateDeathAnimation = 0x0B;
+constexpr uint8_t kPlayerStateReloadScreen = 0x00;
+constexpr uint8_t kPlayerStateRespawnTransition = 0x06;
 
 uint16_t decodeAbsoluteX(uint8_t playerXPage, uint8_t playerXScreen)
 {
@@ -38,13 +40,21 @@ double decodeHorizontalSpeedNormalized(uint8_t horizontalSpeed, uint8_t facingDi
 
 SmbLifeState decodeLifeState(uint8_t playerState)
 {
-    if (playerState == kPlayerStateDead) {
-        return SmbLifeState::Dead;
+    // Probe runs show 0x08 during active gameplay and 0x0B during the death animation.
+    switch (playerState) {
+        case 0x01:
+        case 0x02:
+        case 0x03:
+        case kPlayerStateActiveGameplay:
+            return SmbLifeState::Alive;
+        case kPlayerStateDeathAnimation:
+            return SmbLifeState::Dying;
+        case kPlayerStateReloadScreen:
+        case kPlayerStateRespawnTransition:
+            return SmbLifeState::Dead;
+        default:
+            return SmbLifeState::Dying;
     }
-    if (playerState >= kPlayerStateDying) {
-        return SmbLifeState::Dying;
-    }
-    return SmbLifeState::Alive;
 }
 
 SmbPhase decodePhase(uint8_t gameEngine, bool setupComplete)

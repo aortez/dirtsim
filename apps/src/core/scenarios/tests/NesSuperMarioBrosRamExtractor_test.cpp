@@ -45,7 +45,18 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
 {
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1, 2, 0x03, 0x80, 25, 1, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+        1,
+        2,
+        0x03,
+        0x80,
+        25,
+        1,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        3,
+        1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -53,7 +64,7 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Fire);
-    EXPECT_TRUE(state.airborne);
+    EXPECT_FALSE(state.airborne);
     EXPECT_NEAR(state.horizontalSpeedNormalized, 25.0 / 40.0, 1e-6);
     EXPECT_NEAR(state.verticalSpeedNormalized, -40.0 / 128.0, 1e-6);
     EXPECT_EQ(state.world, 1u);
@@ -63,18 +74,50 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     EXPECT_EQ(state.lives, 3u);
 }
 
-TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsNonGameplayAndDeathStates)
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsAirborneGameplayStatesAsAlive)
+{
+    const SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 5, 2, 0, 100, 1, 0x02, 2, 1);
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
+    EXPECT_EQ(state.powerupState, SmbPowerupState::Big);
+    EXPECT_TRUE(state.airborne);
+    EXPECT_NEAR(state.horizontalSpeedNormalized, -5.0 / 40.0, 1e-6);
+    EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
 {
     const SmolnesRuntime::MemorySnapshot snapshot =
         makeSmbSnapshot(0, 0, 0x00, 0x20, 5, 2, 0, 100, 1, 0x0B, 0, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
-    const NesSuperMarioBrosState state = extractor.extract(snapshot, false);
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
-    EXPECT_EQ(state.phase, SmbPhase::NonGameplay);
-    EXPECT_EQ(state.lifeState, SmbLifeState::Dead);
+    EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Dying);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Big);
     EXPECT_FALSE(state.airborne);
     EXPECT_NEAR(state.horizontalSpeedNormalized, -5.0 / 40.0, 1e-6);
+    EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsReloadScreenStateAsDead)
+{
+    const SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 1, 0, 0, 0, 0x00, 1, 1);
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Dead);
+    EXPECT_EQ(state.powerupState, SmbPowerupState::Small);
+    EXPECT_FALSE(state.airborne);
+    EXPECT_DOUBLE_EQ(state.horizontalSpeedNormalized, 0.0);
     EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
 }
