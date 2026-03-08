@@ -17,11 +17,12 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
+class LightCalculatorBase;
 class LightManager;
 class WorldAdhesionCalculator;
 class WorldCollisionCalculator;
 class WorldFrictionCalculator;
-class WorldLightCalculator;
+
 class WorldPressureCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
@@ -98,8 +99,8 @@ public:
     WorldCollisionCalculator& getCollisionCalculator();
     const WorldCollisionCalculator& getCollisionCalculator() const;
 
-    WorldLightCalculator& getLightCalculator();
-    const WorldLightCalculator& getLightCalculator() const;
+    LightCalculatorBase& getLightCalculator();
+    const LightCalculatorBase& getLightCalculator() const;
 
     // Light management.
     LightManager& getLightManager();

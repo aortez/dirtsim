@@ -223,6 +223,7 @@ uint32_t sand();
 uint32_t seed();
 uint32_t stone();
 uint32_t water();
+uint32_t waterDark();
 uint32_t wood();
 
 // Material emissions.
@@ -234,6 +235,9 @@ uint32_t stormGlow();
 uint32_t uiGrayDark();
 uint32_t uiGrayLight();
 uint32_t uiGrayMedium();
+
+// Sky.
+uint32_t skyBlue();
 
 // Utility.
 uint32_t white();

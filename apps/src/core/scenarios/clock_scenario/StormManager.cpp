@@ -1,6 +1,6 @@
 #include "StormManager.h"
 
-#include "core/WorldLightCalculator.h"
+#include "core/LightCalculatorBase.h"
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
@@ -20,7 +20,7 @@ void StormManager::reset()
 }
 
 void StormManager::update(
-    WorldLightCalculator& lightCalc, double /*deltaTime*/, double stormIntensity, std::mt19937& rng)
+    LightCalculatorBase& lightCalc, double /*deltaTime*/, double stormIntensity, std::mt19937& rng)
 {
     if (stormIntensity <= 0.0) {
         if (striking_) {
@@ -87,7 +87,7 @@ void StormManager::updateDormant(double stormIntensity, std::mt19937& rng)
     }
 }
 
-void StormManager::updateStriking(WorldLightCalculator& lightCalc, std::mt19937& rng)
+void StormManager::updateStriking(LightCalculatorBase& lightCalc, std::mt19937& rng)
 {
     auto now = std::chrono::steady_clock::now();
 
@@ -133,7 +133,7 @@ float StormManager::calculateStrokeIntensity(double elapsedMs)
     return static_cast<float>(decayFactor);
 }
 
-void StormManager::applyFlash(WorldLightCalculator& lightCalc, float intensity)
+void StormManager::applyFlash(LightCalculatorBase& lightCalc, float intensity)
 {
     ColorNames::RgbF flash{ 0.9f * intensity, 0.92f * intensity, 1.0f * intensity };
     lightCalc.setAmbientBoost(flash);

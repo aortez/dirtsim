@@ -1,9 +1,9 @@
 #include "GlowManager.h"
 #include "core/ColorNames.h"
+#include "core/LightCalculatorBase.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/WorldLightCalculator.h"
 
 namespace DirtSim {
 
@@ -15,7 +15,7 @@ void GlowManager::apply(
     const std::vector<Vector2i>& wallPositions,
     const GlowConfig& config)
 {
-    WorldLightCalculator& lightCalc = world.getLightCalculator();
+    auto& lightCalc = world.getLightCalculator();
     const WorldData& data = world.getData();
 
     for (const auto& pos : digitPositions) {
@@ -47,7 +47,7 @@ void GlowManager::apply(
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
                 if (data.at(x, y).material_type == Material::EnumType::Water) {
-                    lightCalc.setEmissive(x, y, ColorNames::stormGlow(), config.waterIntensity);
+                    lightCalc.setEmissive(x, y, ColorNames::waterDark(), config.waterIntensity);
                 }
             }
         }
