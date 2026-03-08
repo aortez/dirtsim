@@ -75,6 +75,10 @@ uint32_t water()
 {
     return 0x3399FFFF;
 }
+uint32_t waterDark()
+{
+    return 0x1144FFFF;
+}
 uint32_t wood()
 {
     return 0x6B4423FF;

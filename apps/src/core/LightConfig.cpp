@@ -18,6 +18,7 @@ void from_json(const nlohmann::json& j, LightConfig& config)
 LightConfig getDefaultLightConfig()
 {
     return LightConfig{
+        .air_fast_path = true,
         .ambient_color = ColorNames::dayAmbient(),
         .ambient_intensity = 0.7f,
         .sky_color = ColorNames::skyBlue(),
@@ -25,6 +26,8 @@ LightConfig getDefaultLightConfig()
         .steps_per_frame = 15,
         .sun_color = ColorNames::warmSunlight(),
         .sun_intensity = 0.8f,
+        .temporal_decay = 0.85f,
+        .temporal_persistence = false,
     };
 }
 

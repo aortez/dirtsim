@@ -47,7 +47,7 @@ void GlowManager::apply(
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
                 if (data.at(x, y).material_type == Material::EnumType::Water) {
-                    lightCalc.setEmissive(x, y, ColorNames::stormGlow(), config.waterIntensity);
+                    lightCalc.setEmissive(x, y, ColorNames::waterDark(), config.waterIntensity);
                 }
             }
         }

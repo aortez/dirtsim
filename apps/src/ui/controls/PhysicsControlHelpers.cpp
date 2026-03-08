@@ -359,6 +359,56 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.ambient_intensity);
+                            } },
+                      { .label = "Steps",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 1,
+                        .rangeMax = 30,
+                        .defaultValue = 15,
+                        .valueScale = 1.0,
+                        .valueFormat = "%.0f",
+                        .step = 1,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.steps_per_frame = static_cast<int>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.steps_per_frame);
+                            } },
+                      { .label = "AirFast",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "On\nOff",
+                        .indexSetter = [](PhysicsSettings& s,
+                                          int idx) { s.light.air_fast_path = (idx == 0); },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.light.air_fast_path ? 0 : 1;
+                            } },
+                      { .label = "Temporal",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "Off\nOn",
+                        .indexSetter = [](PhysicsSettings& s,
+                                          int idx) { s.light.temporal_persistence = (idx == 1); },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.light.temporal_persistence ? 1 : 0;
+                            } },
+                      { .label = "Decay",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 85,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.temporal_decay = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.temporal_decay);
                             } } }
     };
 

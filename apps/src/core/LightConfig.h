@@ -6,6 +6,7 @@
 namespace DirtSim {
 
 struct LightConfig {
+    bool air_fast_path;
     uint32_t ambient_color;
     float ambient_intensity;
     uint32_t sky_color;
@@ -13,6 +14,8 @@ struct LightConfig {
     int steps_per_frame;
     uint32_t sun_color;
     float sun_intensity;
+    float temporal_decay;
+    bool temporal_persistence;
 };
 
 LightConfig getDefaultLightConfig();

@@ -223,6 +223,7 @@ uint32_t sand();
 uint32_t seed();
 uint32_t stone();
 uint32_t water();
+uint32_t waterDark();
 uint32_t wood();
 
 // Material emissions.

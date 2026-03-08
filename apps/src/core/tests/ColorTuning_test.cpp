@@ -109,6 +109,7 @@ protected:
 
         // Full light config with sun enabled.
         config = {
+            .air_fast_path = true,
             .ambient_color = ColorNames::dayAmbient(),
             .ambient_intensity = 0.3f,
             .sky_color = ColorNames::skyBlue(),
@@ -116,6 +117,8 @@ protected:
             .steps_per_frame = 25,
             .sun_color = ColorNames::warmSunlight(),
             .sun_intensity = 1.0f,
+            .temporal_decay = 0.85f,
+            .temporal_persistence = false,
         };
     }
 

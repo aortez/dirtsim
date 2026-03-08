@@ -84,7 +84,7 @@ public:
 
 private:
     void ensureBufferSizes(int width, int height);
-    void propagateStep(const WorldData& data);
+    void propagateStep(const WorldData& data, bool air_fast_path);
     void injectSources(World& world, const LightConfig& config);
     void applyAmbient(WorldData& data, const LightConfig& config);
     void storeRawLight(WorldData& data);

@@ -25,12 +25,6 @@ constexpr float kCardinalWeight = 1.0f;
 constexpr float kDiagonalWeight = 0.707f;
 constexpr float kTotalWeight = 4.0f * kCardinalWeight + 4.0f * kDiagonalWeight;
 
-constexpr float uniformWeight(LightDir d)
-{
-    const float w = dirWeight(d);
-    return w / kTotalWeight;
-}
-
 ColorNames::RgbF getMaterialBaseColor(Material::EnumType mat)
 {
     using ColorNames::toRgbF;
@@ -72,10 +66,21 @@ void LightPropagator::ensureBufferSizes(int width, int height)
     }
 }
 
-void LightPropagator::propagateStep(const WorldData& data)
+void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
 {
     const int width = data.width;
     const int height = data.height;
+
+    // Precomputed uniform diffuse weights per direction.
+    static constexpr float kWeights[8] = {
+        kCardinalWeight / kTotalWeight, kDiagonalWeight / kTotalWeight,
+        kCardinalWeight / kTotalWeight, kDiagonalWeight / kTotalWeight,
+        kCardinalWeight / kTotalWeight, kDiagonalWeight / kTotalWeight,
+        kCardinalWeight / kTotalWeight, kDiagonalWeight / kTotalWeight,
+    };
+
+    // Threshold below which a cell is considered fully transparent (air-like).
+    constexpr float kTransparentThreshold = 0.01f;
 
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
@@ -85,14 +90,43 @@ void LightPropagator::propagateStep(const WorldData& data)
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
             const auto& props = cell.material().light;
             const float fill = cell.fill_ratio;
-
             const float eff_opacity = props.opacity * fill;
-            const float transmit = 1.0f - eff_opacity;
-            const ColorNames::RgbF white_rgb{ 1.0f, 1.0f, 1.0f };
-            const ColorNames::RgbF tint_rgb = ColorNames::toRgbF(props.tint);
-            const ColorNames::RgbF eff_tint = ColorNames::lerp(white_rgb, tint_rgb, fill);
 
             auto& dst = light_field_next_.at(x, y);
+
+            // Fast path: near-transparent cells just forward light with no scatter.
+            if (air_fast_path && eff_opacity < kTransparentThreshold) {
+                for (int di = 0; di < 8; ++di) {
+                    const Vector2i up = upstream(static_cast<LightDir>(di));
+                    const int ux = x + up.x;
+                    const int uy = y + up.y;
+
+                    if (ux < 0 || ux >= width || uy < 0 || uy >= height) {
+                        continue;
+                    }
+
+                    const ColorNames::RgbF& incoming = light_field_.at(ux, uy).channel[di];
+                    dst.channel[di].r += incoming.r;
+                    dst.channel[di].g += incoming.g;
+                    dst.channel[di].b += incoming.b;
+                }
+                continue;
+            }
+
+            const float transmit = 1.0f - eff_opacity;
+            const ColorNames::RgbF tint_rgb = ColorNames::toRgbF(props.tint);
+            const ColorNames::RgbF eff_tint =
+                ColorNames::lerp({ 1.0f, 1.0f, 1.0f }, tint_rgb, fill);
+
+            // Precompute combined tint factors to reduce per-direction work.
+            const ColorNames::RgbF transmit_tint = eff_tint * transmit;
+            const float scatter_factor = eff_opacity * props.scatter;
+            const ColorNames::RgbF specular_tint = eff_tint * (scatter_factor * props.specularity);
+            const ColorNames::RgbF diffuse_tint =
+                eff_tint * (scatter_factor * (1.0f - props.specularity));
+
+            // Accumulate total diffuse across all incoming directions, distribute once.
+            float diff_r = 0.0f, diff_g = 0.0f, diff_b = 0.0f;
 
             for (int di = 0; di < 8; ++di) {
                 const auto d = static_cast<LightDir>(di);
@@ -100,38 +134,40 @@ void LightPropagator::propagateStep(const WorldData& data)
                 const int ux = x + up.x;
                 const int uy = y + up.y;
 
-                // Skip out-of-bounds upstream neighbors.
                 if (ux < 0 || ux >= width || uy < 0 || uy >= height) {
                     continue;
                 }
 
                 const ColorNames::RgbF incoming = light_field_.at(ux, uy).channel[di];
 
-                // Skip negligible light.
                 if (incoming.r < 0.001f && incoming.g < 0.001f && incoming.b < 0.001f) {
                     continue;
                 }
 
-                // Transmission: light passing through without interacting.
-                const ColorNames::RgbF through = incoming * transmit * eff_tint;
+                // Forward transmission.
+                auto& fwd = dst.channel[di];
+                fwd.r += incoming.r * transmit_tint.r;
+                fwd.g += incoming.g * transmit_tint.g;
+                fwd.b += incoming.b * transmit_tint.b;
 
-                // Scattering: intercepted light that is re-emitted.
-                const ColorNames::RgbF intercepted = incoming * eff_opacity;
-                const ColorNames::RgbF scattered = intercepted * props.scatter * eff_tint;
+                // Specular reflection.
+                auto& spec = dst.channel[static_cast<int>(opposite(d))];
+                spec.r += incoming.r * specular_tint.r;
+                spec.g += incoming.g * specular_tint.g;
+                spec.b += incoming.b * specular_tint.b;
 
-                // Forward transmitted light.
-                dst.channel[di] += through;
+                // Accumulate diffuse for single distribution pass.
+                diff_r += incoming.r * diffuse_tint.r;
+                diff_g += incoming.g * diffuse_tint.g;
+                diff_b += incoming.b * diffuse_tint.b;
+            }
 
-                // Distribute scattered light.
-                const ColorNames::RgbF specular_amount = scattered * props.specularity;
-                const ColorNames::RgbF diffuse_amount = scattered * (1.0f - props.specularity);
-
-                // Specular: reverse direction.
-                dst.channel[static_cast<int>(opposite(d))] += specular_amount;
-
-                // Diffuse: uniform across all 8 directions, weighted by cardinal/diagonal.
+            // Distribute accumulated diffuse once across all 8 directions.
+            if (diff_r > 0.0f || diff_g > 0.0f || diff_b > 0.0f) {
                 for (int dj = 0; dj < 8; ++dj) {
-                    dst.channel[dj] += diffuse_amount * uniformWeight(static_cast<LightDir>(dj));
+                    dst.channel[dj].r += diff_r * kWeights[dj];
+                    dst.channel[dj].g += diff_g * kWeights[dj];
+                    dst.channel[dj].b += diff_b * kWeights[dj];
                 }
             }
         }
@@ -325,11 +361,29 @@ void LightPropagator::calculate(
 
     {
         ScopeTimer t(timers, "light_propagate");
-        for (int step = 0; step < config.steps_per_frame; ++step) {
+
+        if (config.temporal_persistence) {
+            // Temporal mode: decay existing field and run one correction step.
+            const float decay = config.temporal_decay;
+            auto* field = light_field_.begin();
+            const size_t count = light_field_.size() * 8;
+            float* raw = reinterpret_cast<float*>(field);
+            for (size_t i = 0; i < count * 3; ++i) {
+                raw[i] *= decay;
+            }
+
             light_field_next_.clear();
-            propagateStep(data);
+            propagateStep(data, config.air_fast_path);
             injectSources(world, config);
             std::swap(light_field_, light_field_next_);
+        }
+        else {
+            for (int step = 0; step < config.steps_per_frame; ++step) {
+                light_field_next_.clear();
+                propagateStep(data, config.air_fast_path);
+                injectSources(world, config);
+                std::swap(light_field_, light_field_next_);
+            }
         }
     }
 
