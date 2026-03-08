@@ -18,6 +18,7 @@ class Duck;
 class Goose;
 class MultiCellTestOrganism;
 class Tree;
+class LightCalculatorBase;
 class World;
 enum class MultiCellShape;
 
@@ -112,7 +113,7 @@ public:
 
     // Inject organism emissions into the light calculator's emissive overlay.
     // Called before light calculation so glowing organisms illuminate their surroundings.
-    void injectEmissions(class WorldLightCalculator& light_calc);
+    void injectEmissions(LightCalculatorBase& light_calc);
 
     // Statistics.
     size_t getOrganismCount() const { return organisms_.size(); }

@@ -60,7 +60,7 @@ public:
         double startingHealth = 1.0;
         double regenRate = 0.10;
         double impactEnergyThreshold = 5.0;
-        double impactDamageExponent = 2.0;
+        double impactDamageExponent = 1.5;
         double impactDamageScale = 0.000128;
     };
 

@@ -18,21 +18,17 @@ void from_json(const nlohmann::json& j, LightConfig& config)
 LightConfig getDefaultLightConfig()
 {
     return LightConfig{
-        .air_scatter_rate = 0.15f,
-        .bounce_intensity = 0.3f,
+        .air_fast_path = false,
         .ambient_color = ColorNames::dayAmbient(),
         .ambient_intensity = 0.7f,
-        .diagonal_light_enabled = true,
-        .diagonal_light_intensity = 0.4f,
-        .diffusion_iterations = 2,
-        .diffusion_rate = 0.6f,
         .enabled = true,
-        .shadow_decay_rate = 0.0f,
-        .side_light_enabled = true,
-        .side_light_intensity = 0.2f,
+        .sky_color = ColorNames::skyBlue(),
+        .sky_intensity = 0.4f,
+        .steps_per_frame = 10,
         .sun_color = ColorNames::warmSunlight(),
-        .sun_enabled = true,
         .sun_intensity = 0.8f,
+        .temporal_decay = 0.99f,
+        .temporal_persistence = true,
     };
 }
 

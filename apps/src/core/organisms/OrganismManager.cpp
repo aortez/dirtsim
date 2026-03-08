@@ -9,11 +9,11 @@
 #include "core/Cell.h"
 #include "core/Entity.h"
 #include "core/LightBuffer.h"
+#include "core/LightCalculatorBase.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/WorldLightCalculator.h"
 #include "tests/MultiCellTestOrganism.h"
 #include <cassert>
 #include <cmath>
@@ -649,7 +649,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
     }
 }
 
-void OrganismManager::injectEmissions(WorldLightCalculator& light_calc)
+void OrganismManager::injectEmissions(LightCalculatorBase& light_calc)
 {
     constexpr uint32_t DUCK_GLOW_COLOR = 0xFFCC66FF;
     constexpr float MAX_EMISSION_INTENSITY = 0.8f;

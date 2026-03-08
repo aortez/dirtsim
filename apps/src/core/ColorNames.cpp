@@ -75,6 +75,10 @@ uint32_t water()
 {
     return 0x3399FFFF;
 }
+uint32_t waterDark()
+{
+    return 0x1144FFFF;
+}
 uint32_t wood()
 {
     return 0x6B4423FF;
@@ -106,6 +110,12 @@ uint32_t uiGrayLight()
 uint32_t uiGrayMedium()
 {
     return 0x303030FF;
+}
+
+// Sky.
+uint32_t skyBlue()
+{
+    return 0x87CEEBFF;
 }
 
 // Utility.

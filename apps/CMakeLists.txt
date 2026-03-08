@@ -437,6 +437,7 @@ add_library(dirtsim-server-lib STATIC
 
     # Physics engine.
     src/core/LightManager.cpp
+    src/core/LightPropagator.cpp
     src/core/LightTypes.cpp
     src/core/World.cpp
     src/core/WorldAdhesionCalculator.cpp
@@ -447,7 +448,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/WorldDiagramGeneratorEmoji.cpp
     src/core/WorldFrictionCalculator.cpp
     src/core/WorldInterpolationTool.cpp
-    src/core/WorldLightCalculator.cpp
+
     src/core/WorldPressureCalculator.cpp
     src/core/WorldRigidBodyCalculator.cpp
     src/core/WorldVelocityLimitCalculator.cpp
@@ -845,8 +846,9 @@ add_executable(dirtsim-tests
     # World light and resize tests.
     src/core/tests/ColorTuning_test.cpp
     src/core/tests/LightManager_test.cpp
+    src/core/tests/LightPropagator_test.cpp
     src/core/tests/UUID_test.cpp
-    src/core/tests/WorldLightCalculator_test.cpp
+
     src/core/tests/WorldResize_test.cpp
 
     # Scenario tests.
