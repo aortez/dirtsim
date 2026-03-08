@@ -37,19 +37,38 @@ fi
 
 DRM_DEVICE="/dev/dri/${DRM_CARD}"
 
-# Determine display type from connector name.
+# Read the preferred mode to determine if the panel is portrait or landscape.
+MODES_FILE="/sys/class/drm/${CONNECTED_CONNECTOR}/modes"
+PREFERRED_MODE=$(head -n 1 "$MODES_FILE" 2>/dev/null)
+DISPLAY_W=$(echo "$PREFERRED_MODE" | cut -d'x' -f1)
+DISPLAY_H=$(echo "$PREFERRED_MODE" | cut -d'x' -f2)
+IS_PORTRAIT=false
+if [ -n "$DISPLAY_W" ] && [ -n "$DISPLAY_H" ] && [ "$DISPLAY_W" -lt "$DISPLAY_H" ] 2>/dev/null; then
+    IS_PORTRAIT=true
+fi
+
+# Determine rotation from connector type and panel orientation.
+# Portrait panels need rotation to display landscape; standard monitors don't.
 case "$CONNECTED_CONNECTOR" in
     *HDMI*)
-        # HDMI display (e.g. MPI4008 4-inch touchscreen).
-        # Physical panel is 480x800 portrait, rotated 90 for landscape.
         DISPLAY_TYPE="HDMI"
-        ROTATION=90
+        if [ "$IS_PORTRAIT" = true ]; then
+            # Small HDMI portrait panel (e.g. MPI4008 480x800). Rotate 90.
+            ROTATION=90
+        else
+            # Standard HDMI monitor. No rotation needed.
+            ROTATION=0
+        fi
         ;;
     *DPI*)
-        # DPI display (e.g. HyperPixel 4.0).
-        # Physical panel is 480x800 portrait, rotated 270 for landscape.
         DISPLAY_TYPE="DPI"
-        ROTATION=270
+        if [ "$IS_PORTRAIT" = true ]; then
+            # DPI portrait panel (e.g. HyperPixel 4.0 480x800). Rotate 270.
+            ROTATION=270
+        else
+            # Landscape DPI display. No rotation needed.
+            ROTATION=0
+        fi
         ;;
     *)
         DISPLAY_TYPE="unknown"
@@ -79,4 +98,4 @@ LV_EVDEV_DEVICE=${TOUCH_DEVICE}
 EOF
 
 chmod 644 "${CONFIG_FILE}"
-echo "Configured for ${DISPLAY_TYPE} display on ${DRM_DEVICE} (rotation: ${ROTATION}, touch: ${TOUCH_DEVICE})"
+echo "Configured for ${DISPLAY_TYPE} display on ${DRM_DEVICE} (${PREFERRED_MODE}, rotation: ${ROTATION}, touch: ${TOUCH_DEVICE})"
