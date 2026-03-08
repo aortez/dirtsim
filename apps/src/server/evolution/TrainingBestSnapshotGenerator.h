@@ -3,6 +3,7 @@
 #include "core/WorldData.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/evolution/FitnessEvaluation.h"
+#include "server/evolution/FitnessModelBundle.h"
 
 #include <optional>
 #include <string>
@@ -11,13 +12,11 @@
 
 namespace DirtSim::Server::EvolutionSupport {
 
-/**
- * Legacy adapter that preserves the current training best snapshot DTO for the existing UI.
- */
-Api::TrainingBestSnapshot trainingBestSnapshotLegacyBuild(
+Api::TrainingBestSnapshot trainingBestSnapshotBuild(
     WorldData worldData,
     std::vector<OrganismId> organismIds,
     const FitnessEvaluation& evaluation,
+    const FitnessModelBundle& fitnessModel,
     int generation,
     int commandsAccepted,
     int commandsRejected,

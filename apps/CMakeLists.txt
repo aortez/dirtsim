@@ -331,8 +331,8 @@ add_library(dirtsim-server-lib STATIC
     src/server/UserSettings.cpp
     src/server/EventProcessor.cpp
     src/server/evolution/FitnessModelBundle.cpp
-    src/server/evolution/LegacyFitnessReportGenerator.cpp
-    src/server/evolution/LegacyTrainingBestSnapshotGenerator.cpp
+    src/server/evolution/FitnessPresentationGenerator.cpp
+    src/server/evolution/TrainingBestSnapshotGenerator.cpp
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
     src/server/states/Idle.cpp
@@ -353,7 +353,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
-    src/server/api/FitnessBreakdownReport.cpp
+    src/server/api/FitnessPresentation.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
@@ -773,13 +773,13 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 add_executable(dirtsim-tests
     src/audio/AudioEngine.cpp
     src/server/tests/FitnessModelBundle_test.cpp
-    src/server/tests/LegacyFitnessReportGenerator_test.cpp
-    src/server/tests/LegacyTrainingBestSnapshotGenerator_test.cpp
+    src/server/tests/FitnessPresentationGenerator_test.cpp
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/server/tests/TestStateMachineFixture.cpp
+    src/server/tests/TrainingBestSnapshotGenerator_test.cpp
     src/server/tests/TrainingBestSnapshotCache_test.cpp
     src/server/tests/UserSettings_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp

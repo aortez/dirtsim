@@ -302,7 +302,7 @@ State::Any TrainingActive::onEvent(
         evt.snapshot.commandsRejected,
         topCommandSignatures,
         topCommandOutcomeSignatures,
-        evt.snapshot.fitnessBreakdown,
+        evt.snapshot.fitnessPresentation,
         evt.snapshot.scenarioVideoFrame);
 
     return std::move(*this);

@@ -1,10 +1,10 @@
-#include "server/evolution/LegacyTrainingBestSnapshotGenerator.h"
+#include "server/evolution/TrainingBestSnapshotGenerator.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
 using namespace DirtSim::Server::EvolutionSupport;
 
-TEST(LegacyTrainingBestSnapshotGeneratorTest, BuildsSnapshotFromDomainEvaluation)
+TEST(TrainingBestSnapshotGeneratorTest, BuildsSnapshotFromDomainEvaluation)
 {
     WorldData worldData;
     worldData.width = 2;
@@ -30,11 +30,14 @@ TEST(LegacyTrainingBestSnapshotGeneratorTest, BuildsSnapshotFromDomainEvaluation
                 .totalFitness = 3.5,
             },
     };
+    const FitnessModelBundle fitnessModel =
+        fitnessModelResolve(OrganismType::DUCK, Scenario::EnumType::Clock);
 
-    const Api::TrainingBestSnapshot snapshot = trainingBestSnapshotLegacyBuild(
+    const Api::TrainingBestSnapshot snapshot = trainingBestSnapshotBuild(
         std::move(worldData),
         std::move(organismIds),
         evaluation,
+        fitnessModel,
         7,
         11,
         3,
@@ -60,25 +63,27 @@ TEST(LegacyTrainingBestSnapshotGeneratorTest, BuildsSnapshotFromDomainEvaluation
     ASSERT_TRUE(snapshot.scenarioVideoFrame.has_value());
     EXPECT_EQ(snapshot.scenarioVideoFrame->frame_id, 42u);
     EXPECT_EQ(snapshot.scenarioVideoFrame->pixels, videoFrame.pixels);
-    ASSERT_TRUE(snapshot.fitnessBreakdown.has_value());
-    EXPECT_EQ(snapshot.fitnessBreakdown->modelId, "duck_v2");
-    EXPECT_DOUBLE_EQ(snapshot.fitnessBreakdown->totalFitness, 3.5);
+    EXPECT_EQ(snapshot.fitnessPresentation.modelId, "duck");
+    EXPECT_DOUBLE_EQ(snapshot.fitnessPresentation.totalFitness, 3.5);
 }
 
-TEST(LegacyTrainingBestSnapshotGeneratorTest, OmitsReportWhenEvaluationHasNoDetails)
+TEST(TrainingBestSnapshotGeneratorTest, BuildsFallbackPresentationWhenDetailsAreMissing)
 {
     WorldData worldData;
     worldData.width = 1;
     worldData.height = 1;
     worldData.cells.resize(1);
+    const FitnessModelBundle fitnessModel =
+        fitnessModelResolve(OrganismType::NES_DUCK, Scenario::EnumType::NesFlappyParatroopa);
 
-    const Api::TrainingBestSnapshot snapshot = trainingBestSnapshotLegacyBuild(
+    const Api::TrainingBestSnapshot snapshot = trainingBestSnapshotBuild(
         std::move(worldData),
         { OrganismId{ 1 } },
         FitnessEvaluation{
             .totalFitness = 1.25,
             .details = std::monostate{},
         },
+        fitnessModel,
         2,
         1,
         0,
@@ -87,5 +92,6 @@ TEST(LegacyTrainingBestSnapshotGeneratorTest, OmitsReportWhenEvaluationHasNoDeta
         std::nullopt);
 
     EXPECT_DOUBLE_EQ(snapshot.fitness, 1.25);
-    EXPECT_FALSE(snapshot.fitnessBreakdown.has_value());
+    EXPECT_EQ(snapshot.fitnessPresentation.modelId, "nes_duck");
+    EXPECT_DOUBLE_EQ(snapshot.fitnessPresentation.totalFitness, 1.25);
 }

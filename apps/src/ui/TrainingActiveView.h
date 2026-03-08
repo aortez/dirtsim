@@ -23,7 +23,7 @@ struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
-struct FitnessBreakdownReport;
+struct FitnessPresentation;
 } // namespace Api
 
 namespace Network {
@@ -71,7 +71,7 @@ public:
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
         const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown,
+        const Api::FitnessPresentation& fitnessPresentation,
         const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
     void updateBestPlaybackFrame(
         const WorldData& worldData,
@@ -163,7 +163,7 @@ private:
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
     lv_obj_t* bestCommandSummaryLabel_ = nullptr;
-    lv_obj_t* bestFitnessBreakdownLabel_ = nullptr;
+    lv_obj_t* bestFitnessPresentationLabel_ = nullptr;
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;

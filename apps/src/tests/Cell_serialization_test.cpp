@@ -91,6 +91,31 @@ TEST(CellSerializationTest, TrainingBestSnapshotSerializationIncludesScenarioVid
     Api::TrainingBestSnapshot original;
     original.fitness = 1.5;
     original.generation = 12;
+    original.fitnessPresentation = Api::FitnessPresentation{
+        .organismType = OrganismType::TREE,
+        .modelId = "tree",
+        .totalFitness = 1.5,
+        .summary = "Tree overview.",
+        .sections =
+            {
+                Api::FitnessPresentationSection{
+                    .key = "survival",
+                    .label = "Survival",
+                    .score = 0.75,
+                    .metrics =
+                        {
+                            Api::FitnessPresentationMetric{
+                                .key = "survival_time",
+                                .label = "Survival Time",
+                                .value = 15.0,
+                                .reference = 20.0,
+                                .normalized = 0.75,
+                                .unit = "seconds",
+                            },
+                        },
+                },
+            },
+    };
 
     ScenarioVideoFrame frame;
     frame.width = 256;
@@ -112,6 +137,9 @@ TEST(CellSerializationTest, TrainingBestSnapshotSerializationIncludesScenarioVid
     EXPECT_EQ(decoded.scenarioVideoFrame->height, frame.height);
     EXPECT_EQ(decoded.scenarioVideoFrame->frame_id, frame.frame_id);
     EXPECT_EQ(decoded.scenarioVideoFrame->pixels, frame.pixels);
+    EXPECT_EQ(decoded.fitnessPresentation.modelId, "tree");
+    ASSERT_EQ(decoded.fitnessPresentation.sections.size(), 1u);
+    EXPECT_EQ(decoded.fitnessPresentation.sections[0].key, "survival");
 }
 
 TEST(CellSerializationTest, TrainingBestPlaybackFrameSerializationIncludesScenarioVideoFrame)

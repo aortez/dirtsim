@@ -21,7 +21,7 @@
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
-#include "server/evolution/LegacyTrainingBestSnapshotGenerator.h"
+#include "server/evolution/TrainingBestSnapshotGenerator.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -688,16 +688,18 @@ void broadcastTrainingBestSnapshot(
     StateMachine& dsm,
     Evolution::EvaluationSnapshot snapshot,
     const EvolutionSupport::FitnessEvaluation& fitnessEvaluation,
+    const EvolutionSupport::FitnessModelBundle& fitnessModel,
     int generation,
     int commandsAccepted,
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
     const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
 {
-    Api::TrainingBestSnapshot bestSnapshot = EvolutionSupport::trainingBestSnapshotLegacyBuild(
+    Api::TrainingBestSnapshot bestSnapshot = EvolutionSupport::trainingBestSnapshotBuild(
         std::move(snapshot.worldData),
         std::move(snapshot.organismIds),
         fitnessEvaluation,
+        fitnessModel,
         generation,
         commandsAccepted,
         commandsRejected,
@@ -1905,6 +1907,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
                 dsm,
                 std::move(pendingBest_.snapshot.value()),
                 snapshotFitnessEvaluation,
+                fitnessModel_,
                 robustnessPass_.generation,
                 pendingBest_.snapshotCommandsAccepted,
                 pendingBest_.snapshotCommandsRejected,

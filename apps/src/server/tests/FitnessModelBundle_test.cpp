@@ -35,7 +35,7 @@ TEST(FitnessModelBundleTest, TreeBundleFormatsSummariesAndKeepsIdentityMerge)
     ASSERT_NE(bundle.evaluate, nullptr);
     ASSERT_NE(bundle.mergePasses, nullptr);
     ASSERT_NE(bundle.formatLogSummary, nullptr);
-    ASSERT_NE(bundle.generateLegacyReport, nullptr);
+    ASSERT_NE(bundle.generatePresentation, nullptr);
 
     const FitnessEvaluation evaluation{
         .totalFitness = 4.5,
@@ -62,9 +62,9 @@ TEST(FitnessModelBundleTest, TreeBundleFormatsSummariesAndKeepsIdentityMerge)
     EXPECT_NE(summary.find("energy=0.700"), std::string::npos);
     EXPECT_NE(summary.find("cmd=0.500"), std::string::npos);
 
-    const auto report = bundle.generateLegacyReport(evaluation);
-    ASSERT_TRUE(report.has_value());
-    EXPECT_EQ(report->modelId, "tree_v1");
+    const Api::FitnessPresentation presentation = bundle.generatePresentation(evaluation);
+    EXPECT_EQ(presentation.modelId, "tree");
+    ASSERT_FALSE(presentation.sections.empty());
 }
 
 TEST(FitnessModelBundleTest, DuckClockBundleMergesSelectedSideDetails)
@@ -89,6 +89,10 @@ TEST(FitnessModelBundleTest, DuckClockBundleMergesSelectedSideDetails)
     EXPECT_DOUBLE_EQ(breakdown->exitDoorRaw, 0.0);
     EXPECT_FALSE(breakdown->exitedThroughDoor);
     EXPECT_DOUBLE_EQ(breakdown->totalFitness, 1.2);
+
+    const Api::FitnessPresentation presentation = bundle.generatePresentation(merged);
+    EXPECT_EQ(presentation.modelId, "duck");
+    ASSERT_FALSE(presentation.sections.empty());
 }
 
 TEST(FitnessModelBundleTest, NesDuckBundleEvaluatesRewardTotals)
