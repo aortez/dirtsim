@@ -21,6 +21,7 @@ TreeGerminationScenario::TreeGerminationScenario(GenomeRepository& genomeReposit
     metadata_.category = "organisms";
     metadata_.requiredWidth = 32;
     metadata_.requiredHeight = 32;
+    metadata_.deterministicEvaluation = true;
 }
 
 const ScenarioMetadata& TreeGerminationScenario::getMetadata() const
