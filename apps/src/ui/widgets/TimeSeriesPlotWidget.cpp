@@ -187,9 +187,9 @@ void TimeSeriesPlotWidget::clear()
         return;
     }
 
-    chartValues_.assign(minPointCount_, 0);
+    chartValues_.assign(minPointCount_, LV_CHART_POINT_NONE);
     lv_chart_set_point_count(chart_, minPointCount_);
-    lv_chart_set_all_values(chart_, series_, 0);
+    lv_chart_set_all_values(chart_, series_, LV_CHART_POINT_NONE);
     if (secondarySeries_) {
         lv_chart_set_all_values(chart_, secondarySeries_, LV_CHART_POINT_NONE);
     }
