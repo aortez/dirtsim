@@ -98,7 +98,7 @@ CommandExecutionResult validateCommand(
                     return { CommandResult::INVALID_TARGET, "LEAF target already owned by tree" };
                 }
 
-                // Check cardinal adjacency to WOOD (leaves grow from branches).
+                // Check cardinal adjacency to WOOD.
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
