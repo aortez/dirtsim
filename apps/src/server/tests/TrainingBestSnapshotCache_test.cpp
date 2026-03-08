@@ -27,26 +27,31 @@ TEST(TrainingBestSnapshotCacheTest, TrainingBestSnapshotCacheRoundTrips)
             .signature = "GrowRoot(+0,+1) -> INVALID_TARGET",
             .count = 6,
         });
-
-    Api::FitnessBreakdownReport breakdown;
-    breakdown.organismType = OrganismType::DUCK;
-    breakdown.modelId = "duck_v2";
-    breakdown.modelVersion = 1;
-    breakdown.totalFitness = 1.9;
-    breakdown.totalFormula = "survival * (1 + movement)";
-    breakdown.metrics.push_back(
-        Api::FitnessMetric{
-            .key = "survival",
-            .label = "Survival",
-            .group = "survival",
-            .raw = 20.0,
-            .normalized = 1.0,
-            .reference = 20.0,
-            .weight = std::nullopt,
-            .contribution = std::nullopt,
-            .unit = "seconds",
-        });
-    snapshot.fitnessBreakdown = std::move(breakdown);
+    snapshot.fitnessPresentation = Api::FitnessPresentation{
+        .organismType = OrganismType::DUCK,
+        .modelId = "duck",
+        .totalFitness = 1.9,
+        .summary = "Duck overview.",
+        .sections =
+            {
+                Api::FitnessPresentationSection{
+                    .key = "overview",
+                    .label = "Overview",
+                    .score = std::nullopt,
+                    .metrics =
+                        {
+                            Api::FitnessPresentationMetric{
+                                .key = "survival",
+                                .label = "Survival",
+                                .value = 20.0,
+                                .reference = 20.0,
+                                .normalized = 1.0,
+                                .unit = "seconds",
+                            },
+                        },
+                },
+            },
+    };
 
     fixture.stateMachine->updateCachedTrainingBestSnapshot(snapshot);
 
@@ -63,12 +68,12 @@ TEST(TrainingBestSnapshotCacheTest, TrainingBestSnapshotCacheRoundTrips)
     EXPECT_EQ(
         cached->topCommandOutcomeSignatures[0].signature, "GrowRoot(+0,+1) -> INVALID_TARGET");
     EXPECT_EQ(cached->topCommandOutcomeSignatures[0].count, 6);
-    ASSERT_TRUE(cached->fitnessBreakdown.has_value());
-    EXPECT_EQ(cached->fitnessBreakdown->modelId, "duck_v2");
-    EXPECT_EQ(cached->fitnessBreakdown->modelVersion, 1);
-    ASSERT_EQ(cached->fitnessBreakdown->metrics.size(), 1u);
-    EXPECT_EQ(cached->fitnessBreakdown->metrics[0].key, "survival");
-    EXPECT_DOUBLE_EQ(cached->fitnessBreakdown->metrics[0].normalized, 1.0);
+    EXPECT_EQ(cached->fitnessPresentation.modelId, "duck");
+    ASSERT_EQ(cached->fitnessPresentation.sections.size(), 1u);
+    ASSERT_EQ(cached->fitnessPresentation.sections[0].metrics.size(), 1u);
+    EXPECT_EQ(cached->fitnessPresentation.sections[0].metrics[0].key, "survival");
+    ASSERT_TRUE(cached->fitnessPresentation.sections[0].metrics[0].normalized.has_value());
+    EXPECT_DOUBLE_EQ(cached->fitnessPresentation.sections[0].metrics[0].normalized.value(), 1.0);
 
     fixture.stateMachine->clearCachedTrainingBestSnapshot();
     EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());

@@ -1,6 +1,6 @@
 #include "FitnessModelBundle.h"
 
-#include "LegacyFitnessReportGenerator.h"
+#include "FitnessPresentationGenerator.h"
 #include "core/Assert.h"
 #include "core/organisms/evolution/NesEvaluator.h"
 
@@ -173,17 +173,18 @@ FitnessEvaluation fitnessEvaluationDuckClockMerge(std::span<const FitnessEvaluat
 FitnessModelBundle fitnessModelResolve(OrganismType organismType, Scenario::EnumType scenarioId)
 {
     FitnessModelBundle bundle;
-    bundle.generateLegacyReport = fitnessEvaluationLegacyReportGenerate;
 
     switch (organismType) {
         case OrganismType::TREE:
             bundle.evaluate = fitnessEvaluationTreeEvaluate;
             bundle.formatLogSummary = fitnessEvaluationTreeLogSummary;
+            bundle.generatePresentation = fitnessEvaluationTreePresentationGenerate;
             bundle.mergePasses = fitnessEvaluationIdentityMerge;
             return bundle;
         case OrganismType::DUCK:
             bundle.evaluate = fitnessEvaluationDuckEvaluate;
             bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
+            bundle.generatePresentation = fitnessEvaluationDuckPresentationGenerate;
             bundle.mergePasses = scenarioId == Scenario::EnumType::Clock
                 ? fitnessEvaluationDuckClockMerge
                 : fitnessEvaluationIdentityMerge;
@@ -191,17 +192,20 @@ FitnessModelBundle fitnessModelResolve(OrganismType organismType, Scenario::Enum
         case OrganismType::NES_DUCK:
             bundle.evaluate = fitnessEvaluationNesDuckEvaluate;
             bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
+            bundle.generatePresentation = fitnessEvaluationNesDuckPresentationGenerate;
             bundle.mergePasses = fitnessEvaluationIdentityMerge;
             return bundle;
         case OrganismType::GOOSE:
             bundle.evaluate = fitnessEvaluationGenericEvaluate;
             bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
+            bundle.generatePresentation = fitnessEvaluationGoosePresentationGenerate;
             bundle.mergePasses = fitnessEvaluationIdentityMerge;
             return bundle;
     }
 
     bundle.evaluate = fitnessEvaluationGenericEvaluate;
     bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
+    bundle.generatePresentation = fitnessEvaluationGoosePresentationGenerate;
     bundle.mergePasses = fitnessEvaluationIdentityMerge;
     return bundle;
 }

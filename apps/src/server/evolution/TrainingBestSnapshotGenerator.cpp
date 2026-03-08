@@ -1,13 +1,12 @@
-#include "LegacyTrainingBestSnapshotGenerator.h"
-
-#include "LegacyFitnessReportGenerator.h"
+#include "TrainingBestSnapshotGenerator.h"
 
 namespace DirtSim::Server::EvolutionSupport {
 
-Api::TrainingBestSnapshot trainingBestSnapshotLegacyBuild(
+Api::TrainingBestSnapshot trainingBestSnapshotBuild(
     WorldData worldData,
     std::vector<OrganismId> organismIds,
     const FitnessEvaluation& evaluation,
+    const FitnessModelBundle& fitnessModel,
     int generation,
     int commandsAccepted,
     int commandsRejected,
@@ -39,7 +38,18 @@ Api::TrainingBestSnapshot trainingBestSnapshotLegacyBuild(
             });
     }
     bestSnapshot.scenarioVideoFrame = std::move(scenarioVideoFrame);
-    bestSnapshot.fitnessBreakdown = fitnessEvaluationLegacyReportGenerate(evaluation);
+    if (fitnessModel.generatePresentation) {
+        bestSnapshot.fitnessPresentation = fitnessModel.generatePresentation(evaluation);
+    }
+    else {
+        bestSnapshot.fitnessPresentation = Api::FitnessPresentation{
+            .organismType = OrganismType::TREE,
+            .modelId = "unknown",
+            .totalFitness = evaluation.totalFitness,
+            .summary = "Fitness presentation unavailable.",
+            .sections = {},
+        };
+    }
     return bestSnapshot;
 }
 
