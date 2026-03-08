@@ -560,25 +560,17 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->pending_moves_ = computeMaterialMoves(scaledDeltaTime);
     }
 
-    // Process material moves - detects collisions for next frame's dynamic pressure.
-    processMaterialMoves();
-
-    // Refresh cache after transfers only when moves actually invalidated occupancy maps.
-    ensureGridCacheFresh("grid_cache_rebuild_post_moves");
-
-    // Prune disconnected organism fragments AFTER transfers complete.
-    // This ensures connectivity checks use current positions, not stale pre-transfer positions.
-    pruneDisconnectedFragments();
-
-    // Inject organism emissions before light calculation.
+    // Inject organism emissions and calculate lighting before material moves.
+    // Lighting is cosmetic and doesn't feed back into physics, so it can use the
+    // already-fresh grid cache from the start of the frame.
     organism_manager_->injectEmissions(*pImpl->light_calculator_);
-
-    // Calculate lighting for rendering.
     {
-        ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
         pImpl->light_calculator_->calculate(
             *this, *pImpl->grid_, pImpl->physicsSettings_.light, pImpl->timers_);
     }
+
+    // Process material moves - detects collisions for next frame's dynamic pressure.
+    processMaterialMoves();
 
     // Sync organism render data to WorldData.entities for UI.
     organism_manager_->syncEntitiesToWorldData(*this);
@@ -1211,10 +1203,6 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
         friction_calc.calculateAndApplyFrictionForces(*this, deltaTime);
     }
 
-    // Apply organism bone forces.
-    ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-    organism_manager_->applyBoneForces(*this, deltaTime);
-
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
         ScopeTimer viscosityTimer(timers, "apply_viscous_forces");
@@ -1269,7 +1257,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 }
 
                 // Get the total pending force (includes gravity, pressure, cohesion,
-                // adhesion, friction, viscosity, bones, etc).
+                // adhesion, friction, viscosity, etc).
                 Vector2d net_force = cell.pending_force;
 
                 // Apply F = ma: acceleration = force / mass.
@@ -1433,114 +1421,6 @@ void World::resolveRigidBodies(double deltaTime)
             data.cells[i].clearPendingForce();
         }
     }
-}
-
-void World::pruneDisconnectedFragments()
-{
-    if (!organism_manager_) {
-        return;
-    }
-
-    WorldData& data = pImpl->data_;
-
-    organism_manager_->forEachOrganism([&](Organism::Body& organism) {
-        if (organism.getType() != OrganismType::TREE) {
-            return; // Only trees have structural connectivity requirements.
-        }
-
-        OrganismId organism_id = organism.getId();
-        Vector2i anchor = organism.getAnchorCell();
-
-        // Flood fill from anchor to find connected structural cells.
-        std::unordered_set<Vector2i, Vector2iHash> connected;
-        std::queue<Vector2i> frontier;
-
-        frontier.push(anchor);
-
-        while (!frontier.empty()) {
-            Vector2i pos = frontier.front();
-            frontier.pop();
-
-            // Bounds check.
-            if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
-                continue;
-            }
-
-            // Already visited.
-            if (connected.count(pos)) {
-                continue;
-            }
-
-            // Must belong to this organism.
-            if (organism_manager_->at(pos) != organism_id) {
-                continue;
-            }
-
-            Cell& cell = data.at(pos.x, pos.y);
-
-            // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != Material::EnumType::Seed
-                && cell.material_type != Material::EnumType::Root
-                && cell.material_type != Material::EnumType::Wood) {
-                continue;
-            }
-
-            connected.insert(pos);
-
-            // Add 4 cardinal neighbors to frontier.
-            frontier.push({ pos.x - 1, pos.y });
-            frontier.push({ pos.x + 1, pos.y });
-            frontier.push({ pos.x, pos.y - 1 });
-            frontier.push({ pos.x, pos.y + 1 });
-        }
-
-        // Prune disconnected and empty cells.
-        std::vector<Vector2i> to_remove;
-        for (const auto& pos : organism.getCells()) {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
-                to_remove.push_back(pos); // Out of bounds.
-                continue;
-            }
-
-            Cell& cell = data.at(pos.x, pos.y);
-
-            // Remove empty cells (cleanup after transfers).
-            if (cell.isEmpty()) {
-                to_remove.push_back(pos);
-                spdlog::debug(
-                    "Pruned empty cell: organism {} cell ({},{}) now AIR",
-                    organism_id,
-                    pos.x,
-                    pos.y);
-                continue;
-            }
-
-            // Remove cells that lost organism ownership (transferred to another organism).
-            OrganismId cell_owner = organism_manager_->at(pos);
-            if (cell_owner != organism_id) {
-                to_remove.push_back(pos);
-                spdlog::debug(
-                    "Pruned transferred cell: organism {} cell ({},{}) now belongs to organism {}",
-                    organism_id,
-                    pos.x,
-                    pos.y,
-                    cell_owner);
-                continue;
-            }
-
-            // TODO: Prune structurally disconnected ROOT/WOOD cells.
-            // Disabled until Phase 4 (Structure Movement) is implemented.
-            // Without position constraints, organism cells can create temporary gaps
-            // during transfers, causing false disconnection detections.
-            // For now, we only clean up empty cells and transferred cells above.
-            (void)connected; // Suppress unused variable warning.
-        }
-
-        // Update organism's cell tracking.
-        if (!to_remove.empty()) {
-            organism_manager_->removeCellsFromOrganism(organism_id, to_remove);
-        }
-    });
 }
 
 Vector2d World::computeOrganismSupportForce(

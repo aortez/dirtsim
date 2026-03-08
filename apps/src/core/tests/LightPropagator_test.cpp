@@ -23,6 +23,7 @@ protected:
         // Override defaults for deterministic testing.
         config.ambient_intensity = 0.0f;
         config.ambient_color = ColorNames::black();
+        config.temporal_persistence = false;
     }
 };
 

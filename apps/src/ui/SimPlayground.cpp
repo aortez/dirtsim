@@ -12,6 +12,7 @@
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
+#include "rendering/VideoSurface.h"
 #include "server/api/CellSet.h"
 #include "server/api/UserSettingsPatch.h"
 #include "state-machine/EventSink.h"
@@ -265,10 +266,29 @@ void SimPlayground::render(const WorldData& data, bool debugDraw)
     // Capture debug draw state from server.
     coreControlsState_.debugDrawEnabled = debugDraw;
 
+    // Switching from video to cell rendering — clean up VideoSurface.
+    if (videoSurface_) {
+        videoSurface_.reset();
+    }
+
     lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
 
     // Render world state (CellRenderer handles initialization/resize internally).
     renderer_->renderWorldData(data, worldContainer, debugDraw, coreControlsState_.renderMode);
+}
+
+void SimPlayground::presentVideoFrame(const ScenarioVideoFrame& frame)
+{
+    // Switching from cell to video rendering — clean up CellRenderer canvas.
+    if (!videoSurface_) {
+        renderer_->cleanup();
+        videoSurface_ = std::make_unique<VideoSurface>();
+        videoSurface_->setCanvasCreatedCallback(
+            [this](lv_obj_t* canvas) { setupCanvasEventHandlers(canvas); });
+    }
+
+    lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
+    videoSurface_->present(frame, worldContainer);
 }
 
 void SimPlayground::setRenderMode(RenderMode mode)
@@ -313,14 +333,27 @@ void SimPlayground::renderNeuralGrid(const WorldData& data)
 
 std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPixels()
 {
+    // Check VideoSurface first (active for NES scenarios).
+    if (videoSurface_) {
+        const uint8_t* buffer = videoSurface_->getCanvasBuffer();
+        const uint32_t width = videoSurface_->getCanvasWidth();
+        const uint32_t height = videoSurface_->getCanvasHeight();
+
+        if (buffer && width > 0 && height > 0) {
+            size_t dataSize = static_cast<size_t>(width) * height * 4;
+            std::vector<uint8_t> pixels(buffer, buffer + dataSize);
+            return ScreenshotData{ std::move(pixels), width, height };
+        }
+    }
+
     if (!renderer_) {
         LOG_ERROR(Controls, "Cannot capture screenshot, renderer not initialized");
         return std::nullopt;
     }
 
     const uint8_t* buffer = renderer_->getCanvasBuffer();
-    uint32_t width = renderer_->getCanvasWidth();
-    uint32_t height = renderer_->getCanvasHeight();
+    const uint32_t width = renderer_->getCanvasWidth();
+    const uint32_t height = renderer_->getCanvasHeight();
 
     if (!buffer || width == 0 || height == 0) {
         LOG_ERROR(Controls, "Cannot capture screenshot, canvas not initialized");
@@ -424,6 +457,11 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
 {
     SimPlayground* self = static_cast<SimPlayground*>(lv_event_get_user_data(e));
     if (!self) return;
+
+    // NES video doesn't support draw/erase.
+    if (self->videoSurface_) {
+        return;
+    }
 
     InteractionMode mode = self->coreControlsState_.interactionMode;
 

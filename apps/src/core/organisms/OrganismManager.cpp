@@ -8,7 +8,6 @@
 #include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/Entity.h"
-#include "core/GridOfCells.h"
 #include "core/LightBuffer.h"
 #include "core/LightCalculatorBase.h"
 #include "core/LoggingChannels.h"
@@ -550,105 +549,6 @@ void OrganismManager::moveOrganismCell(Vector2i from, Vector2i to, OrganismId or
     organism->getCells().erase(from);
     organism->getCells().insert(to);
     organism->onCellTransfer(from, to);
-}
-
-void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
-{
-    WorldData& data = world.getData();
-    GridOfCells& grid = world.getGrid();
-    constexpr double BONE_FORCE_SCALE = 1.0;
-    constexpr double BONE_DAMPING_SCALE = 1.0;
-    constexpr double MAX_BONE_FORCE = 0.5;
-
-    // Clear bone force debug info for all organism cells.
-    for (auto& [id, organism] : organisms_) {
-        for (const auto& pos : organism->getCells()) {
-            if (data.inBounds(pos.x, pos.y)) {
-                grid.debugAt(pos.x, pos.y).accumulated_bone_force = {};
-            }
-        }
-    }
-
-    for (auto& [organism_id, organism] : organisms_) {
-        for (const Bone& bone : organism->getBones()) {
-            if (!data.inBounds(bone.cell_a.x, bone.cell_a.y)
-                || !data.inBounds(bone.cell_b.x, bone.cell_b.y)) {
-                continue;
-            }
-
-            Cell& cell_a = data.at(bone.cell_a.x, bone.cell_a.y);
-            Cell& cell_b = data.at(bone.cell_b.x, bone.cell_b.y);
-
-            // Skip if either cell no longer belongs to this organism.
-            if (at(bone.cell_a) != organism_id || at(bone.cell_b) != organism_id) {
-                continue;
-            }
-
-            // World positions including COM offset.
-            Vector2d pos_a = Vector2d(bone.cell_a.x, bone.cell_a.y) + cell_a.com * 0.5;
-            Vector2d pos_b = Vector2d(bone.cell_b.x, bone.cell_b.y) + cell_b.com * 0.5;
-
-            Vector2d delta = pos_b - pos_a;
-            double current_dist = delta.magnitude();
-
-            if (current_dist < 1e-6) continue;
-
-            double error = current_dist - bone.rest_distance;
-            Vector2d direction = delta / current_dist;
-
-            // Spring force: F_spring = stiffness * error * direction.
-            Vector2d spring_force = direction * error * bone.stiffness * BONE_FORCE_SCALE;
-
-            // Damping force: oppose stretching along bone.
-            Vector2d relative_velocity = cell_b.velocity - cell_a.velocity;
-            double velocity_along_bone = relative_velocity.dot(direction);
-            Vector2d damping_along =
-                direction * velocity_along_bone * bone.stiffness * BONE_DAMPING_SCALE;
-
-            // Apply spring + along-bone damping (symmetric - both cells).
-            Vector2d symmetric_force = spring_force + damping_along;
-
-            // Limit maximum bone force to prevent yanking on transfers.
-            double force_mag = symmetric_force.magnitude();
-            if (force_mag > MAX_BONE_FORCE) {
-                symmetric_force = symmetric_force.normalize() * MAX_BONE_FORCE;
-            }
-
-            cell_a.addPendingForce(symmetric_force);
-            cell_b.addPendingForce(symmetric_force * -1.0);
-
-            // Store symmetric forces in debug info.
-            grid.debugAt(bone.cell_a.x, bone.cell_a.y).accumulated_bone_force += symmetric_force;
-            grid.debugAt(bone.cell_b.x, bone.cell_b.y).accumulated_bone_force +=
-                symmetric_force * -1.0;
-
-            // Hinge-point rotational damping (if configured).
-            if (bone.hinge_end != HingeEnd::NONE && bone.rotational_damping != 0.0) {
-                // Determine which cell is the hinge (pivot) and which rotates.
-                bool a_is_hinge = (bone.hinge_end == HingeEnd::CELL_A);
-                Cell& rotating_cell = a_is_hinge ? cell_b : cell_a;
-                Vector2i rotating_pos = a_is_hinge ? bone.cell_b : bone.cell_a;
-
-                // Radius vector from hinge to rotating cell.
-                Vector2d radius = a_is_hinge ? delta : (delta * -1.0);
-
-                // Tangent direction (perpendicular to radius, for rotation).
-                Vector2d tangent = Vector2d(-radius.y, radius.x).normalize();
-
-                // Tangential velocity (how fast rotating around hinge).
-                double tangential_velocity = rotating_cell.velocity.dot(tangent);
-
-                // Rotational damping opposes tangential motion.
-                Vector2d rot_damping_force =
-                    tangent * (-tangential_velocity) * bone.rotational_damping;
-
-                // Apply to rotating cell only (hinge stays fixed).
-                rotating_cell.addPendingForce(rot_damping_force);
-                grid.debugAt(rotating_pos.x, rotating_pos.y).accumulated_bone_force +=
-                    rot_damping_force;
-            }
-        }
-    }
 }
 
 void OrganismManager::snapshotPreCollisionState(const World& world)

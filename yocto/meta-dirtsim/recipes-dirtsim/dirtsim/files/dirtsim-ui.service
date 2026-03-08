@@ -13,12 +13,13 @@ WorkingDirectory=/data/dirtsim
 # Needs to run as root (+ prefix) since vtconsole sysfs requires elevated privileges.
 ExecStartPre=+/bin/sh -c 'test -e /sys/class/vtconsole/vtcon1/bind && echo 0 > /sys/class/vtconsole/vtcon1/bind || true'
 
-ExecStart=/usr/bin/dirtsim-ui -b fbdev --connect localhost:8080
+ExecStart=/usr/bin/dirtsim-ui -b drm --connect localhost:8080
 Restart=no
 
-# Display rotation and touchscreen device are set per-device via EnvironmentFile.
-# The file is generated at first boot by dirtsim-detect-display.service.
-# Defaults (Pi5 HyperPixel) are used if file doesn't exist.
+# Display settings are auto-detected by dirtsim-detect-display.service,
+# which writes /etc/dirtsim/display.conf based on connected hardware.
+# Defaults below are used if the conf file doesn't exist.
+Environment=LV_LINUX_DRM_DEVICE=/dev/dri/card2
 Environment=LV_DISPLAY_ROTATION=270
 Environment=LV_EVDEV_DEVICE=/dev/input/by-path/platform-i2c@0-event
 EnvironmentFile=-/etc/dirtsim/display.conf

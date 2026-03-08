@@ -146,26 +146,13 @@ inline std::vector<OrganismData> extractOrganisms(const std::vector<OrganismId>&
 }
 
 /**
- * @brief Extract bone data from WorldData.
- *
- * Note: Bones are stored in World, not WorldData, so this must be called
- * from a context that has access to the World instance.
- */
-inline std::vector<BoneData> extractBones(const WorldData& data)
-{
-    // Bones are stored in Tree objects, not in WorldData directly.
-    // This function signature needs World access - see packRenderMessage overload.
-    (void)data;
-    return {};
-}
-
-/**
  * @brief Pack WorldData into RenderMessage with specified format.
  */
 inline RenderMessage packRenderMessage(
     const WorldData& data,
     RenderFormat::EnumType format,
-    const std::vector<OrganismId>& organism_grid)
+    const std::vector<OrganismId>& organism_grid,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     RenderMessage msg;
     msg.format = format;
@@ -174,7 +161,7 @@ inline RenderMessage packRenderMessage(
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
     msg.tree_vision = data.tree_vision;
-    msg.scenario_video_frame = data.scenario_video_frame;
+    msg.scenario_video_frame = scenarioVideoFrame;
 
     if (!msg.scenario_video_frame.has_value()) {
         // Pack cells based on format.
@@ -187,7 +174,6 @@ inline RenderMessage packRenderMessage(
     }
 
     msg.organisms = extractOrganisms(organism_grid);
-    msg.bones = {};
     msg.entities = data.entities;
 
     return msg;

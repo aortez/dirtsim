@@ -9,6 +9,7 @@ struct LightConfig {
     bool air_fast_path;
     uint32_t ambient_color;
     float ambient_intensity;
+    bool enabled;
     uint32_t sky_color;
     float sky_intensity;
     int steps_per_frame;

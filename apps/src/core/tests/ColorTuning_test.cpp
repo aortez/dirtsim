@@ -112,6 +112,7 @@ protected:
             .air_fast_path = true,
             .ambient_color = ColorNames::dayAmbient(),
             .ambient_intensity = 0.3f,
+            .enabled = true,
             .sky_color = ColorNames::skyBlue(),
             .sky_intensity = 0.0f,
             .steps_per_frame = 25,

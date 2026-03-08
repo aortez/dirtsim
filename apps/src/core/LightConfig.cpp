@@ -21,6 +21,7 @@ LightConfig getDefaultLightConfig()
         .air_fast_path = false,
         .ambient_color = ColorNames::dayAmbient(),
         .ambient_intensity = 0.7f,
+        .enabled = true,
         .sky_color = ColorNames::skyBlue(),
         .sky_intensity = 0.4f,
         .steps_per_frame = 10,

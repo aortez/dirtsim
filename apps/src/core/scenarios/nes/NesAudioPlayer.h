@@ -3,7 +3,6 @@
 #include <SDL2/SDL.h>
 #include <atomic>
 #include <cstdint>
-#include <vector>
 
 namespace DirtSim {
 
@@ -53,8 +52,6 @@ private:
     std::atomic<int> volumePercent_{ 100 };
     int sampleRate_ = 48000;
     int deviceChannels_ = 1;
-
-    std::vector<int16_t> s16Buffer_;
 
     std::atomic<uint64_t> underrunCount_{ 0 };
     std::atomic<uint64_t> overrunCount_{ 0 };

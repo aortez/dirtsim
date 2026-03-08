@@ -214,6 +214,15 @@ if (LV_USE_LINUX_FBDEV)
 
 endif()
 
+if (LV_USE_LINUX_DRM)
+    message("Including DRM display backend support")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBDRM REQUIRED libdrm)
+    list(APPEND PKG_CONFIG_INC ${LIBDRM_INCLUDE_DIRS})
+    list(APPEND PKG_CONFIG_LIB ${LIBDRM_LIBRARIES})
+    list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/drm.cpp)
+endif()
+
 foreach(arg ${PKG_CONFIG_LIB})
     string(APPEND LVGL_PKG_CONFIG_EXT_LIB " -l${arg}")
 endforeach()
@@ -451,7 +460,6 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/Goose.cpp
     src/core/organisms/GooseBrain.cpp
     src/core/organisms/Body.cpp
-    src/core/organisms/Bone.cpp
     src/core/organisms/OrganismManager.cpp
     src/core/organisms/OrganismSensoryData.cpp
     src/core/organisms/PlayerDuckBrain.cpp
@@ -569,6 +577,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/TrainingUnsavedResultView.cpp
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
+    src/ui/rendering/VideoSurface.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/FractalAnimator.cpp
     src/ui/rendering/JuliaFractal.cpp

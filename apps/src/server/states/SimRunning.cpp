@@ -287,7 +287,7 @@ void SimRunning::onEnter(StateMachine& dsm)
     spdlog::info("SimRunning: Ready to run simulation (stepCount={})", stepCount);
 }
 
-void SimRunning::onExit(StateMachine& /*dsm. */)
+void SimRunning::onExit(StateMachine& /*dsm*/)
 {
     spdlog::info("SimRunning: Exiting state");
 }
@@ -327,17 +327,17 @@ void SimRunning::tick(StateMachine& dsm)
         const auto now = std::chrono::steady_clock::now();
 
         dsm.getTimers().startTimer("physics_step");
-        nes.value().driver->tick(*nes.value().timers, nes.value().worldData->scenario_video_frame);
+        nes.value().driver->tick(*nes.value().timers, *nes.value().scenarioVideoFrame);
         dsm.getTimers().stopTimer("physics_step");
 
         stepCount++;
         nes.value().worldData->timestep = static_cast<int32_t>(stepCount);
 
-        if (nes.value().worldData->scenario_video_frame.has_value()) {
+        if (nes.value().scenarioVideoFrame->has_value()) {
             nes.value().worldData->width =
-                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->width);
+                static_cast<int16_t>((*nes.value().scenarioVideoFrame)->width);
             nes.value().worldData->height =
-                static_cast<int16_t>(nes.value().worldData->scenario_video_frame->height);
+                static_cast<int16_t>((*nes.value().scenarioVideoFrame)->height);
         }
 
         // Calculate actual FPS (steps per second).
@@ -356,9 +356,13 @@ void SimRunning::tick(StateMachine& dsm)
         DIRTSIM_ASSERT(worldData != nullptr, "SimRunning: NES session missing WorldData");
         DIRTSIM_ASSERT(organismGrid != nullptr, "SimRunning: NES session missing organism grid");
 
-        if (dsm.getWebSocketService() && worldData->scenario_video_frame.has_value()) {
+        if (dsm.getWebSocketService() && nes.value().scenarioVideoFrame->has_value()) {
             dsm.broadcastRenderMessage(
-                *worldData, *organismGrid, session.getScenarioId(), session.getScenarioConfig());
+                *worldData,
+                *organismGrid,
+                session.getScenarioId(),
+                session.getScenarioConfig(),
+                *nes.value().scenarioVideoFrame);
 
             // Track FPS for frame send rate.
             if (lastFrameSendTime.time_since_epoch().count() > 0) {
@@ -465,7 +469,6 @@ void SimRunning::tick(StateMachine& dsm)
                 if (scenario) {
                     scenario->reset(*world);
                     world->getData().tree_vision.reset();
-                    world->getData().bones.clear();
                     gamepad_to_duck_.clear();
                     stepCount = 0;
                 }
@@ -664,7 +667,8 @@ void SimRunning::tick(StateMachine& dsm)
             world->getData(),
             world->getOrganismManager().getGrid(),
             session.getScenarioId(),
-            scenario->getConfig());
+            scenario->getConfig(),
+            std::nullopt);
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -865,7 +869,7 @@ State::Any SimRunning::onEvent(const Api::NesApuGet::Cwc& cwc, StateMachine& /*d
 {
     using Response = Api::NesApuGet::Response;
 
-    auto nes = session.requireNesWorld();
+    const auto nes = session.requireNesWorld();
     if (nes.isError()) {
         cwc.sendResponse(Response::error(ApiError("NesApuGet requires active NES scenario")));
         return std::move(*this);
@@ -877,31 +881,7 @@ State::Any SimRunning::onEvent(const Api::NesApuGet::Cwc& cwc, StateMachine& /*d
         return std::move(*this);
     }
 
-    Api::NesApuGet::Okay okay;
-    okay.pulse1_enabled = snapshot->pulse1Enabled;
-    okay.pulse2_enabled = snapshot->pulse2Enabled;
-    okay.triangle_enabled = snapshot->triangleEnabled;
-    okay.noise_enabled = snapshot->noiseEnabled;
-    okay.pulse1_length_counter = snapshot->pulse1LengthCounter;
-    okay.pulse2_length_counter = snapshot->pulse2LengthCounter;
-    okay.triangle_length_counter = snapshot->triangleLengthCounter;
-    okay.noise_length_counter = snapshot->noiseLengthCounter;
-    okay.pulse1_timer_period = snapshot->pulse1TimerPeriod;
-    okay.pulse2_timer_period = snapshot->pulse2TimerPeriod;
-    okay.triangle_timer_period = snapshot->triangleTimerPeriod;
-    okay.noise_timer_period = snapshot->noiseTimerPeriod;
-    okay.pulse1_duty = snapshot->pulse1Duty;
-    okay.pulse2_duty = snapshot->pulse2Duty;
-    okay.noise_mode = snapshot->noiseMode;
-    okay.frame_counter_mode_5step = snapshot->frameCounterMode5Step;
-    okay.register_write_count = snapshot->registerWriteCount;
-    okay.total_samples_generated = snapshot->totalSamplesGenerated;
-    okay.audio_underruns = snapshot->audioUnderruns;
-    okay.audio_overruns = snapshot->audioOverruns;
-    okay.audio_callback_calls = snapshot->audioCallbackCalls;
-    okay.audio_samples_dropped = snapshot->audioSamplesDropped;
-
-    cwc.sendResponse(Response::okay(okay));
+    cwc.sendResponse(Response::okay(Api::NesApuGet::Okay::fromSnapshot(snapshot.value())));
     return std::move(*this);
 }
 

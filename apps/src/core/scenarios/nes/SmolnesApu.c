@@ -58,18 +58,32 @@ static uint8_t envelopeOutput(const SmolnesApuEnvelope* env)
     return env->constantVolume ? env->volume : env->decayLevel;
 }
 
+static void applySweep(SmolnesApuPulse* pulse, bool isPulse1)
+{
+    if (!pulse->sweep.enabled || pulse->sweep.shift == 0) {
+        return;
+    }
+    uint16_t delta = pulse->timerPeriod >> pulse->sweep.shift;
+    if (pulse->sweep.negate) {
+        // Pulse 1 uses one's complement (subtract delta + 1).
+        // Pulse 2 uses two's complement (subtract delta).
+        uint16_t sub = delta + (isPulse1 ? 1 : 0);
+        if (sub <= pulse->timerPeriod) {
+            pulse->timerPeriod -= sub;
+        }
+    } else {
+        uint16_t target = pulse->timerPeriod + delta;
+        if (target <= 0x7FF) {
+            pulse->timerPeriod = target;
+        }
+    }
+}
+
 static void clockPulseSweep(SmolnesApuPulse* pulse, bool isPulse1)
 {
     if (pulse->sweep.reload) {
-        if (pulse->sweep.divider == 0 && pulse->sweep.enabled) {
-            uint16_t delta = pulse->timerPeriod >> pulse->sweep.shift;
-            if (pulse->sweep.negate) {
-                // Pulse 1 uses one's complement (subtract delta + 1).
-                // Pulse 2 uses two's complement (subtract delta).
-                pulse->timerPeriod -= delta + (isPulse1 ? 1 : 0);
-            } else {
-                pulse->timerPeriod += delta;
-            }
+        if (pulse->sweep.divider == 0) {
+            applySweep(pulse, isPulse1);
         }
         pulse->sweep.divider = pulse->sweep.period;
         pulse->sweep.reload = false;
@@ -82,17 +96,7 @@ static void clockPulseSweep(SmolnesApuPulse* pulse, bool isPulse1)
     }
 
     pulse->sweep.divider = pulse->sweep.period;
-    if (pulse->sweep.enabled && pulse->sweep.shift > 0) {
-        uint16_t delta = pulse->timerPeriod >> pulse->sweep.shift;
-        if (pulse->sweep.negate) {
-            pulse->timerPeriod -= delta + (isPulse1 ? 1 : 0);
-        } else {
-            uint16_t target = pulse->timerPeriod + delta;
-            if (target <= 0x7FF) {
-                pulse->timerPeriod = target;
-            }
-        }
-    }
+    applySweep(pulse, isPulse1);
 }
 
 static void clockQuarterFrame(SmolnesApuState* state)

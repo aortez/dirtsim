@@ -72,19 +72,6 @@ struct OrganismData {
 };
 
 /**
- * @brief Bone connection data for organism structural visualization.
- *
- * Represents spring connections between organism cells.
- * Rendered as lines to show the organism's internal structure.
- */
-struct BoneData {
-    Vector2i cell_a; // First cell position.
-    Vector2i cell_b; // Second cell position.
-
-    using serialize = zpp::bits::members<2>;
-};
-
-/**
  * @brief Generic scenario-provided video frame payload.
  *
  * Pixels are encoded as packed RGB565 (little-endian), row-major.
@@ -119,9 +106,6 @@ struct RenderMessage {
     // Sparse organism tracking (only cells with organism_id != 0).
     std::vector<OrganismData> organisms;
 
-    // Bone connections for structural visualization.
-    std::vector<BoneData> bones;
-
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
@@ -131,13 +115,11 @@ struct RenderMessage {
     // Optional scenario-native video frame (RGB565) for direct display.
     std::optional<ScenarioVideoFrame> scenario_video_frame;
 
-    using serialize = zpp::bits::members<11>;
+    using serialize = zpp::bits::members<10>;
 };
 
 void to_json(nlohmann::json& j, const BasicCell& cell);
 void from_json(const nlohmann::json& j, BasicCell& cell);
-void to_json(nlohmann::json& j, const BoneData& bone);
-void from_json(const nlohmann::json& j, BoneData& bone);
 void to_json(nlohmann::json& j, const DebugCell& cell);
 void from_json(const nlohmann::json& j, DebugCell& cell);
 void to_json(nlohmann::json& j, const OrganismData& org);
