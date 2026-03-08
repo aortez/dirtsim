@@ -139,7 +139,9 @@ private:
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();
     void applyServerUserSettings(const DirtSim::UserSettings& settings);
+    void playStartupBeep();
     void syncAudioMasterVolume(int volumePercent);
+    bool startupBeepPlayed_ = false;
 
     void transitionTo(State::Any newState);
 };
