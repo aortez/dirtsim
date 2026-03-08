@@ -14,6 +14,7 @@
 #include "api/WebRtcCandidate.h"
 #include "api/WebSocketAccessSet.h"
 #include "audio/api/MasterVolumeSet.h"
+#include "audio/api/NoteOn.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -546,6 +547,7 @@ void StateMachine::handleEvent(const Event& event)
             userSettingsManager_.setWebSocketService(wsService_.get());
             userSettingsManager_.syncFromServerOrAssert(2000);
             applyServerUserSettings(userSettingsManager_.get());
+            playStartupBeep();
         }
     }
 
@@ -1172,6 +1174,62 @@ void StateMachine::syncAudioMasterVolume(int volumePercent)
 
     audioClient.disconnect();
     audioVolumeWarningLogged_ = false;
+}
+
+void StateMachine::playStartupBeep()
+{
+    if (startupBeepPlayed_) {
+        return;
+    }
+    startupBeepPlayed_ = true;
+
+    // Play in a detached thread so we don't block the state machine.
+    std::thread([]() {
+        constexpr int gapMs = 50;
+        struct StartupNote {
+            double frequencyHz;
+            double durationMs;
+        };
+        const std::array<StartupNote, 4> notes = {
+            StartupNote{ .frequencyHz = 262.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 330.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 392.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 523.0, .durationMs = 300.0 },
+        };
+
+        Network::WebSocketService audioClient;
+        const auto connectResult = audioClient.connect("ws://localhost:6060", 500);
+        if (connectResult.isError()) {
+            LOG_WARN(State, "Startup beep skipped: audio service not available");
+            return;
+        }
+
+        for (size_t i = 0; i < notes.size(); ++i) {
+            AudioApi::NoteOn::Command cmd{};
+            cmd.frequency_hz = notes[i].frequencyHz;
+            cmd.amplitude = 0.15;
+            cmd.attack_ms = 5.0;
+            cmd.release_ms = 120.0;
+            cmd.duration_ms = notes[i].durationMs;
+            cmd.waveform = Audio::Waveform::Sine;
+
+            const auto result =
+                audioClient.sendCommandAndGetResponse<AudioApi::NoteOn::Okay>(cmd, 500);
+            if (result.isError()) {
+                LOG_WARN(State, "Startup beep failed: {}", result.errorValue());
+                return;
+            }
+            if (result.value().isError()) {
+                LOG_WARN(State, "Startup beep rejected: {}", result.value().errorValue().message);
+                return;
+            }
+
+            if (i + 1 < notes.size()) {
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(static_cast<int>(notes[i].durationMs) + gapMs));
+            }
+        }
+    }).detach();
 }
 
 std::string StateMachine::getCurrentStateName() const
