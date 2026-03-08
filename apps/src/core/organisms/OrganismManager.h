@@ -23,7 +23,7 @@ class World;
 enum class MultiCellShape;
 
 struct TreeSpawnParams {
-    double startingEnergy = 30.0;
+    double startingEnergy = 50.0;
     bool passive = false; // If true and no brain provided, tree has no brain.
 };
 
