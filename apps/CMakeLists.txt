@@ -272,6 +272,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialFragmentationParams.cpp
+    src/core/GenomePoolId.cpp
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
     src/core/RenderMessage.cpp

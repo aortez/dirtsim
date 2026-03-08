@@ -2,6 +2,7 @@
 
 #include "StateForward.h"
 #include "UnsavedTrainingResult.h"
+#include "core/GenomePoolId.h"
 #include "core/ScenarioConfig.h"
 #include "core/SystemMetrics.h"
 #include "core/Vector2.h"
@@ -92,6 +93,7 @@ struct Evolution {
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
     TrainingSpec trainingSpec;
+    GenomePoolId genomePoolId_ = GenomePoolId::DirtSim;
 
     // Population.
     std::vector<Individual> population;
