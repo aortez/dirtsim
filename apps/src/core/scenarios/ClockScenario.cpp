@@ -6,6 +6,7 @@
 #include "core/Cell.h"
 #include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
+#include "core/LightCalculatorBase.h"
 #include "core/LightManager.h"
 #include "core/LightTypes.h"
 #include "core/MaterialType.h"
@@ -15,7 +16,7 @@
 #include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
-#include "core/WorldLightCalculator.h"
+
 #include "core/organisms/Duck.h"
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"

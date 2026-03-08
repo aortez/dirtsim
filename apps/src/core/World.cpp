@@ -4,7 +4,9 @@
 #include "Assert.h"
 #include "Cell.h"
 #include "GridOfCells.h"
+#include "LightCalculatorBase.h"
 #include "LightManager.h"
+#include "LightPropagator.h"
 #include "PhysicsSettings.h"
 #include "ReflectSerializer.h"
 #include "ScopeTimer.h"
@@ -18,7 +20,7 @@
 #include "WorldDiagramGeneratorEmoji.h"
 #include "WorldFrictionCalculator.h"
 #include "WorldInterpolationTool.h"
-#include "WorldLightCalculator.h"
+
 #include "WorldPressureCalculator.h"
 #include "WorldRigidBodyCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
@@ -68,9 +70,11 @@ struct World::Impl {
     // Calculators. WorldFrictionCalculator is constructed locally with GridOfCells reference.
     WorldAdhesionCalculator adhesion_calculator_;
     WorldCollisionCalculator collision_calculator_;
-    WorldLightCalculator light_calculator_;
     WorldPressureCalculator pressure_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
+
+    // Light calculator (unique_ptr for runtime swappability).
+    std::unique_ptr<LightCalculatorBase> light_calculator_;
 
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
@@ -82,7 +86,9 @@ struct World::Impl {
     mutable Timers timers_;
 
     // Constructor.
-    Impl() : physicsSettings_(getDefaultPhysicsSettings())
+    Impl()
+        : physicsSettings_(getDefaultPhysicsSettings()),
+          light_calculator_(std::make_unique<LightPropagator>())
     {
         timers_.startTimer("total_simulation");
     }
@@ -122,7 +128,7 @@ World::World(int width, int height)
     organism_manager_->resizeGrid(width, height);
 
     // Initialize light calculator emissive overlay.
-    pImpl->light_calculator_.resize(width, height);
+    pImpl->light_calculator_->resize(width, height);
 
     // Initialize with empty air.
     for (auto& cell : pImpl->data_.cells) {
@@ -190,19 +196,19 @@ const WorldViscosityCalculator& World::getViscosityCalculator() const
     return pImpl->viscosity_calculator_;
 }
 
-WorldLightCalculator& World::getLightCalculator()
+LightCalculatorBase& World::getLightCalculator()
 {
-    return pImpl->light_calculator_;
+    return *pImpl->light_calculator_;
 }
 
-const WorldLightCalculator& World::getLightCalculator() const
+const LightCalculatorBase& World::getLightCalculator() const
 {
-    return pImpl->light_calculator_;
+    return *pImpl->light_calculator_;
 }
 
 const LightBuffer& World::getRawLightBuffer() const
 {
-    return pImpl->light_calculator_.getRawLightBuffer();
+    return pImpl->light_calculator_->getRawLightBuffer();
 }
 
 LightManager& World::getLightManager()
@@ -490,7 +496,7 @@ void World::advanceTime(double deltaTimeSeconds)
         return;
     }
 
-    pImpl->light_calculator_.clearAllEmissive();
+    pImpl->light_calculator_->clearAllEmissive();
 
     // Rebuild grid cache only when external or prior-frame mutations invalidated it.
     ensureGridCacheFresh("grid_cache_rebuild");
@@ -557,9 +563,9 @@ void World::advanceTime(double deltaTimeSeconds)
     // Inject organism emissions and calculate lighting before material moves.
     // Lighting is cosmetic and doesn't feed back into physics, so it can use the
     // already-fresh grid cache from the start of the frame.
-    organism_manager_->injectEmissions(pImpl->light_calculator_);
+    organism_manager_->injectEmissions(*pImpl->light_calculator_);
     {
-        pImpl->light_calculator_.calculate(
+        pImpl->light_calculator_->calculate(
             *this, *pImpl->grid_, pImpl->physicsSettings_.light, pImpl->timers_);
     }
 
@@ -888,7 +894,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
     pImpl->data_.debug_info.resize(newWidth * newHeight);
 
     // Resize light calculator emissive overlay to match new dimensions.
-    pImpl->light_calculator_.resize(newWidth, newHeight);
+    pImpl->light_calculator_->resize(newWidth, newHeight);
 
     // Resize organism grid and reposition organisms at new proportional positions.
     // OrganismManager::resizeGrid() handles all repositioning internally.

@@ -6,7 +6,7 @@
 
 namespace DirtSim {
 
-class WorldLightCalculator;
+class LightCalculatorBase;
 
 /**
  * Manages storm lighting effects for the clock scenario.
@@ -19,10 +19,7 @@ class StormManager {
 public:
     void reset();
     void update(
-        WorldLightCalculator& lightCalc,
-        double deltaTime,
-        double stormIntensity,
-        std::mt19937& rng);
+        LightCalculatorBase& lightCalc, double deltaTime, double stormIntensity, std::mt19937& rng);
 
     [[nodiscard]] bool isStriking() const { return striking_; }
     [[nodiscard]] float getCurrentFlashIntensity() const { return currentFlashIntensity_; }
@@ -46,8 +43,8 @@ private:
     void enterDormant(double stormIntensity, std::mt19937& rng);
     void enterStriking(std::mt19937& rng);
     void updateDormant(double stormIntensity, std::mt19937& rng);
-    void updateStriking(WorldLightCalculator& lightCalc, std::mt19937& rng);
-    void applyFlash(WorldLightCalculator& lightCalc, float intensity);
+    void updateStriking(LightCalculatorBase& lightCalc, std::mt19937& rng);
+    void applyFlash(LightCalculatorBase& lightCalc, float intensity);
 
     // Flash envelope: instant rise, brief peak, exponential decay.
     static float calculateStrokeIntensity(double elapsedMs);
