@@ -51,13 +51,13 @@ bool isWarmGenomeCompatibleForPopulation(
     const GenomeMetadata& metadata,
     OrganismType organismType,
     const PopulationSpec& populationSpec,
-    Scenario::EnumType scenarioId)
+    GenomePoolId genomePoolId)
 {
     if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
         return false;
     }
 
-    if (metadata.scenarioId != scenarioId) {
+    if (metadata.genomePoolId != genomePoolId) {
         return false;
     }
 
@@ -414,7 +414,7 @@ std::optional<ApiError> validateTrainingConfig(
                                 candidate.metadata,
                                 outSpec.organismType,
                                 spec,
-                                outSpec.scenarioId)) {
+                                metadata->genomePoolId)) {
                             continue;
                         }
                         if (std::find(

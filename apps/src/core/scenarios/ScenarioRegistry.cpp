@@ -28,6 +28,7 @@ ScenarioMetadata makeNesFlappyParatroopaMetadata()
         .requiredWidth = 0,
         .requiredHeight = 0,
         .deterministicEvaluation = true,
+        .genomePoolId = GenomePoolId::FlappyParatroopa,
     };
 }
 
@@ -42,6 +43,7 @@ ScenarioMetadata makeNesSuperMarioBrosMetadata()
         .requiredWidth = 0,
         .requiredHeight = 0,
         .deterministicEvaluation = true,
+        .genomePoolId = GenomePoolId::Smb,
     };
 }
 
@@ -56,6 +58,7 @@ ScenarioMetadata makeNesSuperTiltBroMetadata()
         .requiredWidth = 0,
         .requiredHeight = 0,
         .deterministicEvaluation = true,
+        .genomePoolId = GenomePoolId::SuperTiltBro,
     };
 }
 

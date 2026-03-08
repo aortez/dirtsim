@@ -1395,6 +1395,7 @@ void Evolution::onEnter(StateMachine& dsm)
         evolutionConfig.robustFitnessEvaluationCount = 1;
         evolutionConfig.warmStartMinRobustEvalCount = 1;
     }
+    genomePoolId_ = scenarioMeta ? scenarioMeta->genomePoolId : GenomePoolId::DirtSim;
 
     visible_.reset();
     bestPlayback_.reset();
@@ -2356,6 +2357,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         .brainKind = individual.brainKind,
         .brainVariant = individual.brainVariant,
         .trainingSessionId = trainingSessionId_,
+        .genomePoolId = genomePoolId_,
     };
 
     bestFitnessThisGen = robustFitness;
@@ -3128,6 +3130,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .brainKind = population[bestIdx].brainKind,
         .brainVariant = population[bestIdx].brainVariant,
         .trainingSessionId = trainingSessionId_,
+        .genomePoolId = genomePoolId_,
     };
     const auto storeResult = storeManagedGenome(
         dsm,
