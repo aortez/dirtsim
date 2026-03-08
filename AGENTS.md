@@ -2,7 +2,7 @@
 
 ## Start Here
 - Read `README.md` for repo overview.
-- For app work, read `apps/CLAUDE.md`, `apps/README.md`, and `apps/design_docs/coding_convention.md`.
+- For app work, `apps/README.md`, and `apps/design_docs/coding_convention.md`.
 - For deployment details, see `yocto/README.md`.
 
 ## Project Structure
