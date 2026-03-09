@@ -1,5 +1,6 @@
 #include "core/scenarios/nes/NesGameAdapter.h"
 
+#include "core/LoggingChannels.h"
 #include "core/scenarios/nes/NesDuckSensoryBuilder.h"
 #include "core/scenarios/nes/NesPaletteClusterer.h"
 #include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
@@ -13,6 +14,7 @@ namespace DirtSim {
 namespace {
 
 constexpr uint64_t kSetupScriptEndFrame = 300;
+constexpr uint64_t kSetupFailureFrame = 500;
 
 double normalizeSmb(double value, double maxValue)
 {
@@ -65,11 +67,13 @@ public:
         advancedFrameCount_ = 0;
         evaluator_.reset();
         cachedSpecialSenses_.fill(0.0);
+        setupFailureLogged_ = false;
     }
 
     uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
     {
-        if (advancedFrameCount_ < kSetupScriptEndFrame) {
+        const bool gameplayDetected = input.lastGameState.value_or(0u) == 1u;
+        if (!gameplayDetected) {
             return scriptedSetupMaskForFrame(advancedFrameCount_);
         }
 
@@ -94,6 +98,19 @@ public:
             input.memorySnapshot.value(), advancedFrameCount_ >= kSetupScriptEndFrame);
         output.gameState = state.phase == SmbPhase::Gameplay ? std::optional<uint8_t>(1u)
                                                              : std::optional<uint8_t>(0u);
+
+        if (state.phase != SmbPhase::Gameplay && advancedFrameCount_ >= kSetupFailureFrame) {
+            if (!setupFailureLogged_) {
+                LOG_ERROR(
+                    Scenario,
+                    "NesSuperMarioBrosGameAdapter: Failed to reach gameplay by frame {}. "
+                    "Ending evaluation early.",
+                    advancedFrameCount_);
+                setupFailureLogged_ = true;
+            }
+            output.done = true;
+            return output;
+        }
 
         if (state.phase == SmbPhase::Gameplay) {
             cachedSpecialSenses_ = makeSmbSpecialSenses(state);
@@ -120,9 +137,11 @@ private:
     static uint8_t scriptedSetupMaskForFrame(uint64_t frameIndex)
     {
         constexpr uint64_t kStartPressWidthFrames = 1;
-        constexpr std::array<uint64_t, 2> kStartPressFrames = { 120u, 240u };
-        for (const uint64_t pressFrame : kStartPressFrames) {
-            if (frameIndex >= pressFrame && frameIndex < (pressFrame + kStartPressWidthFrames)) {
+        constexpr uint64_t kStartPressFirstFrame = 120u;
+        constexpr uint64_t kStartPressPeriodFrames = 120u;
+        if (frameIndex >= kStartPressFirstFrame) {
+            const uint64_t setupFrame = frameIndex - kStartPressFirstFrame;
+            if ((setupFrame % kStartPressPeriodFrames) < kStartPressWidthFrames) {
                 return NesPolicyLayout::ButtonStart;
             }
         }
@@ -135,6 +154,7 @@ private:
     NesSuperMarioBrosEvaluator evaluator_;
     uint64_t advancedFrameCount_ = 0;
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
+    bool setupFailureLogged_ = false;
 };
 
 } // namespace
