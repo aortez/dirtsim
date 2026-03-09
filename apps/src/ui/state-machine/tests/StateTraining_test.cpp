@@ -236,6 +236,9 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.averageFitness = 1.5;
     evt.progress.activeParallelism = 4;
     evt.progress.cpuPercent = 48.5;
+    evt.progress.validatingBest = true;
+    evt.progress.validatingBestCompletedSamples = 1;
+    evt.progress.validatingBestTargetSamples = 3;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -251,6 +254,9 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
     EXPECT_EQ(trainingState.progress.activeParallelism, 4);
     EXPECT_DOUBLE_EQ(trainingState.progress.cpuPercent, 48.5);
+    EXPECT_TRUE(trainingState.progress.validatingBest);
+    EXPECT_EQ(trainingState.progress.validatingBestCompletedSamples, 1);
+    EXPECT_EQ(trainingState.progress.validatingBestTargetSamples, 3);
 
     trainingState.view_.reset();
 }

@@ -80,9 +80,13 @@ bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioI
     return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
 }
 
-int resolveRobustnessEvalCount(int configuredCount)
+int resolveRobustnessPassSampleCount(int configuredCount)
 {
-    return std::max(1, configuredCount);
+    if (configuredCount <= 0) {
+        return 0;
+    }
+
+    return configuredCount;
 }
 
 uint64_t computePhenotypeHash(const EvolutionSupport::CompletedEvaluation& result)
@@ -568,7 +572,7 @@ void Evolution::onEnter(StateMachine& dsm)
     // Deterministic scenarios don't benefit from repeated robust evaluations.
     const auto* scenarioMeta = dsm.getScenarioRegistry().getMetadata(trainingSpec.scenarioId);
     if (scenarioMeta && scenarioMeta->deterministicEvaluation) {
-        evolutionConfig.robustFitnessEvaluationCount = 1;
+        evolutionConfig.robustFitnessEvaluationCount = 0;
         evolutionConfig.warmStartMinRobustEvalCount = 1;
     }
     genomePoolId_ = scenarioMeta ? scenarioMeta->genomePoolId : GenomePoolId::DirtSim;
@@ -973,13 +977,18 @@ void Evolution::processResult(StateMachine& dsm, EvolutionSupport::CompletedEval
                         generation,
                         result.index);
                 }
+                const char* validationMode =
+                    resolveRobustnessPassSampleCount(evolutionConfig.robustFitnessEvaluationCount)
+                        > 0
+                    ? "queued robust validation"
+                    : "queued single-sample finalization";
                 LOG_INFO(
                     State,
-                    "Evolution: Best candidate {:.4f} at gen {} eval {} "
-                    "(queued robust validation)",
+                    "Evolution: Best candidate {:.4f} at gen {} eval {} ({})",
                     result.fitnessEvaluation.totalFitness,
                     generation,
-                    result.index);
+                    result.index,
+                    validationMode);
             }
         }
         else {
@@ -1050,11 +1059,16 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         return;
     }
 
+    const int targetSampleCount =
+        resolveRobustnessPassSampleCount(evolutionConfig.robustFitnessEvaluationCount);
+    if (targetSampleCount <= 0) {
+        return;
+    }
+
     robustnessPass_.active = true;
     robustnessPass_.generation = generation;
     robustnessPass_.index = pendingBest_.robustnessIndex;
-    robustnessPass_.targetEvalCount =
-        resolveRobustnessEvalCount(evolutionConfig.robustFitnessEvaluationCount);
+    robustnessPass_.targetEvalCount = targetSampleCount;
     robustnessPass_.completedSamples = 0;
     robustnessPass_.pendingSamples = robustnessPass_.targetEvalCount;
     robustnessPass_.samples.clear();
@@ -1070,7 +1084,7 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
     LOG_INFO(
         State,
         "Evolution: Starting robust pass for gen {} eval {} "
-        "(target evals={}, extra samples={}, visible samples={}, worker samples={})",
+        "(validation samples={}, pending samples={}, visible samples={}, worker samples={})",
         robustnessPass_.generation,
         robustnessPass_.index,
         robustnessPass_.targetEvalCount,
@@ -1093,6 +1107,118 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         robustnessPass_.pendingSamples,
         evolutionConfig,
         scenarioConfigOverride_);
+}
+
+void Evolution::finalizePendingBestWithoutRobustnessPass(StateMachine& dsm)
+{
+    if (!pendingBest_.robustness) {
+        return;
+    }
+
+    if (pendingBest_.robustnessGeneration != generation) {
+        pendingBest_.reset();
+        return;
+    }
+
+    if (pendingBest_.robustnessIndex < 0
+        || pendingBest_.robustnessIndex >= static_cast<int>(population.size())) {
+        pendingBest_.reset();
+        return;
+    }
+
+    const Individual& individual = population[pendingBest_.robustnessIndex];
+    if (!individual.genome.has_value()) {
+        pendingBest_.reset();
+        return;
+    }
+
+    const double bestFitness = pendingBest_.robustnessFirstSample;
+    const GenomeMetadata meta{
+        .name = "gen_" + std::to_string(pendingBest_.robustnessGeneration) + "_eval_"
+            + std::to_string(pendingBest_.robustnessIndex),
+        .fitness = bestFitness,
+        .robustFitness = bestFitness,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { bestFitness },
+        .generation = pendingBest_.robustnessGeneration,
+        .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+        .scenarioId = individual.scenarioId,
+        .notes = "",
+        .organismType = trainingSpec.organismType,
+        .brainKind = individual.brainKind,
+        .brainVariant = individual.brainVariant,
+        .trainingSessionId = trainingSessionId_,
+        .genomePoolId = genomePoolId_,
+    };
+
+    bestFitnessThisGen = bestFitness;
+    if (pendingBest_.robustnessIndex >= 0
+        && pendingBest_.robustnessIndex < static_cast<int>(populationOrigins.size())) {
+        bestThisGenOrigin_ = populationOrigins[pendingBest_.robustnessIndex];
+    }
+    else {
+        bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    }
+
+    auto& repo = dsm.getGenomeRepository();
+    const bool hasSessionBest = !bestGenomeId.isNil();
+    const bool bestUpdated = !hasSessionBest
+        || (!fitnessTiesBest(bestFitness, bestFitnessAllTime) && bestFitness > bestFitnessAllTime);
+    if (bestUpdated) {
+        const auto storeResult = storeManagedGenome(
+            dsm,
+            individual.genome.value(),
+            meta,
+            evolutionConfig.genomeArchiveMaxSize,
+            "current-session best (single-sample)");
+        repo.markAsBest(storeResult.id);
+        bestGenomeId = storeResult.id;
+        bestFitnessAllTime = bestFitness;
+        setBestPlaybackSource(individual, bestFitness, pendingBest_.robustnessGeneration);
+        LOG_INFO(
+            State,
+            "Evolution: Promoted genome {} as current-session best "
+            "(single-sample {:.4f})",
+            storeResult.id.toShortString(),
+            bestFitness);
+
+        if (pendingBest_.snapshot.has_value()) {
+            EvolutionSupport::FitnessEvaluation snapshotFitnessEvaluation =
+                pendingBest_.snapshotFitnessEvaluation.value_or(
+                    EvolutionSupport::FitnessEvaluation{
+                        .totalFitness = bestFitness,
+                        .details = std::monostate{},
+                    });
+            snapshotFitnessEvaluation.totalFitness = bestFitness;
+            broadcastTrainingBestSnapshot(
+                dsm,
+                std::move(pendingBest_.snapshot.value()),
+                snapshotFitnessEvaluation,
+                fitnessModel_,
+                pendingBest_.robustnessGeneration,
+                pendingBest_.snapshotCommandsAccepted,
+                pendingBest_.snapshotCommandsRejected,
+                pendingBest_.snapshotTopCommandSignatures,
+                pendingBest_.snapshotTopCommandOutcomeSignatures);
+        }
+        else {
+            LOG_WARN(
+                State,
+                "Evolution: Missing snapshot for single-sample best broadcast (gen={} eval={})",
+                pendingBest_.robustnessGeneration,
+                pendingBest_.robustnessIndex);
+        }
+    }
+
+    LOG_INFO(
+        State,
+        "Evolution: Finalized pending best for gen {} eval {} without robust pass "
+        "(fitness {:.4f})",
+        pendingBest_.robustnessGeneration,
+        pendingBest_.robustnessIndex,
+        bestFitness);
+
+    pendingBest_.reset();
 }
 
 void Evolution::handleRobustnessSampleResult(
@@ -1257,6 +1383,10 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
     const int generationPopulationSize = static_cast<int>(population.size());
     if (currentEval < generationPopulationSize) {
         return;
+    }
+
+    if (resolveRobustnessPassSampleCount(evolutionConfig.robustFitnessEvaluationCount) <= 0) {
+        finalizePendingBestWithoutRobustnessPass(dsm);
     }
 
     startRobustnessPass(dsm);
@@ -1809,6 +1939,10 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         && bestFitnessAllTime > std::numeric_limits<double>::lowest();
     const double bestAllTime =
         (!bestGenomeId.isNil() || hasAllTimeFitness) ? bestFitnessAllTime : 0.0;
+    const bool validatingBest = robustnessPass_.active;
+    const int validatingBestCompletedSamples =
+        validatingBest ? robustnessPass_.completedSamples : 0;
+    const int validatingBestTargetSamples = validatingBest ? robustnessPass_.targetEvalCount : 0;
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
@@ -1833,6 +1967,9 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
         .robustEvaluationCount = robustEvaluationCount_,
+        .validatingBest = validatingBest,
+        .validatingBestCompletedSamples = validatingBestCompletedSamples,
+        .validatingBestTargetSamples = validatingBestTargetSamples,
         .averageFitness = avgFitness,
         .lastCompletedGeneration = lastCompletedGeneration_,
         .lastGenerationAverageFitness = lastGenerationAverageFitness_,

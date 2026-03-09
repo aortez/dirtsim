@@ -267,6 +267,7 @@ private:
     void captureLastGenerationTelemetry();
     void processResult(StateMachine& dsm, EvolutionSupport::CompletedEvaluation result);
     void maybeCompleteGeneration(StateMachine& dsm);
+    void finalizePendingBestWithoutRobustnessPass(StateMachine& dsm);
     void startRobustnessPass(StateMachine& dsm);
     void handleRobustnessSampleResult(
         StateMachine& dsm, const EvolutionSupport::CompletedEvaluation& result);

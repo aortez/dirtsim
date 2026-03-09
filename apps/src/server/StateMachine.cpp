@@ -237,9 +237,9 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = kGenomeArchiveMaxSizePerBucketMax;
         recordUpdate("genomeArchiveMaxSize clamped to 1000");
     }
-    if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
-        settings.evolutionConfig.robustFitnessEvaluationCount = 1;
-        recordUpdate("robustFitnessEvaluationCount clamped to 1");
+    if (settings.evolutionConfig.robustFitnessEvaluationCount < 0) {
+        settings.evolutionConfig.robustFitnessEvaluationCount = 0;
+        recordUpdate("robustFitnessEvaluationCount clamped to 0");
     }
     if (settings.evolutionConfig.warmStartSeedCount < 0) {
         settings.evolutionConfig.warmStartSeedCount = 0;
