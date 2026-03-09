@@ -33,6 +33,7 @@ struct TreeStructureMetrics {
 
 TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree);
 double computeMinimalStructureBonus(const TreeStructureMetrics& metrics);
+int computePartialStructurePartCount(const TreeStructureMetrics& metrics);
 double computePartialStructureBonus(const TreeStructureMetrics& metrics);
 
 double clamp01(double value)
@@ -72,39 +73,6 @@ const TreeResourceTotals* resolveTreeResources(const FitnessContext& context, co
         return context.treeResources;
     }
     return &tree.getResourceTotals();
-}
-
-double computeTreeResourceScore(
-    const FitnessContext& context, const Tree& tree, const TreeStructureMetrics& metrics)
-{
-    if (computeMinimalStructureBonus(metrics) <= 0.0) {
-        return 0.0;
-    }
-
-    const TreeResourceTotals* resources = resolveTreeResources(context, tree);
-    if (!resources) {
-        return 0.0;
-    }
-
-    const double energyScore =
-        saturatingScore(resources->energyProduced, context.evolutionConfig.energyReference);
-    const double waterScore =
-        saturatingScore(resources->waterAbsorbed, context.evolutionConfig.waterReference);
-
-    return (kTreeResourceEnergyWeight * energyScore) + (kTreeResourceWaterWeight * waterScore);
-}
-
-double computeTreeEnergyScore(
-    const FitnessContext& context, const Tree& tree, const TreeStructureMetrics& metrics)
-{
-    if (computeMinimalStructureBonus(metrics) <= 0.0) {
-        return 0.0;
-    }
-
-    const double maxEnergyScore = computeMaxEnergyScore(context);
-    const double finalEnergyScore =
-        clamp01(normalize(tree.getEnergy(), context.evolutionConfig.energyReference));
-    return (kTreeEnergyMaxWeight * maxEnergyScore) + (kTreeEnergyFinalWeight * finalEnergyScore);
 }
 
 double computeCommandOutcomeScore(const FitnessContext& context)
@@ -157,18 +125,6 @@ TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree)
     return metrics;
 }
 
-double computeMilestoneBonus(const TreeStructureMetrics& metrics)
-{
-    double bonus = 0.0;
-    if (metrics.hasRootBelowSeed) {
-        bonus += kTreeRootBelowSeedBonus;
-    }
-    if (metrics.hasWoodAboveSeed) {
-        bonus += kTreeWoodAboveSeedBonus;
-    }
-    return bonus;
-}
-
 double computeStageBonus(const Tree& tree, const TreeStructureMetrics& metrics)
 {
     (void)tree;
@@ -206,10 +162,10 @@ double computeMinimalStructureBonus(const TreeStructureMetrics& metrics)
     return 0.0;
 }
 
-double computePartialStructureBonus(const TreeStructureMetrics& metrics)
+int computePartialStructurePartCount(const TreeStructureMetrics& metrics)
 {
     if (!metrics.hasSeed) {
-        return 0.0;
+        return 0;
     }
 
     int parts = 0;
@@ -223,7 +179,13 @@ double computePartialStructureBonus(const TreeStructureMetrics& metrics)
         parts++;
     }
 
-    return static_cast<double>(parts) * kTreePartialStructurePartBonus;
+    return parts;
+}
+
+double computePartialStructureBonus(const TreeStructureMetrics& metrics)
+{
+    return static_cast<double>(computePartialStructurePartCount(metrics))
+        * kTreePartialStructurePartBonus;
 }
 } // namespace
 
@@ -266,9 +228,13 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
         context.organismType == OrganismType::TREE, "TreeEvaluator: Non-tree fitness context");
 
     TreeFitnessBreakdown breakdown{};
+    breakdown.commandsAccepted = context.result.commandsAccepted;
+    breakdown.commandsRejected = context.result.commandsRejected;
+    breakdown.idleCancels = context.result.idleCancels;
+    breakdown.energyReference = context.evolutionConfig.energyReference;
+    breakdown.seedDistanceReference = kTreeSeedDistanceReference;
     breakdown.survivalRaw = std::max(0.0, context.result.lifespan);
     breakdown.survivalReference = context.evolutionConfig.maxSimulationTime;
-    breakdown.energyReference = context.evolutionConfig.energyReference;
     breakdown.waterReference = context.evolutionConfig.waterReference;
     breakdown.survivalScore = computeSurvivalScore(context);
     if (breakdown.survivalScore <= 0.0) {
@@ -282,6 +248,11 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
     if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
         tree = static_cast<const Tree*>(context.finalOrganism);
         metrics = computeTreeStructureMetrics(*tree);
+        breakdown.leafCount = metrics.leafCount;
+        breakdown.rootCount = metrics.rootCount;
+        breakdown.woodCount = metrics.woodCount;
+        breakdown.partialStructurePartCount = computePartialStructurePartCount(metrics);
+        breakdown.structureBonus = computeMinimalStructureBonus(metrics);
 
         breakdown.maxEnergyRaw = std::max(0.0, context.result.maxEnergy);
         breakdown.maxEnergyNormalized = computeMaxEnergyScore(context);
@@ -296,22 +267,51 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
             breakdown.absorbedWaterRaw = std::max(0.0, resources->waterAbsorbed);
             breakdown.absorbedWaterNormalized =
                 saturatingScore(breakdown.absorbedWaterRaw, context.evolutionConfig.waterReference);
+            breakdown.seedsProduced = resources->seedsProduced;
+            breakdown.landedSeedCount = static_cast<int>(resources->landedSeeds.size());
+            if (!resources->landedSeeds.empty()) {
+                double totalDistance = 0.0;
+                for (const auto& seed : resources->landedSeeds) {
+                    totalDistance += seed.distanceFromParent;
+                    breakdown.maxLandedSeedDistance =
+                        std::max(breakdown.maxLandedSeedDistance, seed.distanceFromParent);
+                }
+                breakdown.averageLandedSeedDistance =
+                    totalDistance / static_cast<double>(resources->landedSeeds.size());
+            }
         }
 
         breakdown.partialStructureBonus = computePartialStructureBonus(metrics);
         breakdown.stageBonus = computeStageBonus(*tree, metrics);
-        breakdown.structureBonus = computeMinimalStructureBonus(metrics);
-        breakdown.milestoneBonus = computeMilestoneBonus(metrics);
+        breakdown.rootBelowSeedBonus = metrics.hasRootBelowSeed ? kTreeRootBelowSeedBonus : 0.0;
+        breakdown.woodAboveSeedBonus = metrics.hasWoodAboveSeed ? kTreeWoodAboveSeedBonus : 0.0;
+        breakdown.milestoneBonus = breakdown.rootBelowSeedBonus + breakdown.woodAboveSeedBonus;
         breakdown.seedScore = computeSeedScore(context, *tree);
+        breakdown.seedCountBonus = static_cast<double>(breakdown.landedSeedCount);
+        breakdown.seedDistanceBonus = breakdown.seedScore - breakdown.seedCountBonus;
 
-        breakdown.energyScore = computeTreeEnergyScore(context, *tree, metrics);
-        breakdown.resourceScore = computeTreeResourceScore(context, *tree, metrics);
+        if (breakdown.structureBonus > 0.0) {
+            breakdown.energyMaxWeightedComponent =
+                kTreeEnergyMaxWeight * breakdown.maxEnergyNormalized;
+            breakdown.energyFinalWeightedComponent =
+                kTreeEnergyFinalWeight * breakdown.finalEnergyNormalized;
+            breakdown.resourceEnergyWeightedComponent =
+                kTreeResourceEnergyWeight * breakdown.producedEnergyNormalized;
+            breakdown.resourceWaterWeightedComponent =
+                kTreeResourceWaterWeight * breakdown.absorbedWaterNormalized;
+            breakdown.energyScore =
+                breakdown.energyMaxWeightedComponent + breakdown.energyFinalWeightedComponent;
+            breakdown.resourceScore = breakdown.resourceEnergyWeightedComponent
+                + breakdown.resourceWaterWeightedComponent;
+        }
     }
 
-    breakdown.totalFitness =
-        breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore)
-        + breakdown.partialStructureBonus + breakdown.stageBonus + breakdown.structureBonus
-        + breakdown.milestoneBonus + breakdown.commandScore + breakdown.seedScore;
+    breakdown.coreFitness =
+        breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore);
+    breakdown.bonusFitness = breakdown.partialStructureBonus + breakdown.stageBonus
+        + breakdown.structureBonus + breakdown.milestoneBonus + breakdown.commandScore
+        + breakdown.seedScore;
+    breakdown.totalFitness = breakdown.coreFitness + breakdown.bonusFitness;
     if (tree) {
         tree->setLastFitness(breakdown.totalFitness);
     }

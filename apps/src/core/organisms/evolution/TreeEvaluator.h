@@ -31,6 +31,28 @@ struct TreeFitnessBreakdown {
     double commandScore = 0.0;
     double seedScore = 0.0;
     double totalFitness = 0.0;
+    double coreFitness = 0.0;
+    double bonusFitness = 0.0;
+    double energyMaxWeightedComponent = 0.0;
+    double energyFinalWeightedComponent = 0.0;
+    double resourceEnergyWeightedComponent = 0.0;
+    double resourceWaterWeightedComponent = 0.0;
+    double rootBelowSeedBonus = 0.0;
+    double woodAboveSeedBonus = 0.0;
+    int commandsAccepted = 0;
+    int commandsRejected = 0;
+    int idleCancels = 0;
+    int leafCount = 0;
+    int rootCount = 0;
+    int woodCount = 0;
+    int partialStructurePartCount = 0;
+    double seedCountBonus = 0.0;
+    double seedDistanceBonus = 0.0;
+    double seedDistanceReference = 0.0;
+    int seedsProduced = 0;
+    int landedSeedCount = 0;
+    double averageLandedSeedDistance = 0.0;
+    double maxLandedSeedDistance = 0.0;
 };
 
 class TreeEvaluator {
