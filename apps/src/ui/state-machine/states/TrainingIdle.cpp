@@ -408,12 +408,14 @@ State::Any TrainingIdle::onEvent(const GenomeLoadClickedEvent& evt, StateMachine
         LOG_ERROR(State, "SimRun failed");
         return std::move(*this);
     }
+    const Api::SimRun::Okay& simOkay = simResult.value().value();
+    if (simOkay.width <= 0 || simOkay.height <= 0) {
+        LOG_ERROR(State, "SimRun returned invalid world size {}x{}", simOkay.width, simOkay.height);
+        return std::move(*this);
+    }
 
-    constexpr int targetCellSize = 16;
-    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
-    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
-    const int centerX = worldWidth / 2;
-    const int centerY = worldHeight / 2;
+    const int centerX = simOkay.width / 2;
+    const int centerY = simOkay.height / 2;
 
     Api::SeedAdd::Command seedCmd;
     seedCmd.x = centerX;
@@ -475,12 +477,14 @@ State::Any TrainingIdle::onEvent(const ViewBestButtonClickedEvent& evt, StateMac
         LOG_ERROR(State, "SimRun failed");
         return std::move(*this);
     }
+    const Api::SimRun::Okay& simOkay = simResult.value().value();
+    if (simOkay.width <= 0 || simOkay.height <= 0) {
+        LOG_ERROR(State, "SimRun returned invalid world size {}x{}", simOkay.width, simOkay.height);
+        return std::move(*this);
+    }
 
-    constexpr int targetCellSize = 16;
-    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
-    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
-    const int centerX = worldWidth / 2;
-    const int centerY = worldHeight / 2;
+    const int centerX = simOkay.width / 2;
+    const int centerY = simOkay.height / 2;
 
     Api::SeedAdd::Command seedCmd;
     seedCmd.x = centerX;

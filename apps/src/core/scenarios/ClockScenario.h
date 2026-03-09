@@ -69,6 +69,10 @@ public:
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
+    ScenarioConfig resolveInitialConfig(
+        const ScenarioConfig& config, const Vector2s& containerSize) const override;
+    Vector2i resolveInitialWorldSize(
+        const ScenarioConfig& config, const Vector2i& defaultWorldSize) const override;
     void setConfig(const ScenarioConfig& newConfig, World& world) override;
     void setup(World& world) override;
     void reset(World& world) override;

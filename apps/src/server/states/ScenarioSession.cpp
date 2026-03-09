@@ -251,39 +251,15 @@ Result<std::monostate, ApiError> ScenarioSession::start(
         return startNesScenario(dsm, scenarioId, scenarioConfig);
     }
 
-    return startGridWorldScenario(dsm, scenarioId, *metadata, scenarioConfig, containerSize);
+    return startGridWorldScenario(dsm, scenarioId, scenarioConfig, containerSize);
 }
 
 Result<std::monostate, ApiError> ScenarioSession::startGridWorldScenario(
     StateMachine& dsm,
     Scenario::EnumType scenarioId,
-    const ScenarioMetadata& metadata,
     const ScenarioConfig& scenarioConfig,
     const Vector2s& containerSize)
 {
-    uint32_t worldWidth = dsm.defaultWidth;
-    uint32_t worldHeight = dsm.defaultHeight;
-
-    if (containerSize.x > 0 && containerSize.y > 0) {
-        constexpr int targetCellSize = 16;
-        worldWidth = static_cast<uint32_t>(containerSize.x / targetCellSize);
-        worldHeight = static_cast<uint32_t>(containerSize.y / targetCellSize);
-        worldWidth = std::max(worldWidth, 10u);
-        worldHeight = std::max(worldHeight, 10u);
-    }
-    else if (metadata.requiredWidth > 0 && metadata.requiredHeight > 0) {
-        worldWidth = metadata.requiredWidth;
-        worldHeight = metadata.requiredHeight;
-    }
-
-    LOG_INFO(
-        State,
-        "Creating World {}x{} (container: {}x{})",
-        worldWidth,
-        worldHeight,
-        containerSize.x,
-        containerSize.y);
-
     auto& registry = dsm.getScenarioRegistry();
     auto scenario = registry.createScenario(scenarioId);
     if (!scenario) {
@@ -292,12 +268,34 @@ Result<std::monostate, ApiError> ScenarioSession::startGridWorldScenario(
             + std::string(toString(scenarioId))));
     }
 
+    const ScenarioConfig resolvedConfig =
+        scenario->resolveInitialConfig(scenarioConfig, containerSize);
+    const Vector2i defaultWorldSize{
+        static_cast<int>(dsm.defaultWidth),
+        static_cast<int>(dsm.defaultHeight),
+    };
+    const Vector2i resolvedWorldSize =
+        scenario->resolveInitialWorldSize(resolvedConfig, defaultWorldSize);
+    if (resolvedWorldSize.x <= 0 || resolvedWorldSize.y <= 0) {
+        return Result<std::monostate, ApiError>::error(ApiError(
+            std::string("Scenario returned invalid initial world size: ")
+            + resolvedWorldSize.toString()));
+    }
+
+    LOG_INFO(
+        State,
+        "Creating World {}x{} (container: {}x{})",
+        resolvedWorldSize.x,
+        resolvedWorldSize.y,
+        containerSize.x,
+        containerSize.y);
+
     GridWorldSession next;
     next.scenarioId = scenarioId;
-    next.world = std::make_unique<World>(worldWidth, worldHeight);
+    next.world = std::make_unique<World>(resolvedWorldSize.x, resolvedWorldSize.y);
     next.scenario = std::move(scenario);
 
-    next.scenario->setConfig(scenarioConfig, *next.world);
+    next.scenario->setConfig(resolvedConfig, *next.world);
     next.scenario->setup(*next.world);
     next.world->setScenario(next.scenario.get());
 
