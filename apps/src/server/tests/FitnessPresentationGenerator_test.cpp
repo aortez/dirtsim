@@ -18,6 +18,17 @@ const Api::FitnessPresentationMetric* fitnessMetricFind(
     return nullptr;
 }
 
+const Api::FitnessPresentationSection* fitnessSectionFind(
+    const Api::FitnessPresentation& presentation, std::string_view key)
+{
+    for (const auto& section : presentation.sections) {
+        if (section.key == key) {
+            return &section;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown)
@@ -29,9 +40,34 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
                 .survivalRaw = 20.0,
                 .survivalReference = 40.0,
                 .survivalScore = 0.5,
+                .energyAverage = 0.75,
+                .energyConsumedTotal = 12.0,
+                .energyLimitedSeconds = 1.5,
                 .wingUpSeconds = 3.0,
+                .wingDownSeconds = 4.0,
+                .movementRaw = 0.3,
+                .movementScore = 0.3,
+                .effortRaw = 0.25,
+                .effortReference = 1.0,
+                .effortScore = 0.25,
+                .effortPenaltyRaw = 0.05,
+                .effortPenaltyScore = 0.05,
+                .coverageColumnRaw = 8.0,
+                .coverageColumnReference = 10.0,
+                .coverageScore = 0.6,
+                .coverageColumnScore = 0.8,
+                .coverageRowRaw = 3.0,
+                .coverageRowReference = 5.0,
+                .coverageRowScore = 0.6,
+                .coverageCellRaw = 12.0,
+                .coverageCellReference = 20.0,
+                .coverageCellScore = 0.6,
+                .collisionDamageTotal = 1.25,
+                .damageTotal = 2.5,
                 .exitedThroughDoor = true,
                 .exitDoorRaw = 1.0,
+                .exitDoorTime = 23.0,
+                .healthAverage = 0.9,
                 .exitDoorBonus = 0.5,
                 .totalFitness = 2.75,
             },
@@ -42,8 +78,98 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
     EXPECT_EQ(presentation.organismType, OrganismType::DUCK);
     EXPECT_EQ(presentation.modelId, "duck");
     EXPECT_DOUBLE_EQ(presentation.totalFitness, 2.75);
-    ASSERT_EQ(presentation.sections.size(), 1u);
-    EXPECT_EQ(presentation.sections[0].key, "overview");
+    EXPECT_EQ(presentation.summary, "Survival 0.5000 | Movement 0.3000 | Coverage 0.6000");
+    ASSERT_EQ(presentation.sections.size(), 5u);
+    EXPECT_EQ(presentation.sections[0].key, "survival");
+    EXPECT_EQ(presentation.sections[1].key, "movement");
+    EXPECT_EQ(presentation.sections[2].key, "coverage");
+    EXPECT_EQ(presentation.sections[3].key, "effort");
+    EXPECT_EQ(presentation.sections[4].key, "condition");
+
+    const Api::FitnessPresentationMetric* lifespan =
+        fitnessMetricFind(presentation.sections[0], "lifespan");
+    ASSERT_NE(lifespan, nullptr);
+    EXPECT_DOUBLE_EQ(lifespan->value, 20.0);
+    ASSERT_TRUE(lifespan->reference.has_value());
+    EXPECT_DOUBLE_EQ(lifespan->reference.value(), 40.0);
+    ASSERT_TRUE(lifespan->normalized.has_value());
+    EXPECT_DOUBLE_EQ(lifespan->normalized.value(), 0.5);
+
+    const Api::FitnessPresentationMetric* coverageColumns =
+        fitnessMetricFind(presentation.sections[2], "coverage_columns");
+    ASSERT_NE(coverageColumns, nullptr);
+    EXPECT_DOUBLE_EQ(coverageColumns->value, 8.0);
+    ASSERT_TRUE(coverageColumns->reference.has_value());
+    EXPECT_DOUBLE_EQ(coverageColumns->reference.value(), 10.0);
+    ASSERT_TRUE(coverageColumns->normalized.has_value());
+    EXPECT_DOUBLE_EQ(coverageColumns->normalized.value(), 0.8);
+
+    const Api::FitnessPresentationMetric* collisionDamage =
+        fitnessMetricFind(presentation.sections[4], "collision_damage_total");
+    ASSERT_NE(collisionDamage, nullptr);
+    EXPECT_DOUBLE_EQ(collisionDamage->value, 1.25);
+}
+
+TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBreakdown)
+{
+    const FitnessEvaluation evaluation{
+        .totalFitness = 1.85,
+        .details =
+            DuckFitnessBreakdown{
+                .survivalRaw = 30.0,
+                .survivalReference = 40.0,
+                .survivalScore = 0.75,
+                .energyAverage = 0.65,
+                .energyConsumedTotal = 14.0,
+                .energyLimitedSeconds = 2.5,
+                .wingUpSeconds = 4.0,
+                .wingDownSeconds = 6.0,
+                .movementRaw = 0.8,
+                .movementScore = 0.8,
+                .effortRaw = 0.35,
+                .effortReference = 1.0,
+                .effortScore = 0.35,
+                .effortPenaltyRaw = 0.05,
+                .effortPenaltyScore = 0.05,
+                .coverageColumnRaw = 10.0,
+                .coverageColumnReference = 12.0,
+                .coverageScore = 0.85,
+                .coverageColumnScore = 0.8333,
+                .coverageRowRaw = 5.0,
+                .coverageRowReference = 8.0,
+                .coverageRowScore = 0.625,
+                .coverageCellRaw = 16.0,
+                .coverageCellReference = 24.0,
+                .coverageCellScore = 0.6667,
+                .collisionDamageTotal = 0.75,
+                .damageTotal = 1.5,
+                .exitedThroughDoor = true,
+                .exitDoorRaw = 1.0,
+                .exitDoorTime = 27.5,
+                .healthAverage = 0.8,
+                .exitDoorBonus = 0.5,
+                .totalFitness = 1.85,
+            },
+    };
+
+    const Api::FitnessPresentation presentation =
+        fitnessEvaluationDuckClockPresentationGenerate(evaluation);
+    EXPECT_EQ(presentation.organismType, OrganismType::DUCK);
+    EXPECT_EQ(presentation.modelId, "duck");
+    EXPECT_EQ(
+        presentation.summary, "Survival 0.7500 | Movement 0.8000 | Coverage 0.8500 | Exit yes");
+    ASSERT_EQ(presentation.sections.size(), 6u);
+
+    const Api::FitnessPresentationSection* clockExit =
+        fitnessSectionFind(presentation, "clock_exit");
+    ASSERT_NE(clockExit, nullptr);
+    ASSERT_TRUE(clockExit->score.has_value());
+    EXPECT_DOUBLE_EQ(clockExit->score.value(), 0.5);
+
+    const Api::FitnessPresentationMetric* exitDoorTime =
+        fitnessMetricFind(*clockExit, "exit_door_time");
+    ASSERT_NE(exitDoorTime, nullptr);
+    EXPECT_DOUBLE_EQ(exitDoorTime->value, 27.5);
 }
 
 TEST(FitnessPresentationGeneratorTest, BuildsNesSuperMarioBrosPresentationFromBreakdown)

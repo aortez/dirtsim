@@ -170,6 +170,7 @@ DuckFitnessBreakdown duckFitnessBreakdownAverage(
     merged.damageTotal = averageDouble(first.damageTotal, second.damageTotal);
     merged.exitDoorRaw = averageDouble(first.exitDoorRaw, second.exitDoorRaw);
     merged.exitedThroughDoor = merged.exitDoorRaw >= 0.5;
+    merged.exitDoorTime = averageDouble(first.exitDoorTime, second.exitDoorTime);
     merged.healthAverage = averageDouble(first.healthAverage, second.healthAverage);
     merged.exitDoorBonus = averageDouble(first.exitDoorBonus, second.exitDoorBonus);
     merged.totalFitness = totalFitness;
@@ -224,7 +225,9 @@ FitnessModelBundle fitnessModelResolve(OrganismType organismType, Scenario::Enum
         case OrganismType::DUCK:
             bundle.evaluate = fitnessEvaluationDuckEvaluate;
             bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
-            bundle.generatePresentation = fitnessEvaluationDuckPresentationGenerate;
+            bundle.generatePresentation = scenarioId == Scenario::EnumType::Clock
+                ? fitnessEvaluationDuckClockPresentationGenerate
+                : fitnessEvaluationDuckPresentationGenerate;
             bundle.mergePasses = scenarioId == Scenario::EnumType::Clock
                 ? fitnessEvaluationDuckClockMerge
                 : fitnessEvaluationIdentityMerge;
