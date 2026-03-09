@@ -136,6 +136,37 @@ static void drawBorderOverlay(
     }
 }
 
+static void drawFilledOverlay(
+    uint32_t* pixels,
+    uint32_t canvasWidth,
+    int32_t cellX,
+    int32_t cellY,
+    uint32_t cellWidth,
+    uint32_t cellHeight,
+    uint32_t rgbColor,
+    uint8_t alpha)
+{
+    if (alpha == 0) {
+        return;
+    }
+
+    const int minX = cellX;
+    const int minY = cellY;
+    const int maxX = cellX + static_cast<int>(cellWidth) - 1;
+    const int maxY = cellY + static_cast<int>(cellHeight) - 1;
+
+    if (minX > maxX || minY > maxY) {
+        return;
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const size_t pixelIdx = static_cast<size_t>(y) * canvasWidth + x;
+            blendPixelOver(pixels, pixelIdx, rgbColor, alpha);
+        }
+    }
+}
+
 static int calculateLivePressureOpacity(double livePressure)
 {
     constexpr double kOpacityScale = 25.0;
@@ -159,6 +190,8 @@ static bool shouldDrawCom(DebugVisualizationMode mode)
         case DebugVisualizationMode::LivePressure:
         case DebugVisualizationMode::StaticLoad:
             return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
         default:
             return true;
     }
@@ -170,6 +203,8 @@ static bool shouldDrawLivePressureBorder(DebugVisualizationMode mode)
         case DebugVisualizationMode::Combined:
         case DebugVisualizationMode::LivePressure:
             return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
         case DebugVisualizationMode::StaticLoad:
             return false;
         default:
@@ -183,6 +218,8 @@ static bool shouldDrawPressureGradient(DebugVisualizationMode mode)
         case DebugVisualizationMode::Combined:
         case DebugVisualizationMode::LivePressure:
             return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
         case DebugVisualizationMode::StaticLoad:
             return false;
         default:
@@ -196,11 +233,60 @@ static bool shouldDrawStaticLoadBorder(DebugVisualizationMode mode)
         case DebugVisualizationMode::Combined:
         case DebugVisualizationMode::StaticLoad:
             return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
         case DebugVisualizationMode::LivePressure:
             return false;
         default:
             return true;
     }
+}
+
+static bool shouldDrawRegionOverlay(DebugVisualizationMode mode)
+{
+    return mode == DebugVisualizationMode::RegionActivity;
+}
+
+static uint8_t getRegionOverlayBorderAlpha(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 210;
+        case RegionState::LoadedQuiet:
+            return 180;
+        case RegionState::Sleeping:
+            return 220;
+    }
+
+    return 180;
+}
+
+static uint32_t getRegionOverlayColor(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 0xFF6A00;
+        case RegionState::LoadedQuiet:
+            return 0x2B8CFF;
+        case RegionState::Sleeping:
+            return 0x1ED760;
+    }
+
+    return 0xFFFFFF;
+}
+
+static uint8_t getRegionOverlayFillAlpha(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 36;
+        case RegionState::LoadedQuiet:
+            return 28;
+        case RegionState::Sleeping:
+            return 22;
+    }
+
+    return 24;
 }
 
 // Calculate optimal pixels per cell based on world size, container size, and scale factor.
@@ -1019,6 +1105,64 @@ void CellRenderer::renderWorldData(
             }
         }
 
+        if (debugDraw && shouldDrawRegionOverlay(debugVisualizationMode)
+            && worldData.region_debug_blocks_x > 0 && worldData.region_debug_blocks_y > 0
+            && !worldData.region_debug.empty()) {
+            const int borderWidth = std::max(1, static_cast<int>(3 * scaleX_));
+
+            for (int block_y = 0; block_y < worldData.region_debug_blocks_y; ++block_y) {
+                for (int block_x = 0; block_x < worldData.region_debug_blocks_x; ++block_x) {
+                    const size_t region_idx =
+                        static_cast<size_t>(block_y) * worldData.region_debug_blocks_x + block_x;
+                    if (region_idx >= worldData.region_debug.size()) {
+                        continue;
+                    }
+
+                    const int start_cell_x = block_x * 8;
+                    const int start_cell_y = block_y * 8;
+                    const int region_cells_w = std::min(8, worldData.width - start_cell_x);
+                    const int region_cells_h = std::min(8, worldData.height - start_cell_y);
+                    if (region_cells_w <= 0 || region_cells_h <= 0) {
+                        continue;
+                    }
+
+                    const RegionState state =
+                        static_cast<RegionState>(worldData.region_debug[region_idx].state);
+                    const uint32_t color = getRegionOverlayColor(state);
+
+                    const int32_t region_x =
+                        renderOffsetX + start_cell_x * static_cast<int32_t>(scaledCellWidth_);
+                    const int32_t region_y =
+                        renderOffsetY + start_cell_y * static_cast<int32_t>(scaledCellHeight_);
+                    const uint32_t region_width =
+                        static_cast<uint32_t>(region_cells_w) * scaledCellWidth_;
+                    const uint32_t region_height =
+                        static_cast<uint32_t>(region_cells_h) * scaledCellHeight_;
+
+                    drawFilledOverlay(
+                        pixels,
+                        canvasWidth_,
+                        region_x,
+                        region_y,
+                        region_width,
+                        region_height,
+                        color,
+                        getRegionOverlayFillAlpha(state));
+                    drawBorderOverlay(
+                        pixels,
+                        canvasWidth_,
+                        region_x,
+                        region_y,
+                        region_width,
+                        region_height,
+                        0,
+                        borderWidth,
+                        color,
+                        getRegionOverlayBorderAlpha(state));
+                }
+            }
+        }
+
         // Render entities (duck, etc.) on top of cells.
         if (!worldData.entities.empty()) {
             renderEntities(
@@ -1065,6 +1209,58 @@ void CellRenderer::renderWorldData(
                     : 0x000000FF;
                 renderCellLVGL(
                     cell, debug, layer, cellX, cellY, debugDraw, debugVisualizationMode, cellColor);
+            }
+        }
+
+        if (debugDraw && shouldDrawRegionOverlay(debugVisualizationMode)
+            && worldData.region_debug_blocks_x > 0 && worldData.region_debug_blocks_y > 0
+            && !worldData.region_debug.empty()) {
+            const int borderWidth = std::max(1, static_cast<int>(3 * scaleX_));
+
+            for (int block_y = 0; block_y < worldData.region_debug_blocks_y; ++block_y) {
+                for (int block_x = 0; block_x < worldData.region_debug_blocks_x; ++block_x) {
+                    const size_t region_idx =
+                        static_cast<size_t>(block_y) * worldData.region_debug_blocks_x + block_x;
+                    if (region_idx >= worldData.region_debug.size()) {
+                        continue;
+                    }
+
+                    const int start_cell_x = block_x * 8;
+                    const int start_cell_y = block_y * 8;
+                    const int region_cells_w = std::min(8, worldData.width - start_cell_x);
+                    const int region_cells_h = std::min(8, worldData.height - start_cell_y);
+                    if (region_cells_w <= 0 || region_cells_h <= 0) {
+                        continue;
+                    }
+
+                    const RegionState state =
+                        static_cast<RegionState>(worldData.region_debug[region_idx].state);
+                    const uint32_t color = getRegionOverlayColor(state);
+
+                    lv_draw_rect_dsc_t region_dsc;
+                    lv_draw_rect_dsc_init(&region_dsc);
+                    region_dsc.bg_color = lv_color_hex(color);
+                    region_dsc.bg_opa = static_cast<lv_opa_t>(getRegionOverlayFillAlpha(state));
+                    region_dsc.border_color = lv_color_hex(color);
+                    region_dsc.border_opa =
+                        static_cast<lv_opa_t>(getRegionOverlayBorderAlpha(state));
+                    region_dsc.border_width = borderWidth;
+                    region_dsc.radius = 0;
+
+                    lv_area_t region_coords = {
+                        renderOffsetX + start_cell_x * static_cast<int32_t>(scaledCellWidth_),
+                        renderOffsetY + start_cell_y * static_cast<int32_t>(scaledCellHeight_),
+                        renderOffsetX
+                            + (start_cell_x + region_cells_w)
+                                * static_cast<int32_t>(scaledCellWidth_)
+                            - 1,
+                        renderOffsetY
+                            + (start_cell_y + region_cells_h)
+                                * static_cast<int32_t>(scaledCellHeight_)
+                            - 1,
+                    };
+                    lv_draw_rect(&layer, &region_dsc, &region_coords);
+                }
             }
         }
 

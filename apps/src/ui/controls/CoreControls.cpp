@@ -250,8 +250,8 @@ void CoreControls::createDebugVisualizationView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     buttonToDebugVisualizationMode_.clear();
-    const char* labels[] = { "Combined", "Live Pressure", "Static Load" };
-    for (int i = 0; i < 3; ++i) {
+    const char* labels[] = { "Combined", "Live Pressure", "Region Activity", "Static Load" };
+    for (int i = 0; i < 4; ++i) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
                                   .text(labels[i])
                                   .width(LV_PCT(95))
@@ -616,6 +616,9 @@ void CoreControls::onDebugVisualizationSelected(lv_event_t* e)
             mode = DebugVisualizationMode::LivePressure;
             break;
         case 2:
+            mode = DebugVisualizationMode::RegionActivity;
+            break;
+        case 3:
             mode = DebugVisualizationMode::StaticLoad;
             break;
         default:

@@ -22,6 +22,7 @@
 #include "WorldInterpolationTool.h"
 
 #include "WorldPressureCalculator.h"
+#include "WorldRegionActivityTracker.h"
 #include "WorldRigidBodyCalculator.h"
 #include "WorldStaticLoadCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
@@ -49,6 +50,11 @@ struct Vector2iHash {
     }
 };
 
+int computeRegionBlockCount(int cells)
+{
+    return std::max(0, (cells + 7) / 8);
+}
+
 } // namespace
 
 namespace DirtSim {
@@ -72,6 +78,7 @@ struct World::Impl {
     WorldAdhesionCalculator adhesion_calculator_;
     WorldCollisionCalculator collision_calculator_;
     WorldPressureCalculator pressure_calculator_;
+    WorldRegionActivityTracker region_activity_tracker_;
     WorldStaticLoadCalculator static_load_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
 
@@ -98,6 +105,23 @@ struct World::Impl {
     // Destructor.
     ~Impl() { timers_.stopTimer("total_simulation"); }
 };
+
+void exportRegionDebugInfo(World::Impl& impl)
+{
+    impl.data_.region_debug_blocks_x =
+        static_cast<int16_t>(impl.region_activity_tracker_.getBlocksX());
+    impl.data_.region_debug_blocks_y =
+        static_cast<int16_t>(impl.region_activity_tracker_.getBlocksY());
+    impl.region_activity_tracker_.populateDebugInfo(impl.data_.region_debug);
+}
+
+void resizeRegionDebugTracking(World::Impl& impl, int world_width, int world_height)
+{
+    const int blocks_x = computeRegionBlockCount(world_width);
+    const int blocks_y = computeRegionBlockCount(world_height);
+    impl.region_activity_tracker_.resize(world_width, world_height, blocks_x, blocks_y);
+    exportRegionDebugInfo(impl);
+}
 
 World::World() : World(1, 1)
 {}
@@ -143,6 +167,7 @@ World::World(int width, int height)
     // Initialize persistent GridOfCells for debug info and caching.
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
+    resizeRegionDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
     // Force refresh on first simulation step after scenario setup mutates world data.
     pImpl->is_grid_cache_dirty_ = true;
 
@@ -504,6 +529,15 @@ void World::advanceTime(double deltaTimeSeconds)
     ensureGridCacheFresh("grid_cache_rebuild");
     GridOfCells& grid = *pImpl->grid_;
 
+    for (const auto& blocked_transfer : pImpl->pressure_calculator_.blocked_transfers_) {
+        pImpl->region_activity_tracker_.noteBlockedTransfer(
+            blocked_transfer.fromX, blocked_transfer.fromY);
+        pImpl->region_activity_tracker_.noteWakeAtCell(
+            blocked_transfer.toX, blocked_transfer.toY, WakeReason::BlockedTransfer);
+    }
+    pImpl->region_activity_tracker_.beginFrame(
+        *this, grid, static_cast<uint32_t>(pImpl->data_.timestep));
+
     // Inject hydrostatic pressure from gravity.
     if (pImpl->physicsSettings_.pressure_hydrostatic_strength > 0.0) {
         ScopeTimer hydroTimer(pImpl->timers_, "hydrostatic_pressure");
@@ -579,6 +613,11 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->static_load_calculator_.recomputeAll(*this);
     }
 
+    ensureGridCacheFresh("region_activity_grid_cache");
+    pImpl->region_activity_tracker_.summarizeFrame(
+        *this, *pImpl->grid_, static_cast<uint32_t>(pImpl->data_.timestep));
+    exportRegionDebugInfo(*pImpl);
+
     // Sync organism render data to WorldData.entities for UI.
     organism_manager_->syncEntitiesToWorldData(*this);
 
@@ -606,6 +645,7 @@ void World::addMaterialAtCell(Vector2s pos, Material::EnumType type, float amoun
 
     if (added > 0.0f) {
         markGridCacheDirty();
+        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
         spdlog::trace("Added {:.3f} {} at cell ({},{})", added, toString(type), pos.x, pos.y);
     }
 }
@@ -639,6 +679,8 @@ void World::swapCells(Vector2s pos1, Vector2s pos2)
     // Perform the swap.
     std::swap(cell1, cell2);
     markGridCacheDirty();
+    pImpl->region_activity_tracker_.noteWakeAtCell(pos1.x, pos1.y, WakeReason::ExternalMutation);
+    pImpl->region_activity_tracker_.noteWakeAtCell(pos2.x, pos2.y, WakeReason::ExternalMutation);
 
     // Update organism tracking.
     if (org1 != INVALID_ORGANISM_ID || org2 != INVALID_ORGANISM_ID) {
@@ -700,6 +742,7 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
         }
         cell.replaceMaterial(material, 1.0);
         markGridCacheDirty();
+        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
         return;
     }
 
@@ -828,6 +871,9 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
     // Now target is empty (displaced material moved to empty_pos). Place new material.
     pImpl->data_.at(pos.x, pos.y) = Cell{ material, 1.0 };
     markGridCacheDirty();
+    pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
+    pImpl->region_activity_tracker_.noteWakeAtCell(
+        empty_pos.x, empty_pos.y, WakeReason::ExternalMutation);
 }
 
 void World::clearCellAtPosition(Vector2s pos)
@@ -848,6 +894,7 @@ void World::clearCellAtPosition(Vector2s pos)
 
     cell.clear();
     markGridCacheDirty();
+    pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
 }
 
 // =================================================================.
@@ -899,6 +946,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
     pImpl->data_.height = newHeight;
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
+    resizeRegionDebugTracking(*pImpl, newWidth, newHeight);
 
     // Resize light calculator emissive overlay to match new dimensions.
     pImpl->light_calculator_->resize(newWidth, newHeight);
@@ -1765,6 +1813,9 @@ void World::processMaterialMoves()
     }
 
     for (const auto& move : pending_moves) {
+        pImpl->region_activity_tracker_.noteMaterialMove(
+            move.from.x, move.from.y, move.to.x, move.to.y);
+
         Cell& fromCell = data.at(move.from.x, move.from.y);
         Cell& toCell = data.at(move.to.x, move.to.y);
 
@@ -2026,6 +2077,7 @@ void World::fromJSON(const nlohmann::json& doc)
     // Automatic deserialization via ReflectSerializer!
     pImpl->data_ = ReflectSerializer::from_json<WorldData>(doc);
     pImpl->static_load_calculator_.recomputeAll(*this);
+    resizeRegionDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
     markGridCacheDirty();
     spdlog::info("World deserialized: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }

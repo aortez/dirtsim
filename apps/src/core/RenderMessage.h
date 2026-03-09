@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "ReflectSerializer.h"
+#include "RegionDebugInfo.h"
 #include "RenderFormat.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
@@ -106,6 +107,11 @@ struct RenderMessage {
     // Sparse organism tracking (only cells with organism_id != 0).
     std::vector<OrganismData> organisms;
 
+    // Region debug overlay data (8x8 regions in phase 1).
+    int16_t region_blocks_x = 0;
+    int16_t region_blocks_y = 0;
+    std::vector<RegionDebugInfo> region_debug;
+
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
@@ -115,7 +121,7 @@ struct RenderMessage {
     // Optional scenario-native video frame (RGB565) for direct display.
     std::optional<ScenarioVideoFrame> scenario_video_frame;
 
-    using serialize = zpp::bits::members<10>;
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const BasicCell& cell);
