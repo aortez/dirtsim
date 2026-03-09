@@ -654,6 +654,51 @@ Acceptance criteria:
 - support removal wakes the affected interior through disturbance or `delta static_load`,
 - water scenarios remain visually close to current behavior.
 
+### Current Findings from Buried-Core Diagnostics
+
+The initial instrumentation and behavior-test work changed the understanding of what is blocking
+sleeping today.
+
+What is now implemented and measured:
+
+- `static_load` is computed and transported separately from live pressure.
+- Region activity overlays and behavior tests exist for deep dirt piles.
+- Granular gravity-pressure injection has been narrowed for `DIRT` and `SAND`.
+- Supported buried granular cells can skip direct gravity in the current experiment.
+
+What the buried-core diagnostics showed:
+
+- These changes reduce pressure churn and reduce buried-region velocity, but they do not by
+  themselves make a buried core leave `Awake`.
+- In a pure buried dirt region, `static_load` is stable and `delta live_pressure` is small.
+- Gravity skipping is active across the whole pure buried region.
+- Many cells still sit at `com.y ~= 1.0` and keep generating queued move events.
+
+The most important finding is that these queued move events are mostly not real transport:
+
+- the pure buried region shows repeated generated and received move bookkeeping,
+- but zero successful transfers,
+- and zero blocked-transfer amounts in the measured frames.
+
+This means the buried-core blocker is currently better described as transfer-threshold thrash than
+as meaningful cross-cell motion. The region tracker is therefore too conservative when it treats
+"touched by a move attempt" as proof of real region activity.
+
+This finding changes the near-term strategy:
+
+- production sleeping should not key primarily on queued move attempts,
+- sleeping should instead key on real boundary effects such as successful transfers and swaps,
+- internal velocity and pressure/load deltas should still be used as conservative guards,
+- blocked transfers should remain a debug signal first and only become a wake signal later if they
+  prove necessary with a threshold.
+
+An observer-only test heuristic already validates this direction:
+
+- if a buried region sees no successful transfers for several frames,
+- and its mean/max velocity and pressure/load deltas stay under conservative thresholds,
+- the test can identify a buried dirt region as a sleep candidate under gravity even while queued
+  move noise continues.
+
 ### Phase 2: Conservative Sleeping
 
 Primary goal:
@@ -686,6 +731,14 @@ Tasks:
   - material moves,
   - gravity changes,
   - neighboring topology changes.
+- Separate queued move attempts from real boundary activity.
+- In the first sleeping heuristic, treat boundary activity primarily as:
+  - successful transfers,
+  - swaps.
+- Do not let zero-effect queued move attempts by themselves keep a buried region awake.
+- Keep blocked-transfer counts in debug output during the first heuristic pass.
+- Only promote blocked transfers into wake logic later if an amount or energy threshold proves
+  necessary.
 - Gate only these expensive paths first:
   - pressure-force accumulation,
   - friction/viscosity force accumulation,
@@ -702,6 +755,8 @@ Performance note:
 Acceptance criteria:
 
 - phase 1c already proved that buried dirt can become quiet under gravity,
+- observer-only tests prove that buried dirt can qualify as transfer-quiet even with queued move
+  noise,
 - the buried interior of a stable dirt pile reaches `Sleeping`,
 - the free surface, toe, and dirt-water interface remain awake,
 - tapping, digging, or collapsing a pile wakes the interior quickly,
@@ -792,6 +847,8 @@ Recommended automated coverage:
 - region sleep behavior tests:
   - gravity-on buried dirt can quiet,
   - gravity-off clears `static_load`,
+  - transfer-quiet observer heuristic finds a buried candidate under gravity,
+  - a pure buried region can qualify despite queued move noise,
   - dirt next to water stays conservative,
   - toe-disturbance wake propagation remains local first.
 - manual scenario captures:
@@ -807,6 +864,10 @@ Recommended automated coverage:
 - Aggressive thresholds may over-stabilize steep slopes and suppress avalanches.
 - Reconciling granular gravity too aggressively could remove useful disturbance at the surface if
   the material policy is not tuned carefully.
+- The current COM transfer model can generate persistent zero-effect move churn near `com ~= 1.0`;
+  sleeping logic must not confuse that bookkeeping with real transport.
+- A transfer-quiet scheduler heuristic may be useful even if the underlying mechanics are still
+  somewhat jittery, but wake thresholds will need careful tuning to avoid visible pops.
 - Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
 - The UI debug path currently assumes one unified pressure value and must be updated carefully.
 - The existing pressure settings and material-property names still reflect older terminology and
@@ -819,8 +880,10 @@ Proceed with the staged design above:
 1. add `static_load` as derived state for dirt and sand,
 2. use it for debug and observability first,
 3. reconcile steady granular gravity with `static_load` before relying on sleeping,
-4. keep water on the current live pressure path,
-5. sleep only buried granular interiors in the first implementation.
+4. treat successful boundary crossings, not queued move attempts, as the first sleep-heuristic
+   definition of real region activity,
+5. keep water on the current live pressure path,
+6. sleep only buried granular interiors in the first implementation.
 
 This gives the expected win for dirt piles without forcing a full pressure-model rewrite in one
 step.

@@ -164,6 +164,13 @@ bool hasSupportedGranularPath(
     return false;
 }
 
+void incrementSaturating(uint16_t& value)
+{
+    if (value != std::numeric_limits<uint16_t>::max()) {
+        value++;
+    }
+}
+
 } // namespace
 
 namespace DirtSim {
@@ -1939,8 +1946,14 @@ void World::processMaterialMoves()
     ScopeTimer timer(timers, "process_moves");
 
     for (CellDebug& debug : data.debug_info) {
+        debug.blocked_outgoing_transfer_amount = 0.0f;
+        debug.blocked_outgoing_transfer_count = 0;
         debug.generated_move_count = 0;
         debug.received_move_count = 0;
+        debug.successful_incoming_transfer_amount = 0.0f;
+        debug.successful_incoming_transfer_count = 0;
+        debug.successful_outgoing_transfer_amount = 0.0f;
+        debug.successful_outgoing_transfer_count = 0;
     }
 
     // Counters for analysis.
@@ -1963,15 +1976,11 @@ void World::processMaterialMoves()
         const size_t toIndex = static_cast<size_t>(move.to.y) * data.width + move.to.x;
         if (fromIndex < data.debug_info.size()) {
             CellDebug& fromDebug = data.debug_info[fromIndex];
-            if (fromDebug.generated_move_count != std::numeric_limits<uint16_t>::max()) {
-                fromDebug.generated_move_count++;
-            }
+            incrementSaturating(fromDebug.generated_move_count);
         }
         if (toIndex < data.debug_info.size()) {
             CellDebug& toDebug = data.debug_info[toIndex];
-            if (toDebug.received_move_count != std::numeric_limits<uint16_t>::max()) {
-                toDebug.received_move_count++;
-            }
+            incrementSaturating(toDebug.received_move_count);
         }
 
         pImpl->region_activity_tracker_.noteMaterialMove(
@@ -1979,6 +1988,7 @@ void World::processMaterialMoves()
 
         Cell& fromCell = data.at(move.from.x, move.from.y);
         Cell& toCell = data.at(move.to.x, move.to.y);
+        const float fromFillBefore = fromCell.fill_ratio;
 
         // Apply any pressure from excess that couldn't transfer.
         if (move.pressure_from_excess > 0.0) {
@@ -2088,6 +2098,26 @@ void World::processMaterialMoves()
             case CollisionType::ABSORPTION:
                 collision_calc.handleAbsorption(*this, fromCell, toCell, move);
                 break;
+        }
+
+        const float actualTransferred =
+            std::clamp(fromFillBefore - fromCell.fill_ratio, 0.0f, move.amount);
+        const float blockedTransfer = std::max(0.0f, move.amount - actualTransferred);
+        if (fromIndex < data.debug_info.size()) {
+            CellDebug& fromDebug = data.debug_info[fromIndex];
+            if (actualTransferred > MIN_MATTER_THRESHOLD) {
+                incrementSaturating(fromDebug.successful_outgoing_transfer_count);
+                fromDebug.successful_outgoing_transfer_amount += actualTransferred;
+            }
+            if (blockedTransfer > MIN_MATTER_THRESHOLD) {
+                incrementSaturating(fromDebug.blocked_outgoing_transfer_count);
+                fromDebug.blocked_outgoing_transfer_amount += blockedTransfer;
+            }
+        }
+        if (toIndex < data.debug_info.size() && actualTransferred > MIN_MATTER_THRESHOLD) {
+            CellDebug& toDebug = data.debug_info[toIndex];
+            incrementSaturating(toDebug.successful_incoming_transfer_count);
+            toDebug.successful_incoming_transfer_amount += actualTransferred;
         }
 
         // Update organism tracking if material actually transferred.
