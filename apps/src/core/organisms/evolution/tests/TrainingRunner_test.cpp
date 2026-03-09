@@ -1727,15 +1727,14 @@ TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)
 
 TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
 {
-    // Verify that valid_grow_targets masking forces all action brains to pick
-    // positions adjacent to tree-owned cells.
+    // Verify that command-specific action masking forces all action brains to pick
+    // commands that pass the runtime validator.
     constexpr int kTrials = 5;
 
     int successes = 0;
     int wait_brains = 0;
     int cancel_brains = 0;
     int action_brains = 0;
-    int valid_position = 0;
     std::map<std::string, int> rejection_reasons;
 
     for (int trial = 0; trial < kTrials; ++trial) {
@@ -1767,8 +1766,6 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
         }
         tree = world->getOrganismManager().getTree(id);
         if (!tree) continue;
-
-        const Vector2i seed_pos = tree->getAnchorCell();
 
         // Ask the brain for one decision and inspect it.
         const TreeSensoryData sensory = tree->gatherSensoryData(*world);
@@ -1810,54 +1807,31 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
             continue;
         }
         if (cmd_type == "Cancel") {
-            cancel_brains++;
+            if (sensory.current_action.has_value()) {
+                cancel_brains++;
+            }
+            else {
+                rejection_reasons["cancel_while_idle"]++;
+            }
             continue;
         }
 
         action_brains++;
 
-        const bool in_bounds = target.x >= 0 && target.x < 9 && target.y >= 0 && target.y < 9;
-
-        // Check if target is cardinally adjacent to ANY tree-owned cell (not just seed).
-        // The tree may have grown during the settling phase.
-        bool is_adjacent = false;
-        if (in_bounds) {
-            const Vector2i dirs[] = { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };
-            for (const auto& dir : dirs) {
-                const Vector2i neighbor = target + dir;
-                if (neighbor.x >= 0 && neighbor.x < 9 && neighbor.y >= 0 && neighbor.y < 9) {
-                    if (world->getOrganismManager().at(neighbor) == id) {
-                        is_adjacent = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (is_adjacent) {
-            valid_position++;
+        TreeCommandProcessor processor;
+        const CommandExecutionResult validation = processor.validate(*tree, *world, cmd);
+        if (validation.succeeded()) {
             successes++;
+            const Vector2i seed_pos = tree->getAnchorCell();
             std::cout << "Trial " << trial << " *** VALID *** " << cmd_type << " at (" << target.x
                       << "," << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ")\n";
         }
         else {
-            const int manhattan = std::abs(target.x - seed_pos.x) + std::abs(target.y - seed_pos.y);
-            std::string reason;
-            if (!in_bounds) {
-                reason = "out_of_bounds";
-            }
-            else if (manhattan == 0) {
-                reason = "targets_self";
-            }
-            else {
-                reason = "not_adjacent(d=" + std::to_string(manhattan) + ")";
-            }
-            rejection_reasons[reason]++;
+            rejection_reasons[validation.message]++;
 
             if (trial < 10) {
                 std::cout << "Trial " << trial << " " << cmd_type << " at (" << target.x << ","
-                          << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ") "
-                          << reason << "\n";
+                          << target.y << ") validation=\"" << validation.message << "\"\n";
             }
         }
     }
@@ -1869,20 +1843,18 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
               << "%)\n";
     std::cout << "Action brains:     " << action_brains << " (" << 100.0 * action_brains / kTrials
               << "%)\n";
-    std::cout << "Valid position:    " << valid_position << "/" << action_brains << " ("
-              << (action_brains > 0 ? 100.0 * valid_position / action_brains : 0.0) << "%)\n";
     std::cout << "Successes:         " << successes << "/" << kTrials << "\n";
     std::cout << "\nRejection reasons:\n";
     for (const auto& [reason, count] : rejection_reasons) {
         std::cout << "  " << reason << ": " << count << "\n";
     }
 
-    // With valid_grow_targets masking, every action brain should pick a valid position.
+    EXPECT_EQ(rejection_reasons["cancel_while_idle"], 0) << "Cancel should be masked while idle.";
+
+    // With command-specific masking, every action brain should pass runtime validation.
     if (action_brains > 0) {
-        const double valid_rate = 100.0 * valid_position / action_brains;
-        EXPECT_EQ(valid_position, action_brains)
-            << "Expected all action brains to pick valid positions with masking, but only "
-            << valid_rate << "% did.";
+        EXPECT_EQ(successes, action_brains)
+            << "Expected all action brains to pass validation with command-specific masking.";
     }
 }
 

@@ -7,6 +7,8 @@
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include <array>
+#include <initializer_list>
 
 namespace DirtSim {
 
@@ -16,6 +18,12 @@ constexpr double ENERGY_COST_WOOD = 10.0;
 constexpr double ENERGY_COST_LEAF = 8.0;
 constexpr double ENERGY_COST_ROOT = 12.0;
 constexpr double ENERGY_COST_PRODUCE_SEED = 50.0;
+constexpr std::array<Vector2i, 4> kCardinalDirections{
+    Vector2i{ 0, 1 },
+    Vector2i{ 0, -1 },
+    Vector2i{ -1, 0 },
+    Vector2i{ 1, 0 },
+};
 
 double getEnergyCostForCommand(const TreeCommand& cmd)
 {
@@ -39,13 +47,41 @@ double getEnergyCostForCommand(const TreeCommand& cmd)
         cmd);
 }
 
-CommandExecutionResult validateCommand(
-    Tree& tree, World& world, const TreeCommand& cmd, bool checkEnergy)
+bool isTargetOwnedByTree(const Tree& tree, const World& world, Vector2i pos)
 {
-    const auto isTargetOwnedByTree = [&world, &tree](const Vector2i& pos) {
-        return world.getOrganismManager().at(pos) == tree.getId();
-    };
+    return world.getOrganismManager().at(pos) == tree.getId();
+}
 
+bool hasOwnedNeighborWithMaterial(
+    const Tree& tree,
+    const World& world,
+    Vector2i pos,
+    std::initializer_list<Material::EnumType> allowedMaterials)
+{
+    for (const auto& dir : kCardinalDirections) {
+        const Vector2i neighborPos = pos + dir;
+        if (!world.getData().inBounds(neighborPos.x, neighborPos.y)) {
+            continue;
+        }
+        if (world.getOrganismManager().at(neighborPos) != tree.getId()) {
+            continue;
+        }
+
+        const Cell& neighbor = world.getData().at(neighborPos.x, neighborPos.y);
+        for (const auto material : allowedMaterials) {
+            if (neighbor.material_type == material) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+} // namespace
+
+CommandExecutionResult treeCommandValidate(
+    const Tree& tree, const World& world, const TreeCommand& cmd, bool checkEnergy)
+{
     return std::visit(
         [&](auto&& command) -> CommandExecutionResult {
             using T = std::decay_t<decltype(command)>;
@@ -60,25 +96,16 @@ CommandExecutionResult validateCommand(
                     return { CommandResult::INVALID_TARGET, "WOOD target out of bounds" };
                 }
 
-                if (isTargetOwnedByTree(command.target_pos)) {
+                if (isTargetOwnedByTree(tree, world, command.target_pos)) {
                     return { CommandResult::INVALID_TARGET, "WOOD target already owned by tree" };
                 }
 
-                // Check cardinal adjacency to WOOD or SEED (structural elements only).
-                Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                for (const auto& dir : cardinal_dirs) {
-                    Vector2i neighbor_pos = command.target_pos + dir;
-                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        continue;
-                    }
-                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
-                        continue;
-                    }
-                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                    if (neighbor.material_type == Material::EnumType::Wood
-                        || neighbor.material_type == Material::EnumType::Seed) {
-                        return { CommandResult::SUCCESS, "WOOD target valid" };
-                    }
+                if (hasOwnedNeighborWithMaterial(
+                        tree,
+                        world,
+                        command.target_pos,
+                        { Material::EnumType::Seed, Material::EnumType::Wood })) {
+                    return { CommandResult::SUCCESS, "WOOD target valid" };
                 }
 
                 return { CommandResult::INVALID_TARGET,
@@ -94,24 +121,13 @@ CommandExecutionResult validateCommand(
                     return { CommandResult::INVALID_TARGET, "LEAF target out of bounds" };
                 }
 
-                if (isTargetOwnedByTree(command.target_pos)) {
+                if (isTargetOwnedByTree(tree, world, command.target_pos)) {
                     return { CommandResult::INVALID_TARGET, "LEAF target already owned by tree" };
                 }
 
-                // Check cardinal adjacency to WOOD.
-                Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                for (const auto& dir : cardinal_dirs) {
-                    Vector2i neighbor_pos = command.target_pos + dir;
-                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        continue;
-                    }
-                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
-                        continue;
-                    }
-                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                    if (neighbor.material_type == Material::EnumType::Wood) {
-                        return { CommandResult::SUCCESS, "LEAF target valid" };
-                    }
+                if (hasOwnedNeighborWithMaterial(
+                        tree, world, command.target_pos, { Material::EnumType::Wood })) {
+                    return { CommandResult::SUCCESS, "LEAF target valid" };
                 }
 
                 return { CommandResult::INVALID_TARGET,
@@ -127,25 +143,16 @@ CommandExecutionResult validateCommand(
                     return { CommandResult::INVALID_TARGET, "ROOT target out of bounds" };
                 }
 
-                if (isTargetOwnedByTree(command.target_pos)) {
+                if (isTargetOwnedByTree(tree, world, command.target_pos)) {
                     return { CommandResult::INVALID_TARGET, "ROOT target already owned by tree" };
                 }
 
-                // Check cardinal adjacency to SEED or ROOT (root network).
-                Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                for (const auto& dir : cardinal_dirs) {
-                    Vector2i neighbor_pos = command.target_pos + dir;
-                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        continue;
-                    }
-                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
-                        continue;
-                    }
-                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                    if (neighbor.material_type == Material::EnumType::Root
-                        || neighbor.material_type == Material::EnumType::Seed) {
-                        return { CommandResult::SUCCESS, "ROOT target valid" };
-                    }
+                if (hasOwnedNeighborWithMaterial(
+                        tree,
+                        world,
+                        command.target_pos,
+                        { Material::EnumType::Root, Material::EnumType::Seed })) {
+                    return { CommandResult::SUCCESS, "ROOT target valid" };
                 }
 
                 return { CommandResult::INVALID_TARGET,
@@ -161,26 +168,11 @@ CommandExecutionResult validateCommand(
                     return { CommandResult::INVALID_TARGET, "Seed position out of bounds" };
                 }
 
-                // Check cardinal adjacency to WOOD or LEAF (seeds grow from branches).
-                Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                bool has_branch_neighbor = false;
-                for (const auto& dir : cardinal_dirs) {
-                    Vector2i neighbor_pos = command.position + dir;
-                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        continue;
-                    }
-                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
-                        continue;
-                    }
-                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                    if (neighbor.material_type == Material::EnumType::Wood
-                        || neighbor.material_type == Material::EnumType::Leaf) {
-                        has_branch_neighbor = true;
-                        break;
-                    }
-                }
-
-                if (!has_branch_neighbor) {
+                if (!hasOwnedNeighborWithMaterial(
+                        tree,
+                        world,
+                        command.position,
+                        { Material::EnumType::Leaf, Material::EnumType::Wood })) {
                     return { CommandResult::INVALID_TARGET,
                              "SEED requires cardinal adjacency to WOOD or LEAF" };
                 }
@@ -214,18 +206,17 @@ CommandExecutionResult validateCommand(
         },
         cmd);
 }
-} // namespace
 
 CommandExecutionResult TreeCommandProcessor::validate(
     Tree& tree, World& world, const TreeCommand& cmd)
 {
-    return validateCommand(tree, world, cmd, true);
+    return treeCommandValidate(tree, world, cmd, true);
 }
 
 CommandExecutionResult TreeCommandProcessor::execute(
     Tree& tree, World& world, const TreeCommand& cmd)
 {
-    CommandExecutionResult validation = validateCommand(tree, world, cmd, false);
+    const CommandExecutionResult validation = treeCommandValidate(tree, world, cmd, false);
     if (!validation.succeeded()) {
         return validation;
     }
