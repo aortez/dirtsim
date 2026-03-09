@@ -32,6 +32,12 @@ struct CellDebug {
     bool has_granular_support_path = false;
     uint16_t generated_move_count = 0;
     uint16_t received_move_count = 0;
+    uint16_t successful_outgoing_transfer_count = 0;
+    uint16_t successful_incoming_transfer_count = 0;
+    uint16_t blocked_outgoing_transfer_count = 0;
+    float successful_outgoing_transfer_amount = 0.0f;
+    float successful_incoming_transfer_amount = 0.0f;
+    float blocked_outgoing_transfer_amount = 0.0f;
 };
 
 /**
