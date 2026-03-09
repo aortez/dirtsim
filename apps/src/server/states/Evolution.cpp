@@ -37,7 +37,6 @@ namespace State {
 
 namespace {
 constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
-constexpr size_t kTopCommandSignatureLimit = 20;
 constexpr size_t kTelemetrySignatureLimit = 6;
 constexpr size_t kFitnessDistributionBinCount = 16;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
@@ -86,57 +85,7 @@ int resolveRobustnessEvalCount(int configuredCount)
     return std::max(1, configuredCount);
 }
 
-std::optional<bool> resolveDuckClockSpawnSideOverride(
-    Evolution::WorkerResult::TaskType taskType,
-    OrganismType organismType,
-    Scenario::EnumType scenarioId,
-    int robustSampleOrdinal)
-{
-    if (taskType != Evolution::WorkerResult::TaskType::RobustnessEval) {
-        return std::nullopt;
-    }
-    if (!isDuckClockScenario(organismType, scenarioId)) {
-        return std::nullopt;
-    }
-
-    DIRTSIM_ASSERT(
-        robustSampleOrdinal > 0,
-        "Evolution: robust sample ordinal must be positive for duck clock alternation");
-    return (robustSampleOrdinal % 2) != 0;
-}
-
-std::optional<bool> resolvePrimaryDuckClockSpawnSide(
-    Evolution::WorkerResult::TaskType taskType,
-    OrganismType organismType,
-    Scenario::EnumType scenarioId,
-    int robustSampleOrdinal)
-{
-    std::optional<bool> side =
-        resolveDuckClockSpawnSideOverride(taskType, organismType, scenarioId, robustSampleOrdinal);
-    if (isDuckClockScenario(organismType, scenarioId) && !side.has_value()) {
-        side = true;
-    }
-    return side;
-}
-
-int duckClockPassCountForTask(Evolution::WorkerResult::TaskType /*taskType*/)
-{
-    return 4;
-}
-
-std::optional<bool> resolveDuckClockSpawnSideForPass(
-    std::optional<bool> primarySpawnSide, int passOrdinal)
-{
-    DIRTSIM_ASSERT(passOrdinal >= 0, "Evolution: duck clock pass ordinal must be non-negative");
-    DIRTSIM_ASSERT(
-        primarySpawnSide.has_value(),
-        "Evolution: duck clock pass requires an explicit primary spawn side");
-    const bool sideLeftFirst =
-        (passOrdinal % 2) == 0 ? primarySpawnSide.value() : !primarySpawnSide.value();
-    return sideLeftFirst;
-}
-
-uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
+uint64_t computePhenotypeHash(const EvolutionSupport::CompletedEvaluation& result)
 {
     uint64_t hash = 0;
 
@@ -367,308 +316,38 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
     return runner;
 }
 
-EvolutionSupport::FitnessEvaluation computeFitnessEvaluationForRunner(
-    const TrainingRunner& runner,
-    const TrainingRunner::Status& status,
-    OrganismType organismType,
-    const EvolutionConfig& evolutionConfig,
-    const EvolutionSupport::FitnessModelBundle& fitnessModel)
+EvolutionSupport::EvaluationIndividual makeEvaluationIndividual(
+    const Evolution::Individual& individual)
 {
-    const World* world = runner.getWorld();
-    if (organismType != OrganismType::NES_DUCK) {
-        DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
-    }
-
-    const FitnessResult result{
-        .lifespan = status.lifespan,
-        .maxEnergy = status.maxEnergy,
-        .commandsAccepted = status.commandsAccepted,
-        .commandsRejected = status.commandsRejected,
-        .idleCancels = status.idleCancels,
-        .nesRewardTotal = status.nesRewardTotal,
-        .exitedThroughDoor = status.exitedThroughDoor,
-        .exitDoorTime = status.exitDoorTime,
+    return EvolutionSupport::EvaluationIndividual{
+        .brainKind = individual.brainKind,
+        .brainVariant = individual.brainVariant,
+        .scenarioId = individual.scenarioId,
+        .genome = individual.genome,
     };
+}
 
-    const auto& treeResources = runner.getTreeResourceTotals();
-    const TreeResourceTotals* treeResourcesPtr =
-        treeResources.has_value() ? &treeResources.value() : nullptr;
-    const auto& nesFitnessDetails = runner.getNesFitnessDetails();
-    const auto* nesFitnessDetailsPtr =
-        std::holds_alternative<std::monostate>(nesFitnessDetails) ? nullptr : &nesFitnessDetails;
-
-    const FitnessContext context{
-        .result = result,
-        .organismType = organismType,
-        .worldWidth = world ? world->getData().width : 0,
-        .worldHeight = world ? world->getData().height : 0,
-        .evolutionConfig = evolutionConfig,
-        .finalOrganism = runner.getOrganism(),
-        .duckStatsSnapshot = runner.getDuckStatsSnapshot(),
-        .nesFitnessDetails = nesFitnessDetailsPtr,
-        .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
-        .treeResources = treeResourcesPtr,
-        .exitedThroughDoor = status.exitedThroughDoor,
-        .exitDoorTime = status.exitDoorTime,
+EvolutionSupport::EvaluationRequest makeEvaluationRequest(
+    const Evolution::Individual& individual, int index)
+{
+    return EvolutionSupport::EvaluationRequest{
+        .taskType = EvolutionSupport::EvaluationTaskType::GenerationEval,
+        .index = index,
+        .robustGeneration = -1,
+        .robustSampleOrdinal = 0,
+        .individual = makeEvaluationIndividual(individual),
     };
-    return fitnessModel.evaluate(context);
-}
-
-std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
-{
-    std::unordered_map<std::string, Evolution::TimerAggregate> stats;
-    const auto names = timers.getAllTimerNames();
-    stats.reserve(names.size());
-    for (const auto& name : names) {
-        Evolution::TimerAggregate entry;
-        entry.totalMs = timers.getAccumulatedTime(name);
-        entry.calls = timers.getCallCount(name);
-        stats.emplace(name, entry);
-    }
-    return stats;
-}
-
-struct EvaluationPassResult {
-    int commandsAccepted = 0;
-    int commandsRejected = 0;
-    EvolutionSupport::FitnessEvaluation fitnessEvaluation;
-    double simTime = 0.0;
-    std::vector<std::pair<std::string, int>> topCommandSignatures;
-    std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
-    std::optional<Evolution::EvaluationSnapshot> snapshot;
-    std::unordered_map<std::string, Evolution::TimerAggregate> timerStats;
-};
-
-std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
-    const TrainingRunner& runner)
-{
-    const WorldData* worldData = runner.getWorldData();
-    const std::vector<OrganismId>* organismGrid = runner.getOrganismGrid();
-    if (!worldData || !organismGrid) {
-        return std::nullopt;
-    }
-
-    Evolution::EvaluationSnapshot snapshot;
-    snapshot.worldData = *worldData;
-    snapshot.organismIds = *organismGrid;
-    snapshot.scenarioVideoFrame = runner.getScenarioVideoFrame();
-    return snapshot;
-}
-
-EvaluationPassResult buildEvaluationPassResult(
-    TrainingRunner& runner,
-    const TrainingRunner::Status& status,
-    OrganismType organismType,
-    const EvolutionConfig& evolutionConfig,
-    const EvolutionSupport::FitnessModelBundle& fitnessModel,
-    bool includeGenerationDetails)
-{
-    EvaluationPassResult pass;
-    pass.commandsAccepted = status.commandsAccepted;
-    pass.commandsRejected = status.commandsRejected;
-    pass.simTime = status.simTime;
-
-    pass.fitnessEvaluation = computeFitnessEvaluationForRunner(
-        runner, status, organismType, evolutionConfig, fitnessModel);
-    if (!includeGenerationDetails) {
-        return pass;
-    }
-
-    pass.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
-    pass.topCommandOutcomeSignatures =
-        runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
-    if (const Timers* timers = runner.getTimers()) {
-        pass.timerStats = collectTimerStats(*timers);
-    }
-    pass.snapshot = buildEvaluationSnapshotForRunner(runner);
-    return pass;
-}
-
-EvaluationPassResult runEvaluationPass(
-    const TrainingSpec& trainingSpec,
-    const TrainingRunner::Individual& individual,
-    const EvolutionConfig& evolutionConfig,
-    GenomeRepository& genomeRepository,
-    const TrainingBrainRegistry& brainRegistry,
-    const std::optional<ScenarioConfig>& scenarioConfigOverride,
-    std::optional<bool> duckClockSpawnLeftFirst,
-    const EvolutionSupport::FitnessModelBundle& fitnessModel,
-    bool includeGenerationDetails,
-    std::atomic<bool>* stopRequested)
-{
-    const TrainingRunner::Config runnerConfig{
-        .brainRegistry = brainRegistry,
-        .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
-        .duckClockSpawnRngSeed = std::nullopt,
-        .scenarioConfigOverride = scenarioConfigOverride,
-    };
-    TrainingRunner runner(
-        trainingSpec, individual, evolutionConfig, genomeRepository, runnerConfig);
-
-    // Disable light calculation for background clock/duck evaluations (never rendered).
-    if (trainingSpec.scenarioId == Scenario::EnumType::Clock && runner.getWorld()) {
-        runner.getWorld()->getPhysicsSettings().light.enabled = false;
-    }
-
-    TrainingRunner::Status status;
-    while (status.state == TrainingRunner::State::Running
-           && !(stopRequested && stopRequested->load())) {
-        status = runner.step(1);
-    }
-
-    return buildEvaluationPassResult(
-        runner,
-        status,
-        trainingSpec.organismType,
-        evolutionConfig,
-        fitnessModel,
-        includeGenerationDetails);
 }
 
 void mergeTimerStats(
-    std::unordered_map<std::string, Evolution::TimerAggregate>& target,
-    const std::unordered_map<std::string, Evolution::TimerAggregate>& source)
+    std::unordered_map<std::string, EvolutionSupport::EvaluationTimerAggregate>& target,
+    const std::unordered_map<std::string, EvolutionSupport::EvaluationTimerAggregate>& source)
 {
     for (const auto& [name, aggregate] : source) {
         auto& merged = target[name];
         merged.totalMs += aggregate.totalMs;
         merged.calls += aggregate.calls;
     }
-}
-
-Evolution::WorkerResult buildWorkerResultFromPass(
-    Evolution::WorkerResult::TaskType taskType,
-    int index,
-    int robustGeneration,
-    int robustSampleOrdinal,
-    EvaluationPassResult pass,
-    bool includeGenerationDetails)
-{
-    Evolution::WorkerResult result;
-    result.taskType = taskType;
-    result.index = index;
-    result.robustGeneration = robustGeneration;
-    result.robustSampleOrdinal = robustSampleOrdinal;
-    result.simTime = pass.simTime;
-    result.commandsAccepted = pass.commandsAccepted;
-    result.commandsRejected = pass.commandsRejected;
-    result.fitnessEvaluation = std::move(pass.fitnessEvaluation);
-
-    if (!includeGenerationDetails) {
-        return result;
-    }
-
-    result.topCommandSignatures = std::move(pass.topCommandSignatures);
-    result.topCommandOutcomeSignatures = std::move(pass.topCommandOutcomeSignatures);
-    result.snapshot = std::move(pass.snapshot);
-    result.timerStats = std::move(pass.timerStats);
-    return result;
-}
-
-std::vector<std::pair<std::string, int>> mergeCommandSignatures(
-    const std::vector<std::pair<std::string, int>>& first,
-    const std::vector<std::pair<std::string, int>>& second)
-{
-    std::unordered_map<std::string, int> counts;
-    counts.reserve(first.size() + second.size());
-
-    const auto accumulate = [&counts](const std::vector<std::pair<std::string, int>>& entries) {
-        for (const auto& [signature, count] : entries) {
-            if (count <= 0) {
-                continue;
-            }
-            counts[signature] += count;
-        }
-    };
-    accumulate(first);
-    accumulate(second);
-
-    std::vector<std::pair<std::string, int>> merged;
-    merged.reserve(counts.size());
-    for (const auto& [signature, count] : counts) {
-        merged.emplace_back(signature, count);
-    }
-
-    std::sort(merged.begin(), merged.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.second != rhs.second) {
-            return lhs.second > rhs.second;
-        }
-        return lhs.first < rhs.first;
-    });
-    if (merged.size() > kTopCommandSignatureLimit) {
-        merged.resize(kTopCommandSignatureLimit);
-    }
-    return merged;
-}
-
-const Evolution::WorkerResult& selectRepresentativeDuckClockPass(
-    const Evolution::WorkerResult& first,
-    const Evolution::WorkerResult& second,
-    double targetFitness)
-{
-    const double firstDistance = std::abs(first.fitnessEvaluation.totalFitness - targetFitness);
-    const double secondDistance = std::abs(second.fitnessEvaluation.totalFitness - targetFitness);
-    if (firstDistance < secondDistance) {
-        return first;
-    }
-    if (secondDistance < firstDistance) {
-        return second;
-    }
-    return first.fitnessEvaluation.totalFitness <= second.fitnessEvaluation.totalFitness ? first
-                                                                                         : second;
-}
-
-Evolution::WorkerResult mergeDuckClockGenerationPasses(
-    const EvolutionSupport::FitnessModelBundle& fitnessModel,
-    const Evolution::WorkerResult& primaryPassOne,
-    const Evolution::WorkerResult& oppositePassOne,
-    const Evolution::WorkerResult& primaryPassTwo,
-    const Evolution::WorkerResult& oppositePassTwo)
-{
-    const std::array<EvolutionSupport::FitnessEvaluation, 4> passEvaluations{
-        primaryPassOne.fitnessEvaluation,
-        oppositePassOne.fitnessEvaluation,
-        primaryPassTwo.fitnessEvaluation,
-        oppositePassTwo.fitnessEvaluation,
-    };
-    const EvolutionSupport::FitnessEvaluation mergedEvaluation =
-        fitnessModel.mergePasses(passEvaluations);
-    const double finalFitness = mergedEvaluation.totalFitness;
-    const double primarySideAverage = 0.5
-        * (primaryPassOne.fitnessEvaluation.totalFitness
-           + primaryPassTwo.fitnessEvaluation.totalFitness);
-    const double oppositeSideAverage = 0.5
-        * (oppositePassOne.fitnessEvaluation.totalFitness
-           + oppositePassTwo.fitnessEvaluation.totalFitness);
-    const bool usePrimarySide = primarySideAverage <= oppositeSideAverage;
-
-    const Evolution::WorkerResult& chosenFirst = usePrimarySide ? primaryPassOne : oppositePassOne;
-    const Evolution::WorkerResult& chosenSecond = usePrimarySide ? primaryPassTwo : oppositePassTwo;
-    const Evolution::WorkerResult& representative =
-        selectRepresentativeDuckClockPass(chosenFirst, chosenSecond, finalFitness);
-
-    Evolution::WorkerResult merged;
-    merged.taskType = primaryPassOne.taskType;
-    merged.index = primaryPassOne.index;
-    merged.robustGeneration = primaryPassOne.robustGeneration;
-    merged.robustSampleOrdinal = primaryPassOne.robustSampleOrdinal;
-    merged.fitnessEvaluation = mergedEvaluation;
-    merged.simTime = primaryPassOne.simTime + oppositePassOne.simTime + primaryPassTwo.simTime
-        + oppositePassTwo.simTime;
-
-    merged.commandsAccepted = chosenFirst.commandsAccepted + chosenSecond.commandsAccepted;
-    merged.commandsRejected = chosenFirst.commandsRejected + chosenSecond.commandsRejected;
-    merged.topCommandSignatures =
-        mergeCommandSignatures(chosenFirst.topCommandSignatures, chosenSecond.topCommandSignatures);
-    merged.topCommandOutcomeSignatures = mergeCommandSignatures(
-        chosenFirst.topCommandOutcomeSignatures, chosenSecond.topCommandOutcomeSignatures);
-    merged.snapshot = representative.snapshot;
-
-    mergeTimerStats(merged.timerStats, primaryPassOne.timerStats);
-    mergeTimerStats(merged.timerStats, oppositePassOne.timerStats);
-    mergeTimerStats(merged.timerStats, primaryPassTwo.timerStats);
-    mergeTimerStats(merged.timerStats, oppositePassTwo.timerStats);
-    return merged;
 }
 
 const char* toProgressSource(Evolution::IndividualOrigin origin)
@@ -690,7 +369,7 @@ const char* toProgressSource(Evolution::IndividualOrigin origin)
 
 void broadcastTrainingBestSnapshot(
     StateMachine& dsm,
-    Evolution::EvaluationSnapshot snapshot,
+    EvolutionSupport::EvaluationSnapshot snapshot,
     const EvolutionSupport::FitnessEvaluation& fitnessEvaluation,
     const EvolutionSupport::FitnessModelBundle& fitnessModel,
     int generation,
@@ -773,17 +452,6 @@ GenomeRepository::StoreByHashResult storeManagedGenome(
 }
 } // namespace
 
-void Evolution::VisibleEvaluationState::reset()
-{
-    runner.reset();
-    queue.clear();
-    evalIndex = -1;
-    evalIsRobustness = false;
-    duckPassResults.clear();
-    duckPrimarySpawnLeftFirst.reset();
-    robustSampleOrdinal = 0;
-}
-
 void Evolution::BestPlaybackState::reset()
 {
     individual.reset();
@@ -832,8 +500,6 @@ void Evolution::RobustnessPassState::reset()
     targetEvalCount = 0;
     pendingSamples = 0;
     completedSamples = 0;
-    visibleSamplesRemaining = 0;
-    nextVisibleSampleOrdinal = 1;
     samples.clear();
 }
 
@@ -852,7 +518,6 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
-    lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
@@ -908,9 +573,8 @@ void Evolution::onEnter(StateMachine& dsm)
     }
     genomePoolId_ = scenarioMeta ? scenarioMeta->genomePoolId : GenomePoolId::DirtSim;
 
-    visible_.reset();
     bestPlayback_.reset();
-    workerState_ = std::make_unique<WorkerState>();
+    executor_.reset();
 
     // Seed RNG.
     rng.seed(std::random_device{}());
@@ -931,14 +595,23 @@ void Evolution::onEnter(StateMachine& dsm)
     lastCpuSampleTime_ = {};
     cpuMetrics_->get(); // Prime the delta with an initial reading.
 
-    startWorkers(dsm);
+    executor_ = std::make_unique<EvolutionSupport::EvaluationExecutor>(
+        EvolutionSupport::EvaluationExecutor::Config{
+            .trainingSpec = trainingSpec,
+            .brainRegistry = brainRegistry_,
+            .genomeRepository = &dsm.getGenomeRepository(),
+            .fitnessModel = fitnessModel_,
+        });
+    executor_->start(evolutionConfig.maxParallelEvaluations);
     queueGenerationTasks();
 }
 
 void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
-    stopWorkers();
+    if (executor_) {
+        executor_->stop();
+    }
     bestPlayback_.reset();
     cpuMetrics_.reset();
     cpuSamples_.clear();
@@ -975,8 +648,27 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 
     drainResults(dsm);
     if (!trainingComplete_) {
-        startNextVisibleEvaluation(dsm);
-        stepVisibleEvaluation(dsm);
+        if (executor_) {
+            executor_->queuedVisibleExecutionConfigSet(evolutionConfig, scenarioConfigOverride_);
+        }
+        const auto visibleTick = executor_ ? executor_->visibleTick(
+                                                 std::chrono::steady_clock::now(),
+                                                 dsm.getUserSettings().uiTraining.streamIntervalMs)
+                                           : EvolutionSupport::VisibleTickResult{};
+        if (visibleTick.frame.has_value()) {
+            dsm.broadcastRenderMessage(
+                visibleTick.frame->worldData,
+                visibleTick.frame->organismIds,
+                visibleTick.frame->scenarioId,
+                visibleTick.frame->scenarioConfig,
+                visibleTick.frame->scenarioVideoFrame);
+        }
+        for (auto& result : visibleTick.completed) {
+            processResult(dsm, result);
+        }
+        if (visibleTick.progressed || !visibleTick.completed.empty()) {
+            broadcastProgress(dsm);
+        }
         stepBestPlayback(dsm);
     }
 
@@ -992,7 +684,10 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Stopping at generation {}, eval {}", generation, currentEval);
-    stopWorkers();
+    if (executor_) {
+        executor_->stop();
+    }
+    bestPlayback_.clearRunner();
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
@@ -1003,11 +698,9 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
     using Response = Api::TimerStatsGet::Response;
 
     // Include in-flight visible runner timers so callers can profile active evaluations.
-    std::unordered_map<std::string, TimerAggregate> mergedStats = timerStatsAggregate_;
-    if (visible_.runner) {
-        if (const Timers* timers = visible_.runner->getTimers()) {
-            mergeTimerStats(mergedStats, collectTimerStats(*timers));
-        }
+    auto mergedStats = timerStatsAggregate_;
+    if (executor_) {
+        mergeTimerStats(mergedStats, executor_->visibleTimerStatsCollect());
     }
 
     Api::TimerStatsGet::Okay okay;
@@ -1027,7 +720,10 @@ Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/
 Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 {
     LOG_INFO(State, "Evolution: Exit received, shutting down");
-    stopWorkers();
+    if (executor_) {
+        executor_->stop();
+    }
+    bestPlayback_.clearRunner();
     cwc.sendResponse(Api::Exit::Response::okay(std::monostate{}));
     return Shutdown{};
 }
@@ -1126,421 +822,46 @@ void Evolution::initializePopulation(StateMachine& dsm)
     sumFitnessThisGen_ = 0.0;
     pendingBest_.reset();
     robustnessPass_.reset();
-    visible_.reset();
-    visibleScenarioConfig_ = Config::Empty{};
-    visibleScenarioId_ = trainingSpec.scenarioId;
     bestPlayback_.reset();
-}
-
-void Evolution::startWorkers(StateMachine& dsm)
-{
-    if (!workerState_) {
-        workerState_ = std::make_unique<WorkerState>();
-    }
-
-    workerState_->trainingSpec = trainingSpec;
-    workerState_->evolutionConfig = evolutionConfig;
-    workerState_->scenarioConfigOverride = scenarioConfigOverride_;
-    workerState_->brainRegistry = brainRegistry_;
-    workerState_->genomeRepository = &dsm.getGenomeRepository();
-    workerState_->fitnessModel = fitnessModel_;
-
-    workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
-    workerState_->allowedConcurrency.store(workerState_->backgroundWorkerCount);
-    workerState_->activeEvaluations.store(0);
-    if (workerState_->backgroundWorkerCount <= 0) {
-        return;
-    }
-
-    workerState_->workers.reserve(workerState_->backgroundWorkerCount);
-    WorkerState* state = workerState_.get();
-    for (int i = 0; i < workerState_->backgroundWorkerCount; ++i) {
-        workerState_->workers.emplace_back([state]() {
-            while (true) {
-                WorkerTask task;
-                {
-                    std::unique_lock<std::mutex> lock(state->taskMutex);
-                    state->taskCv.wait(lock, [state]() {
-                        return state->stopRequested
-                            || (!state->taskQueue.empty()
-                                && state->activeEvaluations.load()
-                                    < state->allowedConcurrency.load());
-                    });
-                    if (state->stopRequested) {
-                        return;
-                    }
-                    task = std::move(state->taskQueue.front());
-                    state->taskQueue.pop_front();
-                    state->activeEvaluations.fetch_add(1);
-                }
-
-                WorkerResult result = runEvaluationTask(task, *state);
-
-                state->activeEvaluations.fetch_sub(1);
-                state->taskCv.notify_one(); // Wake a worker waiting for a concurrency slot.
-
-                if (state->stopRequested) {
-                    return;
-                }
-
-                {
-                    std::lock_guard<std::mutex> lock(state->resultMutex);
-                    state->resultQueue.push_back(std::move(result));
-                }
-            }
-        });
-    }
-}
-
-void Evolution::stopWorkers()
-{
-    if (!workerState_) {
-        return;
-    }
-
-    workerState_->stopRequested = true;
-    workerState_->taskCv.notify_all();
-
-    for (auto& worker : workerState_->workers) {
-        if (worker.joinable()) {
-            worker.join();
-        }
-    }
-    workerState_->workers.clear();
-    workerState_->backgroundWorkerCount = 0;
-
-    {
-        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
-        workerState_->taskQueue.clear();
-    }
-    {
-        std::lock_guard<std::mutex> lock(workerState_->resultMutex);
-        workerState_->resultQueue.clear();
-    }
-
-    visible_.reset();
-    bestPlayback_.clearRunner();
 }
 
 void Evolution::queueGenerationTasks()
 {
-    visible_.queue.clear();
-
-    if (!workerState_) {
-        workerState_ = std::make_unique<WorkerState>();
+    if (!executor_) {
+        return;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
-        workerState_->taskQueue.clear();
-
-        const int totalWorkers = std::max(1, evolutionConfig.maxParallelEvaluations);
-        for (int i = 0; i < static_cast<int>(population.size()); ++i) {
-            if (totalWorkers == 1 || (i % totalWorkers) == 0) {
-                visible_.queue.push_back(i);
-            }
-            else {
-                workerState_->taskQueue.push_back(
-                    WorkerTask{ .index = i, .individual = population[i] });
-            }
-        }
+    std::vector<EvolutionSupport::EvaluationRequest> requests;
+    requests.reserve(population.size());
+    for (int i = 0; i < static_cast<int>(population.size()); ++i) {
+        requests.push_back(makeEvaluationRequest(population[i], i));
     }
 
-    workerState_->taskCv.notify_all();
+    executor_->generationBatchSubmit(requests, evolutionConfig, scenarioConfigOverride_);
 }
 
 void Evolution::drainResults(StateMachine& dsm)
 {
-    std::deque<WorkerResult> results;
-    if (!workerState_) {
+    if (!executor_) {
         return;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(workerState_->resultMutex);
-        results.swap(workerState_->resultQueue);
-    }
-
+    std::vector<EvolutionSupport::CompletedEvaluation> results = executor_->completedDrain();
     for (auto& result : results) {
-        processResult(dsm, std::move(result));
+        processResult(dsm, result);
     }
 
     if (!results.empty()) {
         broadcastProgress(dsm);
     }
 }
-
-void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
-{
-    if (visible_.runner) {
-        return;
-    }
-
-    if (robustnessPass_.active && robustnessPass_.visibleSamplesRemaining > 0) {
-        if (robustnessPass_.index < 0
-            || robustnessPass_.index >= static_cast<int>(population.size())) {
-            return;
-        }
-
-        visible_.evalIndex = robustnessPass_.index;
-        visible_.evalIsRobustness = true;
-        visible_.duckPassResults.clear();
-        visible_.duckPrimarySpawnLeftFirst.reset();
-        visible_.robustSampleOrdinal = robustnessPass_.nextVisibleSampleOrdinal++;
-        robustnessPass_.visibleSamplesRemaining--;
-
-        const Individual& individual = population[visible_.evalIndex];
-        const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
-            WorkerResult::TaskType::RobustnessEval,
-            trainingSpec.organismType,
-            individual.scenarioId,
-            visible_.robustSampleOrdinal);
-        visible_.duckPrimarySpawnLeftFirst = spawnSideOverride;
-        const TrainingRunner::Config runnerConfig{
-            .brainRegistry = brainRegistry_,
-            .duckClockSpawnLeftFirst = spawnSideOverride,
-            .duckClockSpawnRngSeed = std::nullopt,
-            .scenarioConfigOverride = scenarioConfigOverride_,
-        };
-        visible_.runner = std::make_unique<TrainingRunner>(
-            trainingSpec,
-            makeRunnerIndividual(individual),
-            evolutionConfig,
-            dsm.getGenomeRepository(),
-            runnerConfig);
-        visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
-        visibleScenarioId_ = individual.scenarioId;
-        return;
-    }
-
-    if (robustnessPass_.active || visible_.queue.empty()) {
-        return;
-    }
-
-    visible_.evalIndex = visible_.queue.front();
-    visible_.queue.pop_front();
-    visible_.evalIsRobustness = false;
-    visible_.duckPassResults.clear();
-    visible_.duckPrimarySpawnLeftFirst.reset();
-    visible_.robustSampleOrdinal = 0;
-
-    const Individual& individual = population[visible_.evalIndex];
-    const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
-        WorkerResult::TaskType::GenerationEval,
-        trainingSpec.organismType,
-        individual.scenarioId,
-        visible_.robustSampleOrdinal);
-    visible_.duckPrimarySpawnLeftFirst = spawnSideOverride;
-    const TrainingRunner::Config runnerConfig{
-        .brainRegistry = brainRegistry_,
-        .duckClockSpawnLeftFirst = spawnSideOverride,
-        .duckClockSpawnRngSeed = std::nullopt,
-        .scenarioConfigOverride = scenarioConfigOverride_,
-    };
-
-    visible_.runner = std::make_unique<TrainingRunner>(
-        trainingSpec,
-        makeRunnerIndividual(individual),
-        evolutionConfig,
-        dsm.getGenomeRepository(),
-        runnerConfig);
-
-    visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
-    visibleScenarioId_ = individual.scenarioId;
-}
-
-void Evolution::stepVisibleEvaluation(StateMachine& dsm)
-{
-    if (!visible_.runner) {
-        return;
-    }
-
-    const TrainingRunner::Status status = visible_.runner->step(1);
-
-    const auto now = std::chrono::steady_clock::now();
-    bool shouldBroadcast = true;
-    const int streamIntervalMs = dsm.getUserSettings().uiTraining.streamIntervalMs;
-    if (streamIntervalMs > 0) {
-        const auto interval = std::chrono::milliseconds(streamIntervalMs);
-        if (now - lastStreamBroadcastTime_ < interval) {
-            shouldBroadcast = false;
-        }
-        else {
-            lastStreamBroadcastTime_ = now;
-        }
-    }
-    else {
-        lastStreamBroadcastTime_ = now;
-    }
-
-    if (shouldBroadcast) {
-        const WorldData* worldData = visible_.runner->getWorldData();
-        const std::vector<OrganismId>* organismGrid = visible_.runner->getOrganismGrid();
-        DIRTSIM_ASSERT(worldData != nullptr, "Evolution: Visible runner missing WorldData");
-        DIRTSIM_ASSERT(organismGrid != nullptr, "Evolution: Visible runner missing organism grid");
-
-        const auto& videoFrame = visible_.runner->getScenarioVideoFrame();
-        if (!visible_.runner->isNesScenario() || videoFrame.has_value()) {
-            dsm.broadcastRenderMessage(
-                *worldData, *organismGrid, visibleScenarioId_, visibleScenarioConfig_, videoFrame);
-        }
-    }
-
-    const bool evalComplete = status.state != TrainingRunner::State::Running;
-    if (status.state != TrainingRunner::State::Running) {
-        const WorkerResult::TaskType taskType = visible_.evalIsRobustness
-            ? WorkerResult::TaskType::RobustnessEval
-            : WorkerResult::TaskType::GenerationEval;
-        const bool includeGenerationDetails = !visible_.evalIsRobustness;
-        EvaluationPassResult completedPass = buildEvaluationPassResult(
-            *visible_.runner,
-            status,
-            trainingSpec.organismType,
-            evolutionConfig,
-            fitnessModel_,
-            includeGenerationDetails);
-        WorkerResult passResult = buildWorkerResultFromPass(
-            taskType,
-            visible_.evalIndex,
-            visible_.evalIsRobustness ? robustnessPass_.generation : -1,
-            visible_.evalIsRobustness ? visible_.robustSampleOrdinal : 0,
-            std::move(completedPass),
-            includeGenerationDetails);
-
-        const Individual& individual = population[visible_.evalIndex];
-        const bool duckClockVisibleEval =
-            isDuckClockScenario(trainingSpec.organismType, individual.scenarioId);
-        if (duckClockVisibleEval) {
-            visible_.duckPassResults.push_back(std::move(passResult));
-            const int passCount = duckClockPassCountForTask(taskType);
-            if (static_cast<int>(visible_.duckPassResults.size()) < passCount) {
-                const int nextPassOrdinal = static_cast<int>(visible_.duckPassResults.size());
-                const std::optional<bool> spawnSide = resolveDuckClockSpawnSideForPass(
-                    visible_.duckPrimarySpawnLeftFirst, nextPassOrdinal);
-                const TrainingRunner::Config runnerConfig{
-                    .brainRegistry = brainRegistry_,
-                    .duckClockSpawnLeftFirst = spawnSide,
-                    .duckClockSpawnRngSeed = std::nullopt,
-                    .scenarioConfigOverride = scenarioConfigOverride_,
-                };
-                visible_.runner = std::make_unique<TrainingRunner>(
-                    trainingSpec,
-                    makeRunnerIndividual(individual),
-                    evolutionConfig,
-                    dsm.getGenomeRepository(),
-                    runnerConfig);
-                visibleScenarioConfig_ = visible_.runner->getScenarioConfig();
-                visibleScenarioId_ = individual.scenarioId;
-                if (shouldBroadcast || evalComplete) {
-                    broadcastProgress(dsm);
-                }
-                return;
-            }
-
-            DIRTSIM_ASSERT(
-                passCount == 4 && visible_.duckPassResults.size() == 4,
-                "Evolution: duck clock evaluation must complete 4 passes");
-            WorkerResult result = mergeDuckClockGenerationPasses(
-                fitnessModel_,
-                visible_.duckPassResults[0],
-                visible_.duckPassResults[1],
-                visible_.duckPassResults[2],
-                visible_.duckPassResults[3]);
-
-            processResult(dsm, std::move(result));
-        }
-        else {
-            processResult(dsm, std::move(passResult));
-        }
-
-        visible_.runner.reset();
-        visible_.evalIndex = -1;
-        visible_.evalIsRobustness = false;
-        visible_.duckPassResults.clear();
-        visible_.duckPrimarySpawnLeftFirst.reset();
-        visible_.robustSampleOrdinal = 0;
-    }
-
-    if (shouldBroadcast || evalComplete) {
-        broadcastProgress(dsm);
-    }
-}
-
-Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, WorkerState& state)
-{
-    DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
-    DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
-
-    const bool includeGenerationDetails = task.taskType == WorkerResult::TaskType::GenerationEval;
-    const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
-        task.taskType,
-        state.trainingSpec.organismType,
-        task.individual.scenarioId,
-        task.robustSampleOrdinal);
-    EvaluationPassResult primaryPass = runEvaluationPass(
-        state.trainingSpec,
-        makeRunnerIndividual(task.individual),
-        state.evolutionConfig,
-        *state.genomeRepository,
-        state.brainRegistry,
-        state.scenarioConfigOverride,
-        primarySpawnSide,
-        state.fitnessModel,
-        includeGenerationDetails,
-        &state.stopRequested);
-
-    WorkerResult result = buildWorkerResultFromPass(
-        task.taskType,
-        task.index,
-        task.robustGeneration,
-        task.robustSampleOrdinal,
-        std::move(primaryPass),
-        includeGenerationDetails);
-
-    if (!isDuckClockScenario(state.trainingSpec.organismType, task.individual.scenarioId)) {
-        return result;
-    }
-
-    const int passCount = duckClockPassCountForTask(task.taskType);
-    std::vector<WorkerResult> passResults;
-    passResults.reserve(static_cast<size_t>(passCount));
-    passResults.push_back(std::move(result));
-
-    for (int passOrdinal = 1; passOrdinal < passCount; ++passOrdinal) {
-        const std::optional<bool> spawnSide =
-            resolveDuckClockSpawnSideForPass(primarySpawnSide, passOrdinal);
-        EvaluationPassResult pass = runEvaluationPass(
-            state.trainingSpec,
-            makeRunnerIndividual(task.individual),
-            state.evolutionConfig,
-            *state.genomeRepository,
-            state.brainRegistry,
-            state.scenarioConfigOverride,
-            spawnSide,
-            state.fitnessModel,
-            includeGenerationDetails,
-            &state.stopRequested);
-        passResults.push_back(buildWorkerResultFromPass(
-            task.taskType,
-            task.index,
-            task.robustGeneration,
-            task.robustSampleOrdinal,
-            std::move(pass),
-            includeGenerationDetails));
-    }
-
-    DIRTSIM_ASSERT(passCount == 4, "Evolution: duck clock pass count must be 4");
-    return mergeDuckClockGenerationPasses(
-        state.fitnessModel, passResults[0], passResults[1], passResults[2], passResults[3]);
-}
-
-void Evolution::processResult(StateMachine& dsm, WorkerResult result)
+void Evolution::processResult(StateMachine& dsm, EvolutionSupport::CompletedEvaluation result)
 {
     if (result.index < 0 || result.index >= static_cast<int>(population.size())) {
         return;
     }
 
-    if (result.taskType == WorkerResult::TaskType::RobustnessEval) {
+    if (result.taskType == EvolutionSupport::EvaluationTaskType::RobustnessEval) {
         handleRobustnessSampleResult(dsm, result);
         maybeCompleteGeneration(dsm);
         return;
@@ -1736,19 +1057,15 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         resolveRobustnessEvalCount(evolutionConfig.robustFitnessEvaluationCount);
     robustnessPass_.completedSamples = 0;
     robustnessPass_.pendingSamples = robustnessPass_.targetEvalCount;
-    robustnessPass_.visibleSamplesRemaining = 0;
-    robustnessPass_.nextVisibleSampleOrdinal = 1;
     robustnessPass_.samples.clear();
 
     pendingBest_.robustness = false;
 
-    const bool hasWorkerPool = workerState_ && workerState_->backgroundWorkerCount > 0;
-    if (robustnessPass_.pendingSamples > 0) {
-        robustnessPass_.visibleSamplesRemaining =
-            hasWorkerPool ? 1 : robustnessPass_.pendingSamples;
-    }
-    const int workerSampleCount =
-        robustnessPass_.pendingSamples - robustnessPass_.visibleSamplesRemaining;
+    const bool hasWorkerPool = executor_ && executor_->backgroundWorkerCountGet() > 0;
+    const int visibleSampleCount = robustnessPass_.pendingSamples > 0
+        ? (hasWorkerPool ? 1 : robustnessPass_.pendingSamples)
+        : 0;
+    const int workerSampleCount = robustnessPass_.pendingSamples - visibleSampleCount;
 
     LOG_INFO(
         State,
@@ -1758,32 +1075,28 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         robustnessPass_.index,
         robustnessPass_.targetEvalCount,
         robustnessPass_.pendingSamples,
-        robustnessPass_.visibleSamplesRemaining,
+        visibleSampleCount,
         workerSampleCount);
 
-    if (workerSampleCount <= 0) {
+    if (!executor_ || robustnessPass_.pendingSamples <= 0) {
         return;
     }
 
-    const int firstWorkerSampleOrdinal = 1 + robustnessPass_.visibleSamplesRemaining;
-    {
-        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
-        for (int i = 0; i < workerSampleCount; ++i) {
-            workerState_->taskQueue.push_back(
-                WorkerTask{
-                    .taskType = WorkerResult::TaskType::RobustnessEval,
-                    .index = robustnessPass_.index,
-                    .robustGeneration = robustnessPass_.generation,
-                    .robustSampleOrdinal = firstWorkerSampleOrdinal + i,
-                    .individual = candidate,
-                });
-        }
-    }
-
-    workerState_->taskCv.notify_all();
+    executor_->robustnessPassSubmit(
+        EvolutionSupport::EvaluationRequest{
+            .taskType = EvolutionSupport::EvaluationTaskType::RobustnessEval,
+            .index = robustnessPass_.index,
+            .robustGeneration = robustnessPass_.generation,
+            .robustSampleOrdinal = 0,
+            .individual = makeEvaluationIndividual(candidate),
+        },
+        robustnessPass_.pendingSamples,
+        evolutionConfig,
+        scenarioConfigOverride_);
 }
 
-void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result)
+void Evolution::handleRobustnessSampleResult(
+    StateMachine& dsm, const EvolutionSupport::CompletedEvaluation& result)
 {
     if (!robustnessPass_.active) {
         return;
@@ -2320,7 +1633,7 @@ void Evolution::captureLastGenerationTelemetry()
 
 void Evolution::adjustConcurrency()
 {
-    if (evolutionConfig.targetCpuPercent <= 0 || !workerState_ || cpuSamples_.empty()) {
+    if (evolutionConfig.targetCpuPercent <= 0 || !executor_ || cpuSamples_.empty()) {
         return;
     }
 
@@ -2334,13 +1647,13 @@ void Evolution::adjustConcurrency()
     const double target = static_cast<double>(evolutionConfig.targetCpuPercent);
     constexpr double kTolerance = 5.0;
 
-    const int current = workerState_->allowedConcurrency.load();
+    const int current = executor_->allowedConcurrencyGet();
     int adjusted = current;
 
     if (avgCpu > target + kTolerance && current > 1) {
         adjusted = current - 1;
     }
-    else if (avgCpu < target - kTolerance && current < workerState_->backgroundWorkerCount) {
+    else if (avgCpu < target - kTolerance && current < executor_->backgroundWorkerCountGet()) {
         adjusted = current + 1;
     }
 
@@ -2352,8 +1665,7 @@ void Evolution::adjustConcurrency()
             evolutionConfig.targetCpuPercent,
             current,
             adjusted);
-        workerState_->allowedConcurrency.store(adjusted);
-        workerState_->taskCv.notify_all(); // Wake workers to re-evaluate concurrency predicate.
+        executor_->allowedConcurrencySet(adjusted);
     }
 }
 
@@ -2476,7 +1788,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     // Calculate total training time.
     double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
 
-    const double visibleSimTime = visible_.runner ? visible_.runner->getSimTime() : 0.0;
+    const double visibleSimTime = executor_ ? executor_->visibleSimTimeGet() : 0.0;
     double cumulative = cumulativeSimTime_ + visibleSimTime;
 
     // Speedup factor = how much faster than real-time.
@@ -2501,8 +1813,8 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
     double latestCpu = lastCpuPercent_;
-    if (workerState_) {
-        activeParallelism = workerState_->allowedConcurrency.load() + 1; // +1 for main thread.
+    if (executor_) {
+        activeParallelism = executor_->allowedConcurrencyGet() + 1; // +1 for main thread.
     }
 
     const size_t totalGenomeCount = repo.count();

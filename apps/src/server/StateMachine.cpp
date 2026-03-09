@@ -538,21 +538,14 @@ void applyScenarioConfigUpdatesToActiveState(
                 }
 
                 state.scenarioConfigOverride_ = *config;
-                if (state.workerState_) {
-                    state.workerState_->scenarioConfigOverride = state.scenarioConfigOverride_;
-                }
-
-                if (state.visible_.runner
-                    && state.visibleScenarioId_ == state.trainingSpec.scenarioId) {
-                    const auto result = state.visible_.runner->setScenarioConfig(*config);
-                    if (result.isError()) {
+                if (state.executor_) {
+                    const auto error = state.executor_->scenarioConfigOverrideSet(
+                        state.scenarioConfigOverride_, state.trainingSpec.scenarioId);
+                    if (error.has_value()) {
                         LOG_WARN(
                             State,
                             "Failed to apply scenario config override to visible runner: {}",
-                            result.errorValue());
-                    }
-                    else {
-                        state.visibleScenarioConfig_ = state.visible_.runner->getScenarioConfig();
+                            error.value());
                     }
                 }
 

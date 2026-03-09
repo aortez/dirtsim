@@ -16,20 +16,16 @@
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
+#include "server/evolution/EvaluationExecutor.h"
 #include "server/evolution/FitnessEvaluation.h"
 #include "server/evolution/FitnessModelBundle.h"
 
-#include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
-#include <deque>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <random>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -63,17 +59,6 @@ struct Evolution {
         std::optional<Genome> genome;
         bool allowsMutation = false;
         std::optional<double> parentFitness;
-    };
-
-    struct EvaluationSnapshot {
-        WorldData worldData;
-        std::vector<OrganismId> organismIds;
-        std::optional<ScenarioVideoFrame> scenarioVideoFrame;
-    };
-
-    struct TimerAggregate {
-        double totalMs = 0.0;
-        uint32_t calls = 0;
     };
 
     struct MutationOutcomeStats {
@@ -121,71 +106,8 @@ struct Evolution {
     // RNG.
     std::mt19937 rng;
 
-    struct WorkerResult {
-        enum class TaskType : uint8_t {
-            GenerationEval = 0,
-            RobustnessEval = 1,
-        };
-
-        TaskType taskType = TaskType::GenerationEval;
-        int index = -1;
-        int robustGeneration = -1;
-        int robustSampleOrdinal = 0;
-        EvolutionSupport::FitnessEvaluation fitnessEvaluation;
-        double simTime = 0.0;
-        int commandsAccepted = 0;
-        int commandsRejected = 0;
-        std::vector<std::pair<std::string, int>> topCommandSignatures;
-        std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
-        std::optional<EvaluationSnapshot> snapshot;
-        std::unordered_map<std::string, TimerAggregate> timerStats;
-    };
-
-    struct WorkerTask {
-        WorkerResult::TaskType taskType = WorkerResult::TaskType::GenerationEval;
-        int index = -1;
-        int robustGeneration = -1;
-        int robustSampleOrdinal = 0;
-        Individual individual;
-    };
-
-    struct WorkerState {
-        int backgroundWorkerCount = 0;
-        std::vector<std::thread> workers;
-        std::deque<WorkerTask> taskQueue;
-        std::mutex taskMutex;
-        std::condition_variable taskCv;
-        std::deque<WorkerResult> resultQueue;
-        std::mutex resultMutex;
-        std::atomic<bool> stopRequested{ false };
-        std::atomic<int> allowedConcurrency{ 0 }; // Max concurrent background evaluations.
-        std::atomic<int> activeEvaluations{ 0 };  // Currently running evaluations.
-        TrainingSpec trainingSpec;
-        EvolutionConfig evolutionConfig;
-        std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
-        TrainingBrainRegistry brainRegistry;
-        GenomeRepository* genomeRepository = nullptr;
-        EvolutionSupport::FitnessModelBundle fitnessModel;
-    };
-
-    struct VisibleEvaluationState {
-        std::unique_ptr<TrainingRunner> runner;
-        std::deque<int> queue;
-        int evalIndex = -1;
-        bool evalIsRobustness = false;
-        std::vector<WorkerResult> duckPassResults;
-        std::optional<bool> duckPrimarySpawnLeftFirst = std::nullopt;
-        int robustSampleOrdinal = 0;
-
-        void reset();
-    };
-
-    VisibleEvaluationState visible_;
-    ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
-    Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
     std::optional<ScenarioConfig> scenarioConfigOverride_ = std::nullopt;
-
-    std::unique_ptr<WorkerState> workerState_;
+    std::unique_ptr<EvolutionSupport::EvaluationExecutor> executor_;
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
@@ -195,12 +117,12 @@ struct Evolution {
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
-    std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackStepTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
-    std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;
+    std::unordered_map<std::string, EvolutionSupport::EvaluationTimerAggregate>
+        timerStatsAggregate_;
 
     TrainingBrainRegistry brainRegistry_;
     EvolutionSupport::FitnessModelBundle fitnessModel_;
@@ -311,7 +233,7 @@ private:
         int robustnessGeneration = -1;
         int robustnessIndex = -1;
         double robustnessFirstSample = 0.0;
-        std::optional<EvaluationSnapshot> snapshot;
+        std::optional<EvolutionSupport::EvaluationSnapshot> snapshot;
         std::optional<EvolutionSupport::FitnessEvaluation> snapshotFitnessEvaluation;
         int snapshotCommandsAccepted = 0;
         int snapshotCommandsRejected = 0;
@@ -331,8 +253,6 @@ private:
         int targetEvalCount = 0;
         int pendingSamples = 0;
         int completedSamples = 0;
-        int visibleSamplesRemaining = 0;
-        int nextVisibleSampleOrdinal = 1;
         std::vector<double> samples;
 
         void reset();
@@ -341,19 +261,15 @@ private:
     RobustnessPassState robustnessPass_;
 
     void initializePopulation(StateMachine& dsm);
-    void startWorkers(StateMachine& dsm);
-    void stopWorkers();
     void queueGenerationTasks();
     void drainResults(StateMachine& dsm);
-    void startNextVisibleEvaluation(StateMachine& dsm);
-    void stepVisibleEvaluation(StateMachine& dsm);
-    static WorkerResult runEvaluationTask(const WorkerTask& task, WorkerState& state);
     void captureLastGenerationFitnessDistribution();
     void captureLastGenerationTelemetry();
-    void processResult(StateMachine& dsm, WorkerResult result);
+    void processResult(StateMachine& dsm, EvolutionSupport::CompletedEvaluation result);
     void maybeCompleteGeneration(StateMachine& dsm);
     void startRobustnessPass(StateMachine& dsm);
-    void handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result);
+    void handleRobustnessSampleResult(
+        StateMachine& dsm, const EvolutionSupport::CompletedEvaluation& result);
     void finalizeRobustnessPass(StateMachine& dsm);
     void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
