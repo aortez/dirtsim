@@ -285,6 +285,11 @@ const GridOfCells& World::getGrid() const
     return *pImpl->grid_;
 }
 
+const WorldRegionActivityTracker& World::getRegionActivityTracker() const
+{
+    return pImpl->region_activity_tracker_;
+}
+
 void World::ensureGridCacheFresh(const char* timerName)
 {
     if (!pImpl->is_grid_cache_dirty_) {

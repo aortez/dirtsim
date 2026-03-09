@@ -853,6 +853,7 @@ add_executable(dirtsim-tests
     src/core/tests/LightPropagator_test.cpp
     src/core/tests/UUID_test.cpp
     src/core/tests/WorldRegionActivityTracker_test.cpp
+    src/core/tests/WorldRegionSleepingBehavior_test.cpp
     src/core/tests/WorldStaticLoadCalculator_test.cpp
 
     src/core/tests/WorldResize_test.cpp
