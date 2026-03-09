@@ -86,12 +86,12 @@ private:
 
     // Button to option index mappings.
     std::unordered_map<lv_obj_t*, int> buttonToFontIndex_;
-    std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
+    std::unordered_map<lv_obj_t*, Config::ClockTimezone> buttonToTimezone_;
     std::unordered_map<lv_obj_t*, int> buttonToMaterialIndex_;
 
     // Current selections.
     int currentFontIndex_ = 0;
-    int currentTimezoneIndex_ = 0;
+    Config::ClockTimezone currentTimezone_ = Config::ClockTimezone::LosAngeles;
     int currentMaterialIndex_ = static_cast<int>(Material::EnumType::Metal);
 
     // Current config (cached from last updateFromConfig call).

@@ -1,6 +1,6 @@
 #include "StartMenuSettingsPanel.h"
 #include "core/LoggingChannels.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "server/api/UserSettingsPatch.h"
 #include "ui/PanelViewController.h"
 #include "ui/ScenarioMetadataManager.h"
@@ -315,10 +315,10 @@ void StartMenuSettingsPanel::createTimezoneSelectionView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
-    buttonToTimezoneIndex_.clear();
-    for (size_t i = 0; i < ClockScenario::TIMEZONES.size(); ++i) {
+    buttonToTimezone_.clear();
+    for (const ClockTimezones::Info& info : ClockTimezones::all()) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(ClockScenario::TIMEZONES[i].label)
+                                  .text(info.label)
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -332,7 +332,7 @@ void StartMenuSettingsPanel::createTimezoneSelectionView(lv_obj_t* view)
             continue;
         }
 
-        buttonToTimezoneIndex_[button] = static_cast<int>(i);
+        buttonToTimezone_[button] = info.timezone;
         lv_obj_add_event_cb(button, onTimezoneSelected, LV_EVENT_CLICKED, this);
     }
 }
@@ -390,11 +390,12 @@ void StartMenuSettingsPanel::updateResetButtonEnabled()
 
 void StartMenuSettingsPanel::updateTimezoneButtonText()
 {
-    const int maxIndex = static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
-    const int clampedIndex =
-        std::clamp(static_cast<int>(settings_.clockScenarioConfig.timezoneIndex), 0, maxIndex);
-    const char* label = ClockScenario::TIMEZONES[clampedIndex].label;
-    setActionButtonText(timezoneButton_, std::string("Timezone: ") + label);
+    const Config::ClockTimezone timezone =
+        ClockTimezones::isValid(settings_.clockScenarioConfig.timezone)
+        ? settings_.clockScenarioConfig.timezone
+        : Config::ClockTimezone::LosAngeles;
+    setActionButtonText(
+        timezoneButton_, std::string("Timezone: ") + Config::getDisplayName(timezone));
 }
 
 void StartMenuSettingsPanel::updateIdleActionDropdown()
@@ -621,13 +622,13 @@ void StartMenuSettingsPanel::onTimezoneSelected(lv_event_t* e)
     }
 
     lv_obj_t* button = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    auto it = self->buttonToTimezoneIndex_.find(button);
-    if (it == self->buttonToTimezoneIndex_.end()) {
+    auto it = self->buttonToTimezone_.find(button);
+    if (it == self->buttonToTimezone_.end()) {
         LOG_WARN(Controls, "StartMenuSettingsPanel: Unknown timezone button clicked");
         return;
     }
 
-    self->settings_.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(it->second);
+    self->settings_.clockScenarioConfig.timezone = it->second;
     self->updateTimezoneButtonText();
 
     if (self->viewController_) {

@@ -1,5 +1,6 @@
 #include "ClockScenario.h"
 #include "clock_scenario/CharacterMetrics.h"
+#include "clock_scenario/ClockTimeResolver.h"
 #include "clock_scenario/DoorEntrySpawn.h"
 #include "clock_scenario/GlowManager.h"
 #include "core/Assert.h"
@@ -916,23 +917,7 @@ std::string ClockScenario::getCurrentTimeString() const
     }
 
     auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-
-    std::tm* time_info;
-    if (config_.timezoneIndex == 0) {
-        time_info = std::localtime(&now_time);
-    }
-    else {
-        time_info = std::gmtime(&now_time);
-        const auto& tz = TIMEZONES[config_.timezoneIndex];
-        time_info->tm_hour += tz.offset_hours;
-        if (time_info->tm_hour < 0) {
-            time_info->tm_hour += 24;
-        }
-        else if (time_info->tm_hour >= 24) {
-            time_info->tm_hour -= 24;
-        }
-    }
+    const std::tm timeInfo = ClockTimeResolver::resolveClockTime(config_.timezone, now);
 
     // Format: "H H : M M : S S" - spaces control all gaps.
     // Each space advances cursor by digit gap width.
@@ -942,22 +927,22 @@ std::string ClockScenario::getCurrentTimeString() const
             buffer,
             sizeof(buffer),
             "%d %d : %d %d : %d %d",
-            time_info->tm_hour / 10,
-            time_info->tm_hour % 10,
-            time_info->tm_min / 10,
-            time_info->tm_min % 10,
-            time_info->tm_sec / 10,
-            time_info->tm_sec % 10);
+            timeInfo.tm_hour / 10,
+            timeInfo.tm_hour % 10,
+            timeInfo.tm_min / 10,
+            timeInfo.tm_min % 10,
+            timeInfo.tm_sec / 10,
+            timeInfo.tm_sec % 10);
     }
     else {
         std::snprintf(
             buffer,
             sizeof(buffer),
             "%d %d : %d %d",
-            time_info->tm_hour / 10,
-            time_info->tm_hour % 10,
-            time_info->tm_min / 10,
-            time_info->tm_min % 10);
+            timeInfo.tm_hour / 10,
+            timeInfo.tm_hour % 10,
+            timeInfo.tm_min / 10,
+            timeInfo.tm_min % 10);
     }
     return std::string(buffer);
 }

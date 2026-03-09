@@ -413,12 +413,12 @@ Result<UserSettings, std::string> resetUserSettings(
 }
 
 Result<std::monostate, std::string> waitForClockRenderTimezone(
-    Network::WebSocketService& serverClient, int expectedTimezoneIndex, int timeoutMs)
+    Network::WebSocketService& serverClient, Config::ClockTimezone expectedTimezone, int timeoutMs)
 {
     std::mutex mutex;
     std::condition_variable cv;
     bool matched = false;
-    std::optional<int> lastTimezoneIndex;
+    std::optional<Config::ClockTimezone> lastTimezone;
     std::string parseError;
 
     serverClient.onBinary([&](const std::vector<std::byte>& payload) {
@@ -438,8 +438,8 @@ Result<std::monostate, std::string> waitForClockRenderTimezone(
 
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                lastTimezoneIndex = static_cast<int>(clockConfig->timezoneIndex);
-                matched = (lastTimezoneIndex.value() == expectedTimezoneIndex);
+                lastTimezone = clockConfig->timezone;
+                matched = (lastTimezone.value() == expectedTimezone);
             }
 
             cv.notify_all();
@@ -475,13 +475,13 @@ Result<std::monostate, std::string> waitForClockRenderTimezone(
     }
 
     std::string detail = "did not receive Clock render config";
-    if (lastTimezoneIndex.has_value()) {
-        detail += ", last timezoneIndex=" + std::to_string(*lastTimezoneIndex);
+    if (lastTimezone.has_value()) {
+        detail += ", last timezone=" + std::string(Config::getDisplayName(*lastTimezone));
     }
 
     return Result<std::monostate, std::string>::error(
-        "Timeout waiting for expected clock timezone (" + std::to_string(expectedTimezoneIndex)
-        + "): " + detail);
+        "Timeout waiting for expected clock timezone ("
+        + std::string(Config::getDisplayName(expectedTimezone)) + "): " + detail);
 }
 
 struct SeedTarget {
@@ -2014,7 +2014,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         UserSettings expected = currentSettingsResult.value();
-        expected.clockScenarioConfig.timezoneIndex = 0;
+        expected.clockScenarioConfig.timezone = Config::ClockTimezone::Local;
         expected.volumePercent = 67;
         expected.defaultScenario = Scenario::EnumType::Clock;
 
@@ -2026,7 +2026,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         const UserSettings& updated = setResult.value();
-        if (updated.clockScenarioConfig.timezoneIndex != expected.clockScenarioConfig.timezoneIndex
+        if (updated.clockScenarioConfig.timezone != expected.clockScenarioConfig.timezone
             || updated.volumePercent != expected.volumePercent
             || updated.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2043,7 +2043,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
         }
 
         const UserSettings& verified = verifyResult.value();
-        if (verified.clockScenarioConfig.timezoneIndex != expected.clockScenarioConfig.timezoneIndex
+        if (verified.clockScenarioConfig.timezone != expected.clockScenarioConfig.timezone
             || verified.volumePercent != expected.volumePercent
             || verified.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2123,7 +2123,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
         }
 
         UserSettings changedSettings{};
-        changedSettings.clockScenarioConfig.timezoneIndex = 0;
+        changedSettings.clockScenarioConfig.timezone = Config::ClockTimezone::Local;
         changedSettings.volumePercent = 73;
         changedSettings.defaultScenario = Scenario::EnumType::Clock;
 
@@ -2143,7 +2143,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
 
         const UserSettings defaults{};
         const UserSettings& reset = resetResult.value();
-        if (reset.clockScenarioConfig.timezoneIndex != defaults.clockScenarioConfig.timezoneIndex
+        if (reset.clockScenarioConfig.timezone != defaults.clockScenarioConfig.timezone
             || reset.volumePercent != defaults.volumePercent
             || reset.defaultScenario != defaults.defaultScenario) {
             uiClient.disconnect();
@@ -2160,7 +2160,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
         }
 
         const UserSettings& verified = verifyResult.value();
-        if (verified.clockScenarioConfig.timezoneIndex != defaults.clockScenarioConfig.timezoneIndex
+        if (verified.clockScenarioConfig.timezone != defaults.clockScenarioConfig.timezone
             || verified.volumePercent != defaults.volumePercent
             || verified.defaultScenario != defaults.defaultScenario) {
             uiClient.disconnect();
@@ -2240,7 +2240,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         UserSettings expected{};
-        expected.clockScenarioConfig.timezoneIndex = 1;
+        expected.clockScenarioConfig.timezone = Config::ClockTimezone::Local;
         expected.volumePercent = 33;
         expected.defaultScenario = Scenario::EnumType::TreeGermination;
 
@@ -2259,8 +2259,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         const UserSettings& beforeRestart = verifyBeforeRestart.value();
-        if (beforeRestart.clockScenarioConfig.timezoneIndex
-                != expected.clockScenarioConfig.timezoneIndex
+        if (beforeRestart.clockScenarioConfig.timezone != expected.clockScenarioConfig.timezone
             || beforeRestart.volumePercent != expected.volumePercent
             || beforeRestart.defaultScenario != expected.defaultScenario) {
             uiClient.disconnect();
@@ -2289,8 +2288,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossResta
         }
 
         const UserSettings& afterRestart = verifyAfterRestart.value();
-        if (afterRestart.clockScenarioConfig.timezoneIndex
-                != expected.clockScenarioConfig.timezoneIndex
+        if (afterRestart.clockScenarioConfig.timezone != expected.clockScenarioConfig.timezone
             || afterRestart.volumePercent != expected.volumePercent
             || afterRestart.defaultScenario != expected.defaultScenario) {
             serverClient.disconnect();
@@ -2679,7 +2677,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanApplyClockTimezoneFromUserSett
     static_cast<void>(uiAddress);
 
     auto testResult = [&]() -> Result<std::monostate, std::string> {
-        constexpr int expectedTimezoneIndex = 0;
+        constexpr Config::ClockTimezone expectedTimezone = Config::ClockTimezone::UTC;
 
         auto restartResult = restartServices(osManagerAddress, timeoutMs);
         if (restartResult.isError()) {
@@ -2723,7 +2721,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanApplyClockTimezoneFromUserSett
         }
 
         UserSettings desired = currentSettingsResult.value();
-        desired.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(expectedTimezoneIndex);
+        desired.clockScenarioConfig.timezone = expectedTimezone;
 
         auto setResult = updateUserSettings(serverClient, desired, timeoutMs);
         if (setResult.isError()) {
@@ -2750,7 +2748,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanApplyClockTimezoneFromUserSett
         }
 
         auto timezoneResult = waitForClockRenderTimezone(
-            serverClient, expectedTimezoneIndex, std::max(timeoutMs, 10000));
+            serverClient, desired.clockScenarioConfig.timezone, std::max(timeoutMs, 10000));
         if (timezoneResult.isError()) {
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(timezoneResult.errorValue());

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../MaterialType.h"
+#include "ClockTimezone.h"
 #include "clock_scenario/GlowConfig.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -46,7 +47,7 @@ struct Clock {
     uint32_t targetDisplayHeight = 480;
     uint32_t targetDisplayWidth = 752;
     uint8_t targetDigitHeightPercent = 0;
-    uint8_t timezoneIndex = 2;
+    ClockTimezone timezone = ClockTimezone::LosAngeles;
 };
 
 void from_json(const nlohmann::json& j, Clock& config);
