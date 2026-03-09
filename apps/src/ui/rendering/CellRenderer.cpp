@@ -152,6 +152,57 @@ static int calculateStaticLoadOpacity(double staticLoad)
     return std::min(static_cast<int>(std::log1p(staticLoad) * kOpacityScale), 255);
 }
 
+static bool shouldDrawCom(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+        case DebugVisualizationMode::StaticLoad:
+            return true;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawLivePressureBorder(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+            return true;
+        case DebugVisualizationMode::StaticLoad:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawPressureGradient(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+            return true;
+        case DebugVisualizationMode::StaticLoad:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawStaticLoadBorder(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::StaticLoad:
+            return true;
+        case DebugVisualizationMode::LivePressure:
+            return false;
+        default:
+            return true;
+    }
+}
+
 // Calculate optimal pixels per cell based on world size, container size, and scale factor.
 // The scale factor determines the ratio of canvas size to container size.
 // Scale > 1.0 creates a larger canvas (downscaling = sharper).
@@ -552,7 +603,11 @@ void CellRenderer::resize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHei
 }
 
 void CellRenderer::renderWorldData(
-    const WorldData& worldData, lv_obj_t* parent, bool debugDraw, RenderMode mode)
+    const WorldData& worldData,
+    lv_obj_t* parent,
+    bool debugDraw,
+    RenderMode mode,
+    DebugVisualizationMode debugVisualizationMode)
 {
     // Validate input.
     if (!parent || worldData.width == 0 || worldData.height == 0) {
@@ -834,7 +889,8 @@ void CellRenderer::renderWorldData(
                         const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
                         const int FIXED_BORDER_WIDTH = std::max(1, static_cast<int>(2 * scaleX_));
 
-                        if (livePressureOpacity > 0) {
+                        if (shouldDrawLivePressureBorder(debugVisualizationMode)
+                            && livePressureOpacity > 0) {
                             drawBorderOverlay(
                                 pixels,
                                 canvasWidth_,
@@ -848,13 +904,17 @@ void CellRenderer::renderWorldData(
                                 static_cast<uint8_t>(livePressureOpacity * 0.5));
                         }
 
-                        const int staticLoadInset = FIXED_BORDER_WIDTH + 1;
+                        const int staticLoadInset =
+                            debugVisualizationMode == DebugVisualizationMode::StaticLoad
+                            ? 0
+                            : FIXED_BORDER_WIDTH + 1;
                         const bool canDrawStaticLoad = static_cast<int>(scaledCellWidth_)
                                 > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
                             && static_cast<int>(scaledCellHeight_)
                                 > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
 
-                        if (canDrawStaticLoad && staticLoadOpacity > 0) {
+                        if (shouldDrawStaticLoadBorder(debugVisualizationMode) && canDrawStaticLoad
+                            && staticLoadOpacity > 0) {
                             drawBorderOverlay(
                                 pixels,
                                 canvasWidth_,
@@ -905,7 +965,8 @@ void CellRenderer::renderWorldData(
                         + static_cast<int>((cell.com.y + 1.0) * (scaledCellHeight_ - 1) / 2.0);
 
                     // Pressure gradient vector (cyan line from COM).
-                    if (cell.pressure_gradient.magnitude() > 0.001) {
+                    if (shouldDrawPressureGradient(debugVisualizationMode)
+                        && cell.pressure_gradient.magnitude() > 0.001) {
                         const double GRADIENT_SCALE = scaleX_;
                         const int end_x = com_pixel_x
                             + static_cast<int>(cell.pressure_gradient.x * GRADIENT_SCALE);
@@ -942,6 +1003,10 @@ void CellRenderer::renderWorldData(
                         cellX + static_cast<int>((cell.com.x + 1.0) * (scaledCellWidth_ - 1) / 2.0);
                     int com_pixel_y = cellY
                         + static_cast<int>((cell.com.y + 1.0) * (scaledCellHeight_ - 1) / 2.0);
+
+                    if (!shouldDrawCom(debugVisualizationMode)) {
+                        continue;
+                    }
 
                     // Bounds check.
                     if (com_pixel_x >= 0 && com_pixel_x < static_cast<int>(canvasWidth_)
@@ -998,7 +1063,8 @@ void CellRenderer::renderWorldData(
                 uint32_t cellColor = (idx < worldData.colors.size())
                     ? ColorNames::toRgba(worldData.colors.data[idx])
                     : 0x000000FF;
-                renderCellLVGL(cell, debug, layer, cellX, cellY, debugDraw, cellColor);
+                renderCellLVGL(
+                    cell, debug, layer, cellX, cellY, debugDraw, debugVisualizationMode, cellColor);
             }
         }
 
@@ -1078,6 +1144,7 @@ void CellRenderer::renderCellLVGL(
     int32_t cellX,
     int32_t cellY,
     bool debugDraw,
+    DebugVisualizationMode debugVisualizationMode,
     uint32_t color)
 {
     // Bounds check - skip cells outside canvas.
@@ -1125,21 +1192,22 @@ void CellRenderer::renderCellLVGL(
             int square_size = std::max(2, static_cast<int>(6 * scaleX_));
             int half_size = square_size / 2;
 
-            // COM indicator (yellow square)
-            lv_draw_rect_dsc_t com_rect_dsc;
-            lv_draw_rect_dsc_init(&com_rect_dsc);
-            com_rect_dsc.bg_color = lv_color_hex(0xFFFF00);
-            com_rect_dsc.bg_opa = LV_OPA_COVER;
-            com_rect_dsc.border_color = lv_color_hex(0xCC9900);
-            com_rect_dsc.border_opa = LV_OPA_COVER;
-            com_rect_dsc.border_width = 1;
-            com_rect_dsc.radius = 0;
+            if (shouldDrawCom(debugVisualizationMode)) {
+                lv_draw_rect_dsc_t com_rect_dsc;
+                lv_draw_rect_dsc_init(&com_rect_dsc);
+                com_rect_dsc.bg_color = lv_color_hex(0xFFFF00);
+                com_rect_dsc.bg_opa = LV_OPA_COVER;
+                com_rect_dsc.border_color = lv_color_hex(0xCC9900);
+                com_rect_dsc.border_opa = LV_OPA_COVER;
+                com_rect_dsc.border_width = 1;
+                com_rect_dsc.radius = 0;
 
-            lv_area_t com_coords = { com_pixel_x - half_size,
-                                     com_pixel_y - half_size,
-                                     com_pixel_x + half_size - 1,
-                                     com_pixel_y + half_size - 1 };
-            lv_draw_rect(&layer, &com_rect_dsc, &com_coords);
+                lv_area_t com_coords = { com_pixel_x - half_size,
+                                         com_pixel_y - half_size,
+                                         com_pixel_x + half_size - 1,
+                                         com_pixel_y + half_size - 1 };
+                lv_draw_rect(&layer, &com_rect_dsc, &com_coords);
+            }
 
             // Velocity vector (green line)
             if (scaledCellWidth_ >= 10 && cell.velocity.magnitude() > 0.01) {
@@ -1164,7 +1232,8 @@ void CellRenderer::renderCellLVGL(
                 const int livePressureOpacity = calculateLivePressureOpacity(cell.pressure);
                 const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
 
-                if (livePressureOpacity > 0) {
+                if (shouldDrawLivePressureBorder(debugVisualizationMode)
+                    && livePressureOpacity > 0) {
                     lv_draw_rect_dsc_t pressure_dsc;
                     lv_draw_rect_dsc_init(&pressure_dsc);
                     pressure_dsc.bg_opa = LV_OPA_TRANSP;
@@ -1180,13 +1249,17 @@ void CellRenderer::renderCellLVGL(
                     lv_draw_rect(&layer, &pressure_dsc, &pressure_coords);
                 }
 
-                const int staticLoadInset = FIXED_BORDER_WIDTH + 1;
+                const int staticLoadInset =
+                    debugVisualizationMode == DebugVisualizationMode::StaticLoad
+                    ? 0
+                    : FIXED_BORDER_WIDTH + 1;
                 const bool canDrawStaticLoad =
                     static_cast<int>(scaledCellWidth_) > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
                     && static_cast<int>(scaledCellHeight_)
                         > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
 
-                if (canDrawStaticLoad && staticLoadOpacity > 0) {
+                if (shouldDrawStaticLoadBorder(debugVisualizationMode) && canDrawStaticLoad
+                    && staticLoadOpacity > 0) {
                     lv_draw_rect_dsc_t static_load_dsc;
                     lv_draw_rect_dsc_init(&static_load_dsc);
                     static_load_dsc.bg_opa = LV_OPA_TRANSP;
@@ -1206,7 +1279,8 @@ void CellRenderer::renderCellLVGL(
             }
 
             // Pressure gradient vector (cyan line from center).
-            if (scaledCellWidth_ >= 12 && cell.pressure_gradient.magnitude() > 0.001) {
+            if (shouldDrawPressureGradient(debugVisualizationMode) && scaledCellWidth_ >= 12
+                && cell.pressure_gradient.magnitude() > 0.001) {
                 const double GRADIENT_SCALE = 10 * scaleX_;
                 int end_x =
                     com_pixel_x + static_cast<int>(cell.pressure_gradient.x * GRADIENT_SCALE);
