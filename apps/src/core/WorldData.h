@@ -6,6 +6,7 @@
 #include "Entity.h"
 #include "GridBuffer.h"
 #include "ReflectSerializer.h"
+#include "RegionDebugInfo.h"
 #include "RenderMessage.h"
 #include "Vector2.h"
 #include "organisms/OrganismType.h"
@@ -60,6 +61,9 @@ struct WorldData {
 
     // ===== NOT binary serialized (runtime/debug only) =====
     std::vector<CellDebug> debug_info; // Debug/viz info: debug_info[y * width + x]
+    int16_t region_debug_blocks_x = 0;
+    int16_t region_debug_blocks_y = 0;
+    std::vector<RegionDebugInfo> region_debug;
 
     // Bounds checking.
     inline bool inBounds(int x, int y) const { return x >= 0 && y >= 0 && x < width && y < height; }
@@ -175,6 +179,9 @@ inline void from_json(const nlohmann::json& j, WorldData& data)
     if (data.debug_info.size() != cell_count) {
         data.debug_info.resize(cell_count);
     }
+    data.region_debug_blocks_x = 0;
+    data.region_debug_blocks_y = 0;
+    data.region_debug.clear();
 }
 
 } // namespace DirtSim

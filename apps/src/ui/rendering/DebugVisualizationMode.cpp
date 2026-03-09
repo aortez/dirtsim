@@ -13,6 +13,8 @@ std::string debugVisualizationModeToString(DebugVisualizationMode mode)
             return "combined";
         case DebugVisualizationMode::LivePressure:
             return "live_pressure";
+        case DebugVisualizationMode::RegionActivity:
+            return "region_activity";
         case DebugVisualizationMode::StaticLoad:
             return "static_load";
         default:
@@ -24,6 +26,7 @@ DebugVisualizationMode stringToDebugVisualizationMode(const std::string& str)
 {
     if (str == "combined") return DebugVisualizationMode::Combined;
     if (str == "live_pressure") return DebugVisualizationMode::LivePressure;
+    if (str == "region_activity") return DebugVisualizationMode::RegionActivity;
     if (str == "static_load") return DebugVisualizationMode::StaticLoad;
     return DebugVisualizationMode::Combined;
 }

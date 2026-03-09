@@ -161,6 +161,9 @@ inline RenderMessage packRenderMessage(
     msg.height = data.height;
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
+    msg.region_blocks_x = data.region_debug_blocks_x;
+    msg.region_blocks_y = data.region_debug_blocks_y;
+    msg.region_debug = data.region_debug;
     msg.tree_vision = data.tree_vision;
     msg.scenario_video_frame = scenarioVideoFrame;
 

@@ -9,6 +9,7 @@ namespace Ui {
 enum class DebugVisualizationMode {
     Combined,
     LivePressure,
+    RegionActivity,
     StaticLoad,
 };
 
