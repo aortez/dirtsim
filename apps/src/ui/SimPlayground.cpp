@@ -274,7 +274,12 @@ void SimPlayground::render(const WorldData& data, bool debugDraw)
     lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
 
     // Render world state (CellRenderer handles initialization/resize internally).
-    renderer_->renderWorldData(data, worldContainer, debugDraw, coreControlsState_.renderMode);
+    renderer_->renderWorldData(
+        data,
+        worldContainer,
+        debugDraw,
+        coreControlsState_.renderMode,
+        coreControlsState_.debugVisualizationMode);
 }
 
 void SimPlayground::presentVideoFrame(const ScenarioVideoFrame& frame)
@@ -301,6 +306,17 @@ void SimPlayground::setRenderMode(RenderMode mode)
     }
 
     LOG_INFO(Controls, "Render mode set to {}", renderModeToString(mode));
+}
+
+void SimPlayground::setDebugVisualizationMode(DebugVisualizationMode mode)
+{
+    coreControlsState_.debugVisualizationMode = mode;
+
+    if (coreControls_) {
+        coreControls_->updateFromState();
+    }
+
+    LOG_INFO(Controls, "Debug visualization mode set to {}", debugVisualizationModeToString(mode));
 }
 
 InteractionMode SimPlayground::getInteractionMode() const

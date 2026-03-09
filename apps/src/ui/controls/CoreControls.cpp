@@ -8,8 +8,10 @@
 #include "ui/controls/DuckStopButton.h"
 #include "ui/controls/IconRail.h"
 #include "ui/rendering/CellRenderer.h"
+#include "ui/rendering/DebugVisualizationMode.h"
 #include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/EventSink.h"
+#include "ui/state-machine/api/DebugVisualizationSelect.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/api/PixelRendererToggle.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
@@ -74,6 +76,10 @@ CoreControls::CoreControls(
     // Create render mode modal view.
     lv_obj_t* renderModeView = viewController_->createView("render_mode");
     createRenderModeView(renderModeView);
+
+    // Create debug visualization modal view.
+    lv_obj_t* debugVisualizationView = viewController_->createView("debug_visualization");
+    createDebugVisualizationView(debugVisualizationView);
 
     // Show main view initially.
     viewController_->showView("main");
@@ -151,6 +157,18 @@ void CoreControls::createMainView(lv_obj_t* view)
 
     updateResetButtonEnabled();
 
+    std::string debugVisualizationText =
+        "Debug View: " + debugVisualizationModeToString(state_.debugVisualizationMode);
+    debugVisualizationButton_ = LVGLBuilder::actionButton(view)
+                                    .text(debugVisualizationText.c_str())
+                                    .icon(LV_SYMBOL_RIGHT)
+                                    .width(LV_PCT(95))
+                                    .height(LVGLBuilder::Style::ACTION_SIZE)
+                                    .layoutRow()
+                                    .alignLeft()
+                                    .callback(onDebugVisualizationButtonClicked, this)
+                                    .buildOrLog();
+
     // Interaction mode button - navigates to modal for selection.
     std::string interactionModeText =
         "Interaction: " + interactionModeToString(state_.interactionMode);
@@ -210,6 +228,49 @@ void CoreControls::createMainView(lv_obj_t* view)
                             .width(LV_PCT(95))
                             .callback(onWorldSizeChanged, this)
                             .buildOrLog();
+}
+
+void CoreControls::createDebugVisualizationView(lv_obj_t* view)
+{
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onDebugVisualizationBackClicked, this)
+        .buildOrLog();
+
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Debug Visualization");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    buttonToDebugVisualizationMode_.clear();
+    const char* labels[] = { "Combined", "Live Pressure", "Static Load" };
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(labels[i])
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (!container) {
+            continue;
+        }
+
+        lv_obj_t* button = lv_obj_get_child(container, 0);
+        if (!button) {
+            continue;
+        }
+
+        buttonToDebugVisualizationMode_[button] = i;
+        lv_obj_add_event_cb(button, onDebugVisualizationSelected, LV_EVENT_CLICKED, this);
+    }
 }
 
 void CoreControls::createRenderModeView(lv_obj_t* view)
@@ -404,6 +465,19 @@ void CoreControls::updateFromState()
         LVGLBuilder::ActionButtonBuilder::setChecked(debugSwitch_, state_.debugDrawEnabled);
     }
 
+    if (debugVisualizationButton_) {
+        setControlEnabled(debugVisualizationButton_, state_.debugDrawEnabled);
+        lv_obj_t* button = lv_obj_get_child(debugVisualizationButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                std::string text =
+                    "Debug View: " + debugVisualizationModeToString(state_.debugVisualizationMode);
+                lv_label_set_text(label, text.c_str());
+            }
+        }
+    }
+
     if (interactionModeButton_) {
         lv_obj_t* button = lv_obj_get_child(interactionModeButton_, 0);
         if (button) {
@@ -507,6 +581,69 @@ void CoreControls::onDebugToggled(lv_event_t* e)
     cwc.command.enabled = enabled;
     cwc.callback = [](auto&&) {}; // No response needed.
     self->eventSink_.queueEvent(cwc);
+
+    self->state_.debugDrawEnabled = enabled;
+    self->updateFromState();
+}
+
+void CoreControls::onDebugVisualizationButtonClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_ || !self->state_.debugDrawEnabled) return;
+
+    spdlog::debug("CoreControls: Debug visualization button clicked");
+    self->viewController_->showView("debug_visualization");
+}
+
+void CoreControls::onDebugVisualizationSelected(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    auto it = self->buttonToDebugVisualizationMode_.find(btn);
+    if (it == self->buttonToDebugVisualizationMode_.end()) {
+        spdlog::error("CoreControls: Unknown debug visualization button clicked");
+        return;
+    }
+
+    DebugVisualizationMode mode = DebugVisualizationMode::Combined;
+    switch (it->second) {
+        case 0:
+            mode = DebugVisualizationMode::Combined;
+            break;
+        case 1:
+            mode = DebugVisualizationMode::LivePressure;
+            break;
+        case 2:
+            mode = DebugVisualizationMode::StaticLoad;
+            break;
+        default:
+            mode = DebugVisualizationMode::Combined;
+            break;
+    }
+
+    spdlog::info(
+        "CoreControls: Debug visualization changed to {}", debugVisualizationModeToString(mode));
+
+    self->state_.debugVisualizationMode = mode;
+    self->updateFromState();
+    if (self->viewController_) {
+        self->viewController_->showView("main");
+    }
+
+    UiApi::DebugVisualizationSelect::Cwc cwc;
+    cwc.command.mode = mode;
+    cwc.callback = [](auto&&) {};
+    self->eventSink_.queueEvent(cwc);
+}
+
+void CoreControls::onDebugVisualizationBackClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    self->viewController_->showView("main");
 }
 
 void CoreControls::onInteractionModeButtonClicked(lv_event_t* e)

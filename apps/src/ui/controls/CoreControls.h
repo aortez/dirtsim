@@ -5,6 +5,7 @@
 #include "lvgl/lvgl.h"
 #include "ui/InteractionMode.h"
 #include "ui/PanelViewController.h"
+#include "ui/rendering/DebugVisualizationMode.h"
 #include "ui/rendering/RenderMode.h"
 #include <memory>
 
@@ -26,6 +27,7 @@ class UiComponentManager;
 struct CoreControlsState {
     bool debugDrawEnabled = false;
     Material::EnumType drawMaterial = Material::EnumType::Wall;
+    DebugVisualizationMode debugVisualizationMode = DebugVisualizationMode::Combined;
     InteractionMode interactionMode = InteractionMode::NONE;
     RenderMode renderMode = RenderMode::ADAPTIVE;
     double scaleFactor = 0.4;
@@ -69,18 +71,21 @@ private:
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
+    lv_obj_t* debugVisualizationButton_ = nullptr;
     lv_obj_t* interactionModeButton_ = nullptr;
     lv_obj_t* renderModeButton_ = nullptr;
     lv_obj_t* worldSizeStepper_ = nullptr;
     lv_obj_t* scaleFactorStepper_ = nullptr;
 
     // Button to index mappings for modal selections.
+    std::unordered_map<lv_obj_t*, int> buttonToDebugVisualizationMode_;
     std::unordered_map<lv_obj_t*, int> buttonToRenderMode_;
     std::unordered_map<lv_obj_t*, int> buttonToInteractionMode_;
     std::unordered_map<lv_obj_t*, Material::EnumType> buttonToDrawMaterial_;
 
     // View creation helpers.
     void createMainView(lv_obj_t* view);
+    void createDebugVisualizationView(lv_obj_t* view);
     void createRenderModeView(lv_obj_t* view);
     void createInteractionModeView(lv_obj_t* view);
     void createDrawMaterialView(lv_obj_t* view);
@@ -90,6 +95,9 @@ private:
     static void onResetClicked(lv_event_t* e);
     static void onResetConfirmToggled(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
+    static void onDebugVisualizationButtonClicked(lv_event_t* e);
+    static void onDebugVisualizationSelected(lv_event_t* e);
+    static void onDebugVisualizationBackClicked(lv_event_t* e);
     static void onInteractionModeButtonClicked(lv_event_t* e);
     static void onInteractionModeSelected(lv_event_t* e);
     static void onInteractionModeBackClicked(lv_event_t* e);
