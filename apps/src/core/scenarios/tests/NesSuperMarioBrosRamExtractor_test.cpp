@@ -70,6 +70,7 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     EXPECT_EQ(state.world, 1u);
     EXPECT_EQ(state.level, 2u);
     EXPECT_EQ(state.absoluteX, 0x0380u);
+    EXPECT_EQ(state.playerXScreen, 0x80u);
     EXPECT_EQ(state.playerYScreen, 120u);
     EXPECT_EQ(state.lives, 3u);
 }

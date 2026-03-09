@@ -195,8 +195,9 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     EXPECT_NEAR(sensory.special_senses[5], 1.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[6], 120.0 / 240.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[7], 3.0 / 9.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[8], 128.0 / 255.0, 1e-6);
 
-    for (int i = 8; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
+    for (int i = 9; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         EXPECT_EQ(sensory.special_senses[i], 0.0) << "slot " << i << " should be zero";
     }
 }

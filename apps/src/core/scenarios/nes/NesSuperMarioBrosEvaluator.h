@@ -33,6 +33,7 @@ struct NesSuperMarioBrosState {
     uint8_t world = 0;
     uint8_t level = 0;
     uint16_t absoluteX = 0;
+    uint8_t playerXScreen = 0;
     uint8_t playerYScreen = 0;
     uint8_t lives = 0;
 };
