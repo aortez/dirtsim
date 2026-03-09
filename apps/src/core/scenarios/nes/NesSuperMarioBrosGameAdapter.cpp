@@ -42,6 +42,7 @@ std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeSmbSpecialSenses(
     senses[5] = state.airborne ? 1.0 : 0.0;
     senses[6] = normalizeSmb(static_cast<double>(state.playerYScreen), 240.0);
     senses[7] = normalizeSmb(static_cast<double>(state.lives), 9.0);
+    senses[8] = normalizeSmb(static_cast<double>(state.playerXScreen), 255.0);
 
     return senses;
 }

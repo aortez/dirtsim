@@ -104,6 +104,7 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     output.level = snapshot.cpuRam.at(kLevelAddr);
     output.absoluteX = decodeAbsoluteX(
         snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
+    output.playerXScreen = snapshot.cpuRam.at(kPlayerXScreenAddr);
     output.playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
     output.lives = snapshot.cpuRam.at(kLivesAddr);
     return output;
