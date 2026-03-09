@@ -6,11 +6,29 @@
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <algorithm>
+#include <array>
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
 
 namespace {
+constexpr size_t kEnemySlotCount = 5;
+constexpr std::array<size_t, kEnemySlotCount> kEnemyActiveAddrs = {
+    0x000F, 0x0010, 0x0011, 0x0012, 0x0013
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyTypeAddrs = {
+    0x0016, 0x0017, 0x0018, 0x0019, 0x001A
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXPageAddrs = {
+    0x006E, 0x006F, 0x0070, 0x0071, 0x0072
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXScreenAddrs = {
+    0x0087, 0x0088, 0x0089, 0x008A, 0x008B
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
+    0x00CF, 0x00D0, 0x00D1, 0x00D2, 0x00D3
+};
+
 SmolnesRuntime::MemorySnapshot makeFlappySnapshot()
 {
     SmolnesRuntime::MemorySnapshot snapshot;
@@ -77,6 +95,23 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     snapshot.cpuRam[0x0756] = powerupState;
 
     return snapshot;
+}
+
+void setEnemySlot(
+    SmolnesRuntime::MemorySnapshot& snapshot,
+    size_t slot,
+    uint8_t active,
+    uint8_t type,
+    uint8_t xPage,
+    uint8_t xScreen,
+    uint8_t yScreen)
+{
+    ASSERT_LT(slot, kEnemySlotCount);
+    snapshot.cpuRam[kEnemyActiveAddrs[slot]] = active;
+    snapshot.cpuRam[kEnemyTypeAddrs[slot]] = type;
+    snapshot.cpuRam[kEnemyXPageAddrs[slot]] = xPage;
+    snapshot.cpuRam[kEnemyXScreenAddrs[slot]] = xScreen;
+    snapshot.cpuRam[kEnemyYScreenAddrs[slot]] = yScreen;
 }
 } // namespace
 
@@ -164,8 +199,10 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     ASSERT_NE(adapter, nullptr);
     adapter->reset("smb");
 
-    const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+    SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
         1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+    setEnemySlot(snapshot, 0, 1, 6, 0x03, 0x90, 110);
+    setEnemySlot(snapshot, 1, 1, 6, 0x03, 0x50, 100);
 
     const NesGameAdapterFrameInput frameInput{
         .advancedFrames = 400,
@@ -194,8 +231,13 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     EXPECT_NEAR(sensory.special_senses[6], 120.0 / 240.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[7], 3.0 / 9.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[8], 128.0 / 255.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[9], 16.0 / 255.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[10], -10.0 / 240.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[11], -48.0 / 255.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[12], -20.0 / 240.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[13], 1.0, 1e-6);
 
-    for (int i = 9; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
+    for (int i = 14; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         EXPECT_EQ(sensory.special_senses[i], 0.0) << "slot " << i << " should be zero";
     }
 }

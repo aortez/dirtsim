@@ -28,8 +28,13 @@ struct NesSuperMarioBrosState {
     SmbLifeState lifeState = SmbLifeState::Alive;
     SmbPowerupState powerupState = SmbPowerupState::Small;
     bool airborne = false;
+    bool enemyPresent = false;
     double horizontalSpeedNormalized = 0.0;
     double verticalSpeedNormalized = 0.0;
+    int16_t nearestEnemyDx = 0;
+    int16_t nearestEnemyDy = 0;
+    int16_t secondNearestEnemyDx = 0;
+    int16_t secondNearestEnemyDy = 0;
     uint8_t world = 0;
     uint8_t level = 0;
     uint16_t absoluteX = 0;

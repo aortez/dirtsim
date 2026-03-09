@@ -19,6 +19,11 @@ double normalizeSmb(double value, double maxValue)
     return std::clamp(value / maxValue, 0.0, 1.0);
 }
 
+double normalizeSmbSigned(double value, double maxMagnitude)
+{
+    return std::clamp(value / maxMagnitude, -1.0, 1.0);
+}
+
 std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeSmbSpecialSenses(
     const NesSuperMarioBrosState& state)
 {
@@ -43,6 +48,11 @@ std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeSmbSpecialSenses(
     senses[6] = normalizeSmb(static_cast<double>(state.playerYScreen), 240.0);
     senses[7] = normalizeSmb(static_cast<double>(state.lives), 9.0);
     senses[8] = normalizeSmb(static_cast<double>(state.playerXScreen), 255.0);
+    senses[9] = normalizeSmbSigned(static_cast<double>(state.nearestEnemyDx), 255.0);
+    senses[10] = normalizeSmbSigned(static_cast<double>(state.nearestEnemyDy), 240.0);
+    senses[11] = normalizeSmbSigned(static_cast<double>(state.secondNearestEnemyDx), 255.0);
+    senses[12] = normalizeSmbSigned(static_cast<double>(state.secondNearestEnemyDy), 240.0);
+    senses[13] = state.enemyPresent ? 1.0 : 0.0;
 
     return senses;
 }
