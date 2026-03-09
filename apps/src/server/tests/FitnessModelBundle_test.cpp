@@ -87,6 +87,7 @@ TEST(FitnessModelBundleTest, DuckClockBundleMergesSelectedSideDetails)
     EXPECT_DOUBLE_EQ(merged.totalFitness, 1.2);
     EXPECT_DOUBLE_EQ(breakdown->wingUpSeconds, 3.0);
     EXPECT_DOUBLE_EQ(breakdown->exitDoorRaw, 0.0);
+    EXPECT_DOUBLE_EQ(breakdown->exitDoorTime, 0.0);
     EXPECT_FALSE(breakdown->exitedThroughDoor);
     EXPECT_DOUBLE_EQ(breakdown->totalFitness, 1.2);
 

@@ -93,6 +93,24 @@ std::string nesSuperMarioBrosSummaryBuild(const NesSuperMarioBrosFitnessBreakdow
     return summary.str();
 }
 
+const char* duckExitText(bool exitedThroughDoor)
+{
+    return exitedThroughDoor ? "yes" : "no";
+}
+
+std::string duckSummaryBuild(const DuckFitnessBreakdown& breakdown, bool includeClockExit)
+{
+    std::ostringstream summary;
+    summary << std::fixed << std::setprecision(4);
+    summary << "Survival " << breakdown.survivalScore;
+    summary << " | Movement " << breakdown.movementScore;
+    summary << " | Coverage " << breakdown.coverageScore;
+    if (includeClockExit) {
+        summary << " | Exit " << duckExitText(breakdown.exitedThroughDoor);
+    }
+    return summary.str();
+}
+
 Api::FitnessPresentation genericPresentationBuild(
     OrganismType organismType,
     std::string modelId,
@@ -120,21 +138,214 @@ Api::FitnessPresentation genericPresentationBuild(
     return presentation;
 }
 
+Api::FitnessPresentation duckPresentationBuild(
+    const FitnessEvaluation& evaluation, const DuckFitnessBreakdown& duck, bool includeClockExit)
+{
+    Api::FitnessPresentation presentation{
+        .organismType = OrganismType::DUCK,
+        .modelId = "duck",
+        .totalFitness = evaluation.totalFitness,
+        .summary = duckSummaryBuild(duck, includeClockExit),
+        .sections = {},
+    };
+
+    presentation.sections.reserve(includeClockExit ? 6u : 5u);
+    presentation.sections.push_back(makeSection(
+        "survival",
+        "Survival",
+        duck.survivalScore,
+        { makeMetric(
+            "lifespan",
+            "Lifespan",
+            duck.survivalRaw,
+            optionalPositive(duck.survivalReference),
+            duck.survivalScore,
+            "seconds") }));
+    presentation.sections.push_back(makeSection(
+        "movement",
+        "Movement",
+        duck.movementScore,
+        {
+            makeMetric(
+                "movement_raw",
+                "Movement Raw",
+                duck.movementRaw,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "coverage_score",
+                "Coverage Score",
+                duck.coverageScore,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "effort_penalty_score",
+                "Effort Penalty",
+                duck.effortPenaltyScore,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+        }));
+    presentation.sections.push_back(makeSection(
+        "coverage",
+        "Coverage",
+        duck.coverageScore,
+        {
+            makeMetric(
+                "coverage_columns",
+                "Columns",
+                duck.coverageColumnRaw,
+                optionalPositive(duck.coverageColumnReference),
+                duck.coverageColumnScore,
+                "columns"),
+            makeMetric(
+                "coverage_rows",
+                "Rows",
+                duck.coverageRowRaw,
+                optionalPositive(duck.coverageRowReference),
+                duck.coverageRowScore,
+                "rows"),
+            makeMetric(
+                "coverage_cells",
+                "Cells",
+                duck.coverageCellRaw,
+                optionalPositive(duck.coverageCellReference),
+                duck.coverageCellScore,
+                "cells"),
+        }));
+    presentation.sections.push_back(makeSection(
+        "effort",
+        "Effort",
+        std::nullopt,
+        {
+            makeMetric(
+                "effort",
+                "Effort",
+                duck.effortRaw,
+                optionalPositive(duck.effortReference),
+                duck.effortScore,
+                "effort"),
+            makeMetric(
+                "effort_penalty_raw",
+                "Effort Penalty Raw",
+                duck.effortPenaltyRaw,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "wing_up_seconds",
+                "Wing Up",
+                duck.wingUpSeconds,
+                std::nullopt,
+                std::nullopt,
+                "seconds"),
+            makeMetric(
+                "wing_down_seconds",
+                "Wing Down",
+                duck.wingDownSeconds,
+                std::nullopt,
+                std::nullopt,
+                "seconds"),
+        }));
+    presentation.sections.push_back(makeSection(
+        "condition",
+        "Condition",
+        std::nullopt,
+        {
+            makeMetric(
+                "energy_average",
+                "Energy Average",
+                duck.energyAverage,
+                std::nullopt,
+                std::nullopt,
+                "energy"),
+            makeMetric(
+                "energy_consumed_total",
+                "Energy Consumed",
+                duck.energyConsumedTotal,
+                std::nullopt,
+                std::nullopt,
+                "energy"),
+            makeMetric(
+                "energy_limited_seconds",
+                "Energy-Limited Time",
+                duck.energyLimitedSeconds,
+                std::nullopt,
+                std::nullopt,
+                "seconds"),
+            makeMetric(
+                "health_average",
+                "Health Average",
+                duck.healthAverage,
+                std::nullopt,
+                std::nullopt,
+                "health"),
+            makeMetric(
+                "collision_damage_total",
+                "Collision Damage",
+                duck.collisionDamageTotal,
+                std::nullopt,
+                std::nullopt,
+                "damage"),
+            makeMetric(
+                "damage_total",
+                "Total Damage",
+                duck.damageTotal,
+                std::nullopt,
+                std::nullopt,
+                "damage"),
+        }));
+    if (includeClockExit) {
+        presentation.sections.push_back(makeSection(
+            "clock_exit",
+            "Clock Exit",
+            duck.exitDoorBonus,
+            {
+                makeMetric(
+                    "exit_door_raw",
+                    "Exit Door Raw",
+                    duck.exitDoorRaw,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "exit_door_time",
+                    "Exit Door Time",
+                    duck.exitDoorTime,
+                    std::nullopt,
+                    std::nullopt,
+                    "seconds"),
+            }));
+    }
+
+    return presentation;
+}
+
 } // namespace
 
 Api::FitnessPresentation fitnessEvaluationDuckPresentationGenerate(
     const FitnessEvaluation& evaluation)
 {
     if (const auto* duck = fitnessEvaluationDuckBreakdownGet(evaluation)) {
-        std::ostringstream summary;
-        summary << std::fixed << std::setprecision(2);
-        summary << "Survival " << duck->survivalScore;
-        summary << " | Movement " << duck->movementScore;
-        summary << " | Coverage " << duck->coverageScore;
-        return genericPresentationBuild(OrganismType::DUCK, "duck", evaluation, summary.str());
+        return duckPresentationBuild(evaluation, *duck, false);
     }
     return genericPresentationBuild(
         OrganismType::DUCK, "duck", evaluation, "Detailed duck presentation is not available yet.");
+}
+
+Api::FitnessPresentation fitnessEvaluationDuckClockPresentationGenerate(
+    const FitnessEvaluation& evaluation)
+{
+    if (const auto* duck = fitnessEvaluationDuckBreakdownGet(evaluation)) {
+        return duckPresentationBuild(evaluation, *duck, true);
+    }
+    return genericPresentationBuild(
+        OrganismType::DUCK,
+        "duck",
+        evaluation,
+        "Detailed duck clock presentation is not available yet.");
 }
 
 Api::FitnessPresentation fitnessEvaluationGoosePresentationGenerate(

@@ -7,6 +7,8 @@ namespace DirtSim::Server::EvolutionSupport {
 
 Api::FitnessPresentation fitnessEvaluationDuckPresentationGenerate(
     const FitnessEvaluation& evaluation);
+Api::FitnessPresentation fitnessEvaluationDuckClockPresentationGenerate(
+    const FitnessEvaluation& evaluation);
 Api::FitnessPresentation fitnessEvaluationGoosePresentationGenerate(
     const FitnessEvaluation& evaluation);
 Api::FitnessPresentation fitnessEvaluationNesGenericPresentationGenerate(
