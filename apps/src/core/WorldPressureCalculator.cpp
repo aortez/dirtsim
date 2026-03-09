@@ -20,6 +20,30 @@ using namespace DirtSim;
 // When false, AIR participates in diffusion like any other material.
 static constexpr bool TREAT_AIR_AS_BOUNDARY = false;
 
+namespace {
+
+bool shouldInjectGravityPressure(Material::EnumType materialType)
+{
+    switch (materialType) {
+        case Material::EnumType::Dirt:
+        case Material::EnumType::Sand:
+            return false;
+        case Material::EnumType::Air:
+        case Material::EnumType::Leaf:
+        case Material::EnumType::Metal:
+        case Material::EnumType::Root:
+        case Material::EnumType::Seed:
+        case Material::EnumType::Wall:
+        case Material::EnumType::Water:
+        case Material::EnumType::Wood:
+            return true;
+    }
+
+    return true;
+}
+
+} // namespace
+
 void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTime)
 {
     WorldData& data = world.getData();
@@ -39,6 +63,10 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
             Cell& cell = data.at(x, y);
 
             if (cell.isEmpty() || cell.isWall()) {
+                continue;
+            }
+
+            if (!shouldInjectGravityPressure(cell.material_type)) {
                 continue;
             }
 

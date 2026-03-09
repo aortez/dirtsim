@@ -35,6 +35,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <queue>
 #include <random>
 #include <set>
@@ -53,6 +54,114 @@ struct Vector2iHash {
 int computeRegionBlockCount(int cells)
 {
     return std::max(0, (cells + 7) / 8);
+}
+
+bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
+{
+    if (cell.isEmpty()) {
+        return false;
+    }
+
+    switch (cell.material_type) {
+        case DirtSim::Material::EnumType::Dirt:
+        case DirtSim::Material::EnumType::Sand:
+            return true;
+        case DirtSim::Material::EnumType::Air:
+        case DirtSim::Material::EnumType::Leaf:
+        case DirtSim::Material::EnumType::Metal:
+        case DirtSim::Material::EnumType::Root:
+        case DirtSim::Material::EnumType::Seed:
+        case DirtSim::Material::EnumType::Wall:
+        case DirtSim::Material::EnumType::Water:
+        case DirtSim::Material::EnumType::Wood:
+            return false;
+    }
+
+    return false;
+}
+
+bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
+{
+    if (cell.isEmpty()) {
+        return false;
+    }
+
+    switch (cell.material_type) {
+        case DirtSim::Material::EnumType::Metal:
+        case DirtSim::Material::EnumType::Wall:
+        case DirtSim::Material::EnumType::Wood:
+            return true;
+        case DirtSim::Material::EnumType::Air:
+        case DirtSim::Material::EnumType::Dirt:
+        case DirtSim::Material::EnumType::Leaf:
+        case DirtSim::Material::EnumType::Root:
+        case DirtSim::Material::EnumType::Sand:
+        case DirtSim::Material::EnumType::Seed:
+        case DirtSim::Material::EnumType::Water:
+            return false;
+    }
+
+    return false;
+}
+
+bool hasSupportedGranularPath(
+    const DirtSim::WorldData& data,
+    int x,
+    int y,
+    int supportOffsetY,
+    std::vector<int8_t>& supportCache)
+{
+    if (!data.inBounds(x, y)) {
+        return false;
+    }
+
+    const size_t cellIndex = static_cast<size_t>(y) * data.width + x;
+    int8_t& cachedResult = supportCache[cellIndex];
+    if (cachedResult >= 0) {
+        return cachedResult != 0;
+    }
+
+    cachedResult = 0;
+
+    const DirtSim::Cell& cell = data.at(x, y);
+    if (!isLoadBearingGranularCell(cell)) {
+        return false;
+    }
+
+    const int supportY = y + supportOffsetY;
+    if (!data.inBounds(x, supportY)) {
+        return false;
+    }
+
+    const DirtSim::Cell& directSupport = data.at(x, supportY);
+    if (isGranularSupportSinkCell(directSupport)) {
+        cachedResult = 1;
+        return true;
+    }
+
+    if (isLoadBearingGranularCell(directSupport)
+        && hasSupportedGranularPath(data, x, supportY, supportOffsetY, supportCache)) {
+        cachedResult = 1;
+        return true;
+    }
+
+    for (const int diagonalX : { x - 1, x + 1 }) {
+        if (!data.inBounds(diagonalX, supportY)) {
+            continue;
+        }
+
+        const DirtSim::Cell& diagonalSupport = data.at(diagonalX, supportY);
+        if (!isLoadBearingGranularCell(diagonalSupport)) {
+            continue;
+        }
+
+        if (hasSupportedGranularPath(data, diagonalX, supportY, supportOffsetY, supportCache)) {
+            cachedResult = 1;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 } // namespace
@@ -989,23 +1098,50 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
 void World::applyGravity()
 {
     // Cache pImpl members as local references.
-    std::vector<Cell>& cells = pImpl->data_.cells;
-    std::vector<CellDebug>& debug_info = pImpl->data_.debug_info;
+    WorldData& data = pImpl->data_;
+    std::vector<CellDebug>& debug_info = data.debug_info;
     const double gravity = pImpl->physicsSettings_.gravity;
+    const float gravityMagnitude = static_cast<float>(std::abs(gravity));
 
-    for (size_t idx = 0; idx < cells.size(); ++idx) {
-        Cell& cell = cells[idx];
-        if (!cell.isEmpty() && !cell.isWall()) {
-            // Gravity force is proportional to material density (F = m × g).
-            // This enables buoyancy: denser materials sink, lighter materials float.
-            const Material::Properties& props = Material::getProperties(cell.material_type);
-            Vector2d gravityForce(0.0, props.density * gravity);
+    std::vector<int8_t> granularSupportCache(data.cells.size(), -1);
 
-            // Accumulate gravity force instead of applying directly.
-            cell.addPendingForce(gravityForce);
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            Cell& cell = data.at(x, y);
+            debug_info[idx].accumulated_gravity_force = {};
+            debug_info[idx].carries_transmitted_granular_load = false;
+            debug_info[idx].gravity_skipped_for_support = false;
+            debug_info[idx].has_granular_support_path = false;
 
-            // Debug tracking.
-            debug_info[idx].accumulated_gravity_force = gravityForce;
+            if (!cell.isEmpty() && !cell.isWall()) {
+                if (gravityMagnitude > 0.0001f && isLoadBearingGranularCell(cell)) {
+                    const float selfWeight = cell.getMass() * gravityMagnitude;
+                    const bool carriesTransmittedLoad = cell.static_load > selfWeight + 0.001f;
+                    const int supportOffsetY = gravity > 0.0 ? 1 : -1;
+                    const bool hasSupportPath =
+                        hasSupportedGranularPath(data, x, y, supportOffsetY, granularSupportCache);
+
+                    debug_info[idx].carries_transmitted_granular_load = carriesTransmittedLoad;
+                    debug_info[idx].has_granular_support_path = hasSupportPath;
+
+                    if (carriesTransmittedLoad && hasSupportPath) {
+                        debug_info[idx].gravity_skipped_for_support = true;
+                        continue;
+                    }
+                }
+
+                // Gravity force is proportional to material density (F = m × g).
+                // This enables buoyancy: denser materials sink, lighter materials float.
+                const Material::Properties& props = Material::getProperties(cell.material_type);
+                Vector2d gravityForce(0.0, props.density * gravity);
+
+                // Accumulate gravity force instead of applying directly.
+                cell.addPendingForce(gravityForce);
+
+                // Debug tracking.
+                debug_info[idx].accumulated_gravity_force = gravityForce;
+            }
         }
     }
 }
@@ -1802,6 +1938,11 @@ void World::processMaterialMoves()
 
     ScopeTimer timer(timers, "process_moves");
 
+    for (CellDebug& debug : data.debug_info) {
+        debug.generated_move_count = 0;
+        debug.received_move_count = 0;
+    }
+
     // Counters for analysis.
     size_t num_moves = pending_moves.size();
     size_t num_swaps = 0;
@@ -1818,6 +1959,21 @@ void World::processMaterialMoves()
     }
 
     for (const auto& move : pending_moves) {
+        const size_t fromIndex = static_cast<size_t>(move.from.y) * data.width + move.from.x;
+        const size_t toIndex = static_cast<size_t>(move.to.y) * data.width + move.to.x;
+        if (fromIndex < data.debug_info.size()) {
+            CellDebug& fromDebug = data.debug_info[fromIndex];
+            if (fromDebug.generated_move_count != std::numeric_limits<uint16_t>::max()) {
+                fromDebug.generated_move_count++;
+            }
+        }
+        if (toIndex < data.debug_info.size()) {
+            CellDebug& toDebug = data.debug_info[toIndex];
+            if (toDebug.received_move_count != std::numeric_limits<uint16_t>::max()) {
+                toDebug.received_move_count++;
+            }
+        }
+
         pImpl->region_activity_tracker_.noteMaterialMove(
             move.from.x, move.from.y, move.to.x, move.to.y);
 
