@@ -38,6 +38,7 @@ struct Cell {
 
     // Unified pressure system.
     float pressure = 0.0f;
+    float static_load = 0.0f;
     Vector2f pressure_gradient = {};
 
     // Physics force accumulation.

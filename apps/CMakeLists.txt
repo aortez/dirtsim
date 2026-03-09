@@ -451,6 +451,7 @@ add_library(dirtsim-server-lib STATIC
 
     src/core/WorldPressureCalculator.cpp
     src/core/WorldRigidBodyCalculator.cpp
+    src/core/WorldStaticLoadCalculator.cpp
     src/core/WorldVelocityLimitCalculator.cpp
     src/core/WorldViscosityCalculator.cpp
 
@@ -848,6 +849,7 @@ add_executable(dirtsim-tests
     src/core/tests/LightManager_test.cpp
     src/core/tests/LightPropagator_test.cpp
     src/core/tests/UUID_test.cpp
+    src/core/tests/WorldStaticLoadCalculator_test.cpp
 
     src/core/tests/WorldResize_test.cpp
 

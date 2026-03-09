@@ -26,8 +26,9 @@ void Cell::setFillRatio(float ratio)
         velocity = Vector2f{ 0.0f, 0.0f };
         com = Vector2f{ 0.0f, 0.0f };
 
-        // Clear pressure values when converting to air.
+        // Clear pressure and load values when converting to air.
         pressure = 0.0f;
+        static_load = 0.0f;
         pressure_gradient = Vector2f{ 0.0f, 0.0f };
     }
 }

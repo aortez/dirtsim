@@ -1,0 +1,723 @@
+# Static Load and Region Sleeping
+
+## Overview
+
+This document proposes adding a derived `static_load` field for load-bearing granular materials
+plus 8x8 region sleeping. The goal is to let buried dirt and sand carry stable load without
+running the full per-cell pressure and force pipeline every frame.
+
+The design is intentionally staged. The first implementation should improve sleeping decisions
+without rewriting the entire pressure model or replacing the current per-cell COM transfer system.
+
+## Motivation
+
+The current debug rendering shows a clear pattern in settled dirt piles:
+
+- The free surface and toe remain interesting and dynamic.
+- The buried interior carries a stable pressure pattern for long periods.
+- The interior often stays visually unchanged unless a disturbance reaches it.
+
+Today the engine still updates the full grid every frame. The main reason is that the solver uses
+a single `cell.pressure` field for several different jobs:
+
+- gravity-driven pressure injection,
+- blocked-transfer impact pressure,
+- pressure diffusion,
+- pressure decay,
+- pressure-gradient forces,
+- debug visualization,
+- friction normal-force estimation.
+
+That single field works for the current fully-active solver, but it makes sleeping harder because
+"loaded but stable" looks too similar to "recently disturbed."
+
+## Goals
+
+- Sleep buried dirt and sand interiors while preserving granular flow at the surface.
+- Keep water behavior conservative and correct.
+- Reuse the existing per-cell COM transfer model.
+- Use the existing 8x8 bitmap block structure as the first region unit.
+- Stage the rollout so behavior changes can be measured and debugged incrementally.
+
+## Non-Goals
+
+- Replacing the cell solver with a coarse 2x2, 4x4, or 8x8 macro-cell solver.
+- Building a full stress tensor or continuum soil mechanics model.
+- Solving historical stress memory across gravity changes.
+- Fixing every cache invalidation bottleneck in the same change.
+- Sleeping water regions in the first implementation.
+
+## Current System
+
+### Pressure
+
+Core cell state stores one `pressure` scalar and one `pressure_gradient` vector. The frame loop:
+
+1. injects gravity pressure,
+2. adds blocked-transfer pressure,
+3. diffuses pressure,
+4. decays pressure,
+5. applies pressure-gradient forces,
+6. moves material using the per-cell COM model.
+
+This pressure field is also read by the friction calculator as part of the contact normal-force
+estimate.
+
+### Transport and Debug Rendering
+
+The binary render transport already includes two separate debug fields:
+
+- `DebugCell.pressure_hydro`,
+- `DebugCell.pressure_dynamic`.
+
+However, the server currently packs the unified `cell.pressure` value into `pressure_hydro` and
+sets `pressure_dynamic` to zero. The UI then reconstructs a single `cell.pressure` value for
+debug drawing.
+
+This means the render pipeline already has room for a split representation. The hard part is the
+solver semantics, not the transport format.
+
+### Region Structure
+
+`CellBitmap` and `GridOfCells` already use 8x8 blocks. That makes 8x8 the natural first region
+unit for sleeping, wake propagation, and future dirty tracking.
+
+### Relevant Code Paths
+
+The current implementation is centered in these files:
+
+- `apps/src/core/Cell.h` and `apps/src/core/Cell.cpp`
+- `apps/src/core/World.cpp`
+- `apps/src/core/WorldPressureCalculator.cpp`
+- `apps/src/core/WorldFrictionCalculator.cpp`
+- `apps/src/core/GridOfCells.h` and `apps/src/core/bitmaps/CellBitmap.h`
+- `apps/src/core/RenderMessage.h` and `apps/src/core/RenderMessageUtils.h`
+- `apps/src/ui/state-machine/states/Disconnected.cpp`
+- `apps/src/ui/rendering/CellRenderer.cpp`
+
+## Proposed Architecture
+
+### Core Idea
+
+Separate persistent load-bearing stress from live pressure transport:
+
+- `static_load`: persistent, derived, non-diffusing load for jammed solids.
+- `live_pressure`: active pressure field for fluids and transient disturbances.
+
+This is intentionally not a universal "hydrostatic vs dynamic" split on day one. Water still needs
+a live pressure field for flow, buoyancy, and equalization. Dirt and sand need a way to carry load
+without looking permanently active.
+
+### Terminology and Renames
+
+The current codebase still contains names from an older "hydrostatic vs dynamic pressure" split.
+As part of this work, names should be updated to match current semantics even if that changes
+serialization.
+
+The guiding rule is:
+
+- use names that describe the actual physical role of the field,
+- avoid names that imply a stronger split than the solver actually implements.
+
+Recommended naming direction:
+
+- `Cell.pressure` -> `Cell.live_pressure`
+- `Cell.pressure_gradient` -> `Cell.live_pressure_gradient`
+- `Cell.static_load` stays `Cell.static_load`
+- `PhysicsSettings.pressure_hydrostatic_strength` -> `gravity_pressure_strength`
+- `PhysicsSettings.pressure_dynamic_strength` -> `impact_pressure_strength`
+- `Material::Properties::hydrostatic_weight` -> `pressure_force_scale`
+- `Material::Properties::pressure_injection_weight` -> `gravity_pressure_injection_scale`
+- `Material::Properties::dynamic_weight` -> `impact_pressure_scale`
+- `DebugCell.pressure_hydro` -> `DebugCell.static_load`
+- `DebugCell.pressure_dynamic` -> `DebugCell.live_pressure`
+
+Important constraint:
+
+- Do not rename the current live field to `dynamic_pressure` in phase 1.
+
+That would be misleading because the current live field still represents both calm fluid pressure
+and transient disturbance.
+
+### Cell State
+
+Add one field to `Cell`:
+
+```cpp
+struct Cell {
+    float live_pressure = 0.0f;
+    float static_load = 0.0f;
+    Vector2f live_pressure_gradient = {};
+};
+```
+
+Notes:
+
+- In phase 1, the implementation may keep the existing storage names temporarily to minimize churn.
+- The design intent is still to migrate toward the terminology above.
+- `static_load` is derived from current geometry and gravity.
+- `static_load` does not diffuse and does not decay.
+- `live_pressure_gradient` remains the gradient of the live pressure field, not of `static_load`.
+
+### Material Policy
+
+Phase 1 should be conservative:
+
+- `DIRT` and `SAND` carry `static_load`.
+- `WOOD`, `METAL`, and `WALL` act as support sinks and support boundaries.
+- `WATER` and `AIR` never accumulate `static_load`.
+- Other solids such as `WOOD`, `METAL`, `ROOT`, and `SEED` can be revisited later once the
+  dirt/sand path is stable.
+
+This keeps the first rollout focused on piles of granular material, which is where the expected win
+is largest.
+
+### Static Load Semantics
+
+`static_load` answers:
+
+"How much supported compressive load is this cell carrying under the current gravity field and
+current local topology?"
+
+It is not a transported fluid quantity. It is not intended to represent impacts or waves. It is
+the load-bearing state of jammed granular material.
+
+### Static Load Recompute
+
+`static_load` should be recomputed from current geometry and gravity.
+
+If `abs(gravity)` is below epsilon, all `static_load` values become zero.
+
+The first implementation should use a single directed gravity-aligned load pass rather than an
+iterative convergence loop.
+
+For gravity pointing down:
+
+1. Clear `static_load` on all cells.
+2. Clear a temporary `incoming_load` grid.
+3. Scan rows from top to bottom.
+4. For each cell:
+   - if it is not `DIRT` or `SAND`, skip it,
+   - compute `self_weight = mass * abs(gravity)`,
+   - compute `total_load = self_weight + incoming_load[x, y]`,
+   - store `cell.static_load = total_load`,
+   - find supporting neighbors in the gravity direction:
+     - below,
+     - below-left,
+     - below-right.
+5. Distribute `total_load`:
+   - if a supported granular cell exists directly below, send 100% downward,
+   - else if exactly one diagonal support exists, send 100% to that diagonal,
+   - else if both diagonal supports exist, split 50/50,
+   - else if the support below is `WOOD`, `METAL`, or `WALL`, terminate the load path there,
+   - else the cell is unsupported and transmits no further `static_load`.
+
+For gravity pointing up, reverse the scan direction and support offsets. Horizontal or arbitrary
+gravity can be considered later if needed.
+
+This is an approximation, not a full force-chain solver. It will not model arches or complex
+lateral jammed structures. That is acceptable for phase 1 because the primary use of `static_load`
+is sleeping and debug visualization, not precision contact mechanics.
+
+### Live Pressure Semantics
+
+The existing live pressure field remains the active pressure field for:
+
+- water hydrostatic behavior,
+- pressure diffusion,
+- blocked-transfer impacts,
+- transient disturbances,
+- buoyancy and fluid equalization,
+- pressure-gradient visualization.
+
+This preserves current water behavior while giving granular interiors a second field that can stay
+large without implying the region must remain awake.
+
+### Region States
+
+Each 8x8 region has one state:
+
+```cpp
+enum class RegionState {
+    Awake,
+    LoadedQuiet,
+    Sleeping,
+};
+```
+
+Suggested metadata:
+
+```cpp
+struct RegionMeta {
+    RegionState state = RegionState::Awake;
+    uint16_t quiet_frames = 0;
+    uint32_t last_wake_step = 0;
+    uint32_t last_static_load_update = 0;
+};
+```
+
+## Sleeping Rules
+
+### Eligibility
+
+A region may enter `LoadedQuiet` only if all of the following are true:
+
+- every non-empty cell is `DIRT` or `SAND`,
+- the region contains no organism cells,
+- the region contains no water cells,
+- no cell in the region is adjacent to empty space,
+- no cell in the region is adjacent to water,
+- `max |velocity| < vel_epsilon`,
+- `max |delta live_pressure| < pressure_epsilon`,
+- `max |delta static_load| < load_epsilon`,
+- no cell COM is near a transfer boundary,
+- no blocked-transfer event touched the region this frame.
+
+After the region remains `LoadedQuiet` for `N` frames, it may become `Sleeping`.
+
+### Always-Awake Shell
+
+The first implementation should always keep a boundary shell awake:
+
+- any region touching empty space,
+- any region touching water,
+- any region with mixed materials,
+- any region touched by a recent edit, move, swap, or collision,
+- any 1-block halo around the above regions.
+
+This is deliberately conservative. The win comes from sleeping large buried interiors, not from
+aggressively sleeping the interesting parts.
+
+### Wake Conditions
+
+Wake a region and its 1-block halo when any of the following occurs:
+
+- material is added, removed, swapped, or moved into the region,
+- a blocked transfer is queued in or adjacent to the region,
+- `max |delta live_pressure|` exceeds threshold,
+- `max |delta static_load|` exceeds threshold,
+- a neighboring awake region changes topology,
+- gravity changes,
+- scenario code edits cells in or adjacent to the region,
+- water pressure changes at a dirt/water interface.
+
+## Water Handling
+
+Water is the main reason to avoid an over-simplified global split.
+
+Water behavior depends on a live pressure field. Water does not support shear the same way dirt and
+sand do. Because of that:
+
+- water regions stay awake in the first sleeping rollout,
+- dirt regions touching water also stay awake in the first sleeping rollout,
+- `static_load` is never computed for fluids,
+- `live_pressure_gradient` remains the active driver for fluid motion,
+- buoyancy and equalization remain on the live pressure path.
+
+This keeps the water path stable while still letting buried dirt interiors sleep.
+
+## Force Integration
+
+### Initial Rollout
+
+Do not change the pressure-force equations yet.
+
+The data-path patch and first sleeping rollout use `static_load` for:
+
+- debug visualization,
+- future instrumentation.
+
+Once sleeping is enabled, it also feeds sleeping decisions.
+
+The live pressure field continues to drive the existing pressure-gradient force path and the
+existing friction normal-force estimate.
+
+This keeps behavior close to the current solver while de-risking the structural change.
+
+### Phase 2
+
+Once sleeping is stable, `static_load` can optionally feed solid contact calculations:
+
+- use `static_load` as an additional normal-force term for solid-solid interfaces,
+- reduce reliance on live `pressure` for jammed dirt interiors,
+- keep live `pressure` dominant for fluids and transient disturbances.
+
+This should be considered a separate follow-on change, not part of the first rollout.
+
+## Debug Rendering
+
+The render transport should be updated to use its existing split fields:
+
+- `static_load` carries derived granular load,
+- `live_pressure` carries the active pressure field,
+- `live_pressure_gradient` continues to represent the live pressure gradient.
+
+The UI can initially keep the current unified cyan border by displaying the sum:
+
+`display_pressure = static_load + live_pressure`
+
+Later it can add distinct visual modes:
+
+- cyan border for live pressure,
+- amber or magenta border for static load,
+- region overlay for `LoadedQuiet` and `Sleeping`.
+
+## Implementation Plan
+
+### Cross-Cutting Invariants
+
+- `static_load` is derived state. It may be serialized or transported for debugging, but the engine
+  should treat recompute as authoritative after load, resize, or gravity change.
+- Sleep transitions happen at frame boundaries. Wake requests are recorded immediately, but a region
+  should only become `LoadedQuiet` or `Sleeping` after post-frame summarization.
+- Wake is conservative and immediate. Sleep is delayed and hysteretic.
+- Phase 1 must preserve existing motion when sleeping is disabled.
+- The first sleeping rollout should gate force and move work before it tries to gate the live
+  pressure solver.
+
+### Suggested Code Organization
+
+Keep orchestration in `World.cpp`, but move the two new responsibilities into dedicated helpers:
+
+- `apps/src/core/WorldStaticLoadCalculator.h/.cpp`
+  - owns `static_load` recompute,
+  - starts with `recomputeAll(World&)`,
+  - can grow a directional dirty recompute later.
+- `apps/src/core/WorldRegionActivityTracker.h/.cpp`
+  - owns region metadata, wake bookkeeping, region summaries, and active-region masks,
+  - stores thresholds and wake-reason counters for debug,
+  - exposes helpers such as `wakeRegionAt()`, `summarizeRegions()`, and `buildActiveMask()`.
+
+Recommended storage location:
+
+- Keep `Cell::static_load` in `Cell`.
+- Keep previous-frame scratch buffers and region metadata in `World::Impl`.
+- Index regions by `GridOfCells::getBlocksX()` and `getBlocksY()`.
+- Start with plain region-sized vectors for state and masks. Do not force-fit `CellBitmap` into
+  region bookkeeping until the behavior is proven.
+
+### Data Additions
+
+Add these structures or their equivalent:
+
+```cpp
+enum class WakeReason : uint8_t {
+    None,
+    ExternalMutation,
+    Move,
+    BlockedTransfer,
+    NeighborTopologyChanged,
+    GravityChanged,
+    WaterInterface,
+};
+
+struct RegionSummary {
+    float max_velocity = 0.0f;
+    float max_live_pressure_delta = 0.0f;
+    float max_static_load_delta = 0.0f;
+    bool has_empty_adjacency = false;
+    bool has_water_adjacency = false;
+    bool has_mixed_material = false;
+    bool has_organism = false;
+    bool has_transfer_boundary_com = false;
+    bool touched_this_frame = false;
+};
+```
+
+Additional world-owned scratch data:
+
+- `std::vector<float> previous_live_pressure`,
+- `std::vector<float> previous_static_load`,
+- `std::vector<RegionMeta> region_meta`,
+- `std::vector<RegionSummary> region_summary`,
+- `std::vector<uint8_t> active_regions`,
+- `std::vector<uint8_t> wake_next_regions`.
+
+The previous-value buffers are important. They let sleeping use `delta live_pressure` and
+`delta static_load` without bloating `Cell` with more historical state.
+
+### Frame Update Order
+
+Once `static_load` and region tracking exist, the frame should look like this:
+
+1. Apply any pending external wake requests from edits, scenario code, or setting changes.
+2. `ensureGridCacheFresh()`.
+3. Recompute `static_load` if phase 1 is active.
+4. Build the active-region mask from the previous frame's region state plus current wake requests.
+5. Run the existing live-pressure path.
+6. Run force accumulation and move generation using the active-region mask.
+7. Process moves and collisions, recording wake reasons for touched regions.
+8. Summarize regions from the post-frame cell state.
+9. Decide next-frame region states and snapshot previous live/static values.
+
+Important rollout constraint:
+
+- In the first sleeping patch, step 5 stays global.
+- Steps 6 and 7 are the first places that should actually skip work.
+
+That keeps water correctness safer while still attacking the expensive dirt-interior loops.
+
+### Phase 0: Instrumentation and Scaffolding
+
+Primary goal:
+
+- add enough state and debug output to see which regions would sleep before any work is skipped.
+
+Files to touch:
+
+- `apps/src/core/World.h`
+- `apps/src/core/World.cpp`
+- `apps/src/core/GridOfCells.h`
+- `apps/src/core/RenderMessage.h`
+- `apps/src/core/RenderMessageUtils.h`
+- `apps/src/ui/state-machine/states/Disconnected.cpp`
+- `apps/src/ui/rendering/CellRenderer.cpp`
+
+Tasks:
+
+- Add region indexing helpers in `World` or the new region tracker.
+- Add `RegionMeta`, `WakeReason`, and debug counters.
+- Record region-touch events from direct mutators such as:
+  - `addMaterialAtCell()`,
+  - `swapCells()`,
+  - `replaceMaterialAtCell()`,
+  - `clearCellAtPosition()`.
+- Add a debug overlay for `Awake`, `LoadedQuiet`, and `Sleeping`.
+- Update debug transport so the UI can display split values even before sleeping is enabled.
+
+Acceptance criteria:
+
+- the UI can show both `static_load` and live pressure separately,
+- wake reasons can be logged or inspected,
+- no physics behavior changes yet.
+
+### Phase 1a: Static Load Data Path
+
+Primary goal:
+
+- compute and transport `static_load` every frame without changing force laws.
+
+Files to touch:
+
+- `apps/src/core/Cell.h`
+- `apps/src/core/Cell.cpp`
+- `apps/src/core/World.h`
+- `apps/src/core/World.cpp`
+- `apps/src/core/WorldStaticLoadCalculator.h` (new)
+- `apps/src/core/WorldStaticLoadCalculator.cpp` (new)
+- `apps/src/core/RenderMessage.h`
+- `apps/src/core/RenderMessageUtils.h`
+- `apps/src/ui/state-machine/states/Disconnected.cpp`
+- `apps/src/ui/rendering/CellRenderer.cpp`
+- `apps/src/tests/Cell_serialization_test.cpp`
+- new tests for static-load recompute
+
+Tasks:
+
+- Add `Cell::static_load`.
+- Ensure `clear()`, `replaceMaterial()`, and the air transition path zero `static_load`.
+- Recompute `static_load` globally each frame using the directed gravity-aligned load pass.
+- Treat `WOOD`, `METAL`, and `WALL` as supports and termination sinks during that recompute.
+- Pack `static_load` and live pressure separately into debug transport.
+- Recompute `static_load` after world deserialization instead of trusting persisted values.
+- Keep all existing force calculations on the current live-pressure path.
+
+Acceptance criteria:
+
+- debug rendering shows stable `static_load` in buried dirt and sand,
+- water scenes still behave the same,
+- disabling sleeping yields motion equivalent to the current engine.
+
+### Phase 1b: Terminology Sweep
+
+Primary goal:
+
+- make names match semantics in one mechanical pass after the data path exists.
+
+Files likely touched:
+
+- `apps/src/core/Cell.h`
+- `apps/src/core/Cell.cpp`
+- `apps/src/core/MaterialType.h`
+- `apps/src/core/MaterialType.cpp`
+- `apps/src/core/PhysicsSettings.h`
+- `apps/src/core/PhysicsSettings.cpp`
+- `apps/src/core/World.cpp`
+- `apps/src/core/WorldPressureCalculator.cpp`
+- `apps/src/core/WorldFrictionCalculator.cpp`
+- `apps/src/core/RenderMessage.h`
+- `apps/src/core/RenderMessageUtils.h`
+- `apps/src/ui/controls/PhysicsControlHelpers.cpp`
+- `apps/src/server/states/SimRunning.cpp`
+- `apps/src/ui/state-machine/network/MessageParser.cpp`
+- scenarios, docs, and tests that reference old names
+
+Tasks:
+
+- Rename pressure fields and settings according to the terminology section above.
+- Update UI controls, server setters, tests, and scenario defaults.
+- Update `GridMechanics.md` and any remaining references to the older hydrostatic/dynamic split.
+
+Implementation note:
+
+- this should be a mostly mechanical patch or commit, separated from the sleeping behavior change
+  if practical.
+
+### Phase 2: Conservative Sleeping
+
+Primary goal:
+
+- sleep only buried dirt and sand interiors while leaving water and boundaries fully active.
+
+Files to touch:
+
+- `apps/src/core/World.h`
+- `apps/src/core/World.cpp`
+- `apps/src/core/WorldRegionActivityTracker.h` (new)
+- `apps/src/core/WorldRegionActivityTracker.cpp` (new)
+- `apps/src/core/WorldPressureCalculator.cpp`
+- `apps/src/core/WorldCollisionCalculator.cpp`
+- `apps/src/core/WorldFrictionCalculator.cpp`
+- `apps/src/core/GridOfCells.h`
+- tests and debug overlay code
+
+Tasks:
+
+- Summarize each 8x8 region after every frame.
+- Build the always-awake shell from:
+  - empty adjacency,
+  - water adjacency,
+  - mixed materials,
+  - organism occupancy.
+- Add wake hooks for:
+  - direct cell edits,
+  - blocked transfers,
+  - material moves,
+  - gravity changes,
+  - neighboring topology changes.
+- Gate only these expensive paths first:
+  - pressure-force accumulation,
+  - friction/viscosity force accumulation,
+  - force resolution,
+  - move generation.
+- Keep live pressure injection, diffusion, and decay global in this first sleeping pass.
+- Expand awake regions by a conservative 1-block halo before gating loops.
+
+Performance note:
+
+- Avoid doing block-coordinate math inside the hottest inner loops if possible.
+- Precompute a cell-space or region-space active mask once per frame, then branch cheaply.
+
+Acceptance criteria:
+
+- the buried interior of a stable dirt pile reaches `Sleeping`,
+- the free surface, toe, and dirt-water interface remain awake,
+- tapping, digging, or collapsing a pile wakes the interior quickly,
+- water scenarios such as DamBreak remain visually unchanged.
+
+### Phase 3: Directional Dirty Recompute and Broader Gating
+
+Primary goal:
+
+- reduce the global recompute work once the conservative sleeping path is trustworthy.
+
+Tasks:
+
+- Add dirty tracking for `static_load` recompute.
+- Start with a coarse directional invalidation rule, not a tiny local halo.
+- When a cell changes, mark:
+  - the touched region,
+  - gravity-upstream regions that may have lost support,
+  - gravity-downstream regions that may receive a different transmitted load.
+- Only after that is stable, consider limiting live-pressure work for sleeping granular interiors
+  that are far from water and wake boundaries.
+- Revisit whether global `GridOfCells` rebuilds can be reduced or partially regionalized.
+
+Important constraint:
+
+- `static_load` propagation is directional. A plain dirty-region-plus-halo update is probably too
+  optimistic because support changes can affect a long vertical column.
+
+### Phase 4: Optional Physics Integration
+
+Primary goal:
+
+- decide whether `static_load` should influence contact forces after sleeping is already useful.
+
+Tasks:
+
+- Feed `static_load` into solid contact normal-force estimation.
+- Revisit whether jammed dirt should respond less to live pressure.
+- Extend `static_load` accumulation beyond dirt and sand to `WOOD`, `METAL`, `ROOT`, and `SEED`
+  only if that proves useful for debugging or contact modeling.
+
+Success criterion:
+
+- any force-law change here should be measurable and justified independently of sleeping.
+
+## Validation
+
+Use these scenarios to validate correctness and value:
+
+- Sandbox dirt pile with debug draw enabled:
+  - buried interior should become `LoadedQuiet` then `Sleeping`,
+  - free surface and toe should remain awake.
+- Tap or dig into a pile:
+  - wake should propagate inward from the disturbance.
+- Dirt next to water:
+  - interface should remain awake,
+  - water equalization should remain unchanged.
+- DamBreak:
+  - behavior should match current dynamics.
+- Gravity disabled:
+  - `static_load` should recompute to zero.
+
+Useful metrics:
+
+- sleeping region count,
+- wake count by reason,
+- per-frame time in pressure, friction, and move generation,
+- number of regions skipped,
+- diff videos and debug screenshots before and after.
+
+Recommended automated coverage:
+
+- `WorldStaticLoadCalculator` unit tests:
+  - vertical dirt stack,
+  - diagonal support,
+  - support termination into `WOOD`, `METAL`, and `WALL`,
+  - zero gravity clears all `static_load`,
+  - water cells do not accumulate `static_load`.
+- render transport tests:
+  - `static_load` and live pressure survive pack/unpack separately.
+- regression tests:
+  - `Buoyancy_test.cpp`,
+  - `DiagonalWaterLeveling_test.cpp`,
+  - `DuckBuoyancy_test.cpp`.
+- manual scenario captures:
+  - sandbox dirt pile at rest,
+  - digging into buried dirt,
+  - dirt next to water,
+  - DamBreak.
+
+## Risks and Open Questions
+
+- The first `static_load` solver is approximate and may miss arches or force chains.
+- Conservative wake rules may reduce the initial speedup.
+- Aggressive thresholds may over-stabilize steep slopes and suppress avalanches.
+- Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
+- The UI debug path currently assumes one unified pressure value and must be updated carefully.
+- The existing pressure settings and material-property names still reflect older terminology and
+  should be cleaned up as part of implementation.
+
+## Recommendation
+
+Proceed with the staged design above:
+
+1. add `static_load` as derived state for dirt and sand,
+2. use it for debug and sleeping decisions first,
+3. keep water on the current live pressure path,
+4. sleep only buried granular interiors in the first implementation.
+
+This gives the expected win for dirt piles without forcing a full pressure-model rewrite in one
+step.
