@@ -27,9 +27,12 @@ constexpr int INPUT_SIZE = 2488;
 constexpr int HIDDEN_SIZE = 48;
 
 // Output layout:
-//   - 6 (command logits: Wait, Cancel, GrowWood, GrowLeaf, GrowRoot, ProduceSeed)
-//   - 225 (position logits)
-constexpr int OUTPUT_SIZE = 231;
+//   - 2 control logits: Wait, Cancel
+//   - 4 * 225 spatial logits: GrowWood, GrowLeaf, GrowRoot, ProduceSeed
+constexpr int NUM_CONTROL_ACTIONS = 2;
+constexpr int NUM_SPATIAL_ACTIONS = 4;
+constexpr int NUM_POSITIONS = 225;
+constexpr int OUTPUT_SIZE = NUM_CONTROL_ACTIONS + (NUM_SPATIAL_ACTIONS * NUM_POSITIONS);
 
 constexpr int W_IH_SIZE = INPUT_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;
@@ -37,14 +40,27 @@ constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
 constexpr int B_O_SIZE = OUTPUT_SIZE;
 constexpr int TOTAL_WEIGHTS = W_IH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
 
-constexpr int NUM_COMMANDS = 6;
-constexpr int NUM_POSITIONS = 225;
+constexpr int NUM_COMMANDS = static_cast<int>(NUM_TREE_COMMAND_TYPES);
 constexpr int GRID_SIZE = 15;
 constexpr int NUM_MATERIALS = 10;
+constexpr int WAIT_OUTPUT_INDEX = 0;
+constexpr int CANCEL_OUTPUT_INDEX = 1;
+constexpr int WOOD_OUTPUT_START = NUM_CONTROL_ACTIONS;
+constexpr int LEAF_OUTPUT_START = WOOD_OUTPUT_START + NUM_POSITIONS;
+constexpr int ROOT_OUTPUT_START = LEAF_OUTPUT_START + NUM_POSITIONS;
+constexpr int SEED_OUTPUT_START = ROOT_OUTPUT_START + NUM_POSITIONS;
 
 WeightType relu(WeightType x)
 {
     return std::max(static_cast<WeightType>(0.0f), x);
+}
+
+Vector2i decodeWorldPosition(int posIdx, const TreeSensoryData& sensory)
+{
+    const int nx = posIdx % GRID_SIZE;
+    const int ny = posIdx / GRID_SIZE;
+    return Vector2i{ sensory.world_offset.x + static_cast<int>(nx * sensory.scale_factor),
+                     sensory.world_offset.y + static_cast<int>(ny * sensory.scale_factor) };
 }
 
 } // namespace
@@ -187,66 +203,62 @@ struct NeuralNetBrain::Impl {
     TreeCommand interpretOutput(
         const std::vector<WeightType>& output, const TreeSensoryData& sensory)
     {
-        // First 6 outputs are command logits - use argmax.
-        int command_idx = 0;
-        WeightType max_command = output[0];
-        for (int i = 1; i < NUM_COMMANDS; i++) {
-            if (output[i] > max_command) {
-                max_command = output[i];
-                command_idx = i;
+        int bestIdx = -1;
+        WeightType bestLogit = std::numeric_limits<WeightType>::lowest();
+
+        const auto consider = [&](int idx, bool legal) {
+            if (!legal) {
+                return;
             }
-        }
+            if (output[idx] <= bestLogit) {
+                return;
+            }
+            bestLogit = output[idx];
+            bestIdx = idx;
+        };
 
-        auto command_type = static_cast<TreeCommandType>(command_idx);
-
-        // Handle instant commands (no position needed).
-        if (command_type == TreeCommandType::WaitCommand) {
+        consider(WAIT_OUTPUT_INDEX, true);
+        consider(CANCEL_OUTPUT_INDEX, sensory.current_action.has_value());
+        if (sensory.current_action.has_value()) {
+            if (bestIdx == CANCEL_OUTPUT_INDEX) {
+                return CancelCommand{};
+            }
             return WaitCommand{};
         }
-        if (command_type == TreeCommandType::CancelCommand) {
+
+        for (int i = 0; i < NUM_POSITIONS; i++) {
+            consider(WOOD_OUTPUT_START + i, sensory.valid_wood_targets[i]);
+            consider(LEAF_OUTPUT_START + i, sensory.valid_leaf_targets[i]);
+            consider(ROOT_OUTPUT_START + i, sensory.valid_root_targets[i]);
+            consider(SEED_OUTPUT_START + i, sensory.valid_seed_targets[i]);
+        }
+
+        if (bestIdx == WAIT_OUTPUT_INDEX || bestIdx < 0) {
+            return WaitCommand{};
+        }
+
+        if (bestIdx == CANCEL_OUTPUT_INDEX) {
             return CancelCommand{};
         }
 
-        // Action commands need position - extract from next 225 outputs.
-        // Mask invalid positions so the brain can only pick valid grow targets.
-        int pos_idx = -1;
-        WeightType max_pos = std::numeric_limits<WeightType>::lowest();
-        for (int i = 0; i < NUM_POSITIONS; i++) {
-            if (sensory.valid_grow_targets[i] && output[NUM_COMMANDS + i] > max_pos) {
-                max_pos = output[NUM_COMMANDS + i];
-                pos_idx = i;
-            }
+        if (bestIdx >= WOOD_OUTPUT_START && bestIdx < LEAF_OUTPUT_START) {
+            return GrowWoodCommand{ .target_pos =
+                                        decodeWorldPosition(bestIdx - WOOD_OUTPUT_START, sensory) };
+        }
+        if (bestIdx >= LEAF_OUTPUT_START && bestIdx < ROOT_OUTPUT_START) {
+            return GrowLeafCommand{ .target_pos =
+                                        decodeWorldPosition(bestIdx - LEAF_OUTPUT_START, sensory) };
+        }
+        if (bestIdx >= ROOT_OUTPUT_START && bestIdx < SEED_OUTPUT_START) {
+            return GrowRootCommand{ .target_pos =
+                                        decodeWorldPosition(bestIdx - ROOT_OUTPUT_START, sensory) };
+        }
+        if (bestIdx >= SEED_OUTPUT_START && bestIdx < OUTPUT_SIZE) {
+            return ProduceSeedCommand{ .position = decodeWorldPosition(
+                                           bestIdx - SEED_OUTPUT_START, sensory) };
         }
 
-        // No valid position exists — tree has nowhere to grow.
-        if (pos_idx < 0) {
-            return WaitCommand{};
-        }
-
-        int nx = pos_idx % GRID_SIZE;
-        int ny = pos_idx / GRID_SIZE;
-
-        // Map neural coords to world coords.
-        Vector2i world_pos{ sensory.world_offset.x + static_cast<int>(nx * sensory.scale_factor),
-                            sensory.world_offset.y + static_cast<int>(ny * sensory.scale_factor) };
-
-        // Build action command based on type.
-        switch (command_type) {
-            case TreeCommandType::WaitCommand:
-                return WaitCommand{};
-            case TreeCommandType::CancelCommand:
-                return CancelCommand{};
-            case TreeCommandType::GrowWoodCommand:
-                return GrowWoodCommand{ .target_pos = world_pos };
-            case TreeCommandType::GrowLeafCommand:
-                return GrowLeafCommand{ .target_pos = world_pos };
-            case TreeCommandType::GrowRootCommand:
-                return GrowRootCommand{ .target_pos = world_pos };
-            case TreeCommandType::ProduceSeedCommand:
-                return ProduceSeedCommand{ .position = world_pos };
-        }
-
-        DIRTSIM_ASSERT(false, "Unreachable: all TreeCommandType enum values handled");
+        DIRTSIM_ASSERT(false, "NeuralNetBrain: Failed to decode action output");
         return WaitCommand{};
     }
 };
