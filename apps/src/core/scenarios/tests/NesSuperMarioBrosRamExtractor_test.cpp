@@ -12,7 +12,6 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     uint8_t playerXPage,
     uint8_t playerXScreen,
     uint8_t horizontalSpeed,
-    uint8_t facingDirection,
     uint8_t verticalSpeed,
     uint8_t playerYScreen,
     uint8_t powerupState,
@@ -32,7 +31,6 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     snapshot.cpuRam[0x075F] = world;
     snapshot.cpuRam[0x0760] = level;
     snapshot.cpuRam[0x0057] = horizontalSpeed;
-    snapshot.cpuRam[0x0700] = facingDirection;
     snapshot.cpuRam[0x009F] = verticalSpeed;
     snapshot.cpuRam[0x00CE] = playerYScreen;
     snapshot.cpuRam[0x0756] = powerupState;
@@ -45,18 +43,7 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
 {
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1,
-        2,
-        0x03,
-        0x80,
-        25,
-        1,
-        static_cast<uint8_t>(static_cast<int8_t>(-40)),
-        120,
-        2,
-        0x08,
-        3,
-        1);
+        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 0x08, 3, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -77,8 +64,8 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
 
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsAirborneGameplayStatesAsAlive)
 {
-    const SmolnesRuntime::MemorySnapshot snapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x20, 5, 2, 0, 100, 1, 0x02, 2, 1);
+    const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        0, 0, 0x00, 0x20, static_cast<uint8_t>(static_cast<int8_t>(-5)), 0, 100, 1, 0x02, 2, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -93,8 +80,8 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsAirborneGameplayStatesAsAli
 
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
 {
-    const SmolnesRuntime::MemorySnapshot snapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x20, 5, 2, 0, 100, 1, 0x0B, 0, 1);
+    const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        0, 0, 0x00, 0x20, static_cast<uint8_t>(static_cast<int8_t>(-5)), 0, 100, 1, 0x0B, 0, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -110,7 +97,7 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsReloadScreenStateAsDead)
 {
     const SmolnesRuntime::MemorySnapshot snapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 1, 0, 0, 0, 0x00, 1, 1);
+        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 1, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);

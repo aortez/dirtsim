@@ -7,7 +7,6 @@ namespace DirtSim {
 
 namespace {
 
-constexpr size_t kFacingDirectionAddr = 0x0700;
 constexpr size_t kGameEngineSubroutineAddr = 0x0770;
 constexpr size_t kHorizontalSpeedAddr = 0x0057;
 constexpr size_t kLevelAddr = 0x0760;
@@ -20,7 +19,6 @@ constexpr size_t kPowerupStateAddr = 0x0756;
 constexpr size_t kVerticalSpeedAddr = 0x009F;
 constexpr size_t kWorldAddr = 0x075F;
 
-constexpr uint8_t kFacingLeft = 2;
 constexpr uint8_t kGameEngineGameplay = 1;
 constexpr uint8_t kPlayerStateActiveGameplay = 0x08;
 constexpr uint8_t kPlayerStateDeathAnimation = 0x0B;
@@ -32,10 +30,9 @@ uint16_t decodeAbsoluteX(uint8_t playerXPage, uint8_t playerXScreen)
     return (static_cast<uint16_t>(playerXPage) << 8) | static_cast<uint16_t>(playerXScreen);
 }
 
-double decodeHorizontalSpeedNormalized(uint8_t horizontalSpeed, uint8_t facingDirection)
+double decodeHorizontalSpeedNormalized(uint8_t horizontalSpeed)
 {
-    const double sign = facingDirection == kFacingLeft ? -1.0 : 1.0;
-    return std::clamp(sign * static_cast<double>(horizontalSpeed) / 40.0, -1.0, 1.0);
+    return std::clamp(static_cast<double>(static_cast<int8_t>(horizontalSpeed)) / 40.0, -1.0, 1.0);
 }
 
 SmbLifeState decodeLifeState(uint8_t playerState)
@@ -96,8 +93,8 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     output.lifeState = decodeLifeState(playerState);
     output.powerupState = decodePowerupState(snapshot.cpuRam.at(kPowerupStateAddr));
     output.airborne = isAirborne(playerState);
-    output.horizontalSpeedNormalized = decodeHorizontalSpeedNormalized(
-        snapshot.cpuRam.at(kHorizontalSpeedAddr), snapshot.cpuRam.at(kFacingDirectionAddr));
+    output.horizontalSpeedNormalized =
+        decodeHorizontalSpeedNormalized(snapshot.cpuRam.at(kHorizontalSpeedAddr));
     output.verticalSpeedNormalized =
         decodeVerticalSpeedNormalized(snapshot.cpuRam.at(kVerticalSpeedAddr));
     output.world = snapshot.cpuRam.at(kWorldAddr);

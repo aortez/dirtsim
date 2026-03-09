@@ -24,10 +24,13 @@ using namespace DirtSim;
 namespace {
 
 constexpr size_t kHorizontalSpeedAddr = 0x0057;
+constexpr size_t kPlayerFacingDirCandidateAAddr = 0x0033;
+constexpr size_t kPlayerFacingDirCandidateBAddr = 0x0045;
 constexpr size_t kPlayerStateAddr = 0x000E;
 constexpr size_t kPlayerXPageAddr = 0x006D;
 constexpr size_t kPlayerXScreenAddr = 0x0086;
 constexpr size_t kPlayerYScreenAddr = 0x00CE;
+constexpr size_t kPlayerXSpeedAbsoluteAddr = 0x0700;
 constexpr size_t kLivesAddr = 0x075A;
 constexpr size_t kPowerupStateAddr = 0x0756;
 constexpr size_t kWorldAddr = 0x075F;
@@ -37,6 +40,23 @@ constexpr uint64_t kProbeCaptureFrames = 1100;
 constexpr uint64_t kSetupScriptEndFrame = 300;
 constexpr std::array<uint64_t, 14> kProbeScreenshotFrames = {
     0u, 120u, 240u, 300u, 400u, 500u, 600u, 700u, 800u, 899u, 950u, 1000u, 1050u, 1099u,
+};
+constexpr std::array<uint64_t, 4> kProbeTargetFrames = { 500u, 600u, 700u, 899u };
+constexpr size_t kEnemySlotCount = 5;
+constexpr std::array<size_t, kEnemySlotCount> kEnemyActiveAddrs = {
+    0x000F, 0x0010, 0x0011, 0x0012, 0x0013
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyTypeAddrs = {
+    0x0016, 0x0017, 0x0018, 0x0019, 0x001A
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXPageAddrs = {
+    0x006E, 0x006F, 0x0070, 0x0071, 0x0072
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXScreenAddrs = {
+    0x0087, 0x0088, 0x0089, 0x008A, 0x008B
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
+    0x00CF, 0x00D0, 0x00D1, 0x00D2, 0x00D3
 };
 
 std::optional<std::filesystem::path> resolveNesSmbFixtureRomPath()
@@ -441,6 +461,61 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
     EXPECT_TRUE(std::filesystem::exists(signalPath));
     EXPECT_GT(std::filesystem::file_size(signalPath), 0u);
     std::cout << "Wrote SMB RAM probe signals: " << signalPath.string() << "\n";
+
+    const std::filesystem::path targetFramePath =
+        std::filesystem::path(::testing::TempDir()) / "nes_smb_target_frames.csv";
+    std::ofstream targetFrameStream(targetFramePath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(targetFrameStream.is_open())
+        << "Failed to open SMB target frame trace: " << targetFramePath.string();
+    targetFrameStream
+        << "frame,controller_mask,game_engine,player_state,player_x_page,player_x_screen,"
+           "absolute_x,player_y_screen,cpu_0x0033,cpu_0x0045,cpu_0x0057,cpu_0x0700";
+    for (size_t slot = 0; slot < kEnemySlotCount; ++slot) {
+        targetFrameStream << ",enemy" << slot << "_active"
+                          << ",enemy" << slot << "_type"
+                          << ",enemy" << slot << "_x_page"
+                          << ",enemy" << slot << "_x_screen"
+                          << ",enemy" << slot << "_y_screen";
+    }
+    targetFrameStream << "\n";
+
+    for (const uint64_t targetFrame : kProbeTargetFrames) {
+        auto it =
+            std::find_if(frames.begin(), frames.end(), [targetFrame](const CapturedFrame& frame) {
+                return frame.frameIndex == targetFrame;
+            });
+        ASSERT_TRUE(it != frames.end()) << "Missing probe frame " << targetFrame;
+
+        const CapturedFrame& frame = *it;
+        targetFrameStream << frame.frameIndex << "," << static_cast<uint32_t>(frame.controllerMask)
+                          << "," << static_cast<uint32_t>(frame.cpuRam[kGameEngineAddr]) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerStateAddr]) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerXPageAddr]) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerXScreenAddr]) << ","
+                          << decodeAbsoluteX(frame.cpuRam) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerYScreenAddr]) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerFacingDirCandidateAAddr])
+                          << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerFacingDirCandidateBAddr])
+                          << "," << static_cast<uint32_t>(frame.cpuRam[kHorizontalSpeedAddr]) << ","
+                          << static_cast<uint32_t>(frame.cpuRam[kPlayerXSpeedAbsoluteAddr]);
+        for (size_t slot = 0; slot < kEnemySlotCount; ++slot) {
+            targetFrameStream << "," << static_cast<uint32_t>(frame.cpuRam[kEnemyActiveAddrs[slot]])
+                              << "," << static_cast<uint32_t>(frame.cpuRam[kEnemyTypeAddrs[slot]])
+                              << "," << static_cast<uint32_t>(frame.cpuRam[kEnemyXPageAddrs[slot]])
+                              << ","
+                              << static_cast<uint32_t>(frame.cpuRam[kEnemyXScreenAddrs[slot]])
+                              << ","
+                              << static_cast<uint32_t>(frame.cpuRam[kEnemyYScreenAddrs[slot]]);
+        }
+        targetFrameStream << "\n";
+    }
+
+    targetFrameStream.close();
+    ASSERT_TRUE(targetFrameStream.good());
+    EXPECT_TRUE(std::filesystem::exists(targetFramePath));
+    EXPECT_GT(std::filesystem::file_size(targetFramePath), 0u);
+    std::cout << "Wrote SMB target frame trace: " << targetFramePath.string() << "\n";
 
     const size_t lifeDropCount = countLifeDrops(frames, analysisStartIndex);
     const std::optional<size_t> firstLifeDropFrameIndex =
