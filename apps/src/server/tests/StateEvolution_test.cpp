@@ -1332,23 +1332,14 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Initialize the state.
     evolutionState.onEnter(*fixture.stateMachine);
 
-    // Verify: No runner exists yet.
-    EXPECT_EQ(evolutionState.visible_.runner, nullptr);
-
     // Execute: First tick should create world and advance one step.
     auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
-    ASSERT_NE(evolutionState.visible_.runner, nullptr);
-    EXPECT_GT(evolutionState.visible_.runner->getSimTime(), 0.0) << "Sim time should have advanced";
-    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.1)
-        << "Sim time should not be complete";
 
     // Execute: Second tick should advance further but not complete.
     auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should still exist";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
 
     // Execute: Tick until first evaluation completes.
@@ -1361,8 +1352,6 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Verify: First evaluation completed after multiple ticks.
     EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
-    EXPECT_EQ(evolutionState.visible_.runner, nullptr)
-        << "Runner should be cleaned up between evals";
 }
 
 /**
@@ -1386,11 +1375,6 @@ TEST(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     // Initialize and tick once to start evaluation.
     evolutionState.onEnter(*fixture.stateMachine);
     evolutionState.tick(*fixture.stateMachine);
-
-    // Verify: Evaluation is in progress.
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
-    ASSERT_NE(evolutionState.visible_.runner, nullptr);
-    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.5) << "Should be early in evaluation";
 
     // Setup: Create EvolutionStop command.
     bool callbackInvoked = false;
@@ -1490,72 +1474,6 @@ TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
         << "Stored fitness should match tracked best";
 }
 
-TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 5;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 3;
-    evolutionState.trainingSpec = makeTrainingSpec(5);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    ASSERT_NE(evolutionState.workerState_, nullptr);
-    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
-    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 2);
-    EXPECT_EQ(evolutionState.workerState_->workers.size(), 2u);
-    EXPECT_GT(evolutionState.visible_.queue.size(), 0u);
-    EXPECT_LT(evolutionState.visible_.queue.size(), evolutionState.population.size());
-
-    std::optional<Any> finalState;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
-        finalState = evolutionState.tick(*fixture.stateMachine);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete with parallel workers";
-    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()))
-        << "Should transition to UnsavedTrainingResult";
-    EXPECT_EQ(evolutionState.generation, 1);
-    EXPECT_EQ(evolutionState.currentEval, evolutionState.evolutionConfig.populationSize);
-}
-
-TEST(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 4;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 2;
-    evolutionState.trainingSpec = makeTrainingSpec(4);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    bool sawBackgroundCompletion = false;
-    constexpr int maxTicks = 200;
-    for (int i = 0; i < maxTicks; ++i) {
-        evolutionState.tick(*fixture.stateMachine);
-        if (evolutionState.visible_.runner != nullptr
-            && evolutionState.visible_.runner->getSimTime()
-                < evolutionState.evolutionConfig.maxSimulationTime
-            && evolutionState.currentEval > 0) {
-            sawBackgroundCompletion = true;
-            break;
-        }
-    }
-
-    EXPECT_TRUE(sawBackgroundCompletion)
-        << "Background results should arrive while visible evaluation is running";
-}
-
 /**
  * @brief Test that Exit command from Evolution transitions to Shutdown.
  */
@@ -1604,26 +1522,4 @@ TEST(StateEvolutionTest, TargetCpuPercentDefaultDisabled)
         << "Diversity elitism should retain one near-best elite";
     EXPECT_DOUBLE_EQ(config.diversityEliteFitnessEpsilon, 0.0)
         << "Diversity elitism epsilon should default to exact best ties";
-}
-
-TEST(StateEvolutionTest, ConcurrencyThrottleInitializedToBackgroundWorkerCount)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 4;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 4;
-    evolutionState.evolutionConfig.targetCpuPercent = 0; // Disabled.
-    evolutionState.trainingSpec = makeTrainingSpec(4);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    ASSERT_NE(evolutionState.workerState_, nullptr);
-    // 4 parallel - 1 main thread = 3 background workers.
-    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 3);
-    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 3);
-    EXPECT_EQ(evolutionState.workerState_->activeEvaluations.load(), 0);
 }

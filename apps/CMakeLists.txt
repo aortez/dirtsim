@@ -330,6 +330,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
     src/server/EventProcessor.cpp
+    src/server/evolution/EvaluationExecutor.cpp
     src/server/evolution/FitnessModelBundle.cpp
     src/server/evolution/FitnessPresentationGenerator.cpp
     src/server/evolution/TrainingBestSnapshotGenerator.cpp
@@ -774,6 +775,7 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
     src/audio/AudioEngine.cpp
+    src/server/tests/EvaluationExecutor_test.cpp
     src/server/tests/FitnessModelBundle_test.cpp
     src/server/tests/FitnessPresentationGenerator_test.cpp
     src/server/tests/StateEvolution_test.cpp
