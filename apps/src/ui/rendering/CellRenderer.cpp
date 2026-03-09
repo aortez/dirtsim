@@ -72,6 +72,86 @@ void drawLineBresenham(
     }
 }
 
+static void blendPixelOver(uint32_t* pixels, size_t pixelIdx, uint32_t rgbColor, uint8_t alpha)
+{
+    if (alpha == 0) {
+        return;
+    }
+
+    const uint32_t dstColor = pixels[pixelIdx];
+    const uint8_t invAlpha = 255 - alpha;
+
+    const uint8_t srcR = (rgbColor >> 16) & 0xFF;
+    const uint8_t srcG = (rgbColor >> 8) & 0xFF;
+    const uint8_t srcB = rgbColor & 0xFF;
+
+    const uint8_t dstR = (dstColor >> 16) & 0xFF;
+    const uint8_t dstG = (dstColor >> 8) & 0xFF;
+    const uint8_t dstB = dstColor & 0xFF;
+
+    const uint8_t r = (srcR * alpha + dstR * invAlpha) / 255;
+    const uint8_t g = (srcG * alpha + dstG * invAlpha) / 255;
+    const uint8_t b = (srcB * alpha + dstB * invAlpha) / 255;
+
+    pixels[pixelIdx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+}
+
+static void drawBorderOverlay(
+    uint32_t* pixels,
+    uint32_t canvasWidth,
+    int32_t cellX,
+    int32_t cellY,
+    uint32_t cellWidth,
+    uint32_t cellHeight,
+    int inset,
+    int borderWidth,
+    uint32_t rgbColor,
+    uint8_t alpha)
+{
+    if (alpha == 0 || borderWidth <= 0) {
+        return;
+    }
+
+    const int minX = cellX + inset;
+    const int minY = cellY + inset;
+    const int maxX = cellX + static_cast<int>(cellWidth) - 1 - inset;
+    const int maxY = cellY + static_cast<int>(cellHeight) - 1 - inset;
+
+    if (minX > maxX || minY > maxY) {
+        return;
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const bool isBorder = x < minX + borderWidth || x > maxX - borderWidth
+                || y < minY + borderWidth || y > maxY - borderWidth;
+
+            if (!isBorder) {
+                continue;
+            }
+
+            const size_t pixelIdx = static_cast<size_t>(y) * canvasWidth + x;
+            blendPixelOver(pixels, pixelIdx, rgbColor, alpha);
+        }
+    }
+}
+
+static int calculateLivePressureOpacity(double livePressure)
+{
+    constexpr double kOpacityScale = 25.0;
+    return std::min(static_cast<int>(livePressure * kOpacityScale), 255);
+}
+
+static int calculateStaticLoadOpacity(double staticLoad)
+{
+    if (staticLoad <= 0.0) {
+        return 0;
+    }
+
+    constexpr double kOpacityScale = 48.0;
+    return std::min(static_cast<int>(std::log1p(staticLoad) * kOpacityScale), 255);
+}
+
 // Calculate optimal pixels per cell based on world size, container size, and scale factor.
 // The scale factor determines the ratio of canvas size to container size.
 // Scale > 1.0 creates a larger canvas (downscaling = sharper).
@@ -750,53 +830,42 @@ void CellRenderer::renderWorldData(
                 if (debugDraw && !cell.isEmpty() && cell.material_type != Material::EnumType::Air) {
                     // Pressure visualization (fixed-width borders with variable opacity).
                     if (scaledCellWidth_ >= 4) {
-                        // Calculate opacity from unified pressure.
-                        const double PRESSURE_OPACITY_SCALE = 25.0;
-                        int pressure_opacity =
-                            std::min(static_cast<int>(cell.pressure * PRESSURE_OPACITY_SCALE), 255);
-
-                        // Fixed border widths.
+                        const int livePressureOpacity = calculateLivePressureOpacity(cell.pressure);
+                        const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
                         const int FIXED_BORDER_WIDTH = std::max(1, static_cast<int>(2 * scaleX_));
 
-                        // Unified pressure border (cyan).
-                        if (pressure_opacity > 0) {
-                            uint32_t cyan_color = 0x00FFFF;
-                            uint8_t alpha = static_cast<uint8_t>(pressure_opacity * 0.5);
+                        if (livePressureOpacity > 0) {
+                            drawBorderOverlay(
+                                pixels,
+                                canvasWidth_,
+                                cellX,
+                                cellY,
+                                scaledCellWidth_,
+                                scaledCellHeight_,
+                                0,
+                                FIXED_BORDER_WIDTH,
+                                0x00FFFF,
+                                static_cast<uint8_t>(livePressureOpacity * 0.5));
+                        }
 
-                            for (uint32_t py = 0; py < scaledCellHeight_; py++) {
-                                for (uint32_t px = 0; px < scaledCellWidth_; px++) {
-                                    bool is_border =
-                                        (px < static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || px >= scaledCellWidth_
-                                                 - static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || py < static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || py >= scaledCellHeight_
-                                                 - static_cast<uint32_t>(FIXED_BORDER_WIDTH));
+                        const int staticLoadInset = FIXED_BORDER_WIDTH + 1;
+                        const bool canDrawStaticLoad = static_cast<int>(scaledCellWidth_)
+                                > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
+                            && static_cast<int>(scaledCellHeight_)
+                                > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
 
-                                    if (is_border) {
-                                        uint32_t pixelIdx =
-                                            (cellY + py) * canvasWidth_ + (cellX + px);
-                                        uint32_t src_color = (alpha << 24) | cyan_color;
-
-                                        uint32_t dst_color = pixels[pixelIdx];
-                                        uint8_t inv_alpha = 255 - alpha;
-
-                                        uint8_t src_r = (src_color >> 16) & 0xFF;
-                                        uint8_t src_g = (src_color >> 8) & 0xFF;
-                                        uint8_t src_b = src_color & 0xFF;
-
-                                        uint8_t dst_r = (dst_color >> 16) & 0xFF;
-                                        uint8_t dst_g = (dst_color >> 8) & 0xFF;
-                                        uint8_t dst_b = dst_color & 0xFF;
-
-                                        uint8_t r = (src_r * alpha + dst_r * inv_alpha) / 255;
-                                        uint8_t g = (src_g * alpha + dst_g * inv_alpha) / 255;
-                                        uint8_t b = (src_b * alpha + dst_b * inv_alpha) / 255;
-
-                                        pixels[pixelIdx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                                    }
-                                }
-                            }
+                        if (canDrawStaticLoad && staticLoadOpacity > 0) {
+                            drawBorderOverlay(
+                                pixels,
+                                canvasWidth_,
+                                cellX,
+                                cellY,
+                                scaledCellWidth_,
+                                scaledCellHeight_,
+                                staticLoadInset,
+                                FIXED_BORDER_WIDTH,
+                                0xFFB000,
+                                static_cast<uint8_t>(staticLoadOpacity * 0.7));
                         }
                     }
                 }
@@ -1091,21 +1160,16 @@ void CellRenderer::renderCellLVGL(
 
             // Pressure visualization (fixed-width borders with variable opacity).
             if (scaledCellWidth_ >= 10) {
-                // Fixed border widths.
                 const int FIXED_BORDER_WIDTH = std::max(1, static_cast<int>(2 * scaleX_));
+                const int livePressureOpacity = calculateLivePressureOpacity(cell.pressure);
+                const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
 
-                // Calculate opacity from unified pressure.
-                const double PRESSURE_OPACITY_SCALE = 25.0;
-                int pressure_opacity =
-                    std::min(static_cast<int>(cell.pressure * PRESSURE_OPACITY_SCALE), 255);
-
-                // Unified pressure border (cyan).
-                if (pressure_opacity > 0) {
+                if (livePressureOpacity > 0) {
                     lv_draw_rect_dsc_t pressure_dsc;
                     lv_draw_rect_dsc_init(&pressure_dsc);
                     pressure_dsc.bg_opa = LV_OPA_TRANSP;
                     pressure_dsc.border_color = lv_color_hex(0x00FFFF);
-                    pressure_dsc.border_opa = static_cast<lv_opa_t>(pressure_opacity);
+                    pressure_dsc.border_opa = static_cast<lv_opa_t>(livePressureOpacity);
                     pressure_dsc.border_width = FIXED_BORDER_WIDTH;
                     pressure_dsc.radius = 0;
 
@@ -1114,6 +1178,30 @@ void CellRenderer::renderCellLVGL(
                                                   cellX + static_cast<int>(scaledCellWidth_) - 1,
                                                   cellY + static_cast<int>(scaledCellHeight_) - 1 };
                     lv_draw_rect(&layer, &pressure_dsc, &pressure_coords);
+                }
+
+                const int staticLoadInset = FIXED_BORDER_WIDTH + 1;
+                const bool canDrawStaticLoad =
+                    static_cast<int>(scaledCellWidth_) > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
+                    && static_cast<int>(scaledCellHeight_)
+                        > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
+
+                if (canDrawStaticLoad && staticLoadOpacity > 0) {
+                    lv_draw_rect_dsc_t static_load_dsc;
+                    lv_draw_rect_dsc_init(&static_load_dsc);
+                    static_load_dsc.bg_opa = LV_OPA_TRANSP;
+                    static_load_dsc.border_color = lv_color_hex(0xFFB000);
+                    static_load_dsc.border_opa = static_cast<lv_opa_t>(staticLoadOpacity);
+                    static_load_dsc.border_width = FIXED_BORDER_WIDTH;
+                    static_load_dsc.radius = 0;
+
+                    lv_area_t static_load_coords = {
+                        cellX + staticLoadInset,
+                        cellY + staticLoadInset,
+                        cellX + static_cast<int>(scaledCellWidth_) - 1 - staticLoadInset,
+                        cellY + static_cast<int>(scaledCellHeight_) - 1 - staticLoadInset,
+                    };
+                    lv_draw_rect(&layer, &static_load_dsc, &static_load_coords);
                 }
             }
 

@@ -38,6 +38,7 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     cell.fill_ratio = 0.8;
     cell.com = Vector2d{ 0.5, -0.3 };
     cell.velocity = Vector2d{ 1.5, -2.0 };
+    cell.static_load = 35.0;
     cell.pressure = 50.0;
     cell.pressure_gradient = Vector2d{ 0.1, -0.2 };
 
@@ -50,7 +51,8 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     EXPECT_NEAR(unpacked.com.y, -0.3, 0.01);
     EXPECT_NEAR(unpacked.velocity.x, 1.5, 0.1);
     EXPECT_NEAR(unpacked.velocity.y, -2.0, 0.1);
-    EXPECT_NEAR(unpacked.pressure_hydro, 50.0, 1.0);
+    EXPECT_NEAR(unpacked.pressure_hydro, 35.0, 1.0);
+    EXPECT_NEAR(unpacked.pressure_dynamic, 50.0, 1.0);
     EXPECT_NEAR(unpacked.pressure_gradient.x, 0.1, 0.01);
     EXPECT_NEAR(unpacked.pressure_gradient.y, -0.2, 0.01);
 }

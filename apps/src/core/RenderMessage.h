@@ -46,8 +46,8 @@ struct DebugCell {
     int16_t velocity_x; // Velocity X: [-10.0, 10.0] → [-32767, 32767].
     int16_t velocity_y; // Velocity Y: [-10.0, 10.0] → [-32767, 32767].
 
-    uint16_t pressure_hydro;   // Hydrostatic pressure: [0, 1000] → [0, 65535].
-    uint16_t pressure_dynamic; // Dynamic pressure: [0, 1000] → [0, 65535].
+    uint16_t pressure_hydro;   // Phase 1: derived static load [0, 1000] → [0, 65535].
+    uint16_t pressure_dynamic; // Phase 1: live pressure [0, 1000] → [0, 65535].
 
     Vector2<float> pressure_gradient; // Pressure gradient vector.
 

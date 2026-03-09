@@ -395,7 +395,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                         worldData.cells[i].render_as = unpacked.render_as;
                         worldData.cells[i].com = unpacked.com;
                         worldData.cells[i].velocity = unpacked.velocity;
-                        worldData.cells[i].pressure = unpacked.pressure_hydro;
+                        worldData.cells[i].static_load = unpacked.pressure_hydro;
+                        worldData.cells[i].pressure = unpacked.pressure_dynamic;
                         worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
                     }
                 }

@@ -46,6 +46,7 @@ make debug                           # Build
 | Application docs | `CLAUDE.md` | Build, run, test, architecture |
 | Architecture | `apps/design_docs/Architecture.md` | System overview and components |
 | Physics system | `apps/design_docs/GridMechanics.md` | Pressure, friction, cohesion, etc. |
+| Static load + sleeping | `apps/design_docs/static-load-and-region-sleeping.md` | Proposal for load-bearing dirt and region sleeping |
 | Coding conventions | `coding_convention.md` | Style guidelines |
 | Tree organisms | `apps/design_docs/plant.md` | A-life tree feature |
 | CLI reference | `apps/src/cli/README.md` | Command-line interface |

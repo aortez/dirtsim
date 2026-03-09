@@ -23,6 +23,7 @@
 
 #include "WorldPressureCalculator.h"
 #include "WorldRigidBodyCalculator.h"
+#include "WorldStaticLoadCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
 #include "WorldViscosityCalculator.h"
 #include "organisms/OrganismManager.h"
@@ -71,6 +72,7 @@ struct World::Impl {
     WorldAdhesionCalculator adhesion_calculator_;
     WorldCollisionCalculator collision_calculator_;
     WorldPressureCalculator pressure_calculator_;
+    WorldStaticLoadCalculator static_load_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
 
     // Light calculator (unique_ptr for runtime swappability).
@@ -571,6 +573,11 @@ void World::advanceTime(double deltaTimeSeconds)
 
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
+
+    {
+        ScopeTimer staticLoadTimer(pImpl->timers_, "static_load_recompute");
+        pImpl->static_load_calculator_.recomputeAll(*this);
+    }
 
     // Sync organism render data to WorldData.entities for UI.
     organism_manager_->syncEntitiesToWorldData(*this);
@@ -2018,6 +2025,7 @@ void World::fromJSON(const nlohmann::json& doc)
 {
     // Automatic deserialization via ReflectSerializer!
     pImpl->data_ = ReflectSerializer::from_json<WorldData>(doc);
+    pImpl->static_load_calculator_.recomputeAll(*this);
     markGridCacheDirty();
     spdlog::info("World deserialized: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }
