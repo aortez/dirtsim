@@ -15,10 +15,12 @@
 #include "ui_builders/LVGLBuilder.h"
 #include "widgets/TimeSeriesPlotWidget.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <lvgl/lvgl.h>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -31,41 +33,194 @@ struct BestRenderRequest {
     std::shared_ptr<std::atomic<bool>> alive;
 };
 
-std::string fitnessPresentationTextBuild(const Api::FitnessPresentation& presentation)
+std::string presentationMetricDetailTextBuild(const Api::FitnessPresentationMetric& metric)
 {
-    std::ostringstream summary;
-    summary << std::fixed << std::setprecision(4);
-    summary << "Model: " << presentation.modelId << "\n";
-    summary << "Total Fitness: " << presentation.totalFitness;
-    if (!presentation.summary.empty()) {
-        summary << "\nSummary: " << presentation.summary;
+    std::ostringstream detail;
+    detail << std::fixed;
+
+    bool hasDetail = false;
+    if (metric.reference.has_value()) {
+        detail << "ref " << std::setprecision(4) << metric.reference.value();
+        if (!metric.unit.empty()) {
+            detail << " " << metric.unit;
+        }
+        hasDetail = true;
     }
-    for (const auto& section : presentation.sections) {
-        summary << "\n\n" << section.label;
-        if (section.score.has_value()) {
-            summary << " (score " << std::setprecision(3) << section.score.value()
-                    << std::setprecision(4) << ")";
+    if (metric.normalized.has_value()) {
+        if (hasDetail) {
+            detail << " | ";
         }
-        summary << ":";
-        if (section.metrics.empty()) {
-            summary << "\n- No details.";
-            continue;
-        }
-        for (const auto& metric : section.metrics) {
-            summary << "\n- " << metric.label << ": " << metric.value;
-            if (metric.reference.has_value()) {
-                summary << " / " << metric.reference.value();
-            }
-            if (!metric.unit.empty()) {
-                summary << " " << metric.unit;
-            }
-            if (metric.normalized.has_value()) {
-                summary << " [norm " << std::setprecision(3) << metric.normalized.value()
-                        << std::setprecision(4) << "]";
-            }
+        detail << "norm " << std::setprecision(4) << metric.normalized.value();
+        hasDetail = true;
+    }
+
+    return hasDetail ? detail.str() : std::string{};
+}
+
+std::string presentationNumberTextBuild(double value)
+{
+    const bool isIntegerLike = std::abs(value - std::round(value)) < 0.00005;
+    std::ostringstream text;
+    if (isIntegerLike) {
+        text << std::llround(value);
+    }
+    else {
+        text << std::fixed << std::setprecision(4) << value;
+    }
+    return text.str();
+}
+
+std::string presentationValueTextBuild(const Api::FitnessPresentationMetric& metric)
+{
+    std::string valueText = presentationNumberTextBuild(metric.value);
+    if (!metric.unit.empty()) {
+        valueText += " ";
+        valueText += metric.unit;
+    }
+    return valueText;
+}
+
+std::string presentationSectionScoreTextBuild(const Api::FitnessPresentationSection& section)
+{
+    if (!section.score.has_value()) {
+        return std::string{};
+    }
+
+    std::ostringstream score;
+    score << "Score " << std::fixed << std::setprecision(4) << section.score.value();
+    return score.str();
+}
+
+void setPresentationCardStyle(lv_obj_t* card, lv_color_t bgColor, lv_color_t borderColor)
+{
+    lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(card, bgColor, 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_90, 0);
+    lv_obj_set_style_radius(card, LVGLBuilder::Style::RADIUS, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, borderColor, 0);
+    lv_obj_set_style_pad_all(card, LVGLBuilder::Style::TROUGH_PADDING, 0);
+    lv_obj_set_style_pad_gap(card, 6, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void setPresentationMetricValueLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(0xE8F0FF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+}
+
+void setPresentationMetricLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0xD6DFEF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
+void setPresentationDetailLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0x90A4BF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
+void setPresentationWrappedLabelCommon(lv_obj_t* label)
+{
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+}
+
+void setTransparentColumnLayout(lv_obj_t* container, int gapPx)
+{
+    lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_pad_all(container, 0, 0);
+    lv_obj_set_style_pad_gap(container, gapPx, 0);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void setTransparentRowLayout(lv_obj_t* container, int gapPx)
+{
+    lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_pad_all(container, 0, 0);
+    lv_obj_set_style_pad_gap(container, gapPx, 0);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void presentationPlaceholderRender(lv_obj_t* parent, const char* text)
+{
+    lv_obj_clean(parent);
+
+    lv_obj_t* placeholder = lv_label_create(parent);
+    setPresentationWrappedLabelCommon(placeholder);
+    setPresentationDetailLabelStyle(placeholder);
+    lv_label_set_text(placeholder, text);
+}
+
+void presentationSectionRender(lv_obj_t* parent, const Api::FitnessPresentationSection& section)
+{
+    lv_obj_t* card = lv_obj_create(parent);
+    setPresentationCardStyle(card, lv_color_hex(0x121A2A), lv_color_hex(0x344A6A));
+
+    lv_obj_t* headerRow = lv_obj_create(card);
+    setTransparentRowLayout(headerRow, 8);
+
+    lv_obj_t* titleLabel = lv_label_create(headerRow);
+    lv_obj_set_flex_grow(titleLabel, 1);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x99DDFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text(titleLabel, section.label.c_str());
+
+    const std::string scoreText = presentationSectionScoreTextBuild(section);
+    if (!scoreText.empty()) {
+        lv_obj_t* scoreLabel = lv_label_create(headerRow);
+        lv_obj_set_style_text_color(scoreLabel, lv_color_hex(0xE8F0FF), 0);
+        lv_obj_set_style_text_font(scoreLabel, LVGLBuilder::Style::CONTROL_FONT, 0);
+        lv_label_set_text(scoreLabel, scoreText.c_str());
+    }
+
+    if (section.metrics.empty()) {
+        lv_obj_t* emptyLabel = lv_label_create(card);
+        setPresentationWrappedLabelCommon(emptyLabel);
+        setPresentationDetailLabelStyle(emptyLabel);
+        lv_label_set_text(emptyLabel, "No details.");
+        return;
+    }
+
+    for (const auto& metric : section.metrics) {
+        lv_obj_t* metricCard = lv_obj_create(card);
+        setPresentationCardStyle(metricCard, lv_color_hex(0x0D1421), lv_color_hex(0x22324A));
+
+        lv_obj_t* metricHeader = lv_obj_create(metricCard);
+        setTransparentRowLayout(metricHeader, 8);
+
+        lv_obj_t* metricLabel = lv_label_create(metricHeader);
+        lv_obj_set_width(metricLabel, LV_PCT(60));
+        lv_label_set_long_mode(metricLabel, LV_LABEL_LONG_WRAP);
+        setPresentationMetricLabelStyle(metricLabel);
+        lv_label_set_text(metricLabel, metric.label.c_str());
+
+        lv_obj_t* valueLabel = lv_label_create(metricHeader);
+        setPresentationMetricValueLabelStyle(valueLabel);
+        lv_label_set_text(valueLabel, presentationValueTextBuild(metric).c_str());
+
+        const std::string detailText = presentationMetricDetailTextBuild(metric);
+        if (!detailText.empty()) {
+            lv_obj_t* detailLabel = lv_label_create(metricCard);
+            setPresentationWrappedLabelCommon(detailLabel);
+            setPresentationDetailLabelStyle(detailLabel);
+            lv_label_set_text(detailLabel, detailText.c_str());
         }
     }
-    return summary.str();
 }
 
 } // namespace
@@ -256,12 +411,9 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_color(bestPresentationTitle, lv_color_hex(0x99DDFF), 0);
     lv_obj_set_style_text_font(bestPresentationTitle, &lv_font_montserrat_14, 0);
 
-    bestFitnessPresentationLabel_ = lv_label_create(longTermPanel_);
-    lv_obj_set_width(bestFitnessPresentationLabel_, LV_PCT(100));
-    lv_label_set_long_mode(bestFitnessPresentationLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(bestFitnessPresentationLabel_, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(bestFitnessPresentationLabel_, lv_color_hex(0xBBD6E8), 0);
-    lv_label_set_text(bestFitnessPresentationLabel_, "No best snapshot yet.");
+    bestFitnessPresentationContent_ = lv_obj_create(longTermPanel_);
+    setTransparentColumnLayout(bestFitnessPresentationContent_, 8);
+    renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
 
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
@@ -574,7 +726,7 @@ void TrainingActiveView::destroyUI()
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
-    bestFitnessPresentationLabel_ = nullptr;
+    bestFitnessPresentationContent_ = nullptr;
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
@@ -782,13 +934,65 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
-    if (bestFitnessPresentationLabel_) {
-        const std::string presentationText = fitnessPresentationTextBuild(fitnessPresentation);
-        lv_label_set_text(bestFitnessPresentationLabel_, presentationText.c_str());
-    }
+    renderBestFitnessPresentation(fitnessPresentation);
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         scheduleBestRender();
     }
+}
+
+void TrainingActiveView::renderBestFitnessPresentation(
+    const Api::FitnessPresentation& fitnessPresentation)
+{
+    if (!bestFitnessPresentationContent_) {
+        return;
+    }
+
+    lv_obj_clean(bestFitnessPresentationContent_);
+
+    lv_obj_t* headerCard = lv_obj_create(bestFitnessPresentationContent_);
+    setPresentationCardStyle(headerCard, lv_color_hex(0x162236), lv_color_hex(0x35557A));
+
+    lv_obj_t* titleRow = lv_obj_create(headerCard);
+    setTransparentRowLayout(titleRow, 8);
+
+    lv_obj_t* modelLabel = lv_label_create(titleRow);
+    lv_obj_set_flex_grow(modelLabel, 1);
+    lv_obj_set_style_text_color(modelLabel, lv_color_hex(0xDCE6FF), 0);
+    lv_obj_set_style_text_font(modelLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text_fmt(modelLabel, "Model: %s", fitnessPresentation.modelId.c_str());
+
+    lv_obj_t* totalLabel = lv_label_create(titleRow);
+    lv_obj_set_style_text_color(totalLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(totalLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text_fmt(totalLabel, "Total %.4f", fitnessPresentation.totalFitness);
+
+    if (!fitnessPresentation.summary.empty()) {
+        lv_obj_t* summaryLabel = lv_label_create(headerCard);
+        setPresentationWrappedLabelCommon(summaryLabel);
+        setPresentationDetailLabelStyle(summaryLabel);
+        lv_label_set_text(summaryLabel, fitnessPresentation.summary.c_str());
+    }
+
+    if (fitnessPresentation.sections.empty()) {
+        lv_obj_t* emptyLabel = lv_label_create(headerCard);
+        setPresentationWrappedLabelCommon(emptyLabel);
+        setPresentationDetailLabelStyle(emptyLabel);
+        lv_label_set_text(emptyLabel, "No presentation sections.");
+        return;
+    }
+
+    for (const auto& section : fitnessPresentation.sections) {
+        presentationSectionRender(bestFitnessPresentationContent_, section);
+    }
+}
+
+void TrainingActiveView::renderBestFitnessPresentationPlaceholder(const char* text)
+{
+    if (!bestFitnessPresentationContent_) {
+        return;
+    }
+
+    presentationPlaceholderRender(bestFitnessPresentationContent_, text);
 }
 
 void TrainingActiveView::setStreamIntervalMs(int value)
@@ -1349,9 +1553,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }
-        if (bestFitnessPresentationLabel_) {
-            lv_label_set_text(bestFitnessPresentationLabel_, "No best snapshot yet.");
-        }
+        renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
         scenarioControls_.reset();
         currentScenarioConfig_ = Config::Empty{};
         currentScenarioId_ = Scenario::EnumType::Empty;

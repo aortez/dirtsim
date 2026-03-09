@@ -49,22 +49,22 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
 TEST(FitnessPresentationGeneratorTest, BuildsTreePresentationFromNativeBreakdown)
 {
     const FitnessEvaluation evaluation{
-        .totalFitness = 4.25,
+        .totalFitness = 6.395,
         .details =
             TreeFitnessBreakdown{
                 .survivalRaw = 90.0,
                 .survivalReference = 120.0,
                 .survivalScore = 0.75,
-                .maxEnergyRaw = 30.0,
-                .maxEnergyNormalized = 0.3,
-                .finalEnergyRaw = 20.0,
-                .finalEnergyNormalized = 0.2,
+                .maxEnergyRaw = 80.0,
+                .maxEnergyNormalized = 0.8,
+                .finalEnergyRaw = 80.0,
+                .finalEnergyNormalized = 0.8,
                 .energyReference = 100.0,
                 .energyScore = 0.8,
                 .producedEnergyRaw = 55.0,
-                .producedEnergyNormalized = 0.6,
+                .producedEnergyNormalized = 0.8,
                 .absorbedWaterRaw = 42.0,
-                .absorbedWaterNormalized = 0.4,
+                .absorbedWaterNormalized = 0.55,
                 .waterReference = 80.0,
                 .resourceScore = 0.7,
                 .partialStructureBonus = 0.1,
@@ -72,8 +72,30 @@ TEST(FitnessPresentationGeneratorTest, BuildsTreePresentationFromNativeBreakdown
                 .structureBonus = 0.3,
                 .milestoneBonus = 0.4,
                 .commandScore = 0.5,
-                .seedScore = 0.6,
-                .totalFitness = 4.25,
+                .seedScore = 2.6,
+                .totalFitness = 6.395,
+                .coreFitness = 2.295,
+                .bonusFitness = 4.1,
+                .energyMaxWeightedComponent = 0.56,
+                .energyFinalWeightedComponent = 0.24,
+                .resourceEnergyWeightedComponent = 0.48,
+                .resourceWaterWeightedComponent = 0.22,
+                .rootBelowSeedBonus = 0.1,
+                .woodAboveSeedBonus = 0.3,
+                .commandsAccepted = 11,
+                .commandsRejected = 3,
+                .idleCancels = 2,
+                .leafCount = 5,
+                .rootCount = 2,
+                .woodCount = 4,
+                .partialStructurePartCount = 3,
+                .seedCountBonus = 2.0,
+                .seedDistanceBonus = 0.6,
+                .seedDistanceReference = 10.0,
+                .seedsProduced = 7,
+                .landedSeedCount = 2,
+                .averageLandedSeedDistance = 6.5,
+                .maxLandedSeedDistance = 9.0,
             },
     };
 
@@ -81,21 +103,32 @@ TEST(FitnessPresentationGeneratorTest, BuildsTreePresentationFromNativeBreakdown
         fitnessEvaluationTreePresentationGenerate(evaluation);
     EXPECT_EQ(presentation.organismType, OrganismType::TREE);
     EXPECT_EQ(presentation.modelId, "tree");
+    EXPECT_EQ(
+        presentation.summary,
+        "Core 2.2950 = Survival 0.7500 x (1 + Energy 0.8000) x (1 + Resources 0.7000)\n"
+        "Bonus 4.1000 = Structure 1.0000 + Commands/Seed 3.1000");
     ASSERT_EQ(presentation.sections.size(), 5u);
     EXPECT_EQ(presentation.sections[0].key, "survival");
     EXPECT_EQ(presentation.sections[1].key, "energy");
     EXPECT_EQ(presentation.sections[2].key, "resources");
     EXPECT_EQ(presentation.sections[3].key, "structure");
-    EXPECT_EQ(presentation.sections[4].key, "behavior");
+    EXPECT_EQ(presentation.sections[4].key, "commands_seed");
+    EXPECT_EQ(presentation.sections[0].label, "Survival Factor");
+    EXPECT_EQ(presentation.sections[3].label, "Structure Bonuses");
 
     const Api::FitnessPresentationMetric* energyMax =
         fitnessMetricFind(presentation.sections[1], "energy_max");
     ASSERT_NE(energyMax, nullptr);
-    EXPECT_DOUBLE_EQ(energyMax->value, 30.0);
+    EXPECT_DOUBLE_EQ(energyMax->value, 80.0);
     ASSERT_TRUE(energyMax->reference.has_value());
     EXPECT_DOUBLE_EQ(energyMax->reference.value(), 100.0);
     ASSERT_TRUE(energyMax->normalized.has_value());
-    EXPECT_DOUBLE_EQ(energyMax->normalized.value(), 0.3);
+    EXPECT_DOUBLE_EQ(energyMax->normalized.value(), 0.8);
+
+    const Api::FitnessPresentationMetric* energyMaxWeighted =
+        fitnessMetricFind(presentation.sections[1], "energy_max_weighted");
+    ASSERT_NE(energyMaxWeighted, nullptr);
+    EXPECT_DOUBLE_EQ(energyMaxWeighted->value, 0.56);
 
     const Api::FitnessPresentationMetric* waterAbsorbed =
         fitnessMetricFind(presentation.sections[2], "water_absorbed");
@@ -104,7 +137,24 @@ TEST(FitnessPresentationGeneratorTest, BuildsTreePresentationFromNativeBreakdown
     ASSERT_TRUE(waterAbsorbed->reference.has_value());
     EXPECT_DOUBLE_EQ(waterAbsorbed->reference.value(), 80.0);
     ASSERT_TRUE(waterAbsorbed->normalized.has_value());
-    EXPECT_DOUBLE_EQ(waterAbsorbed->normalized.value(), 0.4);
+    EXPECT_DOUBLE_EQ(waterAbsorbed->normalized.value(), 0.55);
+
+    const Api::FitnessPresentationMetric* partialStructureParts =
+        fitnessMetricFind(presentation.sections[3], "partial_structure_parts");
+    ASSERT_NE(partialStructureParts, nullptr);
+    EXPECT_DOUBLE_EQ(partialStructureParts->value, 3.0);
+
+    const Api::FitnessPresentationMetric* commandsAccepted =
+        fitnessMetricFind(presentation.sections[4], "commands_accepted");
+    ASSERT_NE(commandsAccepted, nullptr);
+    EXPECT_DOUBLE_EQ(commandsAccepted->value, 11.0);
+
+    const Api::FitnessPresentationMetric* seedDistance =
+        fitnessMetricFind(presentation.sections[4], "max_seed_distance");
+    ASSERT_NE(seedDistance, nullptr);
+    EXPECT_DOUBLE_EQ(seedDistance->value, 9.0);
+    ASSERT_TRUE(seedDistance->reference.has_value());
+    EXPECT_DOUBLE_EQ(seedDistance->reference.value(), 10.0);
 }
 
 TEST(FitnessPresentationGeneratorTest, FallsBackWhenTreeDetailsAreMissing)

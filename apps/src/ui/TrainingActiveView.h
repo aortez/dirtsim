@@ -104,6 +104,8 @@ private:
     void createStreamPanel(lv_obj_t* parent);
     void createScenarioControlsOverlay();
     void hideScenarioControlsOverlay();
+    void renderBestFitnessPresentation(const Api::FitnessPresentation& fitnessPresentation);
+    void renderBestFitnessPresentationPlaceholder(const char* text);
     void refreshScenarioControlsOverlay();
     void updateScenarioButtonState();
 
@@ -163,7 +165,7 @@ private:
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
     lv_obj_t* bestCommandSummaryLabel_ = nullptr;
-    lv_obj_t* bestFitnessPresentationLabel_ = nullptr;
+    lv_obj_t* bestFitnessPresentationContent_ = nullptr;
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;

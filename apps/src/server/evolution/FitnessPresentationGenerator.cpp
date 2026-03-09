@@ -48,7 +48,9 @@ std::optional<double> optionalPositive(double value)
     return value;
 }
 
-std::string scoreSummaryBuild(
+std::string treeSummaryBuild(
+    double coreFitness,
+    double bonusFitness,
     double survivalScore,
     double energyScore,
     double resourceScore,
@@ -56,12 +58,11 @@ std::string scoreSummaryBuild(
     double behaviorScore)
 {
     std::ostringstream summary;
-    summary << std::fixed << std::setprecision(2);
-    summary << "Survival " << survivalScore;
-    summary << " | Energy " << energyScore;
-    summary << " | Resources " << resourceScore;
-    summary << " | Structure " << structureScore;
-    summary << " | Behavior " << behaviorScore;
+    summary << std::fixed << std::setprecision(4);
+    summary << "Core " << coreFitness << " = Survival " << survivalScore << " x (1 + Energy "
+            << energyScore << ") x (1 + Resources " << resourceScore << ")";
+    summary << "\nBonus " << bonusFitness << " = Structure " << structureScore
+            << " + Commands/Seed " << behaviorScore;
     return summary.str();
 }
 
@@ -146,7 +147,9 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
         .organismType = OrganismType::TREE,
         .modelId = "tree",
         .totalFitness = evaluation.totalFitness,
-        .summary = scoreSummaryBuild(
+        .summary = treeSummaryBuild(
+            breakdown->coreFitness,
+            breakdown->bonusFitness,
             breakdown->survivalScore,
             breakdown->energyScore,
             breakdown->resourceScore,
@@ -158,18 +161,18 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
     presentation.sections.reserve(5);
     presentation.sections.push_back(makeSection(
         "survival",
-        "Survival",
+        "Survival Factor",
         breakdown->survivalScore,
         { makeMetric(
             "survival_time",
-            "Survival Time",
+            "Lifespan",
             breakdown->survivalRaw,
             optionalPositive(breakdown->survivalReference),
             breakdown->survivalScore,
             "seconds") }));
     presentation.sections.push_back(makeSection(
         "energy",
-        "Energy",
+        "Energy Factor",
         breakdown->energyScore,
         {
             makeMetric(
@@ -180,16 +183,30 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
                 breakdown->maxEnergyNormalized,
                 "energy"),
             makeMetric(
+                "energy_max_weighted",
+                "Max Energy Weighted",
+                breakdown->energyMaxWeightedComponent,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
                 "energy_final",
                 "Final Energy",
                 breakdown->finalEnergyRaw,
                 optionalPositive(breakdown->energyReference),
                 breakdown->finalEnergyNormalized,
                 "energy"),
+            makeMetric(
+                "energy_final_weighted",
+                "Final Energy Weighted",
+                breakdown->energyFinalWeightedComponent,
+                std::nullopt,
+                std::nullopt,
+                "score"),
         }));
     presentation.sections.push_back(makeSection(
         "resources",
-        "Resources",
+        "Resource Factor",
         breakdown->resourceScore,
         {
             makeMetric(
@@ -200,16 +217,30 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
                 breakdown->producedEnergyNormalized,
                 "energy"),
             makeMetric(
+                "energy_produced_weighted",
+                "Energy Produced Weighted",
+                breakdown->resourceEnergyWeightedComponent,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
                 "water_absorbed",
                 "Water Absorbed",
                 breakdown->absorbedWaterRaw,
                 optionalPositive(breakdown->waterReference),
                 breakdown->absorbedWaterNormalized,
                 "water"),
+            makeMetric(
+                "water_absorbed_weighted",
+                "Water Absorbed Weighted",
+                breakdown->resourceWaterWeightedComponent,
+                std::nullopt,
+                std::nullopt,
+                "score"),
         }));
     presentation.sections.push_back(makeSection(
         "structure",
-        "Structure",
+        "Structure Bonuses",
         structureScore,
         {
             makeMetric(
@@ -227,23 +258,58 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
                 std::nullopt,
                 "score"),
             makeMetric(
-                "structure_bonus",
-                "Structure Bonus",
+                "minimal_structure_bonus",
+                "Minimal Structure Bonus",
                 breakdown->structureBonus,
                 std::nullopt,
                 std::nullopt,
                 "score"),
             makeMetric(
-                "milestone_bonus",
-                "Milestone Bonus",
-                breakdown->milestoneBonus,
+                "root_below_seed_bonus",
+                "Root Below Seed Bonus",
+                breakdown->rootBelowSeedBonus,
                 std::nullopt,
                 std::nullopt,
                 "score"),
+            makeMetric(
+                "wood_above_seed_bonus",
+                "Wood Above Seed Bonus",
+                breakdown->woodAboveSeedBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "leaf_count",
+                "Leaf Count",
+                static_cast<double>(breakdown->leafCount),
+                std::nullopt,
+                std::nullopt,
+                "cells"),
+            makeMetric(
+                "root_count",
+                "Root Count",
+                static_cast<double>(breakdown->rootCount),
+                std::nullopt,
+                std::nullopt,
+                "cells"),
+            makeMetric(
+                "wood_count",
+                "Wood Count",
+                static_cast<double>(breakdown->woodCount),
+                std::nullopt,
+                std::nullopt,
+                "cells"),
+            makeMetric(
+                "partial_structure_parts",
+                "Partial Structure Parts",
+                static_cast<double>(breakdown->partialStructurePartCount),
+                std::nullopt,
+                std::nullopt,
+                "parts"),
         }));
     presentation.sections.push_back(makeSection(
-        "behavior",
-        "Behavior",
+        "commands_seed",
+        "Commands & Seed",
         behaviorScore,
         {
             makeMetric(
@@ -254,12 +320,75 @@ Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
                 std::nullopt,
                 "score"),
             makeMetric(
+                "commands_accepted",
+                "Commands Accepted",
+                static_cast<double>(breakdown->commandsAccepted),
+                std::nullopt,
+                std::nullopt,
+                "commands"),
+            makeMetric(
+                "commands_rejected",
+                "Commands Rejected",
+                static_cast<double>(breakdown->commandsRejected),
+                std::nullopt,
+                std::nullopt,
+                "commands"),
+            makeMetric(
+                "idle_cancels",
+                "Idle Cancels",
+                static_cast<double>(breakdown->idleCancels),
+                std::nullopt,
+                std::nullopt,
+                "commands"),
+            makeMetric(
                 "seed_score",
                 "Seed Score",
                 breakdown->seedScore,
                 std::nullopt,
                 std::nullopt,
                 "score"),
+            makeMetric(
+                "seed_count_bonus",
+                "Seed Count Bonus",
+                breakdown->seedCountBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "seed_distance_bonus",
+                "Seed Distance Bonus",
+                breakdown->seedDistanceBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "seeds_produced",
+                "Seeds Produced",
+                static_cast<double>(breakdown->seedsProduced),
+                std::nullopt,
+                std::nullopt,
+                "seeds"),
+            makeMetric(
+                "landed_seed_count",
+                "Landed Seeds",
+                static_cast<double>(breakdown->landedSeedCount),
+                std::nullopt,
+                std::nullopt,
+                "seeds"),
+            makeMetric(
+                "average_seed_distance",
+                "Average Seed Distance",
+                breakdown->averageLandedSeedDistance,
+                std::nullopt,
+                std::nullopt,
+                "cells"),
+            makeMetric(
+                "max_seed_distance",
+                "Max Seed Distance",
+                breakdown->maxLandedSeedDistance,
+                optionalPositive(breakdown->seedDistanceReference),
+                std::nullopt,
+                "cells"),
         }));
     return presentation;
 }
