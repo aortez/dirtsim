@@ -188,10 +188,9 @@ static bool shouldDrawCom(DebugVisualizationMode mode)
     switch (mode) {
         case DebugVisualizationMode::Combined:
         case DebugVisualizationMode::LivePressure:
+        case DebugVisualizationMode::RegionActivity:
         case DebugVisualizationMode::StaticLoad:
             return true;
-        case DebugVisualizationMode::RegionActivity:
-            return false;
         default:
             return true;
     }
@@ -1071,7 +1070,7 @@ void CellRenderer::renderWorldData(
                 }
             }
 
-            // Third pass: Draw COM indicators (absolute last, never obscured).
+            // Third pass: Draw COM indicators before any region overlay is applied.
             for (int16_t y = 0; y < worldData.height; ++y) {
                 for (int16_t x = 0; x < worldData.width; ++x) {
                     size_t idx = static_cast<size_t>(y) * worldData.width + x;
