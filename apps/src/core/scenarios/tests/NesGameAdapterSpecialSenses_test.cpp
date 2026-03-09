@@ -53,7 +53,6 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     uint8_t playerXPage,
     uint8_t playerXScreen,
     uint8_t horizontalSpeed,
-    uint8_t facingDirection,
     uint8_t verticalSpeed,
     uint8_t playerYScreen,
     uint8_t powerupState,
@@ -73,7 +72,6 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     snapshot.cpuRam[0x075F] = world;
     snapshot.cpuRam[0x0760] = level;
     snapshot.cpuRam[0x0057] = horizontalSpeed;
-    snapshot.cpuRam[0x0700] = facingDirection;
     snapshot.cpuRam[0x009F] = verticalSpeed;
     snapshot.cpuRam[0x00CE] = playerYScreen;
     snapshot.cpuRam[0x0756] = powerupState;
@@ -167,7 +165,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     adapter->reset("smb");
 
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1, 2, 0x03, 0x80, 25, 1, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
 
     const NesGameAdapterFrameInput frameInput{
         .advancedFrames = 400,
