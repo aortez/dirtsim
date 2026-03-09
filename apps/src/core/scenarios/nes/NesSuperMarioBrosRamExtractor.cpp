@@ -1,6 +1,7 @@
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 namespace DirtSim {
@@ -11,6 +12,7 @@ constexpr size_t kGameEngineSubroutineAddr = 0x0770;
 constexpr size_t kHorizontalSpeedAddr = 0x0057;
 constexpr size_t kLevelAddr = 0x0760;
 constexpr size_t kLivesAddr = 0x075A;
+constexpr size_t kEnemySlotCount = 5;
 constexpr size_t kPlayerStateAddr = 0x000E;
 constexpr size_t kPlayerXPageAddr = 0x006D;
 constexpr size_t kPlayerXScreenAddr = 0x0086;
@@ -18,6 +20,21 @@ constexpr size_t kPlayerYScreenAddr = 0x00CE;
 constexpr size_t kPowerupStateAddr = 0x0756;
 constexpr size_t kVerticalSpeedAddr = 0x009F;
 constexpr size_t kWorldAddr = 0x075F;
+constexpr std::array<size_t, kEnemySlotCount> kEnemyActiveAddrs = {
+    0x000F, 0x0010, 0x0011, 0x0012, 0x0013
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyTypeAddrs = {
+    0x0016, 0x0017, 0x0018, 0x0019, 0x001A
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXPageAddrs = {
+    0x006E, 0x006F, 0x0070, 0x0071, 0x0072
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyXScreenAddrs = {
+    0x0087, 0x0088, 0x0089, 0x008A, 0x008B
+};
+constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
+    0x00CF, 0x00D0, 0x00D1, 0x00D2, 0x00D3
+};
 
 constexpr uint8_t kGameEngineGameplay = 1;
 constexpr uint8_t kPlayerStateActiveGameplay = 0x08;
@@ -76,6 +93,33 @@ double decodeVerticalSpeedNormalized(uint8_t verticalSpeed)
     return std::clamp(static_cast<double>(static_cast<int8_t>(verticalSpeed)) / 128.0, -1.0, 1.0);
 }
 
+struct DecodedEnemy {
+    int16_t dx = 0;
+    int16_t dy = 0;
+    uint32_t distanceSquared = 0;
+};
+
+DecodedEnemy decodeEnemy(
+    uint8_t enemyXPage,
+    uint8_t enemyXScreen,
+    uint8_t enemyYScreen,
+    uint16_t playerAbsoluteX,
+    uint8_t playerYScreen)
+{
+    const uint16_t enemyAbsoluteX = decodeAbsoluteX(enemyXPage, enemyXScreen);
+    const int16_t dx = static_cast<int16_t>(enemyAbsoluteX) - static_cast<int16_t>(playerAbsoluteX);
+    const int16_t dy = static_cast<int16_t>(enemyYScreen) - static_cast<int16_t>(playerYScreen);
+
+    const int32_t dx32 = static_cast<int32_t>(dx);
+    const int32_t dy32 = static_cast<int32_t>(dy);
+
+    return {
+        .dx = dx,
+        .dy = dy,
+        .distanceSquared = static_cast<uint32_t>((dx32 * dx32) + (dy32 * dy32)),
+    };
+}
+
 bool isAirborne(uint8_t playerState)
 {
     return playerState >= 1u && playerState <= 3u;
@@ -87,6 +131,9 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     const SmolnesRuntime::MemorySnapshot& snapshot, bool setupComplete) const
 {
     const uint8_t playerState = snapshot.cpuRam.at(kPlayerStateAddr);
+    const uint16_t playerAbsoluteX = decodeAbsoluteX(
+        snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
+    const uint8_t playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
 
     NesSuperMarioBrosState output;
     output.phase = decodePhase(snapshot.cpuRam.at(kGameEngineSubroutineAddr), setupComplete);
@@ -99,11 +146,63 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
         decodeVerticalSpeedNormalized(snapshot.cpuRam.at(kVerticalSpeedAddr));
     output.world = snapshot.cpuRam.at(kWorldAddr);
     output.level = snapshot.cpuRam.at(kLevelAddr);
-    output.absoluteX = decodeAbsoluteX(
-        snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
+    output.absoluteX = playerAbsoluteX;
     output.playerXScreen = snapshot.cpuRam.at(kPlayerXScreenAddr);
-    output.playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
+    output.playerYScreen = playerYScreen;
     output.lives = snapshot.cpuRam.at(kLivesAddr);
+
+    std::array<DecodedEnemy, 2> nearestEnemies{};
+    size_t nearestEnemyCount = 0;
+    for (size_t slot = 0; slot < kEnemySlotCount; ++slot) {
+        if (snapshot.cpuRam.at(kEnemyActiveAddrs[slot]) == 0u) {
+            continue;
+        }
+        if (snapshot.cpuRam.at(kEnemyTypeAddrs[slot]) == 0u) {
+            continue;
+        }
+
+        const DecodedEnemy decodedEnemy = decodeEnemy(
+            snapshot.cpuRam.at(kEnemyXPageAddrs[slot]),
+            snapshot.cpuRam.at(kEnemyXScreenAddrs[slot]),
+            snapshot.cpuRam.at(kEnemyYScreenAddrs[slot]),
+            playerAbsoluteX,
+            playerYScreen);
+
+        if (nearestEnemyCount < nearestEnemies.size()) {
+            nearestEnemies[nearestEnemyCount] = decodedEnemy;
+            ++nearestEnemyCount;
+            std::sort(
+                nearestEnemies.begin(),
+                nearestEnemies.begin() + static_cast<int64_t>(nearestEnemyCount),
+                [](const DecodedEnemy& lhs, const DecodedEnemy& rhs) {
+                    return lhs.distanceSquared < rhs.distanceSquared;
+                });
+            continue;
+        }
+
+        if (decodedEnemy.distanceSquared >= nearestEnemies.back().distanceSquared) {
+            continue;
+        }
+
+        nearestEnemies.back() = decodedEnemy;
+        std::sort(
+            nearestEnemies.begin(),
+            nearestEnemies.end(),
+            [](const DecodedEnemy& lhs, const DecodedEnemy& rhs) {
+                return lhs.distanceSquared < rhs.distanceSquared;
+            });
+    }
+
+    if (nearestEnemyCount > 0u) {
+        output.enemyPresent = true;
+        output.nearestEnemyDx = nearestEnemies[0].dx;
+        output.nearestEnemyDy = nearestEnemies[0].dy;
+    }
+    if (nearestEnemyCount > 1u) {
+        output.secondNearestEnemyDx = nearestEnemies[1].dx;
+        output.secondNearestEnemyDy = nearestEnemies[1].dy;
+    }
+
     return output;
 }
 

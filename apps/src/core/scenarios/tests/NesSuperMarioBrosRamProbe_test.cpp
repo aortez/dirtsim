@@ -16,6 +16,7 @@
 #include <iostream>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -36,9 +37,10 @@ constexpr size_t kPowerupStateAddr = 0x0756;
 constexpr size_t kWorldAddr = 0x075F;
 constexpr size_t kLevelAddr = 0x0760;
 constexpr size_t kGameEngineAddr = 0x0770;
-constexpr uint64_t kProbeCaptureFrames = 1100;
+constexpr uint64_t kBaselineProbeCaptureFrames = 1100;
+constexpr uint64_t kLeftMovementProbeCaptureFrames = 480;
 constexpr uint64_t kSetupScriptEndFrame = 300;
-constexpr std::array<uint64_t, 14> kProbeScreenshotFrames = {
+constexpr std::array<uint64_t, 14> kBaselineProbeScreenshotFrames = {
     0u, 120u, 240u, 300u, 400u, 500u, 600u, 700u, 800u, 899u, 950u, 1000u, 1050u, 1099u,
 };
 constexpr std::array<uint64_t, 4> kProbeTargetFrames = { 500u, 600u, 700u, 899u };
@@ -57,6 +59,11 @@ constexpr std::array<size_t, kEnemySlotCount> kEnemyXScreenAddrs = {
 };
 constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
     0x00CF, 0x00D0, 0x00D1, 0x00D2, 0x00D3
+};
+
+enum class ProbeScriptType : uint8_t {
+    Baseline = 0,
+    LeftMovement = 1,
 };
 
 std::optional<std::filesystem::path> resolveNesSmbFixtureRomPath()
@@ -146,7 +153,35 @@ uint16_t decodeAbsoluteX(const std::vector<uint8_t>& cpuRam)
         | static_cast<uint16_t>(cpuRam[kPlayerXScreenAddr]);
 }
 
-uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
+uint64_t probeCaptureFrameCount(ProbeScriptType probeScriptType)
+{
+    switch (probeScriptType) {
+        case ProbeScriptType::Baseline:
+            return kBaselineProbeCaptureFrames;
+        case ProbeScriptType::LeftMovement:
+            return kLeftMovementProbeCaptureFrames;
+    }
+
+    return kBaselineProbeCaptureFrames;
+}
+
+bool shouldCaptureScreenshot(ProbeScriptType probeScriptType, uint64_t frameIndex)
+{
+    switch (probeScriptType) {
+        case ProbeScriptType::Baseline:
+            return std::find(
+                       kBaselineProbeScreenshotFrames.begin(),
+                       kBaselineProbeScreenshotFrames.end(),
+                       frameIndex)
+                != kBaselineProbeScreenshotFrames.end();
+        case ProbeScriptType::LeftMovement:
+            return false;
+    }
+
+    return false;
+}
+
+uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex, ProbeScriptType probeScriptType)
 {
     constexpr uint64_t kStartPressWidthFrames = 1;
     constexpr std::array<uint64_t, 2> kStartPressFrames = { 120u, 240u };
@@ -161,15 +196,32 @@ uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
     }
 
     const uint64_t gameFrame = frameIndex - kSetupScriptEndFrame;
-    const bool gradualWalkWindow = gameFrame >= 140u && gameFrame < 220u;
-    const bool pressRight = !gradualWalkWindow || ((gameFrame % 2u) == 0u);
+    switch (probeScriptType) {
+        case ProbeScriptType::Baseline: {
+            const bool gradualWalkWindow = gameFrame >= 140u && gameFrame < 220u;
+            const bool pressRight = !gradualWalkWindow || ((gameFrame % 2u) == 0u);
 
-    uint8_t mask = pressRight ? SMOLNES_RUNTIME_BUTTON_RIGHT : 0u;
-    if (gameFrame % 60 < 15) {
-        mask |= SMOLNES_RUNTIME_BUTTON_A;
+            uint8_t mask = pressRight ? SMOLNES_RUNTIME_BUTTON_RIGHT : 0u;
+            if (gameFrame % 60 < 15) {
+                mask |= SMOLNES_RUNTIME_BUTTON_A;
+            }
+
+            return mask;
+        }
+        case ProbeScriptType::LeftMovement:
+            if (gameFrame < 100u) {
+                return SMOLNES_RUNTIME_BUTTON_RIGHT;
+            }
+            if (gameFrame < 160u) {
+                return SMOLNES_RUNTIME_BUTTON_LEFT;
+            }
+            if (gameFrame < 180u) {
+                return SMOLNES_RUNTIME_BUTTON_RIGHT;
+            }
+            return 0u;
     }
 
-    return mask;
+    return 0u;
 }
 
 struct CapturedFrame {
@@ -189,7 +241,7 @@ struct SmbProbeReplaySummary {
 };
 
 std::vector<CapturedFrame> captureSmbProbeFrames(
-    const std::filesystem::path& romPath, bool writeScreenshots)
+    const std::filesystem::path& romPath, bool writeScreenshots, ProbeScriptType probeScriptType)
 {
     NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperMarioBros);
     Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
@@ -237,16 +289,16 @@ std::vector<CapturedFrame> captureSmbProbeFrames(
         }
     }
 
+    const uint64_t captureFrameCount = probeCaptureFrameCount(probeScriptType);
+
     std::vector<CapturedFrame> frames;
-    frames.reserve(static_cast<size_t>(kProbeCaptureFrames));
-    for (uint64_t frameIndex = 0; frameIndex < kProbeCaptureFrames; ++frameIndex) {
-        const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex);
+    frames.reserve(static_cast<size_t>(captureFrameCount));
+    for (uint64_t frameIndex = 0; frameIndex < captureFrameCount; ++frameIndex) {
+        const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex, probeScriptType);
         driver.setController1State(controllerMask);
         driver.tick(timers, scenarioVideoFrame);
 
-        if (writeScreenshots
-            && std::find(kProbeScreenshotFrames.begin(), kProbeScreenshotFrames.end(), frameIndex)
-                != kProbeScreenshotFrames.end()) {
+        if (writeScreenshots && shouldCaptureScreenshot(probeScriptType, frameIndex)) {
             const auto scenarioFrame = driver.copyRuntimeFrameSnapshot();
             if (scenarioFrame.has_value()) {
                 const std::filesystem::path screenshotPath =
@@ -271,7 +323,7 @@ std::vector<CapturedFrame> captureSmbProbeFrames(
         frames.push_back(frame);
     }
 
-    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), kProbeCaptureFrames);
+    EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), captureFrameCount);
     return frames;
 }
 
@@ -379,7 +431,8 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
                         "smb.nes in testdata/roms/.";
     }
 
-    const std::vector<CapturedFrame> frames = captureSmbProbeFrames(romPath.value(), true);
+    const std::vector<CapturedFrame> frames =
+        captureSmbProbeFrames(romPath.value(), true, ProbeScriptType::Baseline);
     ASSERT_FALSE(frames.empty());
     ASSERT_EQ(frames.front().cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
 
@@ -678,6 +731,126 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesCandidateRamTraceCsv)
               << changeCounts[rankedAddresses.front()] << " times)\n";
 }
 
+TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesLeftMovementDirectionCsv)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesSmbFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Set DIRTSIM_NES_SMB_TEST_ROM_PATH or place "
+                        "smb.nes in testdata/roms/.";
+    }
+
+    const std::vector<CapturedFrame> frames =
+        captureSmbProbeFrames(romPath.value(), false, ProbeScriptType::LeftMovement);
+    ASSERT_FALSE(frames.empty());
+    ASSERT_EQ(frames.front().cpuRam.size(), static_cast<size_t>(SMOLNES_RUNTIME_CPU_RAM_BYTES));
+
+    const size_t analysisStartIndex = kSetupScriptEndFrame < frames.size()
+        ? static_cast<size_t>(kSetupScriptEndFrame)
+        : (frames.size() - 1u);
+
+    bool foundNegativeHorizontalSpeedWhileHoldingLeft = false;
+    bool foundPlayerXDecreaseWhileHoldingLeft = false;
+    bool foundFacingLeftWhileStillMovingRight = false;
+    bool foundFacingRightWhileStillMovingLeft = false;
+    std::set<uint8_t> candidateAValuesWhileHoldingLeft;
+    std::set<uint8_t> candidateAValuesWhileHoldingRight;
+    std::set<uint8_t> candidateBValuesWhileHoldingLeft;
+    std::set<uint8_t> candidateBValuesWhileHoldingRight;
+
+    const std::filesystem::path leftProbePath =
+        std::filesystem::path(::testing::TempDir()) / "nes_smb_left_probe.csv";
+    std::ofstream leftProbeStream(leftProbePath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(leftProbeStream.is_open())
+        << "Failed to open SMB left-direction probe trace: " << leftProbePath.string();
+    leftProbeStream
+        << "frame,controller_mask,game_engine,player_state,player_x_page,player_x_screen,"
+           "absolute_x,cpu_0x0033,cpu_0x0045,cpu_0x0057_raw,cpu_0x0057_signed,cpu_0x0700\n";
+
+    for (size_t frameIndex = analysisStartIndex; frameIndex < frames.size(); ++frameIndex) {
+        const CapturedFrame& frame = frames[frameIndex];
+        const int8_t horizontalSpeedSigned =
+            static_cast<int8_t>(frame.cpuRam[kHorizontalSpeedAddr]);
+
+        leftProbeStream << frame.frameIndex << "," << static_cast<uint32_t>(frame.controllerMask)
+                        << "," << static_cast<uint32_t>(frame.cpuRam[kGameEngineAddr]) << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerStateAddr]) << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerXPageAddr]) << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerXScreenAddr]) << ","
+                        << decodeAbsoluteX(frame.cpuRam) << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerFacingDirCandidateAAddr])
+                        << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerFacingDirCandidateBAddr])
+                        << "," << static_cast<uint32_t>(frame.cpuRam[kHorizontalSpeedAddr]) << ","
+                        << static_cast<int32_t>(horizontalSpeedSigned) << ","
+                        << static_cast<uint32_t>(frame.cpuRam[kPlayerXSpeedAbsoluteAddr]) << "\n";
+
+        const bool holdingLeft = frame.controllerMask == SMOLNES_RUNTIME_BUTTON_LEFT;
+        const bool holdingRight = frame.controllerMask == SMOLNES_RUNTIME_BUTTON_RIGHT;
+        if (holdingLeft) {
+            candidateAValuesWhileHoldingLeft.insert(frame.cpuRam[kPlayerFacingDirCandidateAAddr]);
+            candidateBValuesWhileHoldingLeft.insert(frame.cpuRam[kPlayerFacingDirCandidateBAddr]);
+            if (horizontalSpeedSigned < 0) {
+                foundNegativeHorizontalSpeedWhileHoldingLeft = true;
+            }
+            if (horizontalSpeedSigned > 0 && frame.cpuRam[kPlayerFacingDirCandidateAAddr] == 2u
+                && frame.cpuRam[kPlayerFacingDirCandidateBAddr] == 1u) {
+                foundFacingLeftWhileStillMovingRight = true;
+            }
+        }
+        if (holdingRight) {
+            candidateAValuesWhileHoldingRight.insert(frame.cpuRam[kPlayerFacingDirCandidateAAddr]);
+            candidateBValuesWhileHoldingRight.insert(frame.cpuRam[kPlayerFacingDirCandidateBAddr]);
+            if (horizontalSpeedSigned < 0 && frame.cpuRam[kPlayerFacingDirCandidateAAddr] == 1u
+                && frame.cpuRam[kPlayerFacingDirCandidateBAddr] == 2u) {
+                foundFacingRightWhileStillMovingLeft = true;
+            }
+        }
+
+        if (frameIndex == analysisStartIndex || !holdingLeft) {
+            continue;
+        }
+
+        const CapturedFrame& previousFrame = frames[frameIndex - 1u];
+        if (frame.cpuRam[kPlayerXScreenAddr] < previousFrame.cpuRam[kPlayerXScreenAddr]
+            || decodeAbsoluteX(frame.cpuRam) < decodeAbsoluteX(previousFrame.cpuRam)) {
+            foundPlayerXDecreaseWhileHoldingLeft = true;
+        }
+    }
+
+    leftProbeStream.close();
+    ASSERT_TRUE(leftProbeStream.good());
+    EXPECT_TRUE(std::filesystem::exists(leftProbePath));
+    EXPECT_GT(std::filesystem::file_size(leftProbePath), 0u);
+    std::cout << "Wrote SMB left probe trace: " << leftProbePath.string() << "\n";
+
+    EXPECT_TRUE(foundNegativeHorizontalSpeedWhileHoldingLeft)
+        << "Expected signed horizontal speed to go negative while holding LEFT.";
+    EXPECT_TRUE(foundPlayerXDecreaseWhileHoldingLeft)
+        << "Expected player X to decrease during the scripted LEFT window.";
+    EXPECT_TRUE(foundFacingLeftWhileStillMovingRight)
+        << "Expected 0x0033 to flip left before 0x0045 when the player turns around.";
+    EXPECT_TRUE(foundFacingRightWhileStillMovingLeft)
+        << "Expected 0x0033 to flip right before 0x0045 when the player turns back around.";
+
+    std::cout << "Left probe candidate 0x0033 right/left values:";
+    for (const uint8_t value : candidateAValuesWhileHoldingRight) {
+        std::cout << " R" << static_cast<uint32_t>(value);
+    }
+    for (const uint8_t value : candidateAValuesWhileHoldingLeft) {
+        std::cout << " L" << static_cast<uint32_t>(value);
+    }
+    std::cout << "\n";
+
+    std::cout << "Left probe candidate 0x0045 right/left values:";
+    for (const uint8_t value : candidateBValuesWhileHoldingRight) {
+        std::cout << " R" << static_cast<uint32_t>(value);
+    }
+    for (const uint8_t value : candidateBValuesWhileHoldingLeft) {
+        std::cout << " L" << static_cast<uint32_t>(value);
+    }
+    std::cout << "\n";
+}
+
 TEST(NesSuperMarioBrosRamProbeTest, ReplayThroughExtractorAndEvaluatorMatchesLiveRun)
 {
     const std::optional<std::filesystem::path> romPath = resolveNesSmbFixtureRomPath();
@@ -686,7 +859,8 @@ TEST(NesSuperMarioBrosRamProbeTest, ReplayThroughExtractorAndEvaluatorMatchesLiv
                         "smb.nes in testdata/roms/.";
     }
 
-    const std::vector<CapturedFrame> frames = captureSmbProbeFrames(romPath.value(), false);
+    const std::vector<CapturedFrame> frames =
+        captureSmbProbeFrames(romPath.value(), false, ProbeScriptType::Baseline);
     ASSERT_FALSE(frames.empty());
 
     const size_t analysisStartIndex = kSetupScriptEndFrame < frames.size()
