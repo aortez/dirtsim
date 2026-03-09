@@ -1,6 +1,6 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/UserSettings.h"
@@ -194,7 +194,8 @@ TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)
     TestStateMachineFixture fixture;
 
     fixture.stateMachine->getUserSettings().defaultScenario = Scenario::EnumType::Clock;
-    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezoneIndex = 5;
+    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezone =
+        Config::ClockTimezone::UTC;
 
     Idle idleState;
 
@@ -215,14 +216,15 @@ TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)
     const ScenarioConfig config = simRunning.session.getScenarioConfig();
     const auto* clockConfig = std::get_if<Config::Clock>(&config);
     ASSERT_NE(clockConfig, nullptr);
-    EXPECT_EQ(clockConfig->timezoneIndex, 5);
+    EXPECT_EQ(clockConfig->timezone, Config::ClockTimezone::UTC);
 }
 
 TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
 {
     TestStateMachineFixture fixture;
 
-    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezoneIndex = 8;
+    fixture.stateMachine->getUserSettings().clockScenarioConfig.timezone =
+        Config::ClockTimezone::Tokyo;
 
     Idle idleState;
 
@@ -244,5 +246,5 @@ TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
     const ScenarioConfig config = simRunning.session.getScenarioConfig();
     const auto* clockConfig = std::get_if<Config::Clock>(&config);
     ASSERT_NE(clockConfig, nullptr);
-    EXPECT_EQ(clockConfig->timezoneIndex, 8);
+    EXPECT_EQ(clockConfig->timezone, Config::ClockTimezone::Tokyo);
 }

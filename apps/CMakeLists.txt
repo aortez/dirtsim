@@ -397,10 +397,12 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/ClockTimezone.cpp
     src/core/scenarios/RainingConfig.cpp
     src/core/scenarios/SandboxConfig.cpp
     src/core/scenarios/TreeGerminationConfig.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
+    src/core/scenarios/clock_scenario/ClockTimeResolver.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorEntrySpawn.cpp
@@ -862,6 +864,7 @@ add_executable(dirtsim-tests
 
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
+    src/core/scenarios/clock_scenario/tests/ClockTimeResolver_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
     src/core/scenarios/tests/NesGameAdapterRegistry_test.cpp
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp

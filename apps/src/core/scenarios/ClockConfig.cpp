@@ -25,7 +25,6 @@ const char* getDisplayName(ClockFont font)
     }
     return "Unknown";
 }
-
 void from_json(const nlohmann::json& j, Clock& config)
 {
     config = ReflectSerializer::from_json<Clock>(j);

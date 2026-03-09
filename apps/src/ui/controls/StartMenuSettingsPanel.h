@@ -55,7 +55,7 @@ private:
     lv_obj_t* volumeStepper_ = nullptr;
     UiServices& uiServices_;
     std::unordered_map<lv_obj_t*, Scenario::EnumType> buttonToScenarioId_;
-    std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
+    std::unordered_map<lv_obj_t*, Config::ClockTimezone> buttonToTimezone_;
     std::unique_ptr<PanelViewController> viewController_;
     DirtSim::UserSettings settings_{};
     bool updatingUi_ = false;

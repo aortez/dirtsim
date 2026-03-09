@@ -33,7 +33,7 @@
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
@@ -77,11 +77,6 @@ std::filesystem::path getDefaultDataDir()
         home = "/tmp";
     }
     return std::filesystem::path(home) / ".dirtsim";
-}
-
-int getMaxTimezoneIndex()
-{
-    return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
 }
 
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
@@ -177,9 +172,9 @@ UserSettings sanitizeUserSettings(
         changed = true;
     };
 
-    if (settings.clockScenarioConfig.timezoneIndex > getMaxTimezoneIndex()) {
-        settings.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(getMaxTimezoneIndex());
-        recordUpdate("clockScenarioConfig.timezoneIndex clamped to maximum timezone");
+    if (!ClockTimezones::isValid(settings.clockScenarioConfig.timezone)) {
+        settings.clockScenarioConfig.timezone = Config::ClockTimezone::LosAngeles;
+        recordUpdate("clockScenarioConfig.timezone reset to default timezone");
     }
 
     if (settings.volumePercent < 0) {
