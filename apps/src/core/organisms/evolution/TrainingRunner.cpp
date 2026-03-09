@@ -254,10 +254,14 @@ TrainingRunner::TrainingRunner(
         scenario_ = registry.createScenario(individual_.scenarioId);
         DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario factory returned null");
 
-        // Create world with scenario's required dimensions.
-        int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
-        int height = metadata->requiredHeight > 0 ? metadata->requiredHeight : 9;
-        world_ = std::make_unique<World>(width, height);
+        scenarioConfig = scenario_->resolveInitialConfig(scenarioConfig, Vector2s{});
+        const Vector2i defaultWorldSize{ 9, 9 };
+        const Vector2i resolvedWorldSize =
+            scenario_->resolveInitialWorldSize(scenarioConfig, defaultWorldSize);
+        DIRTSIM_ASSERT(
+            resolvedWorldSize.x > 0 && resolvedWorldSize.y > 0,
+            "TrainingRunner: Scenario returned invalid initial world size");
+        world_ = std::make_unique<World>(resolvedWorldSize.x, resolvedWorldSize.y);
 
         scenario_->setConfig(scenarioConfig, *world_);
         scenario_->setup(*world_);

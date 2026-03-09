@@ -565,6 +565,24 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
+TEST_F(TrainingRunnerTest, TreeGerminationUsesScenarioInitialWorldSize)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getData().width, 32);
+    EXPECT_EQ(world->getData().height, 32);
+}
+
 TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();

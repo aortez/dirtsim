@@ -79,6 +79,8 @@ TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
     ASSERT_TRUE(capturedResponse.isValue()) << "Response should be success";
     EXPECT_TRUE(capturedResponse.value().running) << "Response should indicate running";
     EXPECT_EQ(capturedResponse.value().current_step, 0u) << "Initial step number is 0";
+    EXPECT_EQ(capturedResponse.value().width, expected_width);
+    EXPECT_EQ(capturedResponse.value().height, expected_height);
 }
 
 /**
@@ -120,13 +122,17 @@ TEST(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
     Idle idleState;
 
     bool callbackInvoked = false;
+    Api::SimRun::Response capturedResponse;
     Api::SimRun::Command cmd;
     cmd.timestep = 0.016;
     cmd.max_steps = -1;
     cmd.scenario_id = Scenario::EnumType::Clock;
     cmd.container_size = Vector2s{ 800, 480 };
 
-    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
+    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
 
     State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
 
@@ -141,6 +147,46 @@ TEST(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
     EXPECT_EQ(world->getData().height, 480 / 16);
 
     ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(capturedResponse.isValue());
+    EXPECT_EQ(capturedResponse.value().width, 800 / 16);
+    EXPECT_EQ(capturedResponse.value().height, 480 / 16);
+}
+
+TEST(StateIdleTest, SimRunTreeGerminationIgnoresContainerSizeOverride)
+{
+    TestStateMachineFixture fixture;
+
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::SimRun::Response capturedResponse;
+    Api::SimRun::Command cmd;
+    cmd.timestep = 0.016;
+    cmd.max_steps = -1;
+    cmd.scenario_id = Scenario::EnumType::TreeGermination;
+    cmd.container_size = Vector2s{ 800, 480 };
+
+    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
+    auto gridWorld = simRunning.session.requireGridWorld();
+    ASSERT_TRUE(gridWorld.isValue()) << gridWorld.errorValue().message;
+    World* world = gridWorld.value().world;
+    ASSERT_NE(world, nullptr);
+
+    EXPECT_EQ(world->getData().width, 32);
+    EXPECT_EQ(world->getData().height, 32);
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(capturedResponse.isValue());
+    EXPECT_EQ(capturedResponse.value().width, 32);
+    EXPECT_EQ(capturedResponse.value().height, 32);
 }
 
 TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)

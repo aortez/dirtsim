@@ -663,8 +663,18 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         cwc.command.max_steps,
         newState.frameLimit);
 
+    const WorldData* worldData = newState.session.getWorldData();
+    DIRTSIM_ASSERT(worldData != nullptr, "Idle: SimRun started without world data");
+
     // Send response: running=false if starting paused.
-    cwc.sendResponse(Api::SimRun::Response::okay({ !cwc.command.start_paused, 0 }));
+    cwc.sendResponse(
+        Api::SimRun::Response::okay(
+            {
+                !cwc.command.start_paused,
+                0,
+                static_cast<int16_t>(worldData->width),
+                static_cast<int16_t>(worldData->height),
+            }));
 
     // Transition to SimRunning or SimPaused based on start_paused flag.
     if (cwc.command.start_paused) {
