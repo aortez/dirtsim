@@ -647,11 +647,20 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
     TestStateMachineFixture fixture;
 
     Evolution evolutionState;
-    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016; // Single frame.
+    evolutionState.evolutionConfig.maxSimulationTime = 0.1;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.trainingSpec = makeTrainingSpec(2);
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
 
     evolutionState.onEnter(*fixture.stateMachine);
 
@@ -664,7 +673,7 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
         << "Raw generation evals should not update latest robust fitness";
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 
-    constexpr int maxTicks = 16;
+    constexpr int maxTicks = 8000;
     for (int i = 0; i < maxTicks && evolutionState.robustEvaluationCount_ == 0; ++i) {
         auto next = evolutionState.tick(*fixture.stateMachine);
         if (next.has_value()) {
@@ -673,8 +682,8 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
     }
 
     EXPECT_GT(evolutionState.robustEvaluationCount_, 0u);
-    EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0)
-        << "Latest robust fitness should update after robust pass finalization";
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed)
+        << "Robust pass finalization should promote the evaluated genome as this generation's best";
 }
 
 TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTrim)
@@ -786,16 +795,16 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
     TestStateMachineFixture fixture;
 
     Evolution evolutionState;
-    evolutionState.evolutionConfig.populationSize = 1;
-    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::NeuralNet;
-    population.count = 1;
-    population.randomCount = 1;
+    population.count = 2;
+    population.randomCount = 2;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -826,16 +835,67 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
         << "Duck clock visible eval should advance only after all four side passes complete";
 }
 
-TEST(StateEvolutionTest, DuckClockRobustSampleWaitsForFourPassesBeforeFinalizing)
+TEST(StateEvolutionTest, DuckClockConfiguredCountZeroSkipsRobustPassAndStoresSingleSampleBest)
 {
     TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
 
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    for (int i = 0; i < 3; ++i) {
+        auto tickResult = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(tickResult.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 0)
+            << "Duck clock generation eval should still be in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Robust pass should not finalize before generation eval completes";
+    }
+
+    auto finalTick = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_TRUE(finalTick.has_value());
+    EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalTick->getVariant()));
+    EXPECT_EQ(evolutionState.currentEval, 1);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, evolutionState.bestFitnessAllTime);
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->robustEvalCount, 1);
+    ASSERT_EQ(metadata->robustFitnessSamples.size(), 1u);
+    EXPECT_DOUBLE_EQ(metadata->robustFitness, metadata->fitness);
+}
+
+TEST(StateEvolutionTest, DuckClockRobustValidationWaitsForAllSamplesBeforeFinalizing)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::NeuralNet;
@@ -871,11 +931,31 @@ TEST(StateEvolutionTest, DuckClockRobustSampleWaitsForFourPassesBeforeFinalizing
             << "Duck clock robust sample should wait for all four side passes";
     }
 
+    auto firstRobustSampleCompleteTick = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(firstRobustSampleCompleteTick.has_value());
+    EXPECT_EQ(evolutionState.currentEval, 1);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    for (int i = 0; i < 3; ++i) {
+        auto robustTick = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(robustTick.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 1)
+            << "Duck clock second robust sample should stay in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Duck clock should wait for all validation samples";
+    }
+
     auto robustFinalizeTick = evolutionState.tick(*fixture.stateMachine);
     ASSERT_TRUE(robustFinalizeTick.has_value());
     EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(robustFinalizeTick->getVariant()));
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 1u)
-        << "Duck clock robust sample should finalize after four side passes";
+        << "Duck clock robust validation should finalize after all samples complete";
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->robustEvalCount, 2);
 }
 
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)

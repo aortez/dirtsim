@@ -1328,6 +1328,20 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     if (isComplete) {
         setEvolutionCompleted(progress.bestGenomeId);
     }
+    else if (statusLabel_) {
+        if (progress.validatingBest) {
+            lv_label_set_text(statusLabel_, "Validating Best...");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x66CCFF), 0);
+        }
+        else if (evolutionStarted_) {
+            lv_label_set_text(statusLabel_, "Training...");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
+        }
+        else {
+            lv_label_set_text(statusLabel_, "Ready");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
+        }
+    }
 
     char buf[64];
 
@@ -1411,11 +1425,25 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     lv_bar_set_value(generationBar_, genPercent, LV_ANIM_ON);
 
     // Update evaluation progress.
-    snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
-    lv_label_set_text(evalLabel_, buf);
-
-    const int evalPercent =
-        progress.populationSize > 0 ? (progress.currentEval * 100) / progress.populationSize : 0;
+    int evalPercent = 0;
+    if (progress.validatingBest && progress.validatingBestTargetSamples > 0) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Validate: %d/%d",
+            progress.validatingBestCompletedSamples,
+            progress.validatingBestTargetSamples);
+        lv_label_set_text(evalLabel_, buf);
+        evalPercent =
+            (progress.validatingBestCompletedSamples * 100) / progress.validatingBestTargetSamples;
+    }
+    else {
+        snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
+        lv_label_set_text(evalLabel_, buf);
+        evalPercent = progress.populationSize > 0
+            ? (progress.currentEval * 100) / progress.populationSize
+            : 0;
+    }
     lv_bar_set_value(evaluationBar_, evalPercent, LV_ANIM_ON);
 
     if (genomeCountLabel_) {

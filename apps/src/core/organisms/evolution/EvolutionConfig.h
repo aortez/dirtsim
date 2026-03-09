@@ -18,7 +18,8 @@ struct EvolutionConfig {
     int diversityEliteCount = 1;     // Additional near-best elites retained by genome distance.
     double diversityEliteFitnessEpsilon =
         0.0; // Absolute fitness gap from best allowed for diversity elites.
-    int robustFitnessEvaluationCount = 3; // Total evaluations used to estimate robustFitness.
+    int robustFitnessEvaluationCount =
+        3; // 0 disables extra best-validation; 1+ runs that many validation samples.
     int warmStartSeedCount = 3; // Legacy warm-start seed cap per population entry (used when
                                 // warmStartSeedPercent is 0).
     double warmStartSeedPercent =
