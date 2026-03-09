@@ -5,10 +5,54 @@ namespace DirtSim {
 namespace {
 
 constexpr uint32_t kLevelsPerWorld = 4;
+constexpr uint64_t kSmbNoProgressTimeoutFrames = 1800;
 
 uint32_t getStageIndex(const NesSuperMarioBrosState& state)
 {
     return (static_cast<uint32_t>(state.world) * kLevelsPerWorld) + state.level;
+}
+
+uint8_t getStageLevel(uint32_t stageIndex)
+{
+    return static_cast<uint8_t>(stageIndex % kLevelsPerWorld);
+}
+
+uint8_t getStageWorld(uint32_t stageIndex)
+{
+    return static_cast<uint8_t>(stageIndex / kLevelsPerWorld);
+}
+
+NesSuperMarioBrosFitnessSnapshot makeSnapshot(
+    const NesSuperMarioBrosState& state,
+    uint64_t gameplayFrameCount,
+    uint64_t lastProgressFrame,
+    uint32_t bestStageIndex,
+    uint16_t bestAbsoluteX,
+    double distanceRewardTotal,
+    double levelClearRewardTotal,
+    uint64_t noProgressTimeoutFrames,
+    SmbEpisodeEndReason endReason,
+    bool done)
+{
+    return NesSuperMarioBrosFitnessSnapshot{
+        .totalReward = distanceRewardTotal + levelClearRewardTotal,
+        .distanceRewardTotal = distanceRewardTotal,
+        .levelClearRewardTotal = levelClearRewardTotal,
+        .gameplayFrames = gameplayFrameCount,
+        .framesSinceProgress =
+            gameplayFrameCount >= lastProgressFrame ? (gameplayFrameCount - lastProgressFrame) : 0,
+        .noProgressTimeoutFrames = noProgressTimeoutFrames,
+        .bestStageIndex = bestStageIndex,
+        .bestWorld = getStageWorld(bestStageIndex),
+        .bestLevel = getStageLevel(bestStageIndex),
+        .bestAbsoluteX = bestAbsoluteX,
+        .currentWorld = state.world,
+        .currentLevel = state.level,
+        .currentAbsoluteX = state.absoluteX,
+        .currentLives = state.lives,
+        .endReason = endReason,
+        .done = done,
+    };
 }
 
 } // namespace
@@ -22,12 +66,25 @@ void NesSuperMarioBrosEvaluator::reset()
     bestStageIndex_ = 0;
     bestAbsoluteX_ = 0;
     lastLives_ = 0;
+    distanceRewardTotal_ = 0.0;
+    levelClearRewardTotal_ = 0.0;
 }
 
 NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
     const NesSuperMarioBrosEvaluatorInput& input)
 {
     NesSuperMarioBrosEvaluatorOutput output;
+    output.snapshot = makeSnapshot(
+        input.state,
+        gameplayFrameCount_,
+        lastProgressFrame_,
+        bestStageIndex_,
+        bestAbsoluteX_,
+        distanceRewardTotal_,
+        levelClearRewardTotal_,
+        kSmbNoProgressTimeoutFrames,
+        SmbEpisodeEndReason::None,
+        false);
     if (input.state.phase != SmbPhase::Gameplay) {
         return output;
     }
@@ -49,6 +106,18 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
     else if (input.state.lives < lastLives_) {
         lastLives_ = input.state.lives;
         output.done = true;
+        output.endReason = SmbEpisodeEndReason::LifeLost;
+        output.snapshot = makeSnapshot(
+            input.state,
+            gameplayFrameCount_,
+            lastProgressFrame_,
+            bestStageIndex_,
+            bestAbsoluteX_,
+            distanceRewardTotal_,
+            levelClearRewardTotal_,
+            kSmbNoProgressTimeoutFrames,
+            output.endReason,
+            true);
         return output;
     }
     else {
@@ -57,6 +126,18 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
 
     if (input.state.lifeState == SmbLifeState::Dead && input.state.lives == 0u) {
         output.done = true;
+        output.endReason = SmbEpisodeEndReason::LifeLost;
+        output.snapshot = makeSnapshot(
+            input.state,
+            gameplayFrameCount_,
+            lastProgressFrame_,
+            bestStageIndex_,
+            bestAbsoluteX_,
+            distanceRewardTotal_,
+            levelClearRewardTotal_,
+            kSmbNoProgressTimeoutFrames,
+            output.endReason,
+            true);
         return output;
     }
 
@@ -64,16 +145,20 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
         bool frontierImproved = false;
 
         if (currentStageIndex > bestStageIndex_) {
-            output.rewardDelta +=
+            output.levelClearRewardDelta =
                 kLevelClearReward * static_cast<double>(currentStageIndex - bestStageIndex_);
+            output.rewardDelta += output.levelClearRewardDelta;
+            levelClearRewardTotal_ += output.levelClearRewardDelta;
             bestStageIndex_ = currentStageIndex;
             bestAbsoluteX_ = 0;
             frontierImproved = true;
         }
 
         if (currentStageIndex == bestStageIndex_ && input.state.absoluteX > bestAbsoluteX_) {
-            output.rewardDelta +=
+            output.distanceRewardDelta =
                 kDistanceReward * static_cast<double>(input.state.absoluteX - bestAbsoluteX_);
+            output.rewardDelta += output.distanceRewardDelta;
+            distanceRewardTotal_ += output.distanceRewardDelta;
             bestAbsoluteX_ = input.state.absoluteX;
             frontierImproved = true;
         }
@@ -85,8 +170,20 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
 
     if ((gameplayFrameCount_ - lastProgressFrame_) >= kNoProgressTimeoutFrames) {
         output.done = true;
+        output.endReason = SmbEpisodeEndReason::NoProgressTimeout;
     }
 
+    output.snapshot = makeSnapshot(
+        input.state,
+        gameplayFrameCount_,
+        lastProgressFrame_,
+        bestStageIndex_,
+        bestAbsoluteX_,
+        distanceRewardTotal_,
+        levelClearRewardTotal_,
+        kSmbNoProgressTimeoutFrames,
+        output.endReason,
+        output.done);
     return output;
 }
 

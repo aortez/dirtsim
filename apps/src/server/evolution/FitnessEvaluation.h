@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/organisms/evolution/DuckEvaluator.h"
+#include "core/organisms/evolution/NesEvaluator.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 
 #include <optional>
@@ -8,7 +9,11 @@
 
 namespace DirtSim::Server::EvolutionSupport {
 
-using FitnessDetails = std::variant<std::monostate, DuckFitnessBreakdown, TreeFitnessBreakdown>;
+using FitnessDetails = std::variant<
+    std::monostate,
+    DuckFitnessBreakdown,
+    TreeFitnessBreakdown,
+    NesSuperMarioBrosFitnessBreakdown>;
 
 struct FitnessEvaluation {
     double totalFitness = 0.0;
@@ -25,6 +30,12 @@ inline const TreeFitnessBreakdown* fitnessEvaluationTreeBreakdownGet(
     const FitnessEvaluation& evaluation)
 {
     return std::get_if<TreeFitnessBreakdown>(&evaluation.details);
+}
+
+inline const NesSuperMarioBrosFitnessBreakdown* fitnessEvaluationNesSuperMarioBrosBreakdownGet(
+    const FitnessEvaluation& evaluation)
+{
+    return std::get_if<NesSuperMarioBrosFitnessBreakdown>(&evaluation.details);
 }
 
 inline std::optional<double> fitnessEvaluationWingUpSecondsGet(const FitnessEvaluation& evaluation)

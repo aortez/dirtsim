@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/scenarios/nes/NesFitnessDetails.h"
+
 #include <cstdint>
 
 namespace DirtSim {
@@ -43,6 +45,10 @@ struct NesSuperMarioBrosEvaluatorInput {
 struct NesSuperMarioBrosEvaluatorOutput {
     bool done = false;
     double rewardDelta = 0.0;
+    double distanceRewardDelta = 0.0;
+    double levelClearRewardDelta = 0.0;
+    SmbEpisodeEndReason endReason = SmbEpisodeEndReason::None;
+    NesSuperMarioBrosFitnessSnapshot snapshot;
 };
 
 class NesSuperMarioBrosEvaluator {
@@ -62,6 +68,8 @@ private:
     uint32_t bestStageIndex_ = 0;
     uint16_t bestAbsoluteX_ = 0;
     uint8_t lastLives_ = 0;
+    double distanceRewardTotal_ = 0.0;
+    double levelClearRewardTotal_ = 0.0;
 };
 
 } // namespace DirtSim

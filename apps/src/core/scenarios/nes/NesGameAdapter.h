@@ -2,6 +2,7 @@
 
 #include "core/organisms/DuckSensoryData.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
+#include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
@@ -27,6 +28,7 @@ struct NesGameAdapterFrameInput {
 
 struct NesGameAdapterFrameOutput {
     bool done = false;
+    NesFitnessDetails fitnessDetails{};
     double rewardDelta = 0.0;
     std::optional<uint8_t> gameState = std::nullopt;
 };

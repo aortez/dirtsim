@@ -54,6 +54,26 @@ FitnessEvaluation fitnessEvaluationNesDuckEvaluate(const FitnessContext& context
     };
 }
 
+FitnessEvaluation fitnessEvaluationNesSuperMarioBrosEvaluate(const FitnessContext& context)
+{
+    if (context.nesFitnessDetails == nullptr) {
+        return fitnessEvaluationNesDuckEvaluate(context);
+    }
+
+    const auto* snapshot = std::get_if<NesSuperMarioBrosFitnessSnapshot>(context.nesFitnessDetails);
+    if (snapshot == nullptr) {
+        return fitnessEvaluationNesDuckEvaluate(context);
+    }
+
+    const NesSuperMarioBrosFitnessBreakdown breakdown =
+        NesEvaluator::evaluateSuperMarioBrosWithBreakdown(context);
+
+    return FitnessEvaluation{
+        .totalFitness = breakdown.totalFitness,
+        .details = breakdown,
+    };
+}
+
 FitnessEvaluation fitnessEvaluationTreeEvaluate(const FitnessContext& context)
 {
     const TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
@@ -61,6 +81,26 @@ FitnessEvaluation fitnessEvaluationTreeEvaluate(const FitnessContext& context)
         .totalFitness = breakdown.totalFitness,
         .details = breakdown,
     };
+}
+
+std::string fitnessEvaluationNesSuperMarioBrosLogSummary(const FitnessEvaluation& evaluation)
+{
+    const auto* breakdown = fitnessEvaluationNesSuperMarioBrosBreakdownGet(evaluation);
+    if (breakdown == nullptr) {
+        return "";
+    }
+
+    std::ostringstream summary;
+    summary << std::fixed << std::setprecision(3);
+    summary << "reward=" << breakdown->totalFitness;
+    summary << " dist=" << breakdown->distanceRewardTotal;
+    summary << " clear=" << breakdown->levelClearRewardTotal;
+    summary << " stage=" << breakdown->bestStageIndex;
+    summary << " x=" << breakdown->bestAbsoluteX;
+    summary << " frames=" << breakdown->gameplayFrames;
+    summary << " stalled=" << breakdown->framesSinceProgress;
+    summary << " end=" << static_cast<int>(breakdown->endReason);
+    return summary.str();
 }
 
 std::string fitnessEvaluationTreeLogSummary(const FitnessEvaluation& evaluation)
@@ -190,9 +230,17 @@ FitnessModelBundle fitnessModelResolve(OrganismType organismType, Scenario::Enum
                 : fitnessEvaluationIdentityMerge;
             return bundle;
         case OrganismType::NES_DUCK:
-            bundle.evaluate = fitnessEvaluationNesDuckEvaluate;
-            bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
-            bundle.generatePresentation = fitnessEvaluationNesDuckPresentationGenerate;
+            if (scenarioId == Scenario::EnumType::NesSuperMarioBros) {
+                bundle.evaluate = fitnessEvaluationNesSuperMarioBrosEvaluate;
+                bundle.formatLogSummary = fitnessEvaluationNesSuperMarioBrosLogSummary;
+                bundle.generatePresentation =
+                    fitnessEvaluationNesSuperMarioBrosPresentationGenerate;
+            }
+            else {
+                bundle.evaluate = fitnessEvaluationNesDuckEvaluate;
+                bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
+                bundle.generatePresentation = fitnessEvaluationNesGenericPresentationGenerate;
+            }
             bundle.mergePasses = fitnessEvaluationIdentityMerge;
             return bundle;
         case OrganismType::GOOSE:

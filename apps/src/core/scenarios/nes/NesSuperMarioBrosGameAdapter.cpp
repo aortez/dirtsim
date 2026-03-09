@@ -94,6 +94,7 @@ public:
         };
         const NesSuperMarioBrosEvaluatorOutput evaluation = evaluator_.evaluate(evaluatorInput);
         output.done = evaluation.done;
+        output.fitnessDetails = evaluation.snapshot;
         output.rewardDelta = evaluation.rewardDelta;
         return output;
     }

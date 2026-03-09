@@ -46,6 +46,57 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
     EXPECT_EQ(presentation.sections[0].key, "overview");
 }
 
+TEST(FitnessPresentationGeneratorTest, BuildsNesSuperMarioBrosPresentationFromBreakdown)
+{
+    const FitnessEvaluation evaluation{
+        .totalFitness = 123.5,
+        .details =
+            NesSuperMarioBrosFitnessBreakdown{
+                .totalFitness = 123.5,
+                .distanceRewardTotal = 23.5,
+                .levelClearRewardTotal = 100.0,
+                .gameplayFrames = 800,
+                .framesSinceProgress = 120,
+                .noProgressTimeoutFrames = 1800,
+                .bestStageIndex = 5,
+                .bestWorld = 1,
+                .bestLevel = 1,
+                .bestAbsoluteX = 342,
+                .currentWorld = 1,
+                .currentLevel = 1,
+                .currentAbsoluteX = 330,
+                .currentLives = 2,
+                .endReason = SmbEpisodeEndReason::NoProgressTimeout,
+                .done = true,
+            },
+    };
+
+    const Api::FitnessPresentation presentation =
+        fitnessEvaluationNesSuperMarioBrosPresentationGenerate(evaluation);
+    EXPECT_EQ(presentation.organismType, OrganismType::NES_DUCK);
+    EXPECT_EQ(presentation.modelId, "nes_smb");
+    EXPECT_EQ(
+        presentation.summary,
+        "Reward 123.5000 | Best Stage 5 | Best X 342 | Gameplay 800 frames | Since Progress "
+        "120 frames | End no_progress_timeout");
+    ASSERT_EQ(presentation.sections.size(), 3u);
+    EXPECT_EQ(presentation.sections[0].key, "reward");
+    EXPECT_EQ(presentation.sections[1].key, "frontier");
+    EXPECT_EQ(presentation.sections[2].key, "episode");
+
+    const Api::FitnessPresentationMetric* distanceReward =
+        fitnessMetricFind(presentation.sections[0], "distance_reward_total");
+    ASSERT_NE(distanceReward, nullptr);
+    EXPECT_DOUBLE_EQ(distanceReward->value, 23.5);
+
+    const Api::FitnessPresentationMetric* framesSinceProgress =
+        fitnessMetricFind(presentation.sections[2], "frames_since_progress");
+    ASSERT_NE(framesSinceProgress, nullptr);
+    EXPECT_DOUBLE_EQ(framesSinceProgress->value, 120.0);
+    ASSERT_TRUE(framesSinceProgress->reference.has_value());
+    EXPECT_DOUBLE_EQ(framesSinceProgress->reference.value(), 1800.0);
+}
+
 TEST(FitnessPresentationGeneratorTest, BuildsTreePresentationFromNativeBreakdown)
 {
     const FitnessEvaluation evaluation{

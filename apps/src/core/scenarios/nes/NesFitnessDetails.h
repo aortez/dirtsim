@@ -1,13 +1,18 @@
 #pragma once
 
-#include "core/scenarios/nes/NesFitnessDetails.h"
+#include <cstdint>
+#include <variant>
 
 namespace DirtSim {
 
-struct FitnessContext;
+enum class SmbEpisodeEndReason : uint8_t {
+    None = 0,
+    LifeLost = 1,
+    NoProgressTimeout = 2,
+};
 
-struct NesSuperMarioBrosFitnessBreakdown {
-    double totalFitness = 0.0;
+struct NesSuperMarioBrosFitnessSnapshot {
+    double totalReward = 0.0;
     double distanceRewardTotal = 0.0;
     double levelClearRewardTotal = 0.0;
     uint64_t gameplayFrames = 0;
@@ -25,12 +30,6 @@ struct NesSuperMarioBrosFitnessBreakdown {
     bool done = false;
 };
 
-class NesEvaluator {
-public:
-    static double evaluate(const FitnessContext& context);
-    static double evaluateFromRewardTotal(double rewardTotal);
-    static NesSuperMarioBrosFitnessBreakdown evaluateSuperMarioBrosWithBreakdown(
-        const FitnessContext& context);
-};
+using NesFitnessDetails = std::variant<std::monostate, NesSuperMarioBrosFitnessSnapshot>;
 
 } // namespace DirtSim

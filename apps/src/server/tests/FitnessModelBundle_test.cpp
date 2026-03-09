@@ -119,3 +119,60 @@ TEST(FitnessModelBundleTest, NesDuckBundleEvaluatesRewardTotals)
         evaluation.totalFitness, NesEvaluator::evaluateFromRewardTotal(result.nesRewardTotal));
     EXPECT_TRUE(std::holds_alternative<std::monostate>(evaluation.details));
 }
+
+TEST(FitnessModelBundleTest, NesSuperMarioBrosBundleKeepsNativeBreakdown)
+{
+    const FitnessModelBundle bundle =
+        fitnessModelResolve(OrganismType::NES_DUCK, Scenario::EnumType::NesSuperMarioBros);
+
+    ASSERT_NE(bundle.evaluate, nullptr);
+    ASSERT_NE(bundle.generatePresentation, nullptr);
+    ASSERT_NE(bundle.formatLogSummary, nullptr);
+
+    const FitnessResult result{
+        .nesRewardTotal = 144.0,
+    };
+    const EvolutionConfig evolutionConfig{};
+    const NesSuperMarioBrosFitnessSnapshot snapshot{
+        .totalReward = 144.0,
+        .distanceRewardTotal = 44.0,
+        .levelClearRewardTotal = 100.0,
+        .gameplayFrames = 1200,
+        .framesSinceProgress = 300,
+        .noProgressTimeoutFrames = 1800,
+        .bestStageIndex = 2,
+        .bestWorld = 0,
+        .bestLevel = 2,
+        .bestAbsoluteX = 388,
+        .currentWorld = 0,
+        .currentLevel = 2,
+        .currentAbsoluteX = 388,
+        .currentLives = 2,
+        .endReason = SmbEpisodeEndReason::None,
+        .done = false,
+    };
+    const NesFitnessDetails details = snapshot;
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::NES_DUCK,
+        .worldWidth = 0,
+        .worldHeight = 0,
+        .evolutionConfig = evolutionConfig,
+        .nesFitnessDetails = &details,
+    };
+
+    const FitnessEvaluation evaluation = bundle.evaluate(context);
+    EXPECT_DOUBLE_EQ(evaluation.totalFitness, 144.0);
+    const auto* nativeBreakdown = fitnessEvaluationNesSuperMarioBrosBreakdownGet(evaluation);
+    ASSERT_NE(nativeBreakdown, nullptr);
+    EXPECT_EQ(nativeBreakdown->bestStageIndex, 2u);
+    EXPECT_EQ(nativeBreakdown->bestAbsoluteX, 388u);
+
+    const std::string summary = bundle.formatLogSummary(evaluation);
+    EXPECT_NE(summary.find("reward=144.000"), std::string::npos);
+    EXPECT_NE(summary.find("stage=2"), std::string::npos);
+
+    const Api::FitnessPresentation presentation = bundle.generatePresentation(evaluation);
+    EXPECT_EQ(presentation.modelId, "nes_smb");
+    ASSERT_FALSE(presentation.sections.empty());
+}

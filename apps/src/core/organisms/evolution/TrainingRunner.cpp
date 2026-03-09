@@ -271,6 +271,7 @@ TrainingRunner::TrainingRunner(
     }
 
     nesPaletteFrame_.reset();
+    nesFitnessDetails_ = std::monostate{};
     nesDuckBrain_.reset();
     nesDuckBrainV2_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
@@ -483,6 +484,11 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     return status;
 }
 
+const NesFitnessDetails& TrainingRunner::getNesFitnessDetails() const
+{
+    return nesFitnessDetails_;
+}
+
 const OrganismTrackingHistory& TrainingRunner::getOrganismTrackingHistory() const
 {
     return organismTracker_.getHistory();
@@ -632,6 +638,7 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         if (nesGameAdapter_) {
             nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
         }
+        nesFitnessDetails_ = std::monostate{};
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
@@ -833,6 +840,7 @@ void TrainingRunner::runScenarioDrivenStep()
             .memorySnapshot = nesRuntime_->copyRuntimeMemorySnapshot(),
         };
         const NesGameAdapterFrameOutput evaluation = nesGameAdapter_->evaluateFrame(frameInput);
+        nesFitnessDetails_ = evaluation.fitnessDetails;
         nesRewardTotal_ += evaluation.rewardDelta;
         if (evaluation.gameState.has_value()) {
             nesLastGameState_ = evaluation.gameState;
