@@ -233,6 +233,38 @@ The existing live pressure field remains the active pressure field for:
 This preserves current water behavior while giving granular interiors a second field that can stay
 large without implying the region must remain awake.
 
+### Granular Gravity Reconciliation
+
+The current solver still turns gravity-driven granular loading into live pressure every frame. That
+was useful for getting piles to push back against falling material, but it also means buried dirt
+looks perpetually disturbed even when its supported load is stable.
+
+The intended long-term split is:
+
+- `static_load` stores steady supported overburden for granular solids,
+- `live_pressure` stores fluid pressure and transient disturbance,
+- motion comes from imbalance or changing support, not from absolute depth load alone.
+
+This design only pays off for sleeping if steady granular gravity stops behaving like a permanent
+disturbance source. In practical terms, the solver needs a material-aware gravity routing policy:
+
+- `WATER` keeps gravity-fed `live_pressure`,
+- `DIRT` and `SAND` get gravity-fed `static_load`,
+- blocked transfers, impacts, and topology changes still feed `live_pressure`,
+- `delta static_load`, not absolute `static_load`, is a wake signal for buried granular regions.
+
+This does not mean granular cells ignore gravity. It means gravity should affect them through:
+
+- direct falling motion for unsupported cells,
+- changing support paths and `delta static_load`,
+- blocked-transfer or collision disturbance,
+- contact and friction capacity once `static_load` is integrated more deeply.
+
+The first data-path patch deliberately did not change this behavior. That keeps the rollout safe,
+but it also means the initial implementation cannot achieve quiescent buried dirt under gravity
+yet. The design therefore needs an explicit reconciliation phase before sleeping is expected to
+work well for loaded granular interiors.
+
 ### Region States
 
 Each 8x8 region has one state:
@@ -320,7 +352,7 @@ This keeps the water path stable while still letting buried dirt interiors sleep
 
 ### Initial Rollout
 
-Do not change the pressure-force equations yet.
+The first data-path rollout should not change the pressure-force equations yet.
 
 The data-path patch and first sleeping rollout use `static_load` for:
 
@@ -334,7 +366,23 @@ existing friction normal-force estimate.
 
 This keeps behavior close to the current solver while de-risking the structural change.
 
-### Phase 2
+### Granular Gravity Rollout
+
+Before sleeping buried granular interiors under gravity, the solver needs a narrower change:
+
+- steady gravitational overburden for `DIRT` and `SAND` should primarily update `static_load`,
+- water should continue to receive gravity-fed `live_pressure`,
+- blocked-transfer and collision energy should continue to feed `live_pressure`,
+- granular `live_pressure` should increasingly represent disturbance rather than supported depth
+  load.
+
+The design goal is not to eliminate granular motion under gravity. The goal is to stop treating a
+stable buried support state as if it were active disturbance every frame.
+
+This phase should still avoid a broad force-law rewrite. It is mainly about deciding what enters
+the live-pressure field for each material and what becomes a wake signal.
+
+### Later Physics Integration
 
 Once sleeping is stable, `static_load` can optionally feed solid contact calculations:
 
@@ -368,10 +416,14 @@ Later it can add distinct visual modes:
 
 - `static_load` is derived state. It may be serialized or transported for debugging, but the engine
   should treat recompute as authoritative after load, resize, or gravity change.
+- For granular materials, absolute `static_load` is not itself a disturbance signal. Changes in
+  `static_load` are.
 - Sleep transitions happen at frame boundaries. Wake requests are recorded immediately, but a region
   should only become `LoadedQuiet` or `Sleeping` after post-frame summarization.
 - Wake is conservative and immediate. Sleep is delayed and hysteretic.
 - Phase 1 must preserve existing motion when sleeping is disabled.
+- Sleeping buried granular interiors under gravity depends on reconciling steady granular gravity
+  with `static_load` first.
 - The first sleeping rollout should gate force and move work before it tries to gate the live
   pressure solver.
 
@@ -444,7 +496,7 @@ Once `static_load` and region tracking exist, the frame should look like this:
 2. `ensureGridCacheFresh()`.
 3. Recompute `static_load` if phase 1 is active.
 4. Build the active-region mask from the previous frame's region state plus current wake requests.
-5. Run the existing live-pressure path.
+5. Run the live-pressure path using the current material policy.
 6. Run force accumulation and move generation using the active-region mask.
 7. Process moves and collisions, recording wake reasons for touched regions.
 8. Summarize regions from the post-frame cell state.
@@ -452,7 +504,8 @@ Once `static_load` and region tracking exist, the frame should look like this:
 
 Important rollout constraint:
 
-- In the first sleeping patch, step 5 stays global.
+- In the first sleeping patch, step 5 stays global, but its granular gravity inputs may already be
+  more selective.
 - Steps 6 and 7 are the first places that should actually skip work.
 
 That keeps water correctness safer while still attacking the expensive dirt-interior loops.
@@ -563,6 +616,44 @@ Implementation note:
 - this should be a mostly mechanical patch or commit, separated from the sleeping behavior change
   if practical.
 
+### Phase 1c: Granular Gravity Reconciliation
+
+Primary goal:
+
+- stop steady granular overburden from behaving like perpetual live disturbance.
+
+Files likely touched:
+
+- `apps/src/core/World.cpp`
+- `apps/src/core/WorldPressureCalculator.cpp`
+- `apps/src/core/WorldStaticLoadCalculator.cpp`
+- `apps/src/core/WorldFrictionCalculator.cpp`
+- `apps/src/core/MaterialType.h`
+- `apps/src/core/MaterialType.cpp`
+- `apps/src/core/tests/WorldRegionSleepingBehavior_test.cpp`
+- water and pressure regression tests
+
+Tasks:
+
+- Define gravity routing by material:
+  - `WATER` keeps gravity-fed `live_pressure`,
+  - `DIRT` and `SAND` route steady overburden into `static_load`,
+  - blocked transfers and collisions still feed `live_pressure`.
+- Revisit granular gravity-pressure injection so buried supported dirt is not constantly re-awakened
+  by steady load alone.
+- Use the region behavior tests to verify that gravity-on buried dirt can become quiet while
+  gravity-off still clears `static_load`.
+- Keep the change narrow enough that water equalization and buoyancy behavior remain close to the
+  current solver.
+- Defer any larger contact-force rewrite unless the quieter live-pressure path still is not enough.
+
+Acceptance criteria:
+
+- a buried dirt core can reach `LoadedQuiet` or `Sleeping` under constant gravity,
+- free-surface dirt still falls and avalanches,
+- support removal wakes the affected interior through disturbance or `delta static_load`,
+- water scenarios remain visually close to current behavior.
+
 ### Phase 2: Conservative Sleeping
 
 Primary goal:
@@ -610,6 +701,7 @@ Performance note:
 
 Acceptance criteria:
 
+- phase 1c already proved that buried dirt can become quiet under gravity,
 - the buried interior of a stable dirt pile reaches `Sleeping`,
 - the free surface, toe, and dirt-water interface remain awake,
 - tapping, digging, or collapsing a pile wakes the interior quickly,
@@ -662,6 +754,9 @@ Use these scenarios to validate correctness and value:
 - Sandbox dirt pile with debug draw enabled:
   - buried interior should become `LoadedQuiet` then `Sleeping`,
   - free surface and toe should remain awake.
+- Sandbox dirt pile under constant gravity before sleeping is enabled:
+  - buried interior should stop showing persistent movement-driven wakeups,
+  - `delta static_load` should remain near zero away from disturbances.
 - Tap or dig into a pile:
   - wake should propagate inward from the disturbance.
 - Dirt next to water:
@@ -694,6 +789,11 @@ Recommended automated coverage:
   - `Buoyancy_test.cpp`,
   - `DiagonalWaterLeveling_test.cpp`,
   - `DuckBuoyancy_test.cpp`.
+- region sleep behavior tests:
+  - gravity-on buried dirt can quiet,
+  - gravity-off clears `static_load`,
+  - dirt next to water stays conservative,
+  - toe-disturbance wake propagation remains local first.
 - manual scenario captures:
   - sandbox dirt pile at rest,
   - digging into buried dirt,
@@ -705,6 +805,8 @@ Recommended automated coverage:
 - The first `static_load` solver is approximate and may miss arches or force chains.
 - Conservative wake rules may reduce the initial speedup.
 - Aggressive thresholds may over-stabilize steep slopes and suppress avalanches.
+- Reconciling granular gravity too aggressively could remove useful disturbance at the surface if
+  the material policy is not tuned carefully.
 - Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
 - The UI debug path currently assumes one unified pressure value and must be updated carefully.
 - The existing pressure settings and material-property names still reflect older terminology and
@@ -715,9 +817,10 @@ Recommended automated coverage:
 Proceed with the staged design above:
 
 1. add `static_load` as derived state for dirt and sand,
-2. use it for debug and sleeping decisions first,
-3. keep water on the current live pressure path,
-4. sleep only buried granular interiors in the first implementation.
+2. use it for debug and observability first,
+3. reconcile steady granular gravity with `static_load` before relying on sleeping,
+4. keep water on the current live pressure path,
+5. sleep only buried granular interiors in the first implementation.
 
 This gives the expected win for dirt piles without forcing a full pressure-model rewrite in one
 step.
