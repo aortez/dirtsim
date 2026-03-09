@@ -393,6 +393,9 @@ EvolutionSupport::FitnessEvaluation computeFitnessEvaluationForRunner(
     const auto& treeResources = runner.getTreeResourceTotals();
     const TreeResourceTotals* treeResourcesPtr =
         treeResources.has_value() ? &treeResources.value() : nullptr;
+    const auto& nesFitnessDetails = runner.getNesFitnessDetails();
+    const auto* nesFitnessDetailsPtr =
+        std::holds_alternative<std::monostate>(nesFitnessDetails) ? nullptr : &nesFitnessDetails;
 
     const FitnessContext context{
         .result = result,
@@ -402,6 +405,7 @@ EvolutionSupport::FitnessEvaluation computeFitnessEvaluationForRunner(
         .evolutionConfig = evolutionConfig,
         .finalOrganism = runner.getOrganism(),
         .duckStatsSnapshot = runner.getDuckStatsSnapshot(),
+        .nesFitnessDetails = nesFitnessDetailsPtr,
         .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
         .treeResources = treeResourcesPtr,
         .exitedThroughDoor = status.exitedThroughDoor,

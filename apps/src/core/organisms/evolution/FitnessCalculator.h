@@ -3,6 +3,7 @@
 #include "EvolutionConfig.h"
 #include "FitnessResult.h"
 #include "core/organisms/OrganismType.h"
+#include "core/scenarios/nes/NesFitnessDetails.h"
 
 #include <cstdint>
 
@@ -38,6 +39,7 @@ struct FitnessContext {
     const EvolutionConfig& evolutionConfig;
     const Organism::Body* finalOrganism = nullptr;
     const DuckStatsSnapshot* duckStatsSnapshot = nullptr;
+    const NesFitnessDetails* nesFitnessDetails = nullptr;
     const OrganismTrackingHistory* organismTrackingHistory = nullptr;
     const TreeResourceTotals* treeResources = nullptr;
     bool exitedThroughDoor = false;

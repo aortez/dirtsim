@@ -9,7 +9,9 @@ Api::FitnessPresentation fitnessEvaluationDuckPresentationGenerate(
     const FitnessEvaluation& evaluation);
 Api::FitnessPresentation fitnessEvaluationGoosePresentationGenerate(
     const FitnessEvaluation& evaluation);
-Api::FitnessPresentation fitnessEvaluationNesDuckPresentationGenerate(
+Api::FitnessPresentation fitnessEvaluationNesGenericPresentationGenerate(
+    const FitnessEvaluation& evaluation);
+Api::FitnessPresentation fitnessEvaluationNesSuperMarioBrosPresentationGenerate(
     const FitnessEvaluation& evaluation);
 Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
     const FitnessEvaluation& evaluation);

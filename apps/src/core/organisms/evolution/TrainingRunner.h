@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "core/scenarios/clock_scenario/ClockEventTypes.h"
+#include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include <array>
@@ -132,6 +133,7 @@ public:
     const Organism::Body* getOrganism() const;
     const OrganismTrackingHistory& getOrganismTrackingHistory() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
+    const NesFitnessDetails& getNesFitnessDetails() const;
     std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
     std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
         size_t maxEntries) const;
@@ -188,6 +190,7 @@ private:
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
+    NesFitnessDetails nesFitnessDetails_{};
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 

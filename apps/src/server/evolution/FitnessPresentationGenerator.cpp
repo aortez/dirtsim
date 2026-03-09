@@ -66,6 +66,33 @@ std::string treeSummaryBuild(
     return summary.str();
 }
 
+const char* smbEndReasonText(SmbEpisodeEndReason endReason)
+{
+    switch (endReason) {
+        case SmbEpisodeEndReason::None:
+            return "running";
+        case SmbEpisodeEndReason::LifeLost:
+            return "life_lost";
+        case SmbEpisodeEndReason::NoProgressTimeout:
+            return "no_progress_timeout";
+    }
+
+    return "unknown";
+}
+
+std::string nesSuperMarioBrosSummaryBuild(const NesSuperMarioBrosFitnessBreakdown& breakdown)
+{
+    std::ostringstream summary;
+    summary << std::fixed << std::setprecision(4);
+    summary << "Reward " << breakdown.totalFitness;
+    summary << " | Best Stage " << breakdown.bestStageIndex;
+    summary << " | Best X " << breakdown.bestAbsoluteX;
+    summary << " | Gameplay " << breakdown.gameplayFrames << " frames";
+    summary << " | Since Progress " << breakdown.framesSinceProgress << " frames";
+    summary << " | End " << smbEndReasonText(breakdown.endReason);
+    return summary.str();
+}
+
 Api::FitnessPresentation genericPresentationBuild(
     OrganismType organismType,
     std::string modelId,
@@ -120,7 +147,7 @@ Api::FitnessPresentation fitnessEvaluationGoosePresentationGenerate(
         "Detailed goose presentation is not available yet.");
 }
 
-Api::FitnessPresentation fitnessEvaluationNesDuckPresentationGenerate(
+Api::FitnessPresentation fitnessEvaluationNesGenericPresentationGenerate(
     const FitnessEvaluation& evaluation)
 {
     return genericPresentationBuild(
@@ -128,6 +155,146 @@ Api::FitnessPresentation fitnessEvaluationNesDuckPresentationGenerate(
         "nes_duck",
         evaluation,
         "Detailed NES presentation is not available yet.");
+}
+
+Api::FitnessPresentation fitnessEvaluationNesSuperMarioBrosPresentationGenerate(
+    const FitnessEvaluation& evaluation)
+{
+    const auto* breakdown = fitnessEvaluationNesSuperMarioBrosBreakdownGet(evaluation);
+    if (breakdown == nullptr) {
+        return genericPresentationBuild(
+            OrganismType::NES_DUCK,
+            "nes_smb",
+            evaluation,
+            "Detailed NES Super Mario Bros presentation is not available.");
+    }
+
+    Api::FitnessPresentation presentation{
+        .organismType = OrganismType::NES_DUCK,
+        .modelId = "nes_smb",
+        .totalFitness = evaluation.totalFitness,
+        .summary = nesSuperMarioBrosSummaryBuild(*breakdown),
+        .sections = {},
+    };
+
+    presentation.sections.reserve(3);
+    presentation.sections.push_back(makeSection(
+        "reward",
+        "Reward Totals",
+        breakdown->totalFitness,
+        {
+            makeMetric(
+                "total_reward",
+                "Total Reward",
+                breakdown->totalFitness,
+                std::nullopt,
+                std::nullopt,
+                "reward"),
+            makeMetric(
+                "distance_reward_total",
+                "Distance Reward",
+                breakdown->distanceRewardTotal,
+                std::nullopt,
+                std::nullopt,
+                "reward"),
+            makeMetric(
+                "level_clear_reward_total",
+                "Level Clear Reward",
+                breakdown->levelClearRewardTotal,
+                std::nullopt,
+                std::nullopt,
+                "reward"),
+        }));
+    presentation.sections.push_back(makeSection(
+        "frontier",
+        "Best Frontier",
+        std::nullopt,
+        {
+            makeMetric(
+                "best_stage_index",
+                "Best Stage Index",
+                static_cast<double>(breakdown->bestStageIndex),
+                std::nullopt,
+                std::nullopt,
+                "stage"),
+            makeMetric(
+                "best_world",
+                "Best World",
+                static_cast<double>(breakdown->bestWorld),
+                std::nullopt,
+                std::nullopt,
+                "world"),
+            makeMetric(
+                "best_level",
+                "Best Level",
+                static_cast<double>(breakdown->bestLevel),
+                std::nullopt,
+                std::nullopt,
+                "level"),
+            makeMetric(
+                "best_absolute_x",
+                "Best Absolute X",
+                static_cast<double>(breakdown->bestAbsoluteX),
+                std::nullopt,
+                std::nullopt,
+                "px"),
+        }));
+    presentation.sections.push_back(makeSection(
+        "episode",
+        "Episode State",
+        std::nullopt,
+        {
+            makeMetric(
+                "gameplay_frames",
+                "Gameplay Frames",
+                static_cast<double>(breakdown->gameplayFrames),
+                std::nullopt,
+                std::nullopt,
+                "frames"),
+            makeMetric(
+                "frames_since_progress",
+                "Frames Since Progress",
+                static_cast<double>(breakdown->framesSinceProgress),
+                breakdown->noProgressTimeoutFrames > 0
+                    ? std::optional<double>(static_cast<double>(breakdown->noProgressTimeoutFrames))
+                    : std::nullopt,
+                breakdown->noProgressTimeoutFrames > 0
+                    ? std::optional<double>(
+                          static_cast<double>(breakdown->framesSinceProgress)
+                          / static_cast<double>(breakdown->noProgressTimeoutFrames))
+                    : std::nullopt,
+                "frames"),
+            makeMetric(
+                "current_lives",
+                "Current Lives",
+                static_cast<double>(breakdown->currentLives),
+                std::nullopt,
+                std::nullopt,
+                "lives"),
+            makeMetric(
+                "current_world",
+                "Current World",
+                static_cast<double>(breakdown->currentWorld),
+                std::nullopt,
+                std::nullopt,
+                "world"),
+            makeMetric(
+                "current_level",
+                "Current Level",
+                static_cast<double>(breakdown->currentLevel),
+                std::nullopt,
+                std::nullopt,
+                "level"),
+            makeMetric(
+                "current_absolute_x",
+                "Current Absolute X",
+                static_cast<double>(breakdown->currentAbsoluteX),
+                std::nullopt,
+                std::nullopt,
+                "px"),
+        }));
+
+    return presentation;
 }
 
 Api::FitnessPresentation fitnessEvaluationTreePresentationGenerate(
