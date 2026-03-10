@@ -149,6 +149,40 @@ std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot
     return snapshot;
 }
 
+std::optional<SmolnesRuntime::DebugSnapshot> SmolnesRuntime::copyDebugSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    SmolnesRuntimeDebugSnapshot raw{};
+    if (!smolnesRuntimeCopyDebugSnapshot(runtimeHandle_, &raw)) {
+        return std::nullopt;
+    }
+
+    DebugSnapshot snapshot{};
+    snapshot.lastControllerSet.sequence = raw.last_controller_set.sequence;
+    snapshot.lastControllerSet.renderedFrames = raw.last_controller_set.rendered_frames;
+    snapshot.lastControllerSet.targetFrames = raw.last_controller_set.target_frames;
+    snapshot.lastControllerSet.controllerMask = raw.last_controller_set.controller_mask;
+    snapshot.lastFrameBegin.sequence = raw.last_frame_begin.sequence;
+    snapshot.lastFrameBegin.renderedFrames = raw.last_frame_begin.rendered_frames;
+    snapshot.lastFrameBegin.targetFrames = raw.last_frame_begin.target_frames;
+    snapshot.lastFrameBegin.controllerMask = raw.last_frame_begin.controller_mask;
+    snapshot.lastFrameSubmit.sequence = raw.last_frame_submit.sequence;
+    snapshot.lastFrameSubmit.renderedFramesAfter = raw.last_frame_submit.rendered_frames_after;
+    snapshot.lastFrameSubmit.targetFrames = raw.last_frame_submit.target_frames;
+    snapshot.lastRunFramesRequest.sequence = raw.last_run_frames_request.sequence;
+    snapshot.lastRunFramesRequest.renderedFrames = raw.last_run_frames_request.rendered_frames;
+    snapshot.lastRunFramesRequest.targetFramesAfter =
+        raw.last_run_frames_request.target_frames_after;
+    snapshot.lastRunFramesRequest.targetFramesBefore =
+        raw.last_run_frames_request.target_frames_before;
+    snapshot.lastRunFramesRequest.requestedFrameCount =
+        raw.last_run_frames_request.requested_frame_count;
+    return snapshot;
+}
+
 std::optional<SmolnesRuntime::ApuSnapshot> SmolnesRuntime::copyApuSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {

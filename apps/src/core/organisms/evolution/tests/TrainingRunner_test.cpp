@@ -188,12 +188,15 @@ public:
         : controllerCallCount_(controllerCallCount), evaluateCallCount_(evaluateCallCount)
     {}
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
         if (controllerCallCount_) {
             ++(*controllerCallCount_);
         }
-        return input.inferredControllerMask;
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = input.inferredControllerMask,
+        };
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
@@ -221,6 +224,55 @@ public:
 private:
     int* controllerCallCount_ = nullptr;
     int* evaluateCallCount_ = nullptr;
+};
+
+class TraceNesAdapter : public NesGameAdapter {
+public:
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& /*input*/) override
+    {
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = NesPolicyLayout::ButtonStart,
+            .source = NesGameAdapterControllerSource::ScriptedSetup,
+            .sourceFrameIndex = 42u,
+        };
+    }
+
+    NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
+    {
+        return NesGameAdapterFrameOutput{
+            .debugState =
+                NesGameAdapterDebugState{
+                    .advancedFrameCount = input.advancedFrames,
+                    .level = 3u,
+                    .lifeState = 0u,
+                    .lives = 4u,
+                    .phase = 1u,
+                    .playerXScreen = 120u,
+                    .playerYScreen = 80u,
+                    .powerupState = 2u,
+                    .world = 2u,
+                    .absoluteX = 512u,
+                    .setupFailure = false,
+                    .setupScriptActive = false,
+                },
+            .fitnessDetails = std::monostate{},
+            .rewardDelta = 7.5,
+            .gameState = 1u,
+        };
+    }
+
+    DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
+    {
+        DuckSensoryData sensory{};
+        sensory.actual_width = DuckSensoryData::GRID_SIZE;
+        sensory.actual_height = DuckSensoryData::GRID_SIZE;
+        sensory.scale_factor = 1.0;
+        sensory.world_offset = { 0, 0 };
+        sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
+        sensory.delta_time_seconds = input.deltaTimeSeconds;
+        return sensory;
+    }
 };
 
 struct ExecutedCommand {
@@ -729,6 +781,65 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRe
     EXPECT_GT(controllerCalls, 0);
     EXPECT_GT(evaluateCalls, 0);
     EXPECT_GT(status.nesFramesSurvived, 0u);
+}
+
+TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerEmitsPerFrameTrace)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+
+    std::vector<TrainingRunner::FrameTrace> traces;
+    NesGameAdapterRegistry adapterRegistry;
+    adapterRegistry.registerAdapter(Scenario::EnumType::NesFlappyParatroopa, []() {
+        return std::make_unique<TraceNesAdapter>();
+    });
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesGameAdapterRegistry = adapterRegistry,
+        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnRngSeed = std::nullopt,
+        .frameTraceSink =
+            [&traces](const TrainingRunner::FrameTrace& trace) { traces.push_back(trace); },
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    const TrainingRunner::Status status = runner.step(3);
+
+    ASSERT_FALSE(traces.empty());
+    EXPECT_EQ(traces.front().stepOrdinal, 1u);
+    EXPECT_GT(traces.front().simTime, 0.0);
+    ASSERT_TRUE(traces.front().nes.has_value());
+    EXPECT_TRUE(traces.front().nes->frameAdvanced);
+    EXPECT_EQ(traces.front().nes->resolvedControllerMask, NesPolicyLayout::ButtonStart);
+    EXPECT_EQ(
+        traces.front().nes->controllerSource,
+        std::optional<NesGameAdapterControllerSource>(
+            NesGameAdapterControllerSource::ScriptedSetup));
+    EXPECT_EQ(traces.front().nes->controllerSourceFrameIndex, std::optional<uint64_t>(42u));
+    EXPECT_EQ(traces.front().nes->commandSignature, "Start");
+    EXPECT_EQ(traces.front().nes->commandOutcome, "FrameAdvanced");
+    EXPECT_DOUBLE_EQ(traces.front().nes->rewardDelta, 7.5);
+    EXPECT_EQ(traces.front().nes->lastGameStateBefore, std::nullopt);
+    EXPECT_EQ(traces.front().nes->lastGameStateAfter, std::optional<uint8_t>(1u));
+    ASSERT_TRUE(traces.front().nes->debugState.has_value());
+    EXPECT_EQ(traces.front().nes->debugState->world, std::optional<uint8_t>(2u));
+    EXPECT_EQ(traces.front().nes->debugState->level, std::optional<uint8_t>(3u));
+    EXPECT_EQ(status.state, TrainingRunner::State::Running);
 }
 
 // Proves we can finish and get results.

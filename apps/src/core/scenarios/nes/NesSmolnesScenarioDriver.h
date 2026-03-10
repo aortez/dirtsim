@@ -9,6 +9,7 @@
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +27,26 @@ class NesAudioPlayer;
  */
 class NesSmolnesScenarioDriver final : public NesScenarioRuntime {
 public:
+    struct RuntimeConfig {
+        std::function<std::unique_ptr<SmolnesRuntime>()> runtimeFactory;
+    };
+
+    struct StepResult {
+        uint64_t advancedFrames = 0;
+        uint64_t renderedFramesAfter = 0;
+        uint64_t renderedFramesBefore = 0;
+        uint8_t controllerMask = 0;
+        bool runtimeHealthy = false;
+        bool runtimeRunning = false;
+        std::optional<SmolnesRuntime::DebugSnapshot> runtimeDebugSnapshot = std::nullopt;
+        std::optional<SmolnesRuntime::MemorySnapshot> memorySnapshot = std::nullopt;
+        std::optional<NesPaletteFrame> paletteFrame = std::nullopt;
+        std::optional<ScenarioVideoFrame> scenarioVideoFrame = std::nullopt;
+        std::string lastError;
+    };
+
     explicit NesSmolnesScenarioDriver(Scenario::EnumType scenarioId);
+    NesSmolnesScenarioDriver(Scenario::EnumType scenarioId, RuntimeConfig runtimeConfig);
     ~NesSmolnesScenarioDriver() override;
 
     NesSmolnesScenarioDriver(const NesSmolnesScenarioDriver&) = delete;
@@ -44,6 +64,7 @@ public:
     Result<std::monostate, std::string> setup();
     Result<std::monostate, std::string> reset();
 
+    StepResult step(Timers& timers, uint8_t buttonMask);
     void tick(Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
 
     bool isRuntimeHealthy() const override;
@@ -51,6 +72,7 @@ public:
     uint64_t getRuntimeRenderedFrameCount() const override;
     std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const override;
     std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const override;
+    std::optional<SmolnesRuntime::DebugSnapshot> copyRuntimeDebugSnapshot() const;
     std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const override;
     std::optional<SmolnesRuntime::ApuSnapshot> copyRuntimeApuSnapshot() const;
     uint32_t copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const;
@@ -62,6 +84,7 @@ public:
     void setAudioVolumePercent(int percent);
 
 private:
+    static RuntimeConfig makeDefaultRuntimeConfig();
     void stopRuntime();
     void updateRuntimeProfilingTimers(Timers& timers);
     NesConfigValidationResult validateConfig() const;
@@ -70,8 +93,10 @@ private:
     ScenarioConfig config_;
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
+    RuntimeConfig runtimeConfig_;
     std::unique_ptr<SmolnesRuntime> runtime_;
     std::unique_ptr<NesAudioPlayer> audioPlayer_;
+    std::optional<SmolnesRuntime::DebugSnapshot> lastRuntimeDebugSnapshot_;
     std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
     bool audioPlaybackEnabled_ = false;
     uint8_t controller1State_ = 0;

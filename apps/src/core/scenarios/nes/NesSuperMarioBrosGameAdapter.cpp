@@ -5,6 +5,7 @@
 #include "core/scenarios/nes/NesPaletteClusterer.h"
 #include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
+#include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -12,9 +13,6 @@
 namespace DirtSim {
 
 namespace {
-
-constexpr uint64_t kSetupScriptEndFrame = 300;
-constexpr uint64_t kSetupFailureFrame = 500;
 
 double normalizeSmb(double value, double maxValue)
 {
@@ -70,14 +68,20 @@ public:
         setupFailureLogged_ = false;
     }
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
-        const bool gameplayDetected = input.lastGameState.value_or(0u) == 1u;
-        if (!gameplayDetected) {
-            return scriptedSetupMaskForFrame(advancedFrameCount_);
-        }
+        const NesSuperMarioBrosSetupDecision decision = resolveNesSuperMarioBrosSetupDecision(
+            advancedFrameCount_, input.lastGameState, input.inferredControllerMask);
 
-        return input.inferredControllerMask;
+        NesGameAdapterControllerOutput output;
+        output.resolvedControllerMask = decision.controllerMask;
+        output.source = decision.usingSetupScript ? NesGameAdapterControllerSource::ScriptedSetup
+                                                  : NesGameAdapterControllerSource::InferredPolicy;
+        if (decision.usingSetupScript) {
+            output.sourceFrameIndex = decision.frameIndex;
+        }
+        return output;
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
@@ -95,11 +99,28 @@ public:
         }
 
         const NesSuperMarioBrosState state = extractor_.extract(
-            input.memorySnapshot.value(), advancedFrameCount_ >= kSetupScriptEndFrame);
+            input.memorySnapshot.value(),
+            advancedFrameCount_ >= getNesSuperMarioBrosSetupScriptEndFrame());
         output.gameState = state.phase == SmbPhase::Gameplay ? std::optional<uint8_t>(1u)
                                                              : std::optional<uint8_t>(0u);
+        output.debugState = NesGameAdapterDebugState{
+            .advancedFrameCount = advancedFrameCount_,
+            .level = state.level,
+            .lifeState = static_cast<uint8_t>(state.lifeState),
+            .lives = state.lives,
+            .phase = static_cast<uint8_t>(state.phase),
+            .playerXScreen = state.playerXScreen,
+            .playerYScreen = state.playerYScreen,
+            .powerupState = static_cast<uint8_t>(state.powerupState),
+            .world = state.world,
+            .absoluteX = state.absoluteX,
+            .setupFailure = state.phase != SmbPhase::Gameplay
+                && advancedFrameCount_ >= getNesSuperMarioBrosSetupFailureFrame(),
+            .setupScriptActive = state.phase != SmbPhase::Gameplay,
+        };
 
-        if (state.phase != SmbPhase::Gameplay && advancedFrameCount_ >= kSetupFailureFrame) {
+        if (state.phase != SmbPhase::Gameplay
+            && advancedFrameCount_ >= getNesSuperMarioBrosSetupFailureFrame()) {
             if (!setupFailureLogged_) {
                 LOG_ERROR(
                     Scenario,
@@ -134,21 +155,6 @@ public:
     }
 
 private:
-    static uint8_t scriptedSetupMaskForFrame(uint64_t frameIndex)
-    {
-        constexpr uint64_t kStartPressWidthFrames = 1;
-        constexpr uint64_t kStartPressFirstFrame = 120u;
-        constexpr uint64_t kStartPressPeriodFrames = 120u;
-        if (frameIndex >= kStartPressFirstFrame) {
-            const uint64_t setupFrame = frameIndex - kStartPressFirstFrame;
-            if ((setupFrame % kStartPressPeriodFrames) < kStartPressWidthFrames) {
-                return NesPolicyLayout::ButtonStart;
-            }
-        }
-
-        return 0u;
-    }
-
     NesPaletteClusterer paletteClusterer_;
     NesSuperMarioBrosRamExtractor extractor_;
     NesSuperMarioBrosEvaluator evaluator_;

@@ -47,23 +47,51 @@ public:
         uint64_t memorySnapshotCopyCalls = 0;
     };
 
+    struct DebugControllerEvent {
+        uint64_t sequence = 0;
+        uint64_t renderedFrames = 0;
+        uint64_t targetFrames = 0;
+        uint8_t controllerMask = 0;
+    };
+
+    struct DebugFrameSubmitEvent {
+        uint64_t sequence = 0;
+        uint64_t renderedFramesAfter = 0;
+        uint64_t targetFrames = 0;
+    };
+
+    struct DebugRunFramesRequestEvent {
+        uint64_t sequence = 0;
+        uint64_t renderedFrames = 0;
+        uint64_t targetFramesAfter = 0;
+        uint64_t targetFramesBefore = 0;
+        uint32_t requestedFrameCount = 0;
+    };
+
+    struct DebugSnapshot {
+        DebugControllerEvent lastControllerSet{};
+        DebugControllerEvent lastFrameBegin{};
+        DebugFrameSubmitEvent lastFrameSubmit{};
+        DebugRunFramesRequestEvent lastRunFramesRequest{};
+    };
+
     SmolnesRuntime();
-    ~SmolnesRuntime();
+    virtual ~SmolnesRuntime();
 
     SmolnesRuntime(const SmolnesRuntime&) = delete;
     SmolnesRuntime& operator=(const SmolnesRuntime&) = delete;
 
-    bool start(const std::string& romPath);
-    bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
-    void stop();
-    void setController1State(uint8_t buttonMask);
+    virtual bool start(const std::string& romPath);
+    virtual bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
+    virtual void stop();
+    virtual void setController1State(uint8_t buttonMask);
 
-    bool isHealthy() const;
-    bool isRunning() const;
-    uint64_t getRenderedFrameCount() const;
-    bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
-    std::optional<ScenarioVideoFrame> copyLatestFrame() const;
-    std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    virtual bool isHealthy() const;
+    virtual bool isRunning() const;
+    virtual uint64_t getRenderedFrameCount() const;
+    virtual bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
+    virtual std::optional<ScenarioVideoFrame> copyLatestFrame() const;
+    virtual std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
     struct ApuSnapshot {
         bool pulse1Enabled = false;
         bool pulse2Enabled = false;
@@ -91,13 +119,14 @@ public:
         uint64_t audioSamplesDropped = 0;
     };
 
-    std::optional<MemorySnapshot> copyMemorySnapshot() const;
-    std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
-    std::optional<ApuSnapshot> copyApuSnapshot() const;
-    uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
-    void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
-    void setSelfPacing(bool enabled);
-    std::string getLastError() const;
+    virtual std::optional<MemorySnapshot> copyMemorySnapshot() const;
+    virtual std::optional<DebugSnapshot> copyDebugSnapshot() const;
+    virtual std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
+    virtual std::optional<ApuSnapshot> copyApuSnapshot() const;
+    virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
+    virtual void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
+    virtual void setSelfPacing(bool enabled);
+    virtual std::string getLastError() const;
 
 private:
     SmolnesRuntimeHandle* runtimeHandle_ = nullptr;

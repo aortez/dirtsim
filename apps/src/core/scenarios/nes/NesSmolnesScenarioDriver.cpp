@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 extern "C" void nesApuSampleCallback(float sample, void* userdata)
 {
@@ -39,7 +40,14 @@ uint32_t getMaxEpisodeFrames(const NesConfigT& config)
 } // namespace
 
 NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(Scenario::EnumType scenarioId)
-    : scenarioId_(scenarioId), config_(makeDefaultConfig(scenarioId))
+    : NesSmolnesScenarioDriver(scenarioId, makeDefaultRuntimeConfig())
+{}
+
+NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(
+    Scenario::EnumType scenarioId, RuntimeConfig runtimeConfig)
+    : scenarioId_(scenarioId),
+      config_(makeDefaultConfig(scenarioId)),
+      runtimeConfig_(std::move(runtimeConfig))
 {}
 
 NesSmolnesScenarioDriver::~NesSmolnesScenarioDriver()
@@ -68,6 +76,7 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 {
     stopRuntime();
     controller1State_ = 0;
+    lastRuntimeDebugSnapshot_.reset();
     runtimeResolvedRomId_.clear();
     lastRuntimeProfilingSnapshot_.reset();
 
@@ -85,7 +94,16 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 
     runtimeResolvedRomId_ = validation.resolvedRomId;
     if (!runtime_) {
-        runtime_ = std::make_unique<SmolnesRuntime>();
+        if (runtimeConfig_.runtimeFactory) {
+            runtime_ = runtimeConfig_.runtimeFactory();
+        }
+        else {
+            runtime_ = std::make_unique<SmolnesRuntime>();
+        }
+    }
+    if (!runtime_) {
+        return Result<std::monostate, std::string>::error(
+            "NesSmolnesScenarioDriver: Runtime factory returned null");
     }
 
     if (!runtime_->start(validation.resolvedRomPath.string())) {
@@ -99,6 +117,7 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
     }
 
     runtime_->setController1State(controller1State_);
+    lastRuntimeDebugSnapshot_ = runtime_->copyDebugSnapshot();
     lastRuntimeProfilingSnapshot_ = runtime_->copyProfilingSnapshot();
 
     if (audioPlaybackEnabled_ && !audioPlayer_) {
@@ -121,11 +140,26 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::reset()
     return setup();
 }
 
-void NesSmolnesScenarioDriver::tick(
-    Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+NesSmolnesScenarioDriver::RuntimeConfig NesSmolnesScenarioDriver::makeDefaultRuntimeConfig()
 {
-    if (!runtime_ || !runtime_->isRunning()) {
-        return;
+    RuntimeConfig config;
+    config.runtimeFactory = [] { return std::make_unique<SmolnesRuntime>(); };
+    return config;
+}
+
+NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
+    Timers& timers, uint8_t buttonMask)
+{
+    controller1State_ = buttonMask;
+
+    StepResult stepResult;
+    stepResult.controllerMask = controller1State_;
+    stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
+    stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
+    stepResult.lastError = runtime_ ? runtime_->getLastError() : std::string{};
+    stepResult.runtimeDebugSnapshot = lastRuntimeDebugSnapshot_;
+    if (!runtime_ || !stepResult.runtimeRunning) {
+        return stepResult;
     }
 
     bool runtimeHealthy = false;
@@ -133,20 +167,23 @@ void NesSmolnesScenarioDriver::tick(
         ScopeTimer healthTimer(timers, "nes_runtime_health_check");
         runtimeHealthy = runtime_->isHealthy();
     }
+    stepResult.runtimeHealthy = runtimeHealthy;
     if (!runtimeHealthy) {
         LOG_ERROR(
             Scenario,
             "NesSmolnesScenarioDriver: smolnes runtime unhealthy for '{}': {}",
             toString(scenarioId_),
             runtime_->getLastError());
+        stepResult.lastError = runtime_->getLastError();
         stopRuntime();
-        return;
+        stepResult.runtimeHealthy = false;
+        stepResult.runtimeRunning = false;
+        return stepResult;
     }
 
-    uint64_t renderedFrames = 0;
     {
         ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
-        renderedFrames = runtime_->getRenderedFrameCount();
+        stepResult.renderedFramesBefore = runtime_->getRenderedFrameCount();
     }
 
     uint32_t maxEpisodeFrames = 0;
@@ -165,14 +202,16 @@ void NesSmolnesScenarioDriver::tick(
             "NesSmolnesScenarioDriver: Unsupported scenario config type for '{}'",
             toString(scenarioId_));
         stopRuntime();
-        scenarioVideoFrame.reset();
-        return;
+        stepResult.runtimeHealthy = false;
+        stepResult.runtimeRunning = false;
+        stepResult.lastError = "Unsupported NES scenario config type";
+        return stepResult;
     }
-    if (renderedFrames >= maxEpisodeFrames) {
-        return;
+    if (stepResult.renderedFramesBefore >= maxEpisodeFrames) {
+        return stepResult;
     }
 
-    const uint64_t framesRemaining = maxEpisodeFrames - renderedFrames;
+    const uint64_t framesRemaining = maxEpisodeFrames - stepResult.renderedFramesBefore;
 
     {
         ScopeTimer setControllerTimer(timers, "nes_runtime_set_controller");
@@ -200,27 +239,49 @@ void NesSmolnesScenarioDriver::tick(
                 toString(scenarioId_),
                 failureRenderedFrameCount,
                 runtime_->getLastError());
-            scenarioVideoFrame.reset();
+            stepResult.renderedFramesAfter = failureRenderedFrameCount;
+            stepResult.lastError = runtime_->getLastError();
             stopRuntime();
-            return;
+            stepResult.runtimeHealthy = false;
+            stepResult.runtimeRunning = false;
+            return stepResult;
         }
     }
 
-    const bool hadScenarioFrame = scenarioVideoFrame.has_value();
-    if (!hadScenarioFrame) {
-        scenarioVideoFrame.emplace();
-    }
-
-    bool copiedFrame = false;
     {
-        ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
-        copiedFrame = runtime_->copyLatestFrameInto(scenarioVideoFrame.value());
+        ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
+        stepResult.renderedFramesAfter = runtime_->getRenderedFrameCount();
     }
-    if (!copiedFrame && !hadScenarioFrame) {
-        scenarioVideoFrame.reset();
+    if (stepResult.renderedFramesAfter > stepResult.renderedFramesBefore) {
+        stepResult.advancedFrames =
+            stepResult.renderedFramesAfter - stepResult.renderedFramesBefore;
     }
 
+    if (stepResult.advancedFrames > 0) {
+        {
+            ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
+            stepResult.scenarioVideoFrame = runtime_->copyLatestFrame();
+        }
+        stepResult.paletteFrame = runtime_->copyLatestPaletteFrame();
+        stepResult.memorySnapshot = runtime_->copyMemorySnapshot();
+    }
+
+    lastRuntimeDebugSnapshot_ = runtime_->copyDebugSnapshot();
+    stepResult.runtimeDebugSnapshot = lastRuntimeDebugSnapshot_;
     updateRuntimeProfilingTimers(timers);
+    stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
+    stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
+    stepResult.lastError = runtime_ ? runtime_->getLastError() : std::string{};
+    return stepResult;
+}
+
+void NesSmolnesScenarioDriver::tick(
+    Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+{
+    StepResult stepResult = step(timers, controller1State_);
+    if (stepResult.scenarioVideoFrame.has_value()) {
+        scenarioVideoFrame = std::move(stepResult.scenarioVideoFrame);
+    }
 }
 
 bool NesSmolnesScenarioDriver::isRuntimeHealthy() const
@@ -255,6 +316,12 @@ std::optional<NesPaletteFrame> NesSmolnesScenarioDriver::copyRuntimePaletteFrame
         return std::nullopt;
     }
     return runtime_->copyLatestPaletteFrame();
+}
+
+std::optional<SmolnesRuntime::DebugSnapshot> NesSmolnesScenarioDriver::copyRuntimeDebugSnapshot()
+    const
+{
+    return lastRuntimeDebugSnapshot_;
 }
 
 std::optional<SmolnesRuntime::MemorySnapshot> NesSmolnesScenarioDriver::copyRuntimeMemorySnapshot()
@@ -349,6 +416,7 @@ void NesSmolnesScenarioDriver::stopRuntime()
     runtime_->setSelfPacing(false);
     runtime_->stop();
     audioPlayer_.reset();
+    lastRuntimeDebugSnapshot_.reset();
     lastRuntimeProfilingSnapshot_.reset();
 }
 

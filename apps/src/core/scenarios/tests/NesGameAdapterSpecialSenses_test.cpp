@@ -242,7 +242,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     }
 }
 
-TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterKeepsPressingStartPastSetupWindow)
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterPressesStartOnlyOnceDuringSetup)
 {
     std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
     ASSERT_NE(adapter, nullptr);
@@ -251,30 +251,30 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterKeepsPressingStartPas
     const SmolnesRuntime::MemorySnapshot nonGameplaySnapshot =
         makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 3, 0);
 
-    bool sawStartAfterSetupWindow = false;
+    size_t startPressCount = 0u;
     std::optional<uint8_t> lastGameState = std::nullopt;
     for (uint64_t frameIndex = 0; frameIndex < 420u; ++frameIndex) {
-        const uint8_t controllerMask = adapter->resolveControllerMask(
+        const NesGameAdapterControllerOutput controllerOutput = adapter->resolveControllerMask(
             {
                 .inferredControllerMask = NesPolicyLayout::ButtonRight,
                 .lastGameState = lastGameState,
             });
-        if (frameIndex >= 300u && controllerMask == NesPolicyLayout::ButtonStart) {
-            sawStartAfterSetupWindow = true;
+        if (controllerOutput.resolvedControllerMask == NesPolicyLayout::ButtonStart) {
+            ++startPressCount;
+            EXPECT_EQ(frameIndex, 120u);
         }
 
         const NesGameAdapterFrameOutput output = adapter->evaluateFrame(
             {
                 .advancedFrames = 1,
-                .controllerMask = controllerMask,
+                .controllerMask = controllerOutput.resolvedControllerMask,
                 .paletteFrame = nullptr,
                 .memorySnapshot = nonGameplaySnapshot,
             });
         lastGameState = output.gameState;
     }
 
-    EXPECT_TRUE(sawStartAfterSetupWindow)
-        << "SMB adapter should keep retrying Start if gameplay never begins.";
+    EXPECT_EQ(startPressCount, 1u);
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterStopsSetupInputsAfterGameplayStarts)
@@ -295,13 +295,14 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterStopsSetupInputsAfter
         });
     ASSERT_EQ(gameplayOutput.gameState, std::optional<uint8_t>(1u));
 
-    const uint8_t controllerMask = adapter->resolveControllerMask(
+    const NesGameAdapterControllerOutput controllerOutput = adapter->resolveControllerMask(
         {
             .inferredControllerMask = NesPolicyLayout::ButtonRight,
             .lastGameState = gameplayOutput.gameState,
         });
 
-    EXPECT_EQ(controllerMask, NesPolicyLayout::ButtonRight);
+    EXPECT_EQ(controllerOutput.resolvedControllerMask, NesPolicyLayout::ButtonRight);
+    EXPECT_EQ(controllerOutput.source, NesGameAdapterControllerSource::InferredPolicy);
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterEndsEvalIfGameplayNeverStarts)
@@ -315,7 +316,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterEndsEvalIfGameplayNev
 
     NesGameAdapterFrameOutput output;
     for (int i = 0; i < 500; ++i) {
-        const uint8_t controllerMask = adapter->resolveControllerMask(
+        const NesGameAdapterControllerOutput controllerOutput = adapter->resolveControllerMask(
             {
                 .inferredControllerMask = 0,
                 .lastGameState = output.gameState,
@@ -323,7 +324,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterEndsEvalIfGameplayNev
         output = adapter->evaluateFrame(
             {
                 .advancedFrames = 1,
-                .controllerMask = controllerMask,
+                .controllerMask = controllerOutput.resolvedControllerMask,
                 .paletteFrame = nullptr,
                 .memorySnapshot = nonGameplaySnapshot,
             });
@@ -331,4 +332,36 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterEndsEvalIfGameplayNev
 
     EXPECT_TRUE(output.done);
     EXPECT_EQ(output.gameState, std::optional<uint8_t>(0u));
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesDebugState)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+
+    const NesGameAdapterFrameOutput output = adapter->evaluateFrame(
+        {
+            .advancedFrames = 400,
+            .controllerMask = 0,
+            .paletteFrame = nullptr,
+            .memorySnapshot = snapshot,
+        });
+
+    ASSERT_TRUE(output.debugState.has_value());
+    EXPECT_EQ(output.debugState->advancedFrameCount, std::optional<uint64_t>(400u));
+    EXPECT_EQ(output.debugState->phase, std::optional<uint8_t>(1u));
+    EXPECT_EQ(output.debugState->lifeState, std::optional<uint8_t>(0u));
+    EXPECT_EQ(output.debugState->world, std::optional<uint8_t>(1u));
+    EXPECT_EQ(output.debugState->level, std::optional<uint8_t>(2u));
+    EXPECT_EQ(output.debugState->absoluteX, std::optional<uint16_t>(0x0380u));
+    EXPECT_EQ(output.debugState->playerXScreen, std::optional<uint8_t>(0x80u));
+    EXPECT_EQ(output.debugState->playerYScreen, std::optional<uint8_t>(120u));
+    EXPECT_EQ(output.debugState->lives, std::optional<uint8_t>(3u));
+    EXPECT_EQ(output.debugState->powerupState, std::optional<uint8_t>(2u));
+    EXPECT_EQ(output.debugState->setupFailure, std::optional<bool>(false));
+    EXPECT_EQ(output.debugState->setupScriptActive, std::optional<bool>(false));
 }

@@ -3,6 +3,7 @@
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
+#include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
@@ -183,16 +184,8 @@ bool shouldCaptureScreenshot(ProbeScriptType probeScriptType, uint64_t frameInde
 
 uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex, ProbeScriptType probeScriptType)
 {
-    constexpr uint64_t kStartPressWidthFrames = 1;
-    constexpr std::array<uint64_t, 2> kStartPressFrames = { 120u, 240u };
-    for (const uint64_t pressFrame : kStartPressFrames) {
-        if (frameIndex >= pressFrame && frameIndex < (pressFrame + kStartPressWidthFrames)) {
-            return SMOLNES_RUNTIME_BUTTON_START;
-        }
-    }
-
     if (frameIndex < kSetupScriptEndFrame) {
-        return 0u;
+        return getNesSuperMarioBrosScriptedSetupMaskForFrame(frameIndex);
     }
 
     const uint64_t gameFrame = frameIndex - kSetupScriptEndFrame;
@@ -295,23 +288,21 @@ std::vector<CapturedFrame> captureSmbProbeFrames(
     frames.reserve(static_cast<size_t>(captureFrameCount));
     for (uint64_t frameIndex = 0; frameIndex < captureFrameCount; ++frameIndex) {
         const uint8_t controllerMask = scriptedControllerMaskForFrame(frameIndex, probeScriptType);
-        driver.setController1State(controllerMask);
-        driver.tick(timers, scenarioVideoFrame);
+        const NesSmolnesScenarioDriver::StepResult stepResult = driver.step(timers, controllerMask);
+        scenarioVideoFrame = stepResult.scenarioVideoFrame;
 
         if (writeScreenshots && shouldCaptureScreenshot(probeScriptType, frameIndex)) {
-            const auto scenarioFrame = driver.copyRuntimeFrameSnapshot();
-            if (scenarioFrame.has_value()) {
+            if (stepResult.scenarioVideoFrame.has_value()) {
                 const std::filesystem::path screenshotPath =
                     std::filesystem::path(::testing::TempDir())
                     / ("nes_smb_frame_" + std::to_string(frameIndex) + ".ppm");
-                if (writeScenarioFramePpm(scenarioFrame.value(), screenshotPath)) {
+                if (writeScenarioFramePpm(stepResult.scenarioVideoFrame.value(), screenshotPath)) {
                     std::cout << "Wrote SMB screenshot: " << screenshotPath.string() << "\n";
                 }
             }
         }
 
-        const auto snapshot = driver.copyRuntimeMemorySnapshot();
-        if (!snapshot.has_value()) {
+        if (!stepResult.memorySnapshot.has_value()) {
             ADD_FAILURE() << "Missing SMB memory snapshot at frame " << frameIndex;
             return {};
         }
@@ -319,7 +310,8 @@ std::vector<CapturedFrame> captureSmbProbeFrames(
         CapturedFrame frame;
         frame.frameIndex = frameIndex;
         frame.controllerMask = controllerMask;
-        frame.cpuRam.assign(snapshot->cpuRam.begin(), snapshot->cpuRam.end());
+        frame.cpuRam.assign(
+            stepResult.memorySnapshot->cpuRam.begin(), stepResult.memorySnapshot->cpuRam.end());
         frames.push_back(frame);
     }
 

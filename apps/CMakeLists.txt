@@ -431,6 +431,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
     src/core/scenarios/nes/NesSuperMarioBrosEvaluator.cpp
     src/core/scenarios/nes/NesSuperMarioBrosRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
@@ -872,6 +873,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
+    src/core/scenarios/tests/NesSmolnesScenarioDriver_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
@@ -916,6 +918,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
+    src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 
     # Core tests.
     src/core/tests/FontSampler_test.cpp

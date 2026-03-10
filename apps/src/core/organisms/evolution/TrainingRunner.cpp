@@ -40,6 +40,41 @@ void addSignatureCount(std::unordered_map<std::string, int>& counts, const std::
     ++it->second;
 }
 
+TrainingRunner::NesRuntimeDebugSnapshot convertRuntimeDebugSnapshot(
+    const SmolnesRuntime::DebugSnapshot& snapshot)
+{
+    return TrainingRunner::NesRuntimeDebugSnapshot{
+        .lastControllerSet =
+            TrainingRunner::NesRuntimeDebugControllerEvent{
+                .sequence = snapshot.lastControllerSet.sequence,
+                .renderedFrames = snapshot.lastControllerSet.renderedFrames,
+                .targetFrames = snapshot.lastControllerSet.targetFrames,
+                .controllerMask = snapshot.lastControllerSet.controllerMask,
+            },
+        .lastFrameBegin =
+            TrainingRunner::NesRuntimeDebugControllerEvent{
+                .sequence = snapshot.lastFrameBegin.sequence,
+                .renderedFrames = snapshot.lastFrameBegin.renderedFrames,
+                .targetFrames = snapshot.lastFrameBegin.targetFrames,
+                .controllerMask = snapshot.lastFrameBegin.controllerMask,
+            },
+        .lastFrameSubmit =
+            TrainingRunner::NesRuntimeDebugFrameSubmitEvent{
+                .sequence = snapshot.lastFrameSubmit.sequence,
+                .renderedFramesAfter = snapshot.lastFrameSubmit.renderedFramesAfter,
+                .targetFrames = snapshot.lastFrameSubmit.targetFrames,
+            },
+        .lastRunFramesRequest =
+            TrainingRunner::NesRuntimeDebugRunFramesRequestEvent{
+                .sequence = snapshot.lastRunFramesRequest.sequence,
+                .renderedFrames = snapshot.lastRunFramesRequest.renderedFrames,
+                .targetFramesAfter = snapshot.lastRunFramesRequest.targetFramesAfter,
+                .targetFramesBefore = snapshot.lastRunFramesRequest.targetFramesBefore,
+                .requestedFrameCount = snapshot.lastRunFramesRequest.requestedFrameCount,
+            },
+    };
+}
+
 std::vector<std::pair<std::string, int>> getTopSignatureEntries(
     const std::unordered_map<std::string, int>& counts, size_t maxEntries)
 {
@@ -191,7 +226,8 @@ TrainingRunner::TrainingRunner(
       duckClockSpawnLeftFirst_(runnerConfig.duckClockSpawnLeftFirst),
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
-      evolutionConfig_(evolutionConfig)
+      evolutionConfig_(evolutionConfig),
+      frameTraceSink_(runnerConfig.frameTraceSink)
 {
     resolveBrainEntry();
 
@@ -274,6 +310,8 @@ TrainingRunner::TrainingRunner(
     nesFitnessDetails_ = std::monostate{};
     nesDuckBrain_.reset();
     nesDuckBrainV2_.reset();
+    nesLastControllerOutput_.reset();
+    nesLastDebugState_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
         if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
             DIRTSIM_ASSERT(
@@ -330,10 +368,20 @@ TrainingRunner::Status TrainingRunner::step(int frames)
     }
 
     for (int i = 0; i < frames && state_ == State::Running; ++i) {
+        const uint64_t stepOrdinal = ++stepOrdinal_;
         if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
-            runScenarioDrivenStep();
+            const NesFrameTrace nesTrace = runScenarioDrivenStep();
             if (simTime_ >= maxTime_ && state_ == State::Running) {
                 state_ = State::TimeExpired;
+            }
+            if (frameTraceSink_) {
+                frameTraceSink_(
+                    FrameTrace{
+                        .state = state_,
+                        .simTime = simTime_,
+                        .stepOrdinal = stepOrdinal,
+                        .nes = nesTrace,
+                    });
             }
             continue;
         }
@@ -639,6 +687,8 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
             nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
         }
         nesFitnessDetails_ = std::monostate{};
+        nesLastControllerOutput_.reset();
+        nesLastDebugState_.reset();
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
@@ -778,8 +828,11 @@ void TrainingRunner::resolveBrainEntry()
     controlMode_ = entry->controlMode;
 }
 
-void TrainingRunner::runScenarioDrivenStep()
+TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
 {
+    NesFrameTrace trace;
+    trace.lastGameStateBefore = nesLastGameState_;
+
     if (!nesDriver_) {
         DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
         DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
@@ -787,24 +840,34 @@ void TrainingRunner::runScenarioDrivenStep()
 
     if (!nesRuntime_ || !nesGameAdapter_) {
         state_ = State::OrganismDied;
-        return;
+        trace.commandOutcome = "RuntimeUnavailable";
+        return trace;
     }
 
     if (!nesRuntime_->isRuntimeRunning() || !nesRuntime_->isRuntimeHealthy()) {
         state_ = State::OrganismDied;
-        return;
+        trace.commandOutcome = "RuntimeUnavailable";
+        return trace;
     }
 
-    bool frameAdvanced = false;
     std::string commandOutcome = "NoFrameAdvance";
     const uint64_t renderedFramesBefore = nesRuntime_->getRuntimeRenderedFrameCount();
+    trace.renderedFramesBefore = renderedFramesBefore;
     const NesGameAdapterControllerInput controllerInput{
         .inferredControllerMask = inferNesControllerMask(),
         .lastGameState = nesLastGameState_,
     };
-    const uint8_t controllerMask = nesGameAdapter_->resolveControllerMask(controllerInput);
+    trace.inferredControllerMask = controllerInput.inferredControllerMask;
+    const NesGameAdapterControllerOutput controllerOutput =
+        nesGameAdapter_->resolveControllerMask(controllerInput);
+    nesLastControllerOutput_ = controllerOutput;
+    const uint8_t controllerMask = controllerOutput.resolvedControllerMask;
+    trace.resolvedControllerMask = controllerMask;
+    trace.controllerSource = controllerOutput.source;
+    trace.controllerSourceFrameIndex = controllerOutput.sourceFrameIndex;
 
     const std::string commandSignature = buildNesCommandSignature(controllerMask);
+    trace.commandSignature = commandSignature;
     addSignatureCount(nesCommandSignatureCounts_, commandSignature);
 
     nesControllerMask_ = controllerMask;
@@ -817,6 +880,10 @@ void TrainingRunner::runScenarioDrivenStep()
 
         nesDriver_->tick(nesTimers_, nesScenarioVideoFrame_);
         nesWorldData_.timestep += 1;
+        if (const auto runtimeDebugSnapshot = nesDriver_->copyRuntimeDebugSnapshot();
+            runtimeDebugSnapshot.has_value()) {
+            trace.runtimeDebugSnapshot = convertRuntimeDebugSnapshot(runtimeDebugSnapshot.value());
+        }
         if (nesScenarioVideoFrame_.has_value()) {
             nesWorldData_.width = static_cast<int16_t>(nesScenarioVideoFrame_->width);
             nesWorldData_.height = static_cast<int16_t>(nesScenarioVideoFrame_->height);
@@ -826,10 +893,12 @@ void TrainingRunner::runScenarioDrivenStep()
     simTime_ += TIMESTEP;
 
     const uint64_t renderedFramesAfter = nesRuntime_->getRuntimeRenderedFrameCount();
+    trace.renderedFramesAfter = renderedFramesAfter;
     if (renderedFramesAfter > renderedFramesBefore) {
-        frameAdvanced = true;
+        trace.frameAdvanced = true;
         commandOutcome = "FrameAdvanced";
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
+        trace.advancedFrames = advancedFrames;
         nesFramesSurvived_ += advancedFrames;
 
         nesPaletteFrame_ = nesRuntime_->copyRuntimePaletteFrame();
@@ -840,7 +909,11 @@ void TrainingRunner::runScenarioDrivenStep()
             .memorySnapshot = nesRuntime_->copyRuntimeMemorySnapshot(),
         };
         const NesGameAdapterFrameOutput evaluation = nesGameAdapter_->evaluateFrame(frameInput);
+        nesLastDebugState_ = evaluation.debugState;
+        trace.debugState = evaluation.debugState;
+        trace.evaluationDone = evaluation.done;
         nesFitnessDetails_ = evaluation.fitnessDetails;
+        trace.rewardDelta = evaluation.rewardDelta;
         nesRewardTotal_ += evaluation.rewardDelta;
         if (evaluation.gameState.has_value()) {
             nesLastGameState_ = evaluation.gameState;
@@ -856,12 +929,15 @@ void TrainingRunner::runScenarioDrivenStep()
         state_ = State::OrganismDied;
         commandOutcome = "EpisodeEnd";
     }
-    if (state_ != State::Running && frameAdvanced) {
+    if (state_ != State::Running && trace.frameAdvanced) {
         commandOutcome = "EpisodeEnd";
     }
+    trace.commandOutcome = commandOutcome;
+    trace.lastGameStateAfter = nesLastGameState_;
 
     addSignatureCount(
         nesCommandOutcomeSignatureCounts_, commandSignature + " -> " + commandOutcome);
+    return trace;
 }
 
 DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
