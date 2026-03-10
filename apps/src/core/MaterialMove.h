@@ -13,6 +13,7 @@ namespace DirtSim {
  */
 enum class CollisionType : uint8_t {
     TRANSFER_ONLY,       // Material moves between cells (default behavior)
+    COMPRESSION_CONTACT, // Supported loaded contact resolved without transport
     ELASTIC_REFLECTION,  // Bouncing with energy conservation
     INELASTIC_COLLISION, // Bouncing with energy loss
     FRAGMENTATION,       // Break apart into smaller pieces

@@ -146,6 +146,15 @@ public:
         World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move);
 
     /**
+     * @brief Handle supported granular compression without material transport.
+     * @param fromCell Source cell.
+     * @param toCell Target cell.
+     * @param move Material move data.
+     */
+    void handleCompressionContact(
+        World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move);
+
+    /**
      * @brief Handle material fragmentation on high-energy impact.
      * @param fromCell Source cell.
      * @param toCell Target cell.

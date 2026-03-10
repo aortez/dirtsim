@@ -699,6 +699,223 @@ An observer-only test heuristic already validates this direction:
 - the test can identify a buried dirt region as a sleep candidate under gravity even while queued
   move noise continues.
 
+### Revised Working Theory
+
+The latest buried-core investigation suggests that sleeping alone is not the full answer.
+
+`static_load` currently helps with observability and with skipping direct gravity on supported
+granular cells, but that is not enough by itself. If the awake solver still treats tiny
+gravity-aligned COM boundary crossings as material moves, buried dirt keeps chattering even when
+its support state is stable.
+
+The current working theory is:
+
+- `static_load` should participate directly in awake granular mechanics, not only in sleeping
+  decisions,
+- the first mechanical use should be supported compression contact handling for buried granular
+  cells,
+- friction capacity still matters, but it is a follow-on once compression contacts are being
+  resolved coherently,
+- swap-resistance tuning is a later follow-on and should not block the first settling pass.
+
+In practical terms, the next solver pass should try this:
+
+- when a supported granular cell with meaningful transmitted `static_load` crosses the boundary in
+  the gravity direction into a non-empty supporting neighbor at low normal speed, interpret that as
+  compression rather than transport,
+- in that compression case, keep a queued contact event so the solver can still resolve the
+  interaction, but do not treat it as transport,
+- use a dedicated compression response that removes or heavily damps inward relative normal motion,
+  clamps COM just inside the crossed boundary, and preserves tangential motion,
+- let friction and viscosity dissipate the remaining tangential drift over time.
+
+This is intentionally narrower than adding a new global support force. The goal is not to invent a
+second anti-gravity system. The goal is to stop treating stable buried compression as if it were
+new transport every frame.
+
+If this theory is right, the practical sequence becomes:
+
+- resolve buried low-energy compression as contact, not transport,
+- stop counting those compression contacts as wake-worthy transport,
+- add load-aware friction after compression handling is stable,
+- keep wake logic conservative and keyed to real transfers,
+- then sleep regions only after the awake solver can actually settle.
+
+### Updated Findings From Staged Force Isolation
+
+The staged force-isolation pass changed the picture from "maybe sleeping criteria are too strict" to
+"there were several distinct physics causes, and they compound if left unresolved."
+
+The current understanding is:
+
+1. There was a gravity-bootstrap timing bug.
+
+   Supported buried granular cells were already able to discover a support path on the first frame,
+   but `static_load` was still stale at that moment, so they took one frame of gravity before the
+   later `static_load` recompute caught up. That one-frame impulse seeded the characteristic
+   residual downward drift seen in the early gravity-only diagnostics.
+
+   The fix is to make `static_load` valid before gravity is applied, not just after moves.
+
+2. Granular compaction was creating a persistent diffusive live-pressure field.
+
+   The remaining `gravity + pressure` drift was not coming from hydrostatic pressure injection and
+   not from blocked-transfer pressure. It was coming from `pressure_from_excess` generated during
+   granular compaction near the pile surface and shoulders, then diffusing inward and being treated
+   as a real pressure-gradient force inside already-supported buried dirt.
+
+   Suppressing this excess-move pressure for granular compaction into already-supporting
+   granular/solid targets removed that pressure-side buried drift in the isolated diagnostics.
+
+3. Current "viscosity" is really same-material momentum diffusion, not pure damping.
+
+   In `viscosity_only`, the pure buried region had no pressure source, no meaningful transfer
+   noise, and gravity was already skipped. The remaining motion came from neighbor-velocity
+   averaging at the buried-region edge: active slope dirt was diffusing downward velocity into
+   nearby supported buried dirt.
+
+   That means the current viscosity model is acceptable for flowing / fluidized material, but it is
+   the wrong behavior for supported load-bearing granular cells. Buried jammed dirt should not keep
+   inheriting slope motion just because it shares a material type with moving dirt nearby.
+
+4. The narrow load-aware viscosity gate is currently the strongest working result.
+
+   A first-pass rule of "do not apply same-material viscosity coupling to supported buried granular
+   cells that already skip gravity" cleaned up the `viscosity_only` profile, cleaned up
+   `full_minus_pressure`, cleaned up `full` in the force-isolation sweep, and made the original
+   disabled buried-pile sleeping test pass under the real region tracker.
+
+This does not mean the broader mechanics are finished. It does mean the branch now has a concrete,
+evidence-backed working direction:
+
+- `static_load` must be valid before force application,
+- supported low-energy buried compression should be resolved as contact, not transport,
+- supported granular compaction should not create a fake diffusive live-pressure field,
+- supported load-bearing granular cells should not participate in same-material viscosity
+  diffusion,
+- only after those mechanics are quiet should scheduler sleep policy be tightened.
+
+The viscosity result is especially important because it argues against the blunt fix of simply
+setting granular viscosity to zero everywhere. The observed problem was not "all granular viscosity
+is bad." The problem was "neighbor-velocity diffusion should not apply unchanged to supported
+jammed granular material."
+
+### First Implementation Sketch
+
+The current disabled buried-pile diagnostics give a useful starting point:
+
+- buried cells in the failing regions already carry large `static_load`,
+- direct gravity is already skipped for those cells,
+- the same cells still spend many frames with `com.y` at or near the gravity-aligned boundary,
+- generated and received move counts stay high while successful transfer counts stay at zero.
+
+The latest passive instrumentation adds two important clarifications:
+
+- in the pure buried region, the queued move noise is overwhelmingly vertical rather than lateral,
+- the candidate predicate for "supported low-speed compression" matches the noisy generated
+  downward moves closely.
+
+That means the first implementation should focus on reclassifying supported compressive boundary
+crossings, not on adding another global support force and not on retuning lateral flow first.
+
+#### Step 1: Compression Contact In The Move/Collision Path
+
+The first attempted implementation simply suppressed these crossings in
+`World::computeMaterialMoves()` before queuing a move. That did not work.
+
+Why it failed:
+
+- the cells were still acquiring nonzero velocity earlier in the frame from pressure, cohesion,
+  friction, and viscosity,
+- the move/collision path is currently where the solver performs the actual contact response for
+  those boundary crossings,
+- removing the queued event too early removed not only the fake transport bookkeeping, but also the
+  only place the current solver was resolving that contact at all.
+
+So the replacement should not be "drop the move." It should be "keep the event, but change its
+physics meaning."
+
+The right hook is still around `World::computeMaterialMoves()` and
+`WorldCollisionCalculator::createCollisionAwareMove()`, but the output should be a dedicated
+compression-contact move type rather than a suppressed move.
+
+Add a helper predicate for a compressive-contact crossing:
+
+- source cell is load-bearing granular,
+- crossing direction matches gravity,
+- source cell has a supported granular path in the gravity direction,
+- source cell carries transmitted load, for example `static_load > self_weight + epsilon`,
+- target cell is not empty,
+- target cell is either another load-bearing granular cell or a support sink such as wall, wood, or
+  metal,
+- target cell has little or no free capacity,
+- inward normal speed is positive but still in a low-speed settling band, not a real impact.
+
+If the predicate is true:
+
+- queue a dedicated `CompressionContact` event,
+- do not treat it as successful transport, blocked transfer, or swap input,
+- process it in collision handling with a dedicated `handleCompressionContact()` path,
+- record dedicated debug counters for candidate detection and compression-contact handling.
+
+Important: this is not a reflection path. Reflection re-injects bounce. The response should be a
+plastic or highly damped compression contact: "the contact absorbed inward normal motion" rather
+than "the cell bounced."
+
+The expected contact response is:
+
+- decompose source and target velocities into normal and tangential components along the crossed
+  boundary,
+- remove or heavily damp the relative inward normal component,
+- for rigid support sinks, clamp the source normal component toward zero,
+- for loaded granular-granular contacts, converge both cells toward a shared heavily damped normal
+  velocity rather than a reflected one,
+- preserve tangential motion,
+- clamp COM just inside the crossed boundary to prevent immediate retriggering,
+- do not generate blocked-transfer pressure for these low-energy supported compression contacts.
+
+This should also happen before region move bookkeeping is interpreted as real activity, so a
+compression contact does not become a fake wake signal.
+
+#### Step 2: Bounded Static-Load Friction Boost
+
+`static_load` should still strengthen granular friction, but this is now clearly the second step,
+not the first one.
+
+The instrumentation suggests the buried-core failure is dominated by vertical compression chatter.
+So friction matters mainly after that contact is being resolved coherently.
+
+When friction is integrated, the first pass should be bounded rather than using raw `static_load`
+as a one-to-one replacement for contact normal force.
+
+The current friction solver applies explicit force accumulation each frame. A direct substitution of
+large buried `static_load` values into the normal-force term is likely to overdrive tangential
+forces and create solver bursts before the move clamp has a chance to quiet the pile.
+
+The safer first pass is:
+
+- keep the existing pressure-difference contribution,
+- keep the existing local weight floor for vertical contacts,
+- add a capped or scaled confining-load boost for granular contacts,
+- only apply that boost for granular-granular and granular-solid interfaces,
+- tune the boost so it increases stickiness for buried dirt without letting friction create large
+  new lateral impulses.
+
+Conceptually, the confining term should be "more load means more shear resistance," not "apply the
+entire overburden as a free tangential-force budget."
+
+#### Step 3: Sleeping After The Awake Solver Settles
+
+Once Step 1 and then the bounded Step 2 friction boost reduce buried churn:
+
+- keep region wake logic focused on successful transfers, swaps, meaningful support changes, and
+  explicit compression-contact events only if they prove necessary later,
+- do not treat compression contacts as transport,
+- then allow buried regions to sleep when velocity, transfer, and load-delta thresholds are quiet.
+
+This staging matters. The awake solver should become physically quieter before sleeping logic is
+asked to hide the remaining noise.
+
 ### Phase 2: Conservative Sleeping
 
 Primary goal:
@@ -731,11 +948,33 @@ Tasks:
   - material moves,
   - gravity changes,
   - neighboring topology changes.
+- Add a low-speed gravity-aligned compression-contact path for supported loaded granular cells:
+  - when the target in the gravity direction is already a supporting solid or loaded granular cell,
+  - and the attempted crossing is a small compressive event rather than a real rearrangement,
+  - queue a dedicated compression contact instead of treating it as transfer or reflection,
+  - damp relative inward normal motion, clamp COM inside the crossed boundary, and preserve
+    tangential motion.
+- Keep compression contacts out of blocked-transfer pressure generation and out of transport-based
+  wake bookkeeping.
+- Suppress excess-move pressure for granular compaction into already-supporting granular/solid
+  targets so buried support compression does not pump a fake live-pressure field into the pile.
+- Gate same-material viscosity coupling for supported load-bearing granular cells:
+  - the first pass can be a hard gate tied to the same support/load state already used for gravity
+    skipping,
+  - later tuning may replace that hard gate with a smoother load-aware "fluidization factor" if
+    flowing-surface behavior needs a softer transition.
+- Feed `static_load` into granular friction/contact normal-force estimation only after compression
+  contact handling is stable, and keep that first pass bounded.
 - Separate queued move attempts from real boundary activity.
 - In the first sleeping heuristic, treat boundary activity primarily as:
   - successful transfers,
   - swaps.
-- Do not let zero-effect queued move attempts by themselves keep a buried region awake.
+- Do not let zero-effect queued move attempts or compression contacts by themselves keep a buried
+  region awake.
+- Preserve tangential motion in the compression contact so friction remains the primary damper for
+  shear and sliding.
+- Defer swap-resistance tuning for now. The current swap system is heuristic and may be replaced by
+  a better contact-displacement model later.
 - Keep blocked-transfer counts in debug output during the first heuristic pass.
 - Only promote blocked transfers into wake logic later if an amount or energy threshold proves
   necessary.
@@ -754,7 +993,15 @@ Performance note:
 
 Acceptance criteria:
 
-- phase 1c already proved that buried dirt can become quiet under gravity,
+- compression-contact handling reduces buried-core move churn under gravity without increasing
+  buried-core velocity,
+- pre-force `static_load` recompute removes the one-frame buried gravity bootstrap impulse,
+- suppressing granular excess-move pressure removes buried `gravity + pressure` drift in the
+  isolated diagnostics,
+- gating viscosity for supported buried granular cells removes edge-driven momentum seepage from
+  `viscosity_only` and still allows the buried deep-pile test to pass under the real region
+  tracker,
+- bounded load-aware friction further improves settling once added,
 - observer-only tests prove that buried dirt can qualify as transfer-quiet even with queued move
   noise,
 - the buried interior of a stable dirt pile reaches `Sleeping`,
@@ -812,6 +1059,9 @@ Use these scenarios to validate correctness and value:
 - Sandbox dirt pile under constant gravity before sleeping is enabled:
   - buried interior should stop showing persistent movement-driven wakeups,
   - `delta static_load` should remain near zero away from disturbances.
+- Sandbox dirt pile with the current viscosity gate:
+  - buried supported regions should not inherit downslope velocity from nearby moving dirt,
+  - flowing surface dirt should still look plausibly loose and avalanche when disturbed.
 - Tap or dig into a pile:
   - wake should propagate inward from the disturbance.
 - Dirt next to water:
@@ -866,6 +1116,9 @@ Recommended automated coverage:
   the material policy is not tuned carefully.
 - The current COM transfer model can generate persistent zero-effect move churn near `com ~= 1.0`;
   sleeping logic must not confuse that bookkeeping with real transport.
+- The current viscosity gate is intentionally narrow and somewhat blunt. It may need to evolve into
+  a softer load-aware fluidization rule if the boundary between flowing and supported granular
+  material looks too abrupt in sandbox scenarios.
 - A transfer-quiet scheduler heuristic may be useful even if the underlying mechanics are still
   somewhat jittery, but wake thresholds will need careful tuning to avoid visible pops.
 - Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
@@ -878,12 +1131,24 @@ Recommended automated coverage:
 Proceed with the staged design above:
 
 1. add `static_load` as derived state for dirt and sand,
-2. use it for debug and observability first,
-3. reconcile steady granular gravity with `static_load` before relying on sleeping,
-4. treat successful boundary crossings, not queued move attempts, as the first sleep-heuristic
+2. make sure `static_load` is recomputed before gravity/force application so supported buried cells
+   do not get a one-frame gravity impulse,
+3. use it for debug and observability first, but also for supported low-energy compression-contact
+   classification,
+4. treat supported low-energy buried crossings as compression contacts, not transport, and resolve
+   them in the move/collision path rather than suppressing them early,
+5. suppress excess-move pressure for already-supported granular compaction so buried support
+   compression does not generate a fake live-pressure field,
+6. gate same-material viscosity coupling for supported load-bearing granular cells so buried jammed
+   dirt does not inherit slope motion from nearby flowing dirt,
+7. validate flowing-surface and avalanche behavior with that viscosity gate before redesigning
+   granular viscosity more broadly,
+8. add bounded `static_load` friction once the above mechanics are stable,
+9. treat successful boundary crossings, not queued move attempts, as the first sleep-heuristic
    definition of real region activity,
-5. keep water on the current live pressure path,
-6. sleep only buried granular interiors in the first implementation.
+10. keep water on the current live pressure path,
+11. sleep only buried granular interiors in the first implementation.
 
 This gives the expected win for dirt piles without forcing a full pressure-model rewrite in one
-step.
+step, and it keeps the next work focused on validating the new load-aware viscosity boundary rather
+than jumping straight to scheduler tuning.

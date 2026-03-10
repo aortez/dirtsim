@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -56,24 +57,61 @@ struct RegionFrameSample {
     int support_path_cells = 0;
     int carrying_load_cells = 0;
     int generated_move_cells = 0;
+    int generated_horizontal_move_cells = 0;
+    int generated_vertical_move_cells = 0;
+    int gravity_compression_candidate_cells = 0;
+    int granular_compression_contact_cells = 0;
+    int incoming_compression_contact_cells = 0;
+    int jammed_contact_candidate_cells = 0;
+    int outgoing_compression_contact_cells = 0;
     int received_move_cells = 0;
+    int received_horizontal_move_cells = 0;
+    int received_vertical_move_cells = 0;
+    int hydrostatic_pressure_injection_cells = 0;
+    int dynamic_pressure_target_injection_cells = 0;
+    int dynamic_pressure_reflection_injection_cells = 0;
+    int excess_move_pressure_injection_cells = 0;
     int successful_outgoing_transfer_cells = 0;
     int successful_incoming_transfer_cells = 0;
+    int support_compression_contact_cells = 0;
     int blocked_outgoing_transfer_cells = 0;
+    int viscous_force_cells = 0;
     int generated_moves = 0;
+    int gravity_compression_candidates = 0;
+    int incoming_compression_contacts = 0;
+    int jammed_contact_candidates = 0;
+    int outgoing_compression_contacts = 0;
     int received_moves = 0;
     int successful_outgoing_transfers = 0;
     int successful_incoming_transfers = 0;
     int blocked_outgoing_transfers = 0;
+    int hydrostatic_pressure_injection_events = 0;
+    int dynamic_pressure_target_injection_events = 0;
+    int dynamic_pressure_reflection_injection_events = 0;
+    int excess_move_pressure_injection_events = 0;
+    double hydrostatic_pressure_injection_amount = 0.0;
+    double dynamic_pressure_target_injection_amount = 0.0;
+    double dynamic_pressure_reflection_injection_amount = 0.0;
+    double excess_move_pressure_injection_amount = 0.0;
     double successful_outgoing_transfer_amount = 0.0;
     double successful_incoming_transfer_amount = 0.0;
     double blocked_outgoing_transfer_amount = 0.0;
+    double max_incoming_compression_normal_after = 0.0;
+    double max_incoming_compression_normal_before = 0.0;
+    double max_outgoing_compression_normal_after = 0.0;
+    double max_outgoing_compression_normal_before = 0.0;
     double max_velocity = 0.0;
     double mean_velocity = 0.0;
     double max_abs_velocity_y = 0.0;
     double mean_abs_velocity_y = 0.0;
+    double max_abs_viscous_force = 0.0;
+    double mean_abs_viscous_force = 0.0;
+    double max_abs_viscous_force_y = 0.0;
+    double mean_abs_viscous_force_y = 0.0;
     double max_abs_pressure_gradient_y = 0.0;
     double mean_abs_pressure_gradient_y = 0.0;
+    double max_abs_pressure_force_y = 0.0;
+    double mean_abs_pressure_force_y = 0.0;
     double mean_pressure = 0.0;
 };
 
@@ -108,13 +146,78 @@ struct TransferQuietExperimentResult {
     std::vector<TransferQuietRegionObservation> regions;
 };
 
+struct ForceIsolationProfile {
+    const char* name = "";
+    double gravity = 10.0;
+    bool pressure = true;
+    bool cohesion = true;
+    bool adhesion = true;
+    bool friction = true;
+    bool viscosity = true;
+    bool air_resistance = true;
+    bool swap = true;
+};
+
+struct ForceIsolationObservation {
+    std::string name;
+    int quiet_buried_regions = 0;
+    int transfer_quiet_candidate_regions = 0;
+    bool pure_region_found = false;
+    bool pure_region_candidate = false;
+    int pure_region_first_candidate_frame = -1;
+    int pure_region_max_generated_moves = 0;
+    RegionState final_state = RegionState::Awake;
+    WakeReason final_wake_reason = WakeReason::None;
+    double final_mean_velocity = 0.0;
+    double final_max_velocity = 0.0;
+    double final_mean_abs_pressure_gradient_y = 0.0;
+    double final_mean_abs_pressure_force_y = 0.0;
+    double final_mean_pressure = 0.0;
+};
+
 struct CellTrack {
     int x = 0;
     int y = 0;
 };
 
+struct WorldPressureSourceFrameSample {
+    int frame = 0;
+    int source_cells = 0;
+    int surface_adjacent_source_cells = 0;
+    int buried_source_cells = 0;
+    int hydrostatic_source_cells = 0;
+    int dynamic_target_source_cells = 0;
+    int dynamic_reflection_source_cells = 0;
+    int excess_move_source_cells = 0;
+    int hydrostatic_source_events = 0;
+    int dynamic_target_source_events = 0;
+    int dynamic_reflection_source_events = 0;
+    int excess_move_source_events = 0;
+    int min_x = 0;
+    int min_y = 0;
+    int max_x = -1;
+    int max_y = -1;
+    double hydrostatic_source_amount = 0.0;
+    double dynamic_target_source_amount = 0.0;
+    double dynamic_reflection_source_amount = 0.0;
+    double excess_move_source_amount = 0.0;
+    double strongest_source_amount = 0.0;
+    int strongest_source_x = -1;
+    int strongest_source_y = -1;
+    double strongest_source_pressure = 0.0;
+    double strongest_source_gradient_y = 0.0;
+    double strongest_source_force_y = 0.0;
+};
+
 RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int frame);
+std::string dumpPureBuriedRegionInitialTimeSeries(const World& world, RegionCoord region);
 std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord region);
+std::string dumpInitialWorldPressureSourceTimeSeries(const World& world);
+std::string dumpWorldPressureSourceSettleScan(
+    const World& world, std::optional<RegionCoord> region);
+std::string dumpWorldPressureSourceTimeSeries(const World& world);
+std::string dumpSettlingDiagnostics(
+    const World& world, const GridOfCells& grid, const std::vector<RegionCoord>& buriedRegions);
 void initializeSleepAnalysisWorld(World& world);
 
 bool isLoadBearingGranularCell(const Cell& cell)
@@ -179,6 +282,42 @@ void settleWorld(World& world, int steps = kSettleSteps, double dt = kDt)
     }
 }
 
+void applyForceIsolationProfile(World& world, const ForceIsolationProfile& profile)
+{
+    PhysicsSettings& settings = world.getPhysicsSettings();
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+
+    settings.gravity = profile.gravity;
+    settings.pressure_hydrostatic_enabled = profile.pressure;
+    settings.pressure_dynamic_enabled = profile.pressure;
+    settings.pressure_hydrostatic_strength =
+        profile.pressure ? defaults.pressure_hydrostatic_strength : 0.0;
+    settings.pressure_dynamic_strength =
+        profile.pressure ? defaults.pressure_dynamic_strength : 0.0;
+    settings.pressure_scale = profile.pressure ? defaults.pressure_scale : 0.0;
+    settings.pressure_diffusion_strength =
+        profile.pressure ? defaults.pressure_diffusion_strength : 0.0;
+    settings.pressure_diffusion_iterations =
+        profile.pressure ? defaults.pressure_diffusion_iterations : 0;
+    settings.pressure_decay_rate = profile.pressure ? defaults.pressure_decay_rate : 0.0;
+
+    settings.cohesion_enabled = profile.cohesion;
+    settings.cohesion_strength = profile.cohesion ? defaults.cohesion_strength : 0.0;
+
+    settings.adhesion_enabled = profile.adhesion;
+    settings.adhesion_strength = profile.adhesion ? defaults.adhesion_strength : 0.0;
+
+    settings.friction_enabled = profile.friction;
+    settings.friction_strength = profile.friction ? defaults.friction_strength : 0.0;
+
+    settings.viscosity_enabled = profile.viscosity;
+    settings.viscosity_strength = profile.viscosity ? defaults.viscosity_strength : 0.0;
+
+    settings.swap_enabled = profile.swap;
+    world.setAirResistanceEnabled(profile.air_resistance);
+    world.setAirResistanceStrength(profile.air_resistance ? defaults.air_resistance : 0.0);
+}
+
 int countQuietBuriedRegions(const World& world, const std::vector<RegionCoord>& buried_regions)
 {
     const WorldData& data = world.getData();
@@ -236,6 +375,11 @@ bool regionHasEmptyAdjacency(const World& world, const GridOfCells& grid, int bl
     }
 
     return false;
+}
+
+bool cellHasEmptyAdjacency(const GridOfCells& grid, int x, int y)
+{
+    return grid.getEmptyNeighborhood(x, y).countEmptyNeighbors() > 0;
 }
 
 std::vector<RegionCoord> collectBuriedMaterialRegions(const World& world, const GridOfCells& grid)
@@ -422,16 +566,18 @@ std::string dumpTransferQuietExperiment(
     }
 
     out << "Pure region (" << result.pure_region->x << "," << result.pure_region->y << ")\n";
-    out << "frame qualifies streak gen recv okOut okIn meanV maxV dP dL empty water mixed org\n";
+    out << "frame qualifies streak gen recv okOut okIn meanV maxV meanForceY dP dL empty water "
+           "mixed org\n";
     for (const TransferQuietFrameSample& frame : result.pure_region_frames) {
         out << frame.frame << " " << frame.qualifies << " " << frame.quiet_streak << " "
             << frame.sample.generated_moves << " " << frame.sample.received_moves << " "
             << frame.sample.successful_outgoing_transfers << " "
             << frame.sample.successful_incoming_transfers << " " << frame.sample.mean_velocity
-            << " " << frame.sample.max_velocity << " " << frame.summary.max_live_pressure_delta
-            << " " << frame.summary.max_static_load_delta << " "
-            << frame.summary.has_empty_adjacency << " " << frame.summary.has_water_adjacency << " "
-            << frame.summary.has_mixed_material << " " << frame.summary.has_organism << "\n";
+            << " " << frame.sample.max_velocity << " " << frame.sample.mean_abs_pressure_force_y
+            << " " << frame.summary.max_live_pressure_delta << " "
+            << frame.summary.max_static_load_delta << " " << frame.summary.has_empty_adjacency
+            << " " << frame.summary.has_water_adjacency << " " << frame.summary.has_mixed_material
+            << " " << frame.summary.has_organism << "\n";
     }
 
     return out.str();
@@ -471,6 +617,210 @@ char wakeReasonToChar(WakeReason reason)
     }
 
     return '?';
+}
+
+ForceIsolationObservation runForceIsolationProfile(const ForceIsolationProfile& profile)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(world);
+    applyForceIsolationProfile(world, profile);
+
+    settleWorld(world);
+    GridOfCells grid = makeGrid(world);
+    const std::vector<RegionCoord> buried_regions = collectBuriedMaterialRegions(world, grid);
+    const TransferQuietHeuristicConfig config{};
+    const TransferQuietExperimentResult experiment =
+        runTransferQuietExperiment(world, buried_regions, config);
+
+    ForceIsolationObservation observation{ .name = profile.name };
+    observation.quiet_buried_regions = countQuietBuriedRegions(world, buried_regions);
+    observation.transfer_quiet_candidate_regions = countTransferQuietCandidateRegions(experiment);
+
+    if (!experiment.pure_region.has_value()) {
+        return observation;
+    }
+
+    observation.pure_region_found = true;
+
+    const TransferQuietRegionObservation* pure_region_observation =
+        findTransferQuietObservation(experiment, *experiment.pure_region);
+    if (pure_region_observation != nullptr) {
+        observation.pure_region_candidate = pure_region_observation->ever_candidate;
+        observation.pure_region_first_candidate_frame =
+            pure_region_observation->first_candidate_frame;
+        observation.pure_region_max_generated_moves = pure_region_observation->max_generated_moves;
+    }
+
+    if (experiment.pure_region_frames.empty()) {
+        return observation;
+    }
+
+    const TransferQuietFrameSample& final_frame = experiment.pure_region_frames.back();
+    observation.final_state = final_frame.sample.state;
+    observation.final_wake_reason = final_frame.sample.wake_reason;
+    observation.final_mean_velocity = final_frame.sample.mean_velocity;
+    observation.final_max_velocity = final_frame.sample.max_velocity;
+    observation.final_mean_abs_pressure_gradient_y =
+        final_frame.sample.mean_abs_pressure_gradient_y;
+    observation.final_mean_abs_pressure_force_y = final_frame.sample.mean_abs_pressure_force_y;
+    observation.final_mean_pressure = final_frame.sample.mean_pressure;
+
+    return observation;
+}
+
+std::string dumpForceIsolationProfileDiagnostics(const ForceIsolationProfile& profile)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(world);
+    applyForceIsolationProfile(world, profile);
+
+    settleWorld(world);
+    GridOfCells grid = makeGrid(world);
+    const std::vector<RegionCoord> buried_regions = collectBuriedMaterialRegions(world, grid);
+    const TransferQuietHeuristicConfig config{};
+    const TransferQuietExperimentResult experiment =
+        runTransferQuietExperiment(world, buried_regions, config);
+
+    std::ostringstream out;
+    out << "Profile: " << profile.name << "\n";
+    out << dumpSettlingDiagnostics(world, grid, buried_regions) << "\n";
+    out << dumpTransferQuietExperiment(experiment, config);
+    if (experiment.pure_region.has_value()) {
+        out << "\n"
+            << dumpPureBuriedRegionInitialTimeSeries(world, *experiment.pure_region) << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpForceIsolationSweep()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const std::vector<ForceIsolationProfile> profiles{
+        ForceIsolationProfile{
+            .name = "full",
+            .gravity = defaults.gravity,
+        },
+        ForceIsolationProfile{
+            .name = "zero_force_baseline",
+            .gravity = 0.0,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_contact_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_contact_swap",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+        },
+        ForceIsolationProfile{
+            .name = "pressure_only",
+            .gravity = 0.0,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_pressure_only",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "cohesion_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "adhesion_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "friction_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "viscosity_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_pressure",
+            .gravity = defaults.gravity,
+            .pressure = false,
+        },
+    };
+
+    std::ostringstream out;
+    out << "Force isolation sweep\n";
+    out << "profile quietRegions candidateRegions pureFound pureCandidate firstCandidate "
+           "pureMaxMoves finalState finalWake meanV maxV meanGradY meanForceY meanP\n";
+
+    for (const ForceIsolationProfile& profile : profiles) {
+        const ForceIsolationObservation observation = runForceIsolationProfile(profile);
+        out << observation.name << " " << observation.quiet_buried_regions << " "
+            << observation.transfer_quiet_candidate_regions << " " << observation.pure_region_found
+            << " " << observation.pure_region_candidate << " "
+            << observation.pure_region_first_candidate_frame << " "
+            << observation.pure_region_max_generated_moves << " "
+            << regionStateToChar(observation.final_state) << " "
+            << wakeReasonToChar(observation.final_wake_reason) << " "
+            << observation.final_mean_velocity << " " << observation.final_max_velocity << " "
+            << observation.final_mean_abs_pressure_gradient_y << " "
+            << observation.final_mean_abs_pressure_force_y << " " << observation.final_mean_pressure
+            << "\n";
+    }
+
+    return out.str();
 }
 
 std::string dumpRegionStates(const World& world)
@@ -609,6 +959,235 @@ char moveStateToChar(const CellDebug& debug)
     return '.';
 }
 
+bool hasHorizontalDirection(uint8_t direction_mask)
+{
+    return (direction_mask & (CellDebug::DirectionLeft | CellDebug::DirectionRight)) != 0;
+}
+
+bool hasVerticalDirection(uint8_t direction_mask)
+{
+    return (direction_mask & (CellDebug::DirectionUp | CellDebug::DirectionDown)) != 0;
+}
+
+bool hasCompressionBranch(uint8_t branch_mask, uint8_t branch)
+{
+    return (branch_mask & branch) != 0;
+}
+
+double totalPressureInjectionAmount(const CellDebug& debug)
+{
+    return debug.dynamic_pressure_reflection_injection_amount
+        + debug.dynamic_pressure_target_injection_amount
+        + debug.excess_move_pressure_injection_amount + debug.hydrostatic_pressure_injection_amount;
+}
+
+char pressureInjectionStateToChar(const CellDebug& debug);
+
+WorldPressureSourceFrameSample sampleWorldPressureSourceFrame(const World& world, int frame)
+{
+    const WorldData& data = world.getData();
+    const GridOfCells grid = makeGrid(const_cast<World&>(world));
+    WorldPressureSourceFrameSample sample{ .frame = frame };
+
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            const Cell& cell = data.at(x, y);
+            const CellDebug& debug = data.debug_info[idx];
+            const double source_amount = totalPressureInjectionAmount(debug);
+
+            if (source_amount < 0.0001) {
+                continue;
+            }
+
+            sample.source_cells++;
+            if (cellHasEmptyAdjacency(grid, x, y)) {
+                sample.surface_adjacent_source_cells++;
+            }
+            else {
+                sample.buried_source_cells++;
+            }
+
+            if (debug.hydrostatic_pressure_injection_count > 0) {
+                sample.hydrostatic_source_cells++;
+            }
+            if (debug.dynamic_pressure_target_injection_count > 0) {
+                sample.dynamic_target_source_cells++;
+            }
+            if (debug.dynamic_pressure_reflection_injection_count > 0) {
+                sample.dynamic_reflection_source_cells++;
+            }
+            if (debug.excess_move_pressure_injection_count > 0) {
+                sample.excess_move_source_cells++;
+            }
+
+            sample.hydrostatic_source_events += debug.hydrostatic_pressure_injection_count;
+            sample.dynamic_target_source_events += debug.dynamic_pressure_target_injection_count;
+            sample.dynamic_reflection_source_events +=
+                debug.dynamic_pressure_reflection_injection_count;
+            sample.excess_move_source_events += debug.excess_move_pressure_injection_count;
+            sample.hydrostatic_source_amount += debug.hydrostatic_pressure_injection_amount;
+            sample.dynamic_target_source_amount += debug.dynamic_pressure_target_injection_amount;
+            sample.dynamic_reflection_source_amount +=
+                debug.dynamic_pressure_reflection_injection_amount;
+            sample.excess_move_source_amount += debug.excess_move_pressure_injection_amount;
+
+            if (sample.max_x < sample.min_x || sample.max_y < sample.min_y) {
+                sample.min_x = x;
+                sample.max_x = x;
+                sample.min_y = y;
+                sample.max_y = y;
+            }
+            else {
+                sample.min_x = std::min(sample.min_x, x);
+                sample.max_x = std::max(sample.max_x, x);
+                sample.min_y = std::min(sample.min_y, y);
+                sample.max_y = std::max(sample.max_y, y);
+            }
+
+            if (source_amount > sample.strongest_source_amount) {
+                sample.strongest_source_amount = source_amount;
+                sample.strongest_source_x = x;
+                sample.strongest_source_y = y;
+                sample.strongest_source_pressure = cell.pressure;
+                sample.strongest_source_gradient_y = cell.pressure_gradient.y;
+                sample.strongest_source_force_y = debug.accumulated_pressure_force.y;
+            }
+        }
+    }
+
+    return sample;
+}
+
+std::string dumpFramePressureSourceHotspots(const World& world, int limit = 8)
+{
+    struct PressureSourceCell {
+        int x = 0;
+        int y = 0;
+        bool surface_adjacent = false;
+        double amount = 0.0;
+    };
+
+    const WorldData& data = world.getData();
+    const GridOfCells grid = makeGrid(const_cast<World&>(world));
+    std::vector<PressureSourceCell> source_cells;
+
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            const CellDebug& debug = data.debug_info[idx];
+            const double amount = totalPressureInjectionAmount(debug);
+            if (amount < 0.0001) {
+                continue;
+            }
+
+            source_cells.push_back(
+                PressureSourceCell{
+                    .x = x,
+                    .y = y,
+                    .surface_adjacent = cellHasEmptyAdjacency(grid, x, y),
+                    .amount = amount,
+                });
+        }
+    }
+
+    std::sort(
+        source_cells.begin(),
+        source_cells.end(),
+        [](const PressureSourceCell& a, const PressureSourceCell& b) {
+            return std::tie(a.amount, a.y, a.x) > std::tie(b.amount, b.y, b.x);
+        });
+
+    std::ostringstream out;
+    const int count = std::min(limit, static_cast<int>(source_cells.size()));
+    for (int i = 0; i < count; ++i) {
+        const PressureSourceCell& source = source_cells[static_cast<size_t>(i)];
+        const size_t idx = static_cast<size_t>(source.y) * data.width + source.x;
+        const Cell& cell = data.at(source.x, source.y);
+        const CellDebug& debug = data.debug_info[idx];
+        out << "  (" << source.x << "," << source.y
+            << ") src=" << pressureInjectionStateToChar(debug) << " amt=" << source.amount
+            << " surf=" << source.surface_adjacent << " mat=" << toString(cell.material_type)
+            << " p=" << cell.pressure << " gradY=" << cell.pressure_gradient.y
+            << " pForceY=" << debug.accumulated_pressure_force.y << "\n";
+    }
+
+    if (count == 0) {
+        out << "  <none>\n";
+    }
+
+    return out.str();
+}
+
+char candidateAxisStateToChar(uint16_t count, uint8_t direction_mask)
+{
+    if (count == 0) {
+        return '.';
+    }
+
+    const bool horizontal = hasHorizontalDirection(direction_mask);
+    const bool vertical = hasVerticalDirection(direction_mask);
+    if (horizontal && vertical) {
+        return '*';
+    }
+    if (horizontal) {
+        return 'H';
+    }
+    if (vertical) {
+        return 'V';
+    }
+    return 'C';
+}
+
+std::string directionMaskToString(uint8_t direction_mask)
+{
+    std::string out;
+    if ((direction_mask & CellDebug::DirectionLeft) != 0) {
+        out.push_back('L');
+    }
+    if ((direction_mask & CellDebug::DirectionRight) != 0) {
+        out.push_back('R');
+    }
+    if ((direction_mask & CellDebug::DirectionUp) != 0) {
+        out.push_back('U');
+    }
+    if ((direction_mask & CellDebug::DirectionDown) != 0) {
+        out.push_back('D');
+    }
+
+    if (out.empty()) {
+        out = ".";
+    }
+
+    return out;
+}
+
+std::string compressionBranchMaskToString(uint8_t branch_mask)
+{
+    std::string out;
+    if (hasCompressionBranch(branch_mask, CellDebug::CompressionBranchGranular)) {
+        out.push_back('G');
+    }
+    if (hasCompressionBranch(branch_mask, CellDebug::CompressionBranchSupport)) {
+        out.push_back('S');
+    }
+
+    if (out.empty()) {
+        out = ".";
+    }
+
+    return out;
+}
+
+char moveAxisStateToChar(const CellDebug& debug)
+{
+    const uint8_t direction_mask =
+        debug.generated_move_direction_mask | debug.received_move_direction_mask;
+    return candidateAxisStateToChar(
+        static_cast<uint16_t>(debug.generated_move_count + debug.received_move_count),
+        direction_mask);
+}
+
 char transferStateToChar(const CellDebug& debug)
 {
     const bool successfulOutgoing = debug.successful_outgoing_transfer_count > 0;
@@ -633,6 +1212,34 @@ char transferStateToChar(const CellDebug& debug)
     return '.';
 }
 
+char pressureInjectionStateToChar(const CellDebug& debug)
+{
+    const bool hydrostatic = debug.hydrostatic_pressure_injection_count > 0;
+    const bool dynamic_target = debug.dynamic_pressure_target_injection_count > 0;
+    const bool dynamic_reflection = debug.dynamic_pressure_reflection_injection_count > 0;
+    const bool excess_move = debug.excess_move_pressure_injection_count > 0;
+    const int kind_count = static_cast<int>(hydrostatic) + static_cast<int>(dynamic_target)
+        + static_cast<int>(dynamic_reflection) + static_cast<int>(excess_move);
+
+    if (kind_count == 0) {
+        return '.';
+    }
+    if (kind_count > 1) {
+        return 'M';
+    }
+    if (hydrostatic) {
+        return 'H';
+    }
+    if (dynamic_target) {
+        return 'T';
+    }
+    if (excess_move) {
+        return 'E';
+    }
+
+    return 'R';
+}
+
 char staticLoadBucketToChar(const Cell& cell, double gravity)
 {
     if (!isLoadBearingGranularCell(cell)) {
@@ -647,6 +1254,39 @@ char staticLoadBucketToChar(const Cell& cell, double gravity)
     const double ratio = cell.static_load / self_weight;
     const int bucket = std::clamp(static_cast<int>(std::round(std::min(ratio, 9.0))), 0, 9);
     return static_cast<char>('0' + bucket);
+}
+
+char pressureInjectionBucketToChar(const CellDebug& debug)
+{
+    const double amount = totalPressureInjectionAmount(debug);
+    if (amount < 0.0001) {
+        return '.';
+    }
+    if (amount < 0.001) {
+        return '1';
+    }
+    if (amount < 0.005) {
+        return '2';
+    }
+    if (amount < 0.01) {
+        return '3';
+    }
+    if (amount < 0.02) {
+        return '4';
+    }
+    if (amount < 0.05) {
+        return '5';
+    }
+    if (amount < 0.10) {
+        return '6';
+    }
+    if (amount < 0.20) {
+        return '7';
+    }
+    if (amount < 0.40) {
+        return '8';
+    }
+    return '9';
 }
 
 char velocityBucketToChar(double velocity)
@@ -726,12 +1366,68 @@ std::string dumpBuriedRegionCellMaps(
             out << '\n';
         }
 
+        out << "  moveAxis\n";
+        for (int y = y_begin; y < y_end; ++y) {
+            out << "  ";
+            for (int x = x_begin; x < x_end; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                out << moveAxisStateToChar(data.debug_info[idx]);
+            }
+            out << '\n';
+        }
+
         out << "  transfer\n";
         for (int y = y_begin; y < y_end; ++y) {
             out << "  ";
             for (int x = x_begin; x < x_end; ++x) {
                 const size_t idx = static_cast<size_t>(y) * data.width + x;
                 out << transferStateToChar(data.debug_info[idx]);
+            }
+            out << '\n';
+        }
+
+        out << "  gCand\n";
+        for (int y = y_begin; y < y_end; ++y) {
+            out << "  ";
+            for (int x = x_begin; x < x_end; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                const CellDebug& debug = data.debug_info[idx];
+                out << candidateAxisStateToChar(
+                    debug.gravity_compression_candidate_count,
+                    debug.gravity_compression_candidate_direction_mask);
+            }
+            out << '\n';
+        }
+
+        out << "  jamCand\n";
+        for (int y = y_begin; y < y_end; ++y) {
+            out << "  ";
+            for (int x = x_begin; x < x_end; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                const CellDebug& debug = data.debug_info[idx];
+                out << candidateAxisStateToChar(
+                    debug.jammed_contact_candidate_count,
+                    debug.jammed_contact_candidate_direction_mask);
+            }
+            out << '\n';
+        }
+
+        out << "  pSrc\n";
+        for (int y = y_begin; y < y_end; ++y) {
+            out << "  ";
+            for (int x = x_begin; x < x_end; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                out << pressureInjectionStateToChar(data.debug_info[idx]);
+            }
+            out << '\n';
+        }
+
+        out << "  pAmt\n";
+        for (int y = y_begin; y < y_end; ++y) {
+            out << "  ";
+            for (int x = x_begin; x < x_end; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                out << pressureInjectionBucketToChar(data.debug_info[idx]);
             }
             out << '\n';
         }
@@ -771,12 +1467,18 @@ std::string dumpBuriedRegionCellDetails(
                 const Cell& cell = data.at(x, y);
                 const CellDebug& debug = data.debug_info[idx];
                 const double velocity = cell.velocity.magnitude();
+                const double pressure_injection_amount = totalPressureInjectionAmount(debug);
                 const bool interesting = velocity > 0.05 || debug.generated_move_count > 0
                     || debug.received_move_count > 0 || debug.successful_outgoing_transfer_count > 0
                     || debug.successful_incoming_transfer_count > 0
                     || debug.blocked_outgoing_transfer_count > 0
-                    || debug.gravity_skipped_for_support || debug.has_granular_support_path
-                    || debug.carries_transmitted_granular_load;
+                    || debug.gravity_compression_candidate_count > 0
+                    || debug.incoming_compression_contact_count > 0
+                    || debug.jammed_contact_candidate_count > 0
+                    || debug.outgoing_compression_contact_count > 0
+                    || debug.accumulated_viscous_force.magnitude() > 0.0001
+                    || pressure_injection_amount > 0.0001 || debug.gravity_skipped_for_support
+                    || debug.has_granular_support_path || debug.carries_transmitted_granular_load;
 
                 if (!interesting) {
                     continue;
@@ -787,17 +1489,42 @@ std::string dumpBuriedRegionCellDetails(
                     isLoadBearingGranularCell(cell) ? cell.getMass() * std::abs(gravity) : 0.0;
                 out << "  (" << x << "," << y << ") mat=" << toString(cell.material_type)
                     << " vel=" << velocity << " com=(" << cell.com.x << "," << cell.com.y << ")"
-                    << " load=" << cell.static_load << " self=" << self_weight
+                    << " load=" << cell.static_load << " self=" << self_weight << " vForce=("
+                    << debug.accumulated_viscous_force.x << "," << debug.accumulated_viscous_force.y
+                    << ")"
                     << " grav=" << gravityStateToChar(cell, debug)
                     << " moves=" << moveStateToChar(debug) << " gen=" << debug.generated_move_count
+                    << " outDir=" << directionMaskToString(debug.generated_move_direction_mask)
                     << " recv=" << debug.received_move_count
+                    << " inDir=" << directionMaskToString(debug.received_move_direction_mask)
+                    << " gCand=" << debug.gravity_compression_candidate_count << ":"
+                    << directionMaskToString(debug.gravity_compression_candidate_direction_mask)
+                    << " jamCand=" << debug.jammed_contact_candidate_count << ":"
+                    << directionMaskToString(debug.jammed_contact_candidate_direction_mask)
+                    << " outComp=" << debug.outgoing_compression_contact_count << ":"
+                    << compressionBranchMaskToString(debug.outgoing_compression_branch_mask) << ":"
+                    << debug.max_outgoing_compression_normal_before << "->"
+                    << debug.max_outgoing_compression_normal_after
+                    << " inComp=" << debug.incoming_compression_contact_count << ":"
+                    << compressionBranchMaskToString(debug.incoming_compression_branch_mask) << ":"
+                    << debug.max_incoming_compression_normal_before << "->"
+                    << debug.max_incoming_compression_normal_after
                     << " xfer=" << transferStateToChar(debug)
                     << " okOut=" << debug.successful_outgoing_transfer_count
                     << " okIn=" << debug.successful_incoming_transfer_count
                     << " blk=" << debug.blocked_outgoing_transfer_count
+                    << " pSrc=" << pressureInjectionStateToChar(debug)
+                    << " pHydC=" << debug.hydrostatic_pressure_injection_count
+                    << " pDynTC=" << debug.dynamic_pressure_target_injection_count
+                    << " pDynRC=" << debug.dynamic_pressure_reflection_injection_count
+                    << " pExC=" << debug.excess_move_pressure_injection_count
                     << " okOutAmt=" << debug.successful_outgoing_transfer_amount
                     << " okInAmt=" << debug.successful_incoming_transfer_amount
-                    << " blkAmt=" << debug.blocked_outgoing_transfer_amount << "\n";
+                    << " blkAmt=" << debug.blocked_outgoing_transfer_amount
+                    << " pHydAmt=" << debug.hydrostatic_pressure_injection_amount
+                    << " pDynTAmt=" << debug.dynamic_pressure_target_injection_amount
+                    << " pDynRAmt=" << debug.dynamic_pressure_reflection_injection_amount
+                    << " pExAmt=" << debug.excess_move_pressure_injection_amount << "\n";
             }
         }
 
@@ -826,7 +1553,10 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
 
     double velocity_sum = 0.0;
     double abs_velocity_y_sum = 0.0;
+    double abs_viscous_force_sum = 0.0;
+    double abs_viscous_force_y_sum = 0.0;
     double abs_pressure_gradient_y_sum = 0.0;
+    double abs_pressure_force_y_sum = 0.0;
     double pressure_sum = 0.0;
 
     for (int y = y_begin; y < y_end; ++y) {
@@ -840,17 +1570,29 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
 
             const double velocity = cell.velocity.magnitude();
             const double abs_velocity_y = std::abs(cell.velocity.y);
+            const double abs_viscous_force = debug.accumulated_viscous_force.magnitude();
+            const double abs_viscous_force_y = std::abs(debug.accumulated_viscous_force.y);
             const double abs_pressure_gradient_y = std::abs(cell.pressure_gradient.y);
+            const double abs_pressure_force_y = std::abs(debug.accumulated_pressure_force.y);
 
             sample.material_cells++;
             velocity_sum += velocity;
             abs_velocity_y_sum += abs_velocity_y;
+            abs_viscous_force_sum += abs_viscous_force;
+            abs_viscous_force_y_sum += abs_viscous_force_y;
             abs_pressure_gradient_y_sum += abs_pressure_gradient_y;
+            abs_pressure_force_y_sum += abs_pressure_force_y;
             pressure_sum += cell.pressure;
             sample.max_velocity = std::max(sample.max_velocity, velocity);
             sample.max_abs_velocity_y = std::max(sample.max_abs_velocity_y, abs_velocity_y);
+            sample.max_abs_viscous_force =
+                std::max(sample.max_abs_viscous_force, abs_viscous_force);
+            sample.max_abs_viscous_force_y =
+                std::max(sample.max_abs_viscous_force_y, abs_viscous_force_y);
             sample.max_abs_pressure_gradient_y =
                 std::max(sample.max_abs_pressure_gradient_y, abs_pressure_gradient_y);
+            sample.max_abs_pressure_force_y =
+                std::max(sample.max_abs_pressure_force_y, abs_pressure_force_y);
 
             if (velocity > 0.05) {
                 sample.moving_cells++;
@@ -873,8 +1615,44 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
             if (debug.generated_move_count > 0) {
                 sample.generated_move_cells++;
             }
+            if (hasHorizontalDirection(debug.generated_move_direction_mask)) {
+                sample.generated_horizontal_move_cells++;
+            }
+            if (hasVerticalDirection(debug.generated_move_direction_mask)) {
+                sample.generated_vertical_move_cells++;
+            }
+            if (debug.gravity_compression_candidate_count > 0) {
+                sample.gravity_compression_candidate_cells++;
+            }
+            if (debug.incoming_compression_contact_count > 0) {
+                sample.incoming_compression_contact_cells++;
+            }
+            if (debug.jammed_contact_candidate_count > 0) {
+                sample.jammed_contact_candidate_cells++;
+            }
+            if (debug.outgoing_compression_contact_count > 0) {
+                sample.outgoing_compression_contact_cells++;
+            }
             if (debug.received_move_count > 0) {
                 sample.received_move_cells++;
+            }
+            if (hasHorizontalDirection(debug.received_move_direction_mask)) {
+                sample.received_horizontal_move_cells++;
+            }
+            if (hasVerticalDirection(debug.received_move_direction_mask)) {
+                sample.received_vertical_move_cells++;
+            }
+            if (debug.hydrostatic_pressure_injection_count > 0) {
+                sample.hydrostatic_pressure_injection_cells++;
+            }
+            if (debug.dynamic_pressure_target_injection_count > 0) {
+                sample.dynamic_pressure_target_injection_cells++;
+            }
+            if (debug.dynamic_pressure_reflection_injection_count > 0) {
+                sample.dynamic_pressure_reflection_injection_cells++;
+            }
+            if (debug.excess_move_pressure_injection_count > 0) {
+                sample.excess_move_pressure_injection_cells++;
             }
             if (debug.successful_outgoing_transfer_count > 0) {
                 sample.successful_outgoing_transfer_cells++;
@@ -882,18 +1660,63 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
             if (debug.successful_incoming_transfer_count > 0) {
                 sample.successful_incoming_transfer_cells++;
             }
+            if (hasCompressionBranch(
+                    debug.incoming_compression_branch_mask | debug.outgoing_compression_branch_mask,
+                    CellDebug::CompressionBranchGranular)) {
+                sample.granular_compression_contact_cells++;
+            }
+            if (hasCompressionBranch(
+                    debug.incoming_compression_branch_mask | debug.outgoing_compression_branch_mask,
+                    CellDebug::CompressionBranchSupport)) {
+                sample.support_compression_contact_cells++;
+            }
             if (debug.blocked_outgoing_transfer_count > 0) {
                 sample.blocked_outgoing_transfer_cells++;
             }
+            if (abs_viscous_force > 0.0001) {
+                sample.viscous_force_cells++;
+            }
 
             sample.generated_moves += debug.generated_move_count;
+            sample.gravity_compression_candidates += debug.gravity_compression_candidate_count;
+            sample.incoming_compression_contacts += debug.incoming_compression_contact_count;
+            sample.jammed_contact_candidates += debug.jammed_contact_candidate_count;
+            sample.outgoing_compression_contacts += debug.outgoing_compression_contact_count;
             sample.received_moves += debug.received_move_count;
+            sample.hydrostatic_pressure_injection_events +=
+                debug.hydrostatic_pressure_injection_count;
+            sample.dynamic_pressure_target_injection_events +=
+                debug.dynamic_pressure_target_injection_count;
+            sample.dynamic_pressure_reflection_injection_events +=
+                debug.dynamic_pressure_reflection_injection_count;
+            sample.excess_move_pressure_injection_events +=
+                debug.excess_move_pressure_injection_count;
             sample.successful_outgoing_transfers += debug.successful_outgoing_transfer_count;
             sample.successful_incoming_transfers += debug.successful_incoming_transfer_count;
             sample.blocked_outgoing_transfers += debug.blocked_outgoing_transfer_count;
+            sample.hydrostatic_pressure_injection_amount +=
+                debug.hydrostatic_pressure_injection_amount;
+            sample.dynamic_pressure_target_injection_amount +=
+                debug.dynamic_pressure_target_injection_amount;
+            sample.dynamic_pressure_reflection_injection_amount +=
+                debug.dynamic_pressure_reflection_injection_amount;
+            sample.excess_move_pressure_injection_amount +=
+                debug.excess_move_pressure_injection_amount;
             sample.successful_outgoing_transfer_amount += debug.successful_outgoing_transfer_amount;
             sample.successful_incoming_transfer_amount += debug.successful_incoming_transfer_amount;
             sample.blocked_outgoing_transfer_amount += debug.blocked_outgoing_transfer_amount;
+            sample.max_incoming_compression_normal_after = std::max(
+                sample.max_incoming_compression_normal_after,
+                debug.max_incoming_compression_normal_after);
+            sample.max_incoming_compression_normal_before = std::max(
+                sample.max_incoming_compression_normal_before,
+                debug.max_incoming_compression_normal_before);
+            sample.max_outgoing_compression_normal_after = std::max(
+                sample.max_outgoing_compression_normal_after,
+                debug.max_outgoing_compression_normal_after);
+            sample.max_outgoing_compression_normal_before = std::max(
+                sample.max_outgoing_compression_normal_before,
+                debug.max_outgoing_compression_normal_before);
         }
     }
 
@@ -901,7 +1724,10 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
         const double material_cells = static_cast<double>(sample.material_cells);
         sample.mean_velocity = velocity_sum / material_cells;
         sample.mean_abs_velocity_y = abs_velocity_y_sum / material_cells;
+        sample.mean_abs_viscous_force = abs_viscous_force_sum / material_cells;
+        sample.mean_abs_viscous_force_y = abs_viscous_force_y_sum / material_cells;
         sample.mean_abs_pressure_gradient_y = abs_pressure_gradient_y_sum / material_cells;
+        sample.mean_abs_pressure_force_y = abs_pressure_force_y_sum / material_cells;
         sample.mean_pressure = pressure_sum / material_cells;
     }
 
@@ -935,6 +1761,8 @@ std::vector<CellTrack> selectTrackedCells(const World& world, RegionCoord region
             const double score = cell.velocity.magnitude() * 100.0
                 + static_cast<double>(
                       debug.generated_move_count + debug.received_move_count
+                      + debug.gravity_compression_candidate_count
+                      + debug.jammed_contact_candidate_count
                       + debug.successful_outgoing_transfer_count
                       + debug.successful_incoming_transfer_count
                       + debug.blocked_outgoing_transfer_count)
@@ -959,20 +1787,26 @@ std::vector<CellTrack> selectTrackedCells(const World& world, RegionCoord region
     return tracks;
 }
 
-std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord region)
+std::string dumpPureBuriedRegionTimeSeriesWithInitialSettle(
+    const World& world, RegionCoord region, int initial_settle_steps, const char* title)
 {
     World replay(kWorldWidth, kWorldHeight);
     initializeSleepAnalysisWorld(replay);
-    replay.getPhysicsSettings().gravity = world.getPhysicsSettings().gravity;
+    replay.getPhysicsSettings() = world.getPhysicsSettings();
 
-    settleWorld(replay);
+    if (initial_settle_steps > 0) {
+        settleWorld(replay, initial_settle_steps);
+    }
     const std::vector<CellTrack> tracks = selectTrackedCells(replay, region);
     std::ostringstream out;
 
-    out << "Pure buried region time series for (" << region.x << "," << region.y << ")\n";
-    out << "frame state wake cells move cBottom cTop skip support carry genC recvC okOutC okInC "
-           "blkC gen recv okOut okIn blk okOutAmt okInAmt blkAmt maxV meanV maxVy meanVy "
-           "maxGradY meanGradY meanP\n";
+    out << title << " for (" << region.x << "," << region.y << ")\n";
+    out << "frame state wake cells move cBottom cTop skip support carry genC genHC genVC recvC "
+           "recvHC recvVC pHydC pDynTC pDynRC pExC gCandC jamCandC compOutC compInC compGranC "
+           "compSupC okOutC okInC blkC viscC gen recv pHydE pDynTE pDynRE pExE gCand jamCand "
+           "compOut compIn okOut okIn blk compOutB compOutA compInB compInA pHydAmt pDynTAmt "
+           "pDynRAmt pExAmt okOutAmt okInAmt blkAmt maxV meanV maxVy meanVy maxVForce meanVForce "
+           "maxVForceY meanVForceY maxGradY meanGradY maxForceY meanForceY meanP\n";
 
     for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
         const RegionFrameSample sample = sampleRegionFrame(replay, region, frame);
@@ -981,18 +1815,49 @@ std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord regio
             << sample.moving_cells << " " << sample.near_bottom_cells << " "
             << sample.near_top_cells << " " << sample.gravity_skipped_cells << " "
             << sample.support_path_cells << " " << sample.carrying_load_cells << " "
-            << sample.generated_move_cells << " " << sample.received_move_cells << " "
+            << sample.generated_move_cells << " " << sample.generated_horizontal_move_cells << " "
+            << sample.generated_vertical_move_cells << " " << sample.received_move_cells << " "
+            << sample.received_horizontal_move_cells << " " << sample.received_vertical_move_cells
+            << " " << sample.hydrostatic_pressure_injection_cells << " "
+            << sample.dynamic_pressure_target_injection_cells << " "
+            << sample.dynamic_pressure_reflection_injection_cells << " "
+            << sample.excess_move_pressure_injection_cells << " "
+            << sample.gravity_compression_candidate_cells << " "
+            << sample.jammed_contact_candidate_cells << " "
+            << sample.outgoing_compression_contact_cells << " "
+            << sample.incoming_compression_contact_cells << " "
+            << sample.granular_compression_contact_cells << " "
+            << sample.support_compression_contact_cells << " "
             << sample.successful_outgoing_transfer_cells << " "
             << sample.successful_incoming_transfer_cells << " "
-            << sample.blocked_outgoing_transfer_cells << " " << sample.generated_moves << " "
-            << sample.received_moves << " " << sample.successful_outgoing_transfers << " "
-            << sample.successful_incoming_transfers << " " << sample.blocked_outgoing_transfers
-            << " " << sample.successful_outgoing_transfer_amount << " "
+            << sample.blocked_outgoing_transfer_cells << " " << sample.viscous_force_cells << " "
+            << sample.generated_moves << " " << sample.received_moves << " "
+            << sample.hydrostatic_pressure_injection_events << " "
+            << sample.dynamic_pressure_target_injection_events << " "
+            << sample.dynamic_pressure_reflection_injection_events << " "
+            << sample.excess_move_pressure_injection_events << " "
+            << sample.gravity_compression_candidates << " " << sample.jammed_contact_candidates
+            << " " << sample.outgoing_compression_contacts << " "
+            << sample.incoming_compression_contacts << " " << sample.successful_outgoing_transfers
+            << " " << sample.successful_incoming_transfers << " "
+            << sample.blocked_outgoing_transfers << " "
+            << sample.max_outgoing_compression_normal_before << " "
+            << sample.max_outgoing_compression_normal_after << " "
+            << sample.max_incoming_compression_normal_before << " "
+            << sample.max_incoming_compression_normal_after << " "
+            << sample.hydrostatic_pressure_injection_amount << " "
+            << sample.dynamic_pressure_target_injection_amount << " "
+            << sample.dynamic_pressure_reflection_injection_amount << " "
+            << sample.excess_move_pressure_injection_amount << " "
+            << sample.successful_outgoing_transfer_amount << " "
             << sample.successful_incoming_transfer_amount << " "
             << sample.blocked_outgoing_transfer_amount << " " << sample.max_velocity << " "
             << sample.mean_velocity << " " << sample.max_abs_velocity_y << " "
-            << sample.mean_abs_velocity_y << " " << sample.max_abs_pressure_gradient_y << " "
-            << sample.mean_abs_pressure_gradient_y << " " << sample.mean_pressure << "\n";
+            << sample.mean_abs_velocity_y << " " << sample.max_abs_viscous_force << " "
+            << sample.mean_abs_viscous_force << " " << sample.max_abs_viscous_force_y << " "
+            << sample.mean_abs_viscous_force_y << " " << sample.max_abs_pressure_gradient_y << " "
+            << sample.mean_abs_pressure_gradient_y << " " << sample.max_abs_pressure_force_y << " "
+            << sample.mean_abs_pressure_force_y << " " << sample.mean_pressure << "\n";
 
         if (frame < kDiagnosticFrames) {
             replay.advanceTime(kDt);
@@ -1002,13 +1867,16 @@ std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord regio
     out << "Tracked cells\n";
     for (const CellTrack& track : tracks) {
         out << "(" << track.x << "," << track.y << ")\n";
-        out << "  frame vel vy comY pressure gradY grav moves gen recv xfer okOut okIn blk "
-               "okOutAmt okInAmt blkAmt\n";
+        out << "  frame vel vy comY pressure gradY pForceY vForceX vForceY grav moves gen outDir "
+               "recv inDir pSrc gCand jamCand outComp inComp xfer okOut okIn blk pHydC pDynTC "
+               "pDynRC pExC okOutAmt okInAmt blkAmt pHydAmt pDynTAmt pDynRAmt pExAmt\n";
 
         World trackedReplay(kWorldWidth, kWorldHeight);
         initializeSleepAnalysisWorld(trackedReplay);
-        trackedReplay.getPhysicsSettings().gravity = world.getPhysicsSettings().gravity;
-        settleWorld(trackedReplay);
+        trackedReplay.getPhysicsSettings() = world.getPhysicsSettings();
+        if (initial_settle_steps > 0) {
+            settleWorld(trackedReplay, initial_settle_steps);
+        }
 
         for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
             const WorldData& replayData = trackedReplay.getData();
@@ -1018,18 +1886,181 @@ std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord regio
 
             out << "  " << frame << " " << cell.velocity.magnitude() << " " << cell.velocity.y
                 << " " << cell.com.y << " " << cell.pressure << " " << cell.pressure_gradient.y
+                << " " << debug.accumulated_pressure_force.y << " "
+                << debug.accumulated_viscous_force.x << " " << debug.accumulated_viscous_force.y
                 << " " << gravityStateToChar(cell, debug) << " " << moveStateToChar(debug) << " "
-                << debug.generated_move_count << " " << debug.received_move_count << " "
-                << transferStateToChar(debug) << " " << debug.successful_outgoing_transfer_count
-                << " " << debug.successful_incoming_transfer_count << " "
+                << debug.generated_move_count << " "
+                << directionMaskToString(debug.generated_move_direction_mask) << " "
+                << debug.received_move_count << " "
+                << directionMaskToString(debug.received_move_direction_mask) << " "
+                << pressureInjectionStateToChar(debug) << " "
+                << debug.gravity_compression_candidate_count << ":"
+                << directionMaskToString(debug.gravity_compression_candidate_direction_mask) << " "
+                << debug.jammed_contact_candidate_count << ":"
+                << directionMaskToString(debug.jammed_contact_candidate_direction_mask) << " "
+                << debug.outgoing_compression_contact_count << ":"
+                << compressionBranchMaskToString(debug.outgoing_compression_branch_mask) << ":"
+                << debug.max_outgoing_compression_normal_before << "->"
+                << debug.max_outgoing_compression_normal_after << " "
+                << debug.incoming_compression_contact_count << ":"
+                << compressionBranchMaskToString(debug.incoming_compression_branch_mask) << ":"
+                << debug.max_incoming_compression_normal_before << "->"
+                << debug.max_incoming_compression_normal_after << " " << transferStateToChar(debug)
+                << " " << debug.successful_outgoing_transfer_count << " "
+                << debug.successful_incoming_transfer_count << " "
                 << debug.blocked_outgoing_transfer_count << " "
+                << debug.hydrostatic_pressure_injection_count << " "
+                << debug.dynamic_pressure_target_injection_count << " "
+                << debug.dynamic_pressure_reflection_injection_count << " "
+                << debug.excess_move_pressure_injection_count << " "
                 << debug.successful_outgoing_transfer_amount << " "
                 << debug.successful_incoming_transfer_amount << " "
-                << debug.blocked_outgoing_transfer_amount << "\n";
+                << debug.blocked_outgoing_transfer_amount << " "
+                << debug.hydrostatic_pressure_injection_amount << " "
+                << debug.dynamic_pressure_target_injection_amount << " "
+                << debug.dynamic_pressure_reflection_injection_amount << " "
+                << debug.excess_move_pressure_injection_amount << "\n";
 
             if (frame < kDiagnosticFrames) {
                 trackedReplay.advanceTime(kDt);
             }
+        }
+    }
+
+    return out.str();
+}
+
+std::string dumpPureBuriedRegionInitialTimeSeries(const World& world, RegionCoord region)
+{
+    return dumpPureBuriedRegionTimeSeriesWithInitialSettle(
+        world, region, 0, "Pure buried region initial time series");
+}
+
+std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord region)
+{
+    return dumpPureBuriedRegionTimeSeriesWithInitialSettle(
+        world, region, kSettleSteps, "Pure buried region time series");
+}
+
+std::string dumpWorldPressureSourceTimeSeriesWithInitialSettle(
+    const World& world, int initial_settle_steps, const char* title)
+{
+    World replay(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(replay);
+    replay.getPhysicsSettings() = world.getPhysicsSettings();
+    if (initial_settle_steps > 0) {
+        settleWorld(replay, initial_settle_steps);
+    }
+
+    std::ostringstream out;
+    out << title << "\n";
+    out << "frame src surf buried hydC dynTC dynRC exC hydE dynTE dynRE exE hydAmt dynTAmt "
+           "dynRAmt exAmt bbox maxAmt maxX maxY maxP maxGradY maxForceY\n";
+
+    for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
+        const WorldPressureSourceFrameSample sample = sampleWorldPressureSourceFrame(replay, frame);
+
+        out << sample.frame << " " << sample.source_cells << " "
+            << sample.surface_adjacent_source_cells << " " << sample.buried_source_cells << " "
+            << sample.hydrostatic_source_cells << " " << sample.dynamic_target_source_cells << " "
+            << sample.dynamic_reflection_source_cells << " " << sample.excess_move_source_cells
+            << " " << sample.hydrostatic_source_events << " " << sample.dynamic_target_source_events
+            << " " << sample.dynamic_reflection_source_events << " "
+            << sample.excess_move_source_events << " " << sample.hydrostatic_source_amount << " "
+            << sample.dynamic_target_source_amount << " " << sample.dynamic_reflection_source_amount
+            << " " << sample.excess_move_source_amount << " ";
+
+        if (sample.source_cells > 0) {
+            out << sample.min_x << "," << sample.min_y << "-" << sample.max_x << ","
+                << sample.max_y;
+        }
+        else {
+            out << ".";
+        }
+
+        out << " " << sample.strongest_source_amount << " " << sample.strongest_source_x << " "
+            << sample.strongest_source_y << " " << sample.strongest_source_pressure << " "
+            << sample.strongest_source_gradient_y << " " << sample.strongest_source_force_y << "\n";
+
+        if (sample.source_cells > 0) {
+            out << "Top source cells at frame " << frame << "\n";
+            out << dumpFramePressureSourceHotspots(replay);
+        }
+
+        if (frame < kDiagnosticFrames) {
+            replay.advanceTime(kDt);
+        }
+    }
+
+    return out.str();
+}
+
+std::string dumpInitialWorldPressureSourceTimeSeries(const World& world)
+{
+    return dumpWorldPressureSourceTimeSeriesWithInitialSettle(
+        world, 0, "World pressure source time series from frame 0");
+}
+
+std::string dumpWorldPressureSourceTimeSeries(const World& world)
+{
+    return dumpWorldPressureSourceTimeSeriesWithInitialSettle(
+        world, kSettleSteps, "World pressure source time series after settle");
+}
+
+std::string dumpWorldPressureSourceSettleScan(const World& world, std::optional<RegionCoord> region)
+{
+    World replay(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(replay);
+    replay.getPhysicsSettings() = world.getPhysicsSettings();
+
+    const std::vector<int> checkpoint_frames{ 0, 1, 2, 4, 8, 16, 32, 48, 64, 96, 128, 160, 180 };
+    std::ostringstream out;
+    out << "World pressure source settle scan\n";
+    out << "frame src surf buried hydE dynTE dynRE exE hydAmt dynTAmt dynRAmt exAmt";
+    if (region.has_value()) {
+        out << " regionState regionWake regionMeanV regionMaxV regionMeanP regionMeanForceY";
+    }
+    out << "\n";
+
+    for (int frame = 0; frame <= kSettleSteps; ++frame) {
+        const WorldPressureSourceFrameSample source_sample =
+            sampleWorldPressureSourceFrame(replay, frame);
+        const bool is_checkpoint =
+            std::find(checkpoint_frames.begin(), checkpoint_frames.end(), frame)
+            != checkpoint_frames.end();
+        const bool interesting = is_checkpoint || source_sample.source_cells > 0;
+
+        if (interesting) {
+            out << frame << " " << source_sample.source_cells << " "
+                << source_sample.surface_adjacent_source_cells << " "
+                << source_sample.buried_source_cells << " "
+                << source_sample.hydrostatic_source_events << " "
+                << source_sample.dynamic_target_source_events << " "
+                << source_sample.dynamic_reflection_source_events << " "
+                << source_sample.excess_move_source_events << " "
+                << source_sample.hydrostatic_source_amount << " "
+                << source_sample.dynamic_target_source_amount << " "
+                << source_sample.dynamic_reflection_source_amount << " "
+                << source_sample.excess_move_source_amount;
+
+            if (region.has_value()) {
+                const RegionFrameSample region_sample = sampleRegionFrame(replay, *region, frame);
+                out << " " << regionStateToChar(region_sample.state) << " "
+                    << wakeReasonToChar(region_sample.wake_reason) << " "
+                    << region_sample.mean_velocity << " " << region_sample.max_velocity << " "
+                    << region_sample.mean_pressure << " "
+                    << region_sample.mean_abs_pressure_force_y;
+            }
+            out << "\n";
+
+            if (source_sample.source_cells > 0) {
+                out << "Top source cells at frame " << frame << "\n";
+                out << dumpFramePressureSourceHotspots(replay);
+            }
+        }
+
+        if (frame < kSettleSteps) {
+            replay.advanceTime(kDt);
         }
     }
 
@@ -1047,6 +2078,13 @@ std::string dumpSettlingDiagnostics(
     out << dumpBuriedRegionCellMaps(world, buriedRegions) << "\n";
     out << dumpBuriedRegionCellDetails(world, buriedRegions) << "\n";
     out << dumpOptionalPureBuriedRegionTimeSeries(world, buriedRegions);
+    if (world.getPhysicsSettings().pressure_hydrostatic_enabled
+        || world.getPhysicsSettings().pressure_dynamic_enabled) {
+        out << "\n"
+            << dumpWorldPressureSourceSettleScan(world, findPureBuriedRegion(world, buriedRegions));
+        out << "\n" << dumpInitialWorldPressureSourceTimeSeries(world);
+        out << "\n" << dumpWorldPressureSourceTimeSeries(world);
+    }
     return out.str();
 }
 
@@ -1182,6 +2220,79 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_DeepDryPileHasBuriedRegionThatQui
 
     EXPECT_GT(countQuietBuriedRegions(world, buried_regions), 0)
         << "Expected at least one buried region to transition out of Awake after settling.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_TransferQuietForceIsolationSweep)
+{
+    std::cout << dumpForceIsolationSweep();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_GravityContactOnlyDiagnostics)
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "gravity_contact_only",
+        .gravity = defaults.gravity,
+        .pressure = false,
+        .cohesion = false,
+        .adhesion = false,
+        .friction = false,
+        .viscosity = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    std::cout << dumpForceIsolationProfileDiagnostics(profile);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_PressureOnlyDiagnostics)
+{
+    const ForceIsolationProfile profile{
+        .name = "pressure_only",
+        .gravity = 0.0,
+        .cohesion = false,
+        .adhesion = false,
+        .friction = false,
+        .viscosity = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    std::cout << dumpForceIsolationProfileDiagnostics(profile);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_GravityPressureOnlyDiagnostics)
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "gravity_pressure_only",
+        .gravity = defaults.gravity,
+        .cohesion = false,
+        .adhesion = false,
+        .friction = false,
+        .viscosity = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    std::cout << dumpForceIsolationProfileDiagnostics(profile);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_ViscosityOnlyDiagnostics)
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "viscosity_only",
+        .gravity = defaults.gravity,
+        .pressure = false,
+        .cohesion = false,
+        .adhesion = false,
+        .friction = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    std::cout << dumpForceIsolationProfileDiagnostics(profile);
 }
 
 INSTANTIATE_TEST_SUITE_P(

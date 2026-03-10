@@ -56,6 +56,10 @@ int computeRegionBlockCount(int cells)
     return std::max(0, (cells + 7) / 8);
 }
 
+constexpr float kGranularCompressionCandidateCapacityEpsilon = 0.02f;
+constexpr float kGranularCompressionCandidateFillRatioMinimum = 0.95f;
+constexpr float kGranularCompressionCandidateLoadEpsilon = 0.001f;
+
 bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
 {
     if (cell.isEmpty()) {
@@ -164,6 +168,135 @@ bool hasSupportedGranularPath(
     return false;
 }
 
+uint8_t directionToMask(const DirtSim::Vector2i& direction)
+{
+    if (direction.x < 0) {
+        return DirtSim::CellDebug::DirectionLeft;
+    }
+    if (direction.x > 0) {
+        return DirtSim::CellDebug::DirectionRight;
+    }
+    if (direction.y < 0) {
+        return DirtSim::CellDebug::DirectionUp;
+    }
+    if (direction.y > 0) {
+        return DirtSim::CellDebug::DirectionDown;
+    }
+
+    return DirtSim::CellDebug::DirectionNone;
+}
+
+bool carriesTransmittedGranularLoad(const DirtSim::Cell& cell, float gravityMagnitude)
+{
+    if (gravityMagnitude <= 0.0001f || !isLoadBearingGranularCell(cell)) {
+        return false;
+    }
+
+    const float selfWeight = cell.getMass() * gravityMagnitude;
+    return cell.static_load > selfWeight + kGranularCompressionCandidateLoadEpsilon;
+}
+
+bool isSupportedGranularCompressionTarget(
+    const DirtSim::WorldData& data,
+    int x,
+    int y,
+    int supportOffsetY,
+    float gravityMagnitude,
+    std::vector<int8_t>& supportCache)
+{
+    if (!data.inBounds(x, y)) {
+        return false;
+    }
+
+    const DirtSim::Cell& cell = data.at(x, y);
+    if (cell.isEmpty()) {
+        return false;
+    }
+
+    if (isGranularSupportSinkCell(cell)) {
+        return true;
+    }
+
+    if (!isLoadBearingGranularCell(cell)) {
+        return false;
+    }
+
+    if (cell.fill_ratio < kGranularCompressionCandidateFillRatioMinimum) {
+        return false;
+    }
+
+    if (cell.getCapacity() > kGranularCompressionCandidateCapacityEpsilon) {
+        return false;
+    }
+
+    if (!carriesTransmittedGranularLoad(cell, gravityMagnitude)) {
+        return false;
+    }
+
+    return hasSupportedGranularPath(data, x, y, supportOffsetY, supportCache);
+}
+
+bool isSupportedGranularCompressionCandidate(
+    const DirtSim::WorldData& data,
+    const DirtSim::Cell& fromCell,
+    const DirtSim::Vector2i& fromPos,
+    const DirtSim::Vector2i& direction,
+    float gravityMagnitude,
+    int supportOffsetY,
+    std::vector<int8_t>& supportCache,
+    bool requireGravityAlignment)
+{
+    if (gravityMagnitude <= 0.0001f) {
+        return false;
+    }
+
+    if (requireGravityAlignment && (direction.x != 0 || direction.y != supportOffsetY)) {
+        return false;
+    }
+
+    if (!isLoadBearingGranularCell(fromCell)) {
+        return false;
+    }
+
+    if (fromCell.fill_ratio < kGranularCompressionCandidateFillRatioMinimum) {
+        return false;
+    }
+
+    if (!carriesTransmittedGranularLoad(fromCell, gravityMagnitude)) {
+        return false;
+    }
+
+    if (!hasSupportedGranularPath(data, fromPos.x, fromPos.y, supportOffsetY, supportCache)) {
+        return false;
+    }
+
+    const double inwardNormalSpeed = fromCell.velocity.dot(
+        DirtSim::Vector2d{
+            static_cast<double>(direction.x),
+            static_cast<double>(direction.y),
+        });
+    if (inwardNormalSpeed <= 0.0) {
+        return false;
+    }
+
+    const DirtSim::Vector2i targetPos = fromPos + direction;
+    if (!data.inBounds(targetPos.x, targetPos.y)) {
+        return false;
+    }
+
+    const DirtSim::Cell& toCell = data.at(targetPos.x, targetPos.y);
+    if (toCell.isEmpty()) {
+        return false;
+    }
+
+    if (toCell.getCapacity() > kGranularCompressionCandidateCapacityEpsilon) {
+        return false;
+    }
+
+    return isSupportedGranularCompressionTarget(
+        data, targetPos.x, targetPos.y, supportOffsetY, gravityMagnitude, supportCache);
+}
+
 void incrementSaturating(uint16_t& value)
 {
     if (value != std::numeric_limits<uint16_t>::max()) {
@@ -189,6 +322,8 @@ struct World::Impl {
     // Persistent grid cache (initialized after data_ in constructor).
     std::optional<GridOfCells> grid_;
     bool is_grid_cache_dirty_ = false;
+    bool is_static_load_dirty_ = true;
+    double static_load_gravity_ = std::numeric_limits<double>::quiet_NaN();
 
     // Calculators. WorldFrictionCalculator is constructed locally with GridOfCells reference.
     WorldAdhesionCalculator adhesion_calculator_;
@@ -426,6 +561,21 @@ void World::rebuildGridCache(const char* timerName)
 void World::markGridCacheDirty()
 {
     pImpl->is_grid_cache_dirty_ = true;
+    pImpl->is_static_load_dirty_ = true;
+}
+
+bool World::isStaticLoadRecomputeNeeded() const
+{
+    return pImpl->is_static_load_dirty_
+        || pImpl->static_load_gravity_ != pImpl->physicsSettings_.gravity;
+}
+
+void World::recomputeStaticLoad(const char* timerName)
+{
+    ScopeTimer timer(pImpl->timers_, timerName);
+    pImpl->static_load_calculator_.recomputeAll(*this);
+    pImpl->is_static_load_dirty_ = false;
+    pImpl->static_load_gravity_ = pImpl->physicsSettings_.gravity;
 }
 
 PhysicsSettings& World::getPhysicsSettings()
@@ -659,6 +809,17 @@ void World::advanceTime(double deltaTimeSeconds)
     pImpl->region_activity_tracker_.beginFrame(
         *this, grid, static_cast<uint32_t>(pImpl->data_.timestep));
 
+    for (CellDebug& debug : pImpl->data_.debug_info) {
+        debug.dynamic_pressure_reflection_injection_amount = 0.0f;
+        debug.dynamic_pressure_reflection_injection_count = 0;
+        debug.dynamic_pressure_target_injection_amount = 0.0f;
+        debug.dynamic_pressure_target_injection_count = 0;
+        debug.excess_move_pressure_injection_amount = 0.0f;
+        debug.excess_move_pressure_injection_count = 0;
+        debug.hydrostatic_pressure_injection_amount = 0.0f;
+        debug.hydrostatic_pressure_injection_count = 0;
+    }
+
     // Inject hydrostatic pressure from gravity.
     if (pImpl->physicsSettings_.pressure_hydrostatic_strength > 0.0) {
         ScopeTimer hydroTimer(pImpl->timers_, "hydrostatic_pressure");
@@ -689,6 +850,10 @@ void World::advanceTime(double deltaTimeSeconds)
     {
         ScopeTimer organismTimer(pImpl->timers_, "organisms");
         organism_manager_->update(*this, scaledDeltaTime);
+    }
+
+    if (isStaticLoadRecomputeNeeded()) {
+        recomputeStaticLoad("static_load_preforce_recompute");
     }
 
     // Apply forces using the diffused pressure field.
@@ -729,9 +894,8 @@ void World::advanceTime(double deltaTimeSeconds)
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
 
-    {
-        ScopeTimer staticLoadTimer(pImpl->timers_, "static_load_recompute");
-        pImpl->static_load_calculator_.recomputeAll(*this);
+    if (isStaticLoadRecomputeNeeded()) {
+        recomputeStaticLoad("static_load_postmove_recompute");
     }
 
     ensureGridCacheFresh("region_activity_grid_cache");
@@ -1286,6 +1450,10 @@ void World::applyPressureForces()
     WorldData& data = pImpl->data_;
     WorldPressureCalculator& pressure_calc = pImpl->pressure_calculator_;
 
+    for (CellDebug& debug : data.debug_info) {
+        debug.accumulated_pressure_force = {};
+    }
+
     if (settings.pressure_hydrostatic_strength <= 0.0
         && settings.pressure_dynamic_strength <= 0.0) {
         return;
@@ -1325,6 +1493,8 @@ void World::applyPressureForces()
 
                 Vector2d pressure_force = gradient * settings.pressure_scale * hydrostatic_weight;
                 cell.addPendingForce(pressure_force);
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                data.debug_info[idx].accumulated_pressure_force = pressure_force;
 
                 spdlog::debug(
                     "Cell ({},{}) pressure force: total_pressure={:.4f}, "
@@ -1406,6 +1576,10 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
         friction_calc.calculateAndApplyFrictionForces(*this, deltaTime);
     }
 
+    for (CellDebug& debug : data.debug_info) {
+        debug.accumulated_viscous_force = {};
+    }
+
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
         ScopeTimer viscosityTimer(timers, "apply_viscous_forces");
@@ -1418,9 +1592,15 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
 #endif
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
                 Cell& cell = data.at(x, y);
+                CellDebug& debug = data.debug_info[idx];
 
                 if (cell.isEmpty() || cell.isWall()) {
+                    continue;
+                }
+
+                if (debug.gravity_skipped_for_support) {
                     continue;
                 }
 
@@ -1430,8 +1610,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 cell.addPendingForce(viscous_result.force);
 
                 // Store for visualization in GridOfCells debug info.
-                const_cast<GridOfCells&>(grid).debugAt(x, y).accumulated_viscous_force =
-                    viscous_result.force;
+                debug.accumulated_viscous_force = viscous_result.force;
             }
         }
     }
@@ -1749,6 +1928,9 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     // Cache pImpl members as local references.
     WorldCollisionCalculator& collision_calc = pImpl->collision_calculator_;
     WorldData& data = pImpl->data_;
+    const double gravity = pImpl->physicsSettings_.gravity;
+    const float gravityMagnitude = static_cast<float>(std::abs(gravity));
+    const int supportOffsetY = gravity > 0.0 ? 1 : -1;
 
     // Pre-allocate moves vector based on previous frame's count.
     static size_t last_move_count = 0;
@@ -1760,7 +1942,34 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     size_t num_boundary_crossings = 0;
     size_t num_moves_generated = 0;
     size_t num_transfers_generated = 0;
+    size_t num_compression_generated = 0;
     size_t num_collisions_generated = 0;
+    std::vector<int8_t> granularSupportCache(data.cells.size(), -1);
+
+    for (CellDebug& debug : data.debug_info) {
+        debug.blocked_outgoing_transfer_amount = 0.0f;
+        debug.blocked_outgoing_transfer_count = 0;
+        debug.generated_move_count = 0;
+        debug.generated_move_direction_mask = CellDebug::DirectionNone;
+        debug.gravity_compression_candidate_count = 0;
+        debug.gravity_compression_candidate_direction_mask = CellDebug::DirectionNone;
+        debug.incoming_compression_branch_mask = CellDebug::CompressionBranchNone;
+        debug.incoming_compression_contact_count = 0;
+        debug.jammed_contact_candidate_count = 0;
+        debug.jammed_contact_candidate_direction_mask = CellDebug::DirectionNone;
+        debug.max_incoming_compression_normal_after = 0.0;
+        debug.max_incoming_compression_normal_before = 0.0;
+        debug.max_outgoing_compression_normal_after = 0.0;
+        debug.max_outgoing_compression_normal_before = 0.0;
+        debug.outgoing_compression_branch_mask = CellDebug::CompressionBranchNone;
+        debug.outgoing_compression_contact_count = 0;
+        debug.received_move_count = 0;
+        debug.received_move_direction_mask = CellDebug::DirectionNone;
+        debug.successful_incoming_transfer_amount = 0.0f;
+        debug.successful_incoming_transfer_count = 0;
+        debug.successful_outgoing_transfer_amount = 0.0f;
+        debug.successful_outgoing_transfer_count = 0;
+    }
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
@@ -1835,6 +2044,39 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                 Vector2i targetPos = Vector2i(x, y) + direction;
 
                 if (isValidCell(targetPos)) {
+                    const size_t cellIndex = static_cast<size_t>(y) * data.width + x;
+                    CellDebug& debug = data.debug_info[cellIndex];
+                    const uint8_t directionMask = directionToMask(direction);
+                    const bool isGravityCompressionCandidate =
+                        isSupportedGranularCompressionCandidate(
+                            data,
+                            cell,
+                            Vector2i(x, y),
+                            direction,
+                            gravityMagnitude,
+                            supportOffsetY,
+                            granularSupportCache,
+                            true);
+                    const bool isJammedContactCandidate = isSupportedGranularCompressionCandidate(
+                        data,
+                        cell,
+                        Vector2i(x, y),
+                        direction,
+                        gravityMagnitude,
+                        supportOffsetY,
+                        granularSupportCache,
+                        false);
+
+                    if (isGravityCompressionCandidate) {
+                        incrementSaturating(debug.gravity_compression_candidate_count);
+                        debug.gravity_compression_candidate_direction_mask |= directionMask;
+                    }
+
+                    if (isJammedContactCandidate) {
+                        incrementSaturating(debug.jammed_contact_candidate_count);
+                        debug.jammed_contact_candidate_direction_mask |= directionMask;
+                    }
+
                     // Create enhanced MaterialMove with collision physics data.
                     MaterialMove move = collision_calc.createCollisionAwareMove(
                         *this,
@@ -1844,12 +2086,27 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                         targetPos,
                         deltaTime);
 
-                    num_moves_generated++;
-                    if (move.collision_type == CollisionType::TRANSFER_ONLY) {
-                        num_transfers_generated++;
+                    if (isGravityCompressionCandidate) {
+                        move.amount = 0.0f;
+                        move.collision_type = CollisionType::COMPRESSION_CONTACT;
+                        move.pressure_from_excess = 0.0f;
+                        move.restitution_coefficient = 0.0f;
                     }
-                    else {
-                        num_collisions_generated++;
+
+                    num_moves_generated++;
+                    switch (move.collision_type) {
+                        case CollisionType::TRANSFER_ONLY:
+                            num_transfers_generated++;
+                            break;
+                        case CollisionType::COMPRESSION_CONTACT:
+                            num_compression_generated++;
+                            break;
+                        case CollisionType::ELASTIC_REFLECTION:
+                        case CollisionType::INELASTIC_COLLISION:
+                        case CollisionType::FRAGMENTATION:
+                        case CollisionType::ABSORPTION:
+                            num_collisions_generated++;
+                            break;
                     }
 
                     // Debug logging for collision detection.
@@ -1921,11 +2178,12 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     // Log move generation statistics.
     spdlog::debug(
         "computeMaterialMoves: {} cells moving, {} boundary crossings, {} moves generated ({} "
-        "transfers, {} collisions)",
+        "transfers, {} compression contacts, {} collisions)",
         num_cells_with_velocity,
         num_boundary_crossings,
         num_moves_generated,
         num_transfers_generated,
+        num_compression_generated,
         num_collisions_generated);
 
     // Update last move count for next frame's pre-allocation.
@@ -1945,22 +2203,12 @@ void World::processMaterialMoves()
 
     ScopeTimer timer(timers, "process_moves");
 
-    for (CellDebug& debug : data.debug_info) {
-        debug.blocked_outgoing_transfer_amount = 0.0f;
-        debug.blocked_outgoing_transfer_count = 0;
-        debug.generated_move_count = 0;
-        debug.received_move_count = 0;
-        debug.successful_incoming_transfer_amount = 0.0f;
-        debug.successful_incoming_transfer_count = 0;
-        debug.successful_outgoing_transfer_amount = 0.0f;
-        debug.successful_outgoing_transfer_count = 0;
-    }
-
     // Counters for analysis.
     size_t num_moves = pending_moves.size();
     size_t num_swaps = 0;
     size_t num_swaps_from_transfers = 0;
     size_t num_swaps_from_collisions = 0;
+    size_t num_compression = 0;
     size_t num_transfers = 0;
     size_t num_elastic = 0;
     size_t num_inelastic = 0;
@@ -1974,26 +2222,40 @@ void World::processMaterialMoves()
     for (const auto& move : pending_moves) {
         const size_t fromIndex = static_cast<size_t>(move.from.y) * data.width + move.from.x;
         const size_t toIndex = static_cast<size_t>(move.to.y) * data.width + move.to.x;
+        const uint8_t generatedDirectionMask =
+            directionToMask(Vector2i{ move.to.x - move.from.x, move.to.y - move.from.y });
+        const uint8_t receivedDirectionMask =
+            directionToMask(Vector2i{ move.from.x - move.to.x, move.from.y - move.to.y });
         if (fromIndex < data.debug_info.size()) {
             CellDebug& fromDebug = data.debug_info[fromIndex];
             incrementSaturating(fromDebug.generated_move_count);
+            fromDebug.generated_move_direction_mask |= generatedDirectionMask;
         }
         if (toIndex < data.debug_info.size()) {
             CellDebug& toDebug = data.debug_info[toIndex];
             incrementSaturating(toDebug.received_move_count);
+            toDebug.received_move_direction_mask |= receivedDirectionMask;
         }
 
-        pImpl->region_activity_tracker_.noteMaterialMove(
-            move.from.x, move.from.y, move.to.x, move.to.y);
+        if (move.collision_type != CollisionType::COMPRESSION_CONTACT) {
+            pImpl->region_activity_tracker_.noteMaterialMove(
+                move.from.x, move.from.y, move.to.x, move.to.y);
+        }
 
         Cell& fromCell = data.at(move.from.x, move.from.y);
         Cell& toCell = data.at(move.to.x, move.to.y);
         const float fromFillBefore = fromCell.fill_ratio;
 
         // Apply any pressure from excess that couldn't transfer.
-        if (move.pressure_from_excess > 0.0) {
+        if (move.collision_type != CollisionType::COMPRESSION_CONTACT
+            && move.pressure_from_excess > 0.0) {
             if (toCell.material_type == Material::EnumType::Wall) {
                 fromCell.pressure += move.pressure_from_excess;
+                if (fromIndex < data.debug_info.size()) {
+                    CellDebug& fromDebug = data.debug_info[fromIndex];
+                    incrementSaturating(fromDebug.excess_move_pressure_injection_count);
+                    fromDebug.excess_move_pressure_injection_amount += move.pressure_from_excess;
+                }
 
                 spdlog::debug(
                     "Wall blocked transfer: source cell({},{}) pressure increased by {:.3f}",
@@ -2003,6 +2265,11 @@ void World::processMaterialMoves()
             }
             else {
                 toCell.pressure += move.pressure_from_excess;
+                if (toIndex < data.debug_info.size()) {
+                    CellDebug& toDebug = data.debug_info[toIndex];
+                    incrementSaturating(toDebug.excess_move_pressure_injection_count);
+                    toDebug.excess_move_pressure_injection_amount += move.pressure_from_excess;
+                }
 
                 spdlog::debug(
                     "Applied pressure from excess: cell({},{}) pressure increased by {:.3f}",
@@ -2013,7 +2280,8 @@ void World::processMaterialMoves()
         }
 
         // Check if materials should swap instead of colliding (if enabled).
-        if (settings.swap_enabled && move.collision_type != CollisionType::TRANSFER_ONLY) {
+        if (settings.swap_enabled && move.collision_type != CollisionType::TRANSFER_ONLY
+            && move.collision_type != CollisionType::COMPRESSION_CONTACT) {
             Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
             bool should_swap = collision_calc.shouldSwapMaterials(
                 *this, move.from.x, move.from.y, fromCell, toCell, direction, move);
@@ -2079,6 +2347,10 @@ void World::processMaterialMoves()
                 num_transfers++;
                 collision_calc.handleTransferMove(*this, fromCell, toCell, move);
                 break;
+            case CollisionType::COMPRESSION_CONTACT:
+                num_compression++;
+                collision_calc.handleCompressionContact(*this, fromCell, toCell, move);
+                break;
             case CollisionType::ELASTIC_REFLECTION:
                 num_elastic++;
                 collision_calc.handleElasticCollision(fromCell, toCell, move);
@@ -2135,13 +2407,14 @@ void World::processMaterialMoves()
     // Log move statistics.
     spdlog::debug(
         "processMaterialMoves: {} total moves, {} swaps ({:.1f}% - {} from transfers, {} from "
-        "collisions), {} transfers, {} elastic, {} inelastic",
+        "collisions), {} transfers, {} compression, {} elastic, {} inelastic",
         num_moves,
         num_swaps,
         num_moves > 0 ? (100.0 * num_swaps / num_moves) : 0.0,
         num_swaps_from_transfers,
         num_swaps_from_collisions,
         num_transfers,
+        num_compression,
         num_elastic,
         num_inelastic);
 
@@ -2267,9 +2540,9 @@ void World::fromJSON(const nlohmann::json& doc)
 {
     // Automatic deserialization via ReflectSerializer!
     pImpl->data_ = ReflectSerializer::from_json<WorldData>(doc);
-    pImpl->static_load_calculator_.recomputeAll(*this);
     resizeRegionDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
     markGridCacheDirty();
+    recomputeStaticLoad("static_load_deserialize_recompute");
     spdlog::info("World deserialized: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }
 

@@ -286,8 +286,10 @@ private:
     void processMaterialMoves();
     void setupBoundaryWalls();
     void ensureGridCacheFresh(const char* timerName);
+    bool isStaticLoadRecomputeNeeded() const;
     void rebuildGridCache(const char* timerName);
     void markGridCacheDirty();
+    void recomputeStaticLoad(const char* timerName);
 
     // Coordinate conversion helpers (can be public if needed).
     void pixelToCell(int pixelX, int pixelY, int& cellX, int& cellY) const;

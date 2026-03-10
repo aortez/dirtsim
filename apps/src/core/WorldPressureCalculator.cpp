@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <spdlog/spdlog.h>
 
 using namespace DirtSim;
@@ -40,6 +41,15 @@ bool shouldInjectGravityPressure(Material::EnumType materialType)
     }
 
     return true;
+}
+
+void incrementSaturating(uint16_t& value)
+{
+    if (value == std::numeric_limits<uint16_t>::max()) {
+        return;
+    }
+
+    value = static_cast<uint16_t>(value + 1);
 }
 
 } // namespace
@@ -90,6 +100,10 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
                 weight * props.pressure_injection_weight * hydrostatic_strength * deltaTime;
 
             below.pressure += pressure_contribution;
+            const size_t below_idx = static_cast<size_t>(y + 1) * data.width + x;
+            CellDebug& debug = data.debug_info[below_idx];
+            incrementSaturating(debug.hydrostatic_pressure_injection_count);
+            debug.hydrostatic_pressure_injection_amount += pressure_contribution;
         }
     }
 }
@@ -134,6 +148,11 @@ void WorldPressureCalculator::processBlockedTransfers(
                         * dynamic_strength * reflection_coefficient;
 
                     source_cell.pressure += reflected_energy;
+                    const size_t source_idx =
+                        static_cast<size_t>(transfer.fromY) * data.width + transfer.fromX;
+                    CellDebug& debug = data.debug_info[source_idx];
+                    incrementSaturating(debug.dynamic_pressure_reflection_injection_count);
+                    debug.dynamic_pressure_reflection_injection_amount += reflected_energy;
                 }
                 continue;
             }
@@ -166,6 +185,10 @@ void WorldPressureCalculator::processBlockedTransfers(
             const float weighted_energy = blocked_energy * material_weight * dynamic_strength;
 
             target_cell.pressure += weighted_energy;
+            const size_t target_idx = static_cast<size_t>(transfer.toY) * data.width + transfer.toX;
+            CellDebug& debug = data.debug_info[target_idx];
+            incrementSaturating(debug.dynamic_pressure_target_injection_count);
+            debug.dynamic_pressure_target_injection_amount += weighted_energy;
 
             spdlog::debug(
                 "Blocked transfer from ({},{}) to ({},{}): amount={:.3f}, energy={:.3f}, "

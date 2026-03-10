@@ -13,6 +13,20 @@ namespace DirtSim {
  * Owned by WorldData, referenced by GridOfCells for fast access.
  */
 struct CellDebug {
+    enum DirectionMask : uint8_t {
+        DirectionNone = 0,
+        DirectionLeft = 1 << 0,
+        DirectionRight = 1 << 1,
+        DirectionUp = 1 << 2,
+        DirectionDown = 1 << 3,
+    };
+
+    enum CompressionBranchMask : uint8_t {
+        CompressionBranchNone = 0,
+        CompressionBranchGranular = 1 << 0,
+        CompressionBranchSupport = 1 << 1,
+    };
+
     // Force accumulation for visualization.
     Vector2d accumulated_viscous_force = {};
     Vector2d accumulated_adhesion_force = {};
@@ -30,14 +44,36 @@ struct CellDebug {
     bool carries_transmitted_granular_load = false;
     bool gravity_skipped_for_support = false;
     bool has_granular_support_path = false;
+    uint8_t generated_move_direction_mask = DirectionNone;
+    uint8_t gravity_compression_candidate_direction_mask = DirectionNone;
+    uint8_t incoming_compression_branch_mask = CompressionBranchNone;
+    uint8_t jammed_contact_candidate_direction_mask = DirectionNone;
+    uint8_t outgoing_compression_branch_mask = CompressionBranchNone;
+    uint8_t received_move_direction_mask = DirectionNone;
     uint16_t generated_move_count = 0;
+    uint16_t gravity_compression_candidate_count = 0;
+    uint16_t incoming_compression_contact_count = 0;
+    uint16_t jammed_contact_candidate_count = 0;
+    uint16_t outgoing_compression_contact_count = 0;
     uint16_t received_move_count = 0;
+    uint16_t hydrostatic_pressure_injection_count = 0;
+    uint16_t dynamic_pressure_target_injection_count = 0;
+    uint16_t dynamic_pressure_reflection_injection_count = 0;
+    uint16_t excess_move_pressure_injection_count = 0;
     uint16_t successful_outgoing_transfer_count = 0;
     uint16_t successful_incoming_transfer_count = 0;
     uint16_t blocked_outgoing_transfer_count = 0;
+    float hydrostatic_pressure_injection_amount = 0.0f;
+    float dynamic_pressure_target_injection_amount = 0.0f;
+    float dynamic_pressure_reflection_injection_amount = 0.0f;
+    float excess_move_pressure_injection_amount = 0.0f;
     float successful_outgoing_transfer_amount = 0.0f;
     float successful_incoming_transfer_amount = 0.0f;
     float blocked_outgoing_transfer_amount = 0.0f;
+    double max_incoming_compression_normal_after = 0.0;
+    double max_incoming_compression_normal_before = 0.0;
+    double max_outgoing_compression_normal_after = 0.0;
+    double max_outgoing_compression_normal_before = 0.0;
 };
 
 /**

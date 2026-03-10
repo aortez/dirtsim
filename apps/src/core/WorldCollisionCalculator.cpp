@@ -14,6 +14,7 @@
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 
 using namespace DirtSim;
@@ -25,6 +26,121 @@ bool isCollisionRigid(Material::EnumType type)
 {
     return type == Material::EnumType::Metal || type == Material::EnumType::Wood
         || type == Material::EnumType::Seed || type == Material::EnumType::Wall;
+}
+
+bool isCompressionGranular(Material::EnumType type)
+{
+    return type == Material::EnumType::Dirt || type == Material::EnumType::Sand;
+}
+
+bool isCompressionSupportSink(Material::EnumType type)
+{
+    return type == Material::EnumType::Metal || type == Material::EnumType::Wall
+        || type == Material::EnumType::Wood;
+}
+
+bool shouldSuppressGranularExcessMovePressure(const Cell& fromCell, const Cell& toCell)
+{
+    if (!isCompressionGranular(fromCell.material_type)) {
+        return false;
+    }
+
+    if (toCell.isEmpty()) {
+        return false;
+    }
+
+    return isCompressionGranular(toCell.material_type)
+        || isCompressionSupportSink(toCell.material_type);
+}
+
+double computeCompressionLoadRatio(const Cell& cell, double gravity_magnitude)
+{
+    constexpr double minimum_weight_threshold = 0.001;
+
+    if (gravity_magnitude <= minimum_weight_threshold) {
+        return 0.0;
+    }
+
+    const double self_weight = cell.getMass() * gravity_magnitude;
+    if (self_weight <= minimum_weight_threshold) {
+        return 0.0;
+    }
+
+    return std::max(0.0, static_cast<double>(cell.static_load) / self_weight);
+}
+
+double computeCompressionRetainedNormalFraction(double load_ratio)
+{
+    constexpr double plastic_ratio_start = 1.25;
+    constexpr double plastic_ratio_full = 3.0;
+
+    if (load_ratio <= plastic_ratio_start) {
+        return 1.0;
+    }
+    if (load_ratio >= plastic_ratio_full) {
+        return 0.0;
+    }
+
+    const double plasticity =
+        (load_ratio - plastic_ratio_start) / (plastic_ratio_full - plastic_ratio_start);
+    return std::clamp(1.0 - plasticity, 0.0, 1.0);
+}
+
+void clampCompressionBoundaryCrossing(Cell& cell, const Vector2d& surface_normal)
+{
+    constexpr double separation_distance = 0.05;
+    Vector2d fromCOM = cell.com;
+
+    if (surface_normal.x > 0.5) {
+        fromCOM.x = std::min(fromCOM.x, 1.0 - separation_distance);
+    }
+    else if (surface_normal.x < -0.5) {
+        fromCOM.x = std::max(fromCOM.x, -1.0 + separation_distance);
+    }
+
+    if (surface_normal.y > 0.5) {
+        fromCOM.y = std::min(fromCOM.y, 1.0 - separation_distance);
+    }
+    else if (surface_normal.y < -0.5) {
+        fromCOM.y = std::max(fromCOM.y, -1.0 + separation_distance);
+    }
+
+    cell.setCOM(fromCOM);
+}
+
+void incrementSaturating(uint16_t& value)
+{
+    if (value != std::numeric_limits<uint16_t>::max()) {
+        value++;
+    }
+}
+
+void noteCompressionContactDebug(
+    CellDebug& debug,
+    bool is_outgoing,
+    uint8_t branch_mask,
+    double normal_before,
+    double normal_after)
+{
+    const double abs_before = std::abs(normal_before);
+    const double abs_after = std::abs(normal_after);
+
+    if (is_outgoing) {
+        incrementSaturating(debug.outgoing_compression_contact_count);
+        debug.outgoing_compression_branch_mask |= branch_mask;
+        debug.max_outgoing_compression_normal_before =
+            std::max(debug.max_outgoing_compression_normal_before, abs_before);
+        debug.max_outgoing_compression_normal_after =
+            std::max(debug.max_outgoing_compression_normal_after, abs_after);
+        return;
+    }
+
+    incrementSaturating(debug.incoming_compression_contact_count);
+    debug.incoming_compression_branch_mask |= branch_mask;
+    debug.max_incoming_compression_normal_before =
+        std::max(debug.max_incoming_compression_normal_before, abs_before);
+    debug.max_incoming_compression_normal_after =
+        std::max(debug.max_incoming_compression_normal_after, abs_after);
 }
 
 } // namespace
@@ -72,7 +188,8 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     const double excess = wants_to_transfer - move.amount;
     move.pressure_from_excess = 0.0;
 
-    if (excess > MIN_MATTER_THRESHOLD && world.getPhysicsSettings().pressure_dynamic_strength > 0) {
+    if (excess > MIN_MATTER_THRESHOLD && world.getPhysicsSettings().pressure_dynamic_strength > 0
+        && !shouldSuppressGranularExcessMovePressure(fromCell, toCell)) {
         const double blocked_mass = excess * Material::getDensity(fromCell.material_type);
         const double energy = fromCell.velocity.magnitude() * blocked_mass;
         const double dynamic_strength = world.getPhysicsSettings().pressure_dynamic_strength;
@@ -592,6 +709,65 @@ void WorldCollisionCalculator::handleInelasticCollision(
               fromCell.velocity,
               static_cast<float>(energy) });
     }
+}
+
+void WorldCollisionCalculator::handleCompressionContact(
+    World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move)
+{
+    const double gravity_magnitude = std::abs(world.getPhysicsSettings().gravity);
+    const Vector2d surface_normal = move.getDirection().normalize();
+    const auto from_comp = decomposeVelocity(fromCell.velocity, surface_normal);
+    const auto to_comp = decomposeVelocity(toCell.velocity, surface_normal);
+    const double from_load_ratio = computeCompressionLoadRatio(fromCell, gravity_magnitude);
+    const double from_retained_fraction = computeCompressionRetainedNormalFraction(from_load_ratio);
+    WorldData& data = world.getData();
+    const size_t from_index = static_cast<size_t>(move.from.y) * data.width + move.from.x;
+    const size_t to_index = static_cast<size_t>(move.to.y) * data.width + move.to.x;
+
+    if (toCell.isEmpty() || isCompressionSupportSink(toCell.material_type)
+        || !isCompressionGranular(toCell.material_type)) {
+        const double clamped_normal_scalar =
+            std::min(from_comp.normal_scalar, to_comp.normal_scalar) * from_retained_fraction;
+        if (from_index < data.debug_info.size()) {
+            noteCompressionContactDebug(
+                data.debug_info[from_index],
+                true,
+                CellDebug::CompressionBranchSupport,
+                from_comp.normal_scalar,
+                clamped_normal_scalar);
+        }
+        if (to_index < data.debug_info.size()) {
+            noteCompressionContactDebug(
+                data.debug_info[to_index],
+                false,
+                CellDebug::CompressionBranchSupport,
+                to_comp.normal_scalar,
+                to_comp.normal_scalar);
+        }
+        fromCell.velocity = from_comp.tangential + surface_normal * clamped_normal_scalar;
+        clampCompressionBoundaryCrossing(fromCell, surface_normal);
+        return;
+    }
+
+    if (from_index < data.debug_info.size()) {
+        noteCompressionContactDebug(
+            data.debug_info[from_index],
+            true,
+            CellDebug::CompressionBranchGranular,
+            from_comp.normal_scalar,
+            0.0);
+    }
+    if (to_index < data.debug_info.size()) {
+        noteCompressionContactDebug(
+            data.debug_info[to_index],
+            false,
+            CellDebug::CompressionBranchGranular,
+            to_comp.normal_scalar,
+            0.0);
+    }
+    fromCell.velocity = from_comp.tangential;
+    toCell.velocity = to_comp.tangential;
+    clampCompressionBoundaryCrossing(fromCell, surface_normal);
 }
 
 void WorldCollisionCalculator::handleFragmentation(
