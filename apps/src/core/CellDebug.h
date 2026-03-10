@@ -25,6 +25,19 @@ struct CellDebug {
     double damping_factor = 1.0;              // Effective damping applied to velocity.
     double cohesion_resistance = 0.0;         // Cohesion resistance threshold.
     double cached_friction_coefficient = 1.0; // Friction coefficient used this frame.
+
+    // Per-frame gravity and move diagnostics.
+    bool carries_transmitted_granular_load = false;
+    bool gravity_skipped_for_support = false;
+    bool has_granular_support_path = false;
+    uint16_t generated_move_count = 0;
+    uint16_t received_move_count = 0;
+    uint16_t successful_outgoing_transfer_count = 0;
+    uint16_t successful_incoming_transfer_count = 0;
+    uint16_t blocked_outgoing_transfer_count = 0;
+    float successful_outgoing_transfer_amount = 0.0f;
+    float successful_incoming_transfer_amount = 0.0f;
+    float blocked_outgoing_transfer_amount = 0.0f;
 };
 
 /**

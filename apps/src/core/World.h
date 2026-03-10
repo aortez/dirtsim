@@ -24,6 +24,7 @@ class WorldCollisionCalculator;
 class WorldFrictionCalculator;
 
 class WorldPressureCalculator;
+class WorldRegionActivityTracker;
 class WorldViscosityCalculator;
 class GridOfCells;
 struct LightBuffer;
@@ -227,6 +228,7 @@ public:
     // Grid cache for debug info access.
     GridOfCells& getGrid();
     const GridOfCells& getGrid() const;
+    const WorldRegionActivityTracker& getRegionActivityTracker() const;
 
     // Physics settings - public accessors for Pimpl-stored settings.
     PhysicsSettings& getPhysicsSettings();

@@ -5,6 +5,7 @@
 #include "core/Vector2i.h"
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
+#include "ui/rendering/DebugVisualizationMode.h"
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -35,7 +36,8 @@ public:
         const WorldData& worldData,
         lv_obj_t* parent,
         bool debugDraw,
-        RenderMode mode = RenderMode::SHARP);
+        RenderMode mode = RenderMode::SHARP,
+        DebugVisualizationMode debugVisualizationMode = DebugVisualizationMode::Combined);
     void cleanup();
 
     /**
@@ -95,6 +97,7 @@ private:
         int32_t cellX,
         int32_t cellY,
         bool debugDraw,
+        DebugVisualizationMode debugVisualizationMode,
         uint32_t color);
 };
 

@@ -6,6 +6,7 @@
 #include "ui/InteractionMode.h"
 #include "ui/controls/CoreControls.h"
 #include "ui/controls/IconRail.h"
+#include "ui/rendering/DebugVisualizationMode.h"
 #include "ui/rendering/RenderMode.h"
 
 #include <memory>
@@ -85,6 +86,7 @@ public:
     void presentVideoFrame(const ScenarioVideoFrame& frame);
 
     void setRenderMode(RenderMode mode);
+    void setDebugVisualizationMode(DebugVisualizationMode mode);
 
     RenderMode getRenderMode() const { return coreControlsState_.renderMode; }
 

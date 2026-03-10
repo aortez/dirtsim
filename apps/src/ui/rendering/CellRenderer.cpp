@@ -72,6 +72,222 @@ void drawLineBresenham(
     }
 }
 
+static void blendPixelOver(uint32_t* pixels, size_t pixelIdx, uint32_t rgbColor, uint8_t alpha)
+{
+    if (alpha == 0) {
+        return;
+    }
+
+    const uint32_t dstColor = pixels[pixelIdx];
+    const uint8_t invAlpha = 255 - alpha;
+
+    const uint8_t srcR = (rgbColor >> 16) & 0xFF;
+    const uint8_t srcG = (rgbColor >> 8) & 0xFF;
+    const uint8_t srcB = rgbColor & 0xFF;
+
+    const uint8_t dstR = (dstColor >> 16) & 0xFF;
+    const uint8_t dstG = (dstColor >> 8) & 0xFF;
+    const uint8_t dstB = dstColor & 0xFF;
+
+    const uint8_t r = (srcR * alpha + dstR * invAlpha) / 255;
+    const uint8_t g = (srcG * alpha + dstG * invAlpha) / 255;
+    const uint8_t b = (srcB * alpha + dstB * invAlpha) / 255;
+
+    pixels[pixelIdx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+}
+
+static void drawBorderOverlay(
+    uint32_t* pixels,
+    uint32_t canvasWidth,
+    int32_t cellX,
+    int32_t cellY,
+    uint32_t cellWidth,
+    uint32_t cellHeight,
+    int inset,
+    int borderWidth,
+    uint32_t rgbColor,
+    uint8_t alpha)
+{
+    if (alpha == 0 || borderWidth <= 0) {
+        return;
+    }
+
+    const int minX = cellX + inset;
+    const int minY = cellY + inset;
+    const int maxX = cellX + static_cast<int>(cellWidth) - 1 - inset;
+    const int maxY = cellY + static_cast<int>(cellHeight) - 1 - inset;
+
+    if (minX > maxX || minY > maxY) {
+        return;
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const bool isBorder = x < minX + borderWidth || x > maxX - borderWidth
+                || y < minY + borderWidth || y > maxY - borderWidth;
+
+            if (!isBorder) {
+                continue;
+            }
+
+            const size_t pixelIdx = static_cast<size_t>(y) * canvasWidth + x;
+            blendPixelOver(pixels, pixelIdx, rgbColor, alpha);
+        }
+    }
+}
+
+static void drawFilledOverlay(
+    uint32_t* pixels,
+    uint32_t canvasWidth,
+    int32_t cellX,
+    int32_t cellY,
+    uint32_t cellWidth,
+    uint32_t cellHeight,
+    uint32_t rgbColor,
+    uint8_t alpha)
+{
+    if (alpha == 0) {
+        return;
+    }
+
+    const int minX = cellX;
+    const int minY = cellY;
+    const int maxX = cellX + static_cast<int>(cellWidth) - 1;
+    const int maxY = cellY + static_cast<int>(cellHeight) - 1;
+
+    if (minX > maxX || minY > maxY) {
+        return;
+    }
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const size_t pixelIdx = static_cast<size_t>(y) * canvasWidth + x;
+            blendPixelOver(pixels, pixelIdx, rgbColor, alpha);
+        }
+    }
+}
+
+static int calculateLivePressureOpacity(double livePressure)
+{
+    constexpr double kOpacityScale = 25.0;
+    return std::min(static_cast<int>(livePressure * kOpacityScale), 255);
+}
+
+static int calculateStaticLoadOpacity(double staticLoad)
+{
+    if (staticLoad <= 0.0) {
+        return 0;
+    }
+
+    constexpr double kOpacityScale = 48.0;
+    return std::min(static_cast<int>(std::log1p(staticLoad) * kOpacityScale), 255);
+}
+
+static bool shouldDrawCom(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+        case DebugVisualizationMode::RegionActivity:
+        case DebugVisualizationMode::StaticLoad:
+            return true;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawLivePressureBorder(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+            return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
+        case DebugVisualizationMode::StaticLoad:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawPressureGradient(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::LivePressure:
+            return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
+        case DebugVisualizationMode::StaticLoad:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawStaticLoadBorder(DebugVisualizationMode mode)
+{
+    switch (mode) {
+        case DebugVisualizationMode::Combined:
+        case DebugVisualizationMode::StaticLoad:
+            return true;
+        case DebugVisualizationMode::RegionActivity:
+            return false;
+        case DebugVisualizationMode::LivePressure:
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool shouldDrawRegionOverlay(DebugVisualizationMode mode)
+{
+    return mode == DebugVisualizationMode::RegionActivity;
+}
+
+static uint8_t getRegionOverlayBorderAlpha(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 210;
+        case RegionState::LoadedQuiet:
+            return 180;
+        case RegionState::Sleeping:
+            return 220;
+    }
+
+    return 180;
+}
+
+static uint32_t getRegionOverlayColor(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 0xFF6A00;
+        case RegionState::LoadedQuiet:
+            return 0x2B8CFF;
+        case RegionState::Sleeping:
+            return 0x1ED760;
+    }
+
+    return 0xFFFFFF;
+}
+
+static uint8_t getRegionOverlayFillAlpha(RegionState state)
+{
+    switch (state) {
+        case RegionState::Awake:
+            return 36;
+        case RegionState::LoadedQuiet:
+            return 28;
+        case RegionState::Sleeping:
+            return 22;
+    }
+
+    return 24;
+}
+
 // Calculate optimal pixels per cell based on world size, container size, and scale factor.
 // The scale factor determines the ratio of canvas size to container size.
 // Scale > 1.0 creates a larger canvas (downscaling = sharper).
@@ -472,7 +688,11 @@ void CellRenderer::resize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHei
 }
 
 void CellRenderer::renderWorldData(
-    const WorldData& worldData, lv_obj_t* parent, bool debugDraw, RenderMode mode)
+    const WorldData& worldData,
+    lv_obj_t* parent,
+    bool debugDraw,
+    RenderMode mode,
+    DebugVisualizationMode debugVisualizationMode)
 {
     // Validate input.
     if (!parent || worldData.width == 0 || worldData.height == 0) {
@@ -750,53 +970,47 @@ void CellRenderer::renderWorldData(
                 if (debugDraw && !cell.isEmpty() && cell.material_type != Material::EnumType::Air) {
                     // Pressure visualization (fixed-width borders with variable opacity).
                     if (scaledCellWidth_ >= 4) {
-                        // Calculate opacity from unified pressure.
-                        const double PRESSURE_OPACITY_SCALE = 25.0;
-                        int pressure_opacity =
-                            std::min(static_cast<int>(cell.pressure * PRESSURE_OPACITY_SCALE), 255);
-
-                        // Fixed border widths.
+                        const int livePressureOpacity = calculateLivePressureOpacity(cell.pressure);
+                        const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
                         const int FIXED_BORDER_WIDTH = std::max(1, static_cast<int>(2 * scaleX_));
 
-                        // Unified pressure border (cyan).
-                        if (pressure_opacity > 0) {
-                            uint32_t cyan_color = 0x00FFFF;
-                            uint8_t alpha = static_cast<uint8_t>(pressure_opacity * 0.5);
+                        if (shouldDrawLivePressureBorder(debugVisualizationMode)
+                            && livePressureOpacity > 0) {
+                            drawBorderOverlay(
+                                pixels,
+                                canvasWidth_,
+                                cellX,
+                                cellY,
+                                scaledCellWidth_,
+                                scaledCellHeight_,
+                                0,
+                                FIXED_BORDER_WIDTH,
+                                0x00FFFF,
+                                static_cast<uint8_t>(livePressureOpacity * 0.5));
+                        }
 
-                            for (uint32_t py = 0; py < scaledCellHeight_; py++) {
-                                for (uint32_t px = 0; px < scaledCellWidth_; px++) {
-                                    bool is_border =
-                                        (px < static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || px >= scaledCellWidth_
-                                                 - static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || py < static_cast<uint32_t>(FIXED_BORDER_WIDTH)
-                                         || py >= scaledCellHeight_
-                                                 - static_cast<uint32_t>(FIXED_BORDER_WIDTH));
+                        const int staticLoadInset =
+                            debugVisualizationMode == DebugVisualizationMode::StaticLoad
+                            ? 0
+                            : FIXED_BORDER_WIDTH + 1;
+                        const bool canDrawStaticLoad = static_cast<int>(scaledCellWidth_)
+                                > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
+                            && static_cast<int>(scaledCellHeight_)
+                                > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
 
-                                    if (is_border) {
-                                        uint32_t pixelIdx =
-                                            (cellY + py) * canvasWidth_ + (cellX + px);
-                                        uint32_t src_color = (alpha << 24) | cyan_color;
-
-                                        uint32_t dst_color = pixels[pixelIdx];
-                                        uint8_t inv_alpha = 255 - alpha;
-
-                                        uint8_t src_r = (src_color >> 16) & 0xFF;
-                                        uint8_t src_g = (src_color >> 8) & 0xFF;
-                                        uint8_t src_b = src_color & 0xFF;
-
-                                        uint8_t dst_r = (dst_color >> 16) & 0xFF;
-                                        uint8_t dst_g = (dst_color >> 8) & 0xFF;
-                                        uint8_t dst_b = dst_color & 0xFF;
-
-                                        uint8_t r = (src_r * alpha + dst_r * inv_alpha) / 255;
-                                        uint8_t g = (src_g * alpha + dst_g * inv_alpha) / 255;
-                                        uint8_t b = (src_b * alpha + dst_b * inv_alpha) / 255;
-
-                                        pixels[pixelIdx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                                    }
-                                }
-                            }
+                        if (shouldDrawStaticLoadBorder(debugVisualizationMode) && canDrawStaticLoad
+                            && staticLoadOpacity > 0) {
+                            drawBorderOverlay(
+                                pixels,
+                                canvasWidth_,
+                                cellX,
+                                cellY,
+                                scaledCellWidth_,
+                                scaledCellHeight_,
+                                staticLoadInset,
+                                FIXED_BORDER_WIDTH,
+                                0xFFB000,
+                                static_cast<uint8_t>(staticLoadOpacity * 0.7));
                         }
                     }
                 }
@@ -836,7 +1050,8 @@ void CellRenderer::renderWorldData(
                         + static_cast<int>((cell.com.y + 1.0) * (scaledCellHeight_ - 1) / 2.0);
 
                     // Pressure gradient vector (cyan line from COM).
-                    if (cell.pressure_gradient.magnitude() > 0.001) {
+                    if (shouldDrawPressureGradient(debugVisualizationMode)
+                        && cell.pressure_gradient.magnitude() > 0.001) {
                         const double GRADIENT_SCALE = scaleX_;
                         const int end_x = com_pixel_x
                             + static_cast<int>(cell.pressure_gradient.x * GRADIENT_SCALE);
@@ -855,7 +1070,7 @@ void CellRenderer::renderWorldData(
                 }
             }
 
-            // Third pass: Draw COM indicators (absolute last, never obscured).
+            // Third pass: Draw COM indicators before any region overlay is applied.
             for (int16_t y = 0; y < worldData.height; ++y) {
                 for (int16_t x = 0; x < worldData.width; ++x) {
                     size_t idx = static_cast<size_t>(y) * worldData.width + x;
@@ -874,6 +1089,10 @@ void CellRenderer::renderWorldData(
                     int com_pixel_y = cellY
                         + static_cast<int>((cell.com.y + 1.0) * (scaledCellHeight_ - 1) / 2.0);
 
+                    if (!shouldDrawCom(debugVisualizationMode)) {
+                        continue;
+                    }
+
                     // Bounds check.
                     if (com_pixel_x >= 0 && com_pixel_x < static_cast<int>(canvasWidth_)
                         && com_pixel_y >= 0 && com_pixel_y < static_cast<int>(canvasHeight_)) {
@@ -881,6 +1100,64 @@ void CellRenderer::renderWorldData(
                         // Yellow pixel for COM (same as LVGL debug draw).
                         pixels[comPixelIdx] = 0xFFFFFF00; // ARGB: full alpha, yellow.
                     }
+                }
+            }
+        }
+
+        if (debugDraw && shouldDrawRegionOverlay(debugVisualizationMode)
+            && worldData.region_debug_blocks_x > 0 && worldData.region_debug_blocks_y > 0
+            && !worldData.region_debug.empty()) {
+            const int borderWidth = std::max(1, static_cast<int>(3 * scaleX_));
+
+            for (int block_y = 0; block_y < worldData.region_debug_blocks_y; ++block_y) {
+                for (int block_x = 0; block_x < worldData.region_debug_blocks_x; ++block_x) {
+                    const size_t region_idx =
+                        static_cast<size_t>(block_y) * worldData.region_debug_blocks_x + block_x;
+                    if (region_idx >= worldData.region_debug.size()) {
+                        continue;
+                    }
+
+                    const int start_cell_x = block_x * 8;
+                    const int start_cell_y = block_y * 8;
+                    const int region_cells_w = std::min(8, worldData.width - start_cell_x);
+                    const int region_cells_h = std::min(8, worldData.height - start_cell_y);
+                    if (region_cells_w <= 0 || region_cells_h <= 0) {
+                        continue;
+                    }
+
+                    const RegionState state =
+                        static_cast<RegionState>(worldData.region_debug[region_idx].state);
+                    const uint32_t color = getRegionOverlayColor(state);
+
+                    const int32_t region_x =
+                        renderOffsetX + start_cell_x * static_cast<int32_t>(scaledCellWidth_);
+                    const int32_t region_y =
+                        renderOffsetY + start_cell_y * static_cast<int32_t>(scaledCellHeight_);
+                    const uint32_t region_width =
+                        static_cast<uint32_t>(region_cells_w) * scaledCellWidth_;
+                    const uint32_t region_height =
+                        static_cast<uint32_t>(region_cells_h) * scaledCellHeight_;
+
+                    drawFilledOverlay(
+                        pixels,
+                        canvasWidth_,
+                        region_x,
+                        region_y,
+                        region_width,
+                        region_height,
+                        color,
+                        getRegionOverlayFillAlpha(state));
+                    drawBorderOverlay(
+                        pixels,
+                        canvasWidth_,
+                        region_x,
+                        region_y,
+                        region_width,
+                        region_height,
+                        0,
+                        borderWidth,
+                        color,
+                        getRegionOverlayBorderAlpha(state));
                 }
             }
         }
@@ -929,7 +1206,60 @@ void CellRenderer::renderWorldData(
                 uint32_t cellColor = (idx < worldData.colors.size())
                     ? ColorNames::toRgba(worldData.colors.data[idx])
                     : 0x000000FF;
-                renderCellLVGL(cell, debug, layer, cellX, cellY, debugDraw, cellColor);
+                renderCellLVGL(
+                    cell, debug, layer, cellX, cellY, debugDraw, debugVisualizationMode, cellColor);
+            }
+        }
+
+        if (debugDraw && shouldDrawRegionOverlay(debugVisualizationMode)
+            && worldData.region_debug_blocks_x > 0 && worldData.region_debug_blocks_y > 0
+            && !worldData.region_debug.empty()) {
+            const int borderWidth = std::max(1, static_cast<int>(3 * scaleX_));
+
+            for (int block_y = 0; block_y < worldData.region_debug_blocks_y; ++block_y) {
+                for (int block_x = 0; block_x < worldData.region_debug_blocks_x; ++block_x) {
+                    const size_t region_idx =
+                        static_cast<size_t>(block_y) * worldData.region_debug_blocks_x + block_x;
+                    if (region_idx >= worldData.region_debug.size()) {
+                        continue;
+                    }
+
+                    const int start_cell_x = block_x * 8;
+                    const int start_cell_y = block_y * 8;
+                    const int region_cells_w = std::min(8, worldData.width - start_cell_x);
+                    const int region_cells_h = std::min(8, worldData.height - start_cell_y);
+                    if (region_cells_w <= 0 || region_cells_h <= 0) {
+                        continue;
+                    }
+
+                    const RegionState state =
+                        static_cast<RegionState>(worldData.region_debug[region_idx].state);
+                    const uint32_t color = getRegionOverlayColor(state);
+
+                    lv_draw_rect_dsc_t region_dsc;
+                    lv_draw_rect_dsc_init(&region_dsc);
+                    region_dsc.bg_color = lv_color_hex(color);
+                    region_dsc.bg_opa = static_cast<lv_opa_t>(getRegionOverlayFillAlpha(state));
+                    region_dsc.border_color = lv_color_hex(color);
+                    region_dsc.border_opa =
+                        static_cast<lv_opa_t>(getRegionOverlayBorderAlpha(state));
+                    region_dsc.border_width = borderWidth;
+                    region_dsc.radius = 0;
+
+                    lv_area_t region_coords = {
+                        renderOffsetX + start_cell_x * static_cast<int32_t>(scaledCellWidth_),
+                        renderOffsetY + start_cell_y * static_cast<int32_t>(scaledCellHeight_),
+                        renderOffsetX
+                            + (start_cell_x + region_cells_w)
+                                * static_cast<int32_t>(scaledCellWidth_)
+                            - 1,
+                        renderOffsetY
+                            + (start_cell_y + region_cells_h)
+                                * static_cast<int32_t>(scaledCellHeight_)
+                            - 1,
+                    };
+                    lv_draw_rect(&layer, &region_dsc, &region_coords);
+                }
             }
         }
 
@@ -1009,6 +1339,7 @@ void CellRenderer::renderCellLVGL(
     int32_t cellX,
     int32_t cellY,
     bool debugDraw,
+    DebugVisualizationMode debugVisualizationMode,
     uint32_t color)
 {
     // Bounds check - skip cells outside canvas.
@@ -1056,21 +1387,22 @@ void CellRenderer::renderCellLVGL(
             int square_size = std::max(2, static_cast<int>(6 * scaleX_));
             int half_size = square_size / 2;
 
-            // COM indicator (yellow square)
-            lv_draw_rect_dsc_t com_rect_dsc;
-            lv_draw_rect_dsc_init(&com_rect_dsc);
-            com_rect_dsc.bg_color = lv_color_hex(0xFFFF00);
-            com_rect_dsc.bg_opa = LV_OPA_COVER;
-            com_rect_dsc.border_color = lv_color_hex(0xCC9900);
-            com_rect_dsc.border_opa = LV_OPA_COVER;
-            com_rect_dsc.border_width = 1;
-            com_rect_dsc.radius = 0;
+            if (shouldDrawCom(debugVisualizationMode)) {
+                lv_draw_rect_dsc_t com_rect_dsc;
+                lv_draw_rect_dsc_init(&com_rect_dsc);
+                com_rect_dsc.bg_color = lv_color_hex(0xFFFF00);
+                com_rect_dsc.bg_opa = LV_OPA_COVER;
+                com_rect_dsc.border_color = lv_color_hex(0xCC9900);
+                com_rect_dsc.border_opa = LV_OPA_COVER;
+                com_rect_dsc.border_width = 1;
+                com_rect_dsc.radius = 0;
 
-            lv_area_t com_coords = { com_pixel_x - half_size,
-                                     com_pixel_y - half_size,
-                                     com_pixel_x + half_size - 1,
-                                     com_pixel_y + half_size - 1 };
-            lv_draw_rect(&layer, &com_rect_dsc, &com_coords);
+                lv_area_t com_coords = { com_pixel_x - half_size,
+                                         com_pixel_y - half_size,
+                                         com_pixel_x + half_size - 1,
+                                         com_pixel_y + half_size - 1 };
+                lv_draw_rect(&layer, &com_rect_dsc, &com_coords);
+            }
 
             // Velocity vector (green line)
             if (scaledCellWidth_ >= 10 && cell.velocity.magnitude() > 0.01) {
@@ -1091,21 +1423,17 @@ void CellRenderer::renderCellLVGL(
 
             // Pressure visualization (fixed-width borders with variable opacity).
             if (scaledCellWidth_ >= 10) {
-                // Fixed border widths.
                 const int FIXED_BORDER_WIDTH = std::max(1, static_cast<int>(2 * scaleX_));
+                const int livePressureOpacity = calculateLivePressureOpacity(cell.pressure);
+                const int staticLoadOpacity = calculateStaticLoadOpacity(cell.static_load);
 
-                // Calculate opacity from unified pressure.
-                const double PRESSURE_OPACITY_SCALE = 25.0;
-                int pressure_opacity =
-                    std::min(static_cast<int>(cell.pressure * PRESSURE_OPACITY_SCALE), 255);
-
-                // Unified pressure border (cyan).
-                if (pressure_opacity > 0) {
+                if (shouldDrawLivePressureBorder(debugVisualizationMode)
+                    && livePressureOpacity > 0) {
                     lv_draw_rect_dsc_t pressure_dsc;
                     lv_draw_rect_dsc_init(&pressure_dsc);
                     pressure_dsc.bg_opa = LV_OPA_TRANSP;
                     pressure_dsc.border_color = lv_color_hex(0x00FFFF);
-                    pressure_dsc.border_opa = static_cast<lv_opa_t>(pressure_opacity);
+                    pressure_dsc.border_opa = static_cast<lv_opa_t>(livePressureOpacity);
                     pressure_dsc.border_width = FIXED_BORDER_WIDTH;
                     pressure_dsc.radius = 0;
 
@@ -1115,10 +1443,39 @@ void CellRenderer::renderCellLVGL(
                                                   cellY + static_cast<int>(scaledCellHeight_) - 1 };
                     lv_draw_rect(&layer, &pressure_dsc, &pressure_coords);
                 }
+
+                const int staticLoadInset =
+                    debugVisualizationMode == DebugVisualizationMode::StaticLoad
+                    ? 0
+                    : FIXED_BORDER_WIDTH + 1;
+                const bool canDrawStaticLoad =
+                    static_cast<int>(scaledCellWidth_) > 2 * (staticLoadInset + FIXED_BORDER_WIDTH)
+                    && static_cast<int>(scaledCellHeight_)
+                        > 2 * (staticLoadInset + FIXED_BORDER_WIDTH);
+
+                if (shouldDrawStaticLoadBorder(debugVisualizationMode) && canDrawStaticLoad
+                    && staticLoadOpacity > 0) {
+                    lv_draw_rect_dsc_t static_load_dsc;
+                    lv_draw_rect_dsc_init(&static_load_dsc);
+                    static_load_dsc.bg_opa = LV_OPA_TRANSP;
+                    static_load_dsc.border_color = lv_color_hex(0xFFB000);
+                    static_load_dsc.border_opa = static_cast<lv_opa_t>(staticLoadOpacity);
+                    static_load_dsc.border_width = FIXED_BORDER_WIDTH;
+                    static_load_dsc.radius = 0;
+
+                    lv_area_t static_load_coords = {
+                        cellX + staticLoadInset,
+                        cellY + staticLoadInset,
+                        cellX + static_cast<int>(scaledCellWidth_) - 1 - staticLoadInset,
+                        cellY + static_cast<int>(scaledCellHeight_) - 1 - staticLoadInset,
+                    };
+                    lv_draw_rect(&layer, &static_load_dsc, &static_load_coords);
+                }
             }
 
             // Pressure gradient vector (cyan line from center).
-            if (scaledCellWidth_ >= 12 && cell.pressure_gradient.magnitude() > 0.001) {
+            if (shouldDrawPressureGradient(debugVisualizationMode) && scaledCellWidth_ >= 12
+                && cell.pressure_gradient.magnitude() > 0.001) {
                 const double GRADIENT_SCALE = 10 * scaleX_;
                 int end_x =
                     com_pixel_x + static_cast<int>(cell.pressure_gradient.x * GRADIENT_SCALE);

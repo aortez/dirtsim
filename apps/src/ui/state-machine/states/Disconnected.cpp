@@ -375,6 +375,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.height = renderMsg.height;
             worldData.timestep = renderMsg.timestep;
             worldData.fps_server = renderMsg.fps_server;
+            worldData.region_debug_blocks_x = renderMsg.region_blocks_x;
+            worldData.region_debug_blocks_y = renderMsg.region_blocks_y;
+            worldData.region_debug = renderMsg.region_debug;
 
             size_t numCells = renderMsg.width * renderMsg.height;
             if (!renderMsg.scenario_video_frame.has_value()) {
@@ -395,7 +398,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                         worldData.cells[i].render_as = unpacked.render_as;
                         worldData.cells[i].com = unpacked.com;
                         worldData.cells[i].velocity = unpacked.velocity;
-                        worldData.cells[i].pressure = unpacked.pressure_hydro;
+                        worldData.cells[i].static_load = unpacked.pressure_hydro;
+                        worldData.cells[i].pressure = unpacked.pressure_dynamic;
                         worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
                     }
                 }
