@@ -69,40 +69,6 @@ public:
         return ProfilingSnapshot{};
     }
 
-    std::optional<DebugSnapshot> copyDebugSnapshot() const override
-    {
-        return DebugSnapshot{
-            .lastControllerSet =
-                DebugControllerEvent{
-                    .sequence = 1u,
-                    .renderedFrames = 2u,
-                    .targetFrames = 3u,
-                    .controllerMask = lastControllerMask_,
-                },
-            .lastFrameBegin =
-                DebugControllerEvent{
-                    .sequence = 4u,
-                    .renderedFrames = 5u,
-                    .targetFrames = 6u,
-                    .controllerMask = lastControllerMask_,
-                },
-            .lastFrameSubmit =
-                DebugFrameSubmitEvent{
-                    .sequence = 7u,
-                    .renderedFramesAfter = renderedFrameCount_,
-                    .targetFrames = renderedFrameCount_,
-                },
-            .lastRunFramesRequest =
-                DebugRunFramesRequestEvent{
-                    .sequence = 8u,
-                    .renderedFrames = renderedFrameCount_,
-                    .targetFramesAfter = renderedFrameCount_ + 1u,
-                    .targetFramesBefore = renderedFrameCount_,
-                    .requestedFrameCount = 1u,
-                },
-        };
-    }
-
     void setApuSampleCallback(SmolnesApuSampleCallback /*callback*/, void* /*userdata*/) override {}
     void setSelfPacing(bool /*enabled*/) override {}
     std::string getLastError() const override { return {}; }
@@ -173,10 +139,6 @@ TEST(NesSmolnesScenarioDriverTest, StepUsesInjectedRuntimeFactory)
     EXPECT_EQ(stepResult.renderedFramesBefore, 0u);
     EXPECT_EQ(stepResult.renderedFramesAfter, 1u);
     EXPECT_EQ(stepResult.advancedFrames, 1u);
-    ASSERT_TRUE(stepResult.runtimeDebugSnapshot.has_value());
-    EXPECT_EQ(stepResult.runtimeDebugSnapshot->lastControllerSet.controllerMask, 0x93u);
-    EXPECT_EQ(stepResult.runtimeDebugSnapshot->lastFrameBegin.sequence, 4u);
-    EXPECT_EQ(stepResult.runtimeDebugSnapshot->lastFrameSubmit.renderedFramesAfter, 1u);
     ASSERT_TRUE(stepResult.memorySnapshot.has_value());
     EXPECT_EQ(stepResult.memorySnapshot->cpuRam[0x10], 0xABu);
     EXPECT_EQ(stepResult.memorySnapshot->prgRam[0x20], 0xCDu);

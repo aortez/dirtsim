@@ -68,7 +68,6 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadPresentCalls;
     double memorySnapshotCopyMs;
     uint64_t memorySnapshotCopyCalls;
-    uint64_t debugSequence;
 
     uint8_t latchedController1State;
     uint8_t pendingController1State;
@@ -95,11 +94,6 @@ struct SmolnesRuntimeHandle {
     bool selfPacing;
     double selfPacingOriginMs;
     uint64_t selfPacingOriginFrame;
-
-    SmolnesRuntimeDebugControllerEvent lastControllerSet;
-    SmolnesRuntimeDebugControllerEvent lastFrameBegin;
-    SmolnesRuntimeDebugFrameSubmitEvent lastFrameSubmit;
-    SmolnesRuntimeDebugRunFramesRequestEvent lastRunFramesRequest;
 };
 
 // NTSC NES frame period: CPU clock 1789773 Hz / 29780.5 cycles per frame ≈ 60.0988 fps.
@@ -175,48 +169,6 @@ static void mapController1StateToKeyboard(uint8_t controller1State, uint8_t* key
     keyboardState[SDL_SCANCODE_DOWN] = (controller1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
     keyboardState[SDL_SCANCODE_LEFT] = (controller1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
     keyboardState[SDL_SCANCODE_RIGHT] = (controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
-}
-
-static uint64_t nextDebugSequenceLocked(SmolnesRuntimeHandle* runtime)
-{
-    runtime->debugSequence++;
-    return runtime->debugSequence;
-}
-
-static void recordControllerSetLocked(SmolnesRuntimeHandle* runtime, uint8_t buttonMask)
-{
-    runtime->lastControllerSet.sequence = nextDebugSequenceLocked(runtime);
-    runtime->lastControllerSet.rendered_frames = runtime->renderedFrames;
-    runtime->lastControllerSet.target_frames = runtime->targetFrames;
-    runtime->lastControllerSet.controller_mask = buttonMask;
-}
-
-static void recordFrameBeginLocked(SmolnesRuntimeHandle* runtime, uint8_t controllerMask)
-{
-    runtime->lastFrameBegin.sequence = nextDebugSequenceLocked(runtime);
-    runtime->lastFrameBegin.rendered_frames = runtime->renderedFrames;
-    runtime->lastFrameBegin.target_frames = runtime->targetFrames;
-    runtime->lastFrameBegin.controller_mask = controllerMask;
-}
-
-static void recordFrameSubmitLocked(SmolnesRuntimeHandle* runtime)
-{
-    runtime->lastFrameSubmit.sequence = nextDebugSequenceLocked(runtime);
-    runtime->lastFrameSubmit.rendered_frames_after = runtime->renderedFrames;
-    runtime->lastFrameSubmit.target_frames = runtime->targetFrames;
-}
-
-static void recordRunFramesRequestLocked(
-    SmolnesRuntimeHandle* runtime,
-    uint32_t requestedFrameCount,
-    uint64_t targetFramesBefore,
-    uint64_t targetFramesAfter)
-{
-    runtime->lastRunFramesRequest.sequence = nextDebugSequenceLocked(runtime);
-    runtime->lastRunFramesRequest.rendered_frames = runtime->renderedFrames;
-    runtime->lastRunFramesRequest.target_frames_before = targetFramesBefore;
-    runtime->lastRunFramesRequest.target_frames_after = targetFramesAfter;
-    runtime->lastRunFramesRequest.requested_frame_count = requestedFrameCount;
 }
 
 static void recordIdleWaitLocked(SmolnesRuntimeHandle* runtime, double waitMs)
@@ -543,8 +495,7 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
     }
     runtime->waitingForInitialFrameRequest = false;
     runtime->latchedController1State = runtime->pendingController1State;
-    const uint8_t controller1State = latchThreadKeyboardStateFromRuntime(runtime);
-    recordFrameBeginLocked(runtime, controller1State);
+    latchThreadKeyboardStateFromRuntime(runtime);
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gFrameExecutionStartMs = monotonicNowMs();
     gFrameExecutionActive = true;
@@ -735,7 +686,6 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             if (runtime->targetFrames < runtime->renderedFrames) {
                 runtime->targetFrames = runtime->renderedFrames;
             }
-            recordFrameSubmitLocked(runtime);
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
@@ -766,7 +716,6 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             refreshMemorySnapshotLocked(runtime);
             ++runtime->renderedFrames;
             runtime->latestFrameId = runtime->renderedFrames;
-            recordFrameSubmitLocked(runtime);
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
@@ -993,16 +942,11 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runtimeThreadPresentCalls = 0;
     runtime->memorySnapshotCopyMs = 0.0;
     runtime->memorySnapshotCopyCalls = 0;
-    runtime->debugSequence = 0;
     memset(runtime->latestFrame, 0, sizeof(runtime->latestFrame));
     memset(runtime->latestPaletteFrame, 0, sizeof(runtime->latestPaletteFrame));
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
     memset(&runtime->apuSnapshot, 0, sizeof(runtime->apuSnapshot));
-    memset(&runtime->lastControllerSet, 0, sizeof(runtime->lastControllerSet));
-    memset(&runtime->lastFrameBegin, 0, sizeof(runtime->lastFrameBegin));
-    memset(&runtime->lastFrameSubmit, 0, sizeof(runtime->lastFrameSubmit));
-    memset(&runtime->lastRunFramesRequest, 0, sizeof(runtime->lastRunFramesRequest));
     runtime->hasApuSnapshot = false;
     memset(runtime->apuSampleBuffer, 0, sizeof(runtime->apuSampleBuffer));
     runtime->apuSampleBufferCount = 0;
@@ -1049,10 +993,8 @@ bool smolnesRuntimeRunFrames(SmolnesRuntimeHandle* runtime, uint32_t frameCount,
         return false;
     }
 
-    const uint64_t targetFramesBefore = runtime->targetFrames;
     const uint64_t requestedFrames = runtime->targetFrames + frameCount;
     runtime->targetFrames = requestedFrames;
-    recordRunFramesRequestLocked(runtime, frameCount, targetFramesBefore, requestedFrames);
     pthread_cond_broadcast(&runtime->runtimeCond);
 
     const struct timespec deadline = buildDeadline(timeoutMs);
@@ -1161,7 +1103,6 @@ void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t bu
 
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->pendingController1State = buttonMask;
-    recordControllerSetLocked(runtime, buttonMask);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
@@ -1288,23 +1229,6 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->runtime_thread_present_calls = mutableRuntime->runtimeThreadPresentCalls;
     snapshotOut->memory_snapshot_copy_ms = mutableRuntime->memorySnapshotCopyMs;
     snapshotOut->memory_snapshot_copy_calls = mutableRuntime->memorySnapshotCopyCalls;
-    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
-    return true;
-}
-
-bool smolnesRuntimeCopyDebugSnapshot(
-    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeDebugSnapshot* snapshotOut)
-{
-    if (runtime == NULL || snapshotOut == NULL) {
-        return false;
-    }
-
-    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
-    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
-    snapshotOut->last_controller_set = mutableRuntime->lastControllerSet;
-    snapshotOut->last_frame_begin = mutableRuntime->lastFrameBegin;
-    snapshotOut->last_frame_submit = mutableRuntime->lastFrameSubmit;
-    snapshotOut->last_run_frames_request = mutableRuntime->lastRunFramesRequest;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }

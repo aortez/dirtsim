@@ -76,7 +76,6 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 {
     stopRuntime();
     controller1State_ = 0;
-    lastRuntimeDebugSnapshot_.reset();
     runtimeResolvedRomId_.clear();
     lastRuntimeProfilingSnapshot_.reset();
 
@@ -117,7 +116,6 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
     }
 
     runtime_->setController1State(controller1State_);
-    lastRuntimeDebugSnapshot_ = runtime_->copyDebugSnapshot();
     lastRuntimeProfilingSnapshot_ = runtime_->copyProfilingSnapshot();
 
     if (audioPlaybackEnabled_ && !audioPlayer_) {
@@ -157,7 +155,6 @@ NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
     stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
     stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
     stepResult.lastError = runtime_ ? runtime_->getLastError() : std::string{};
-    stepResult.runtimeDebugSnapshot = lastRuntimeDebugSnapshot_;
     if (!runtime_ || !stepResult.runtimeRunning) {
         return stepResult;
     }
@@ -266,8 +263,6 @@ NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
         stepResult.memorySnapshot = runtime_->copyMemorySnapshot();
     }
 
-    lastRuntimeDebugSnapshot_ = runtime_->copyDebugSnapshot();
-    stepResult.runtimeDebugSnapshot = lastRuntimeDebugSnapshot_;
     updateRuntimeProfilingTimers(timers);
     stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
     stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
@@ -316,12 +311,6 @@ std::optional<NesPaletteFrame> NesSmolnesScenarioDriver::copyRuntimePaletteFrame
         return std::nullopt;
     }
     return runtime_->copyLatestPaletteFrame();
-}
-
-std::optional<SmolnesRuntime::DebugSnapshot> NesSmolnesScenarioDriver::copyRuntimeDebugSnapshot()
-    const
-{
-    return lastRuntimeDebugSnapshot_;
 }
 
 std::optional<SmolnesRuntime::MemorySnapshot> NesSmolnesScenarioDriver::copyRuntimeMemorySnapshot()
@@ -416,7 +405,6 @@ void NesSmolnesScenarioDriver::stopRuntime()
     runtime_->setSelfPacing(false);
     runtime_->stop();
     audioPlayer_.reset();
-    lastRuntimeDebugSnapshot_.reset();
     lastRuntimeProfilingSnapshot_.reset();
 }
 

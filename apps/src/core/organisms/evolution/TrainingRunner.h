@@ -81,34 +81,6 @@ public:
         std::optional<std::string> brainVariant;
     };
 
-    struct NesRuntimeDebugControllerEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFrames = 0;
-        uint64_t targetFrames = 0;
-        uint8_t controllerMask = 0;
-    };
-
-    struct NesRuntimeDebugFrameSubmitEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFramesAfter = 0;
-        uint64_t targetFrames = 0;
-    };
-
-    struct NesRuntimeDebugRunFramesRequestEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFrames = 0;
-        uint64_t targetFramesAfter = 0;
-        uint64_t targetFramesBefore = 0;
-        uint32_t requestedFrameCount = 0;
-    };
-
-    struct NesRuntimeDebugSnapshot {
-        NesRuntimeDebugControllerEvent lastControllerSet{};
-        NesRuntimeDebugControllerEvent lastFrameBegin{};
-        NesRuntimeDebugFrameSubmitEvent lastFrameSubmit{};
-        NesRuntimeDebugRunFramesRequestEvent lastRunFramesRequest{};
-    };
-
     struct NesFrameTrace {
         uint64_t advancedFrames = 0;
         uint64_t renderedFramesAfter = 0;
@@ -123,7 +95,6 @@ public:
         std::optional<NesGameAdapterDebugState> debugState = std::nullopt;
         std::optional<uint8_t> lastGameStateAfter = std::nullopt;
         std::optional<uint8_t> lastGameStateBefore = std::nullopt;
-        std::optional<NesRuntimeDebugSnapshot> runtimeDebugSnapshot = std::nullopt;
         std::string commandOutcome;
         std::string commandSignature;
     };

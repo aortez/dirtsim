@@ -47,34 +47,6 @@ public:
         uint64_t memorySnapshotCopyCalls = 0;
     };
 
-    struct DebugControllerEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFrames = 0;
-        uint64_t targetFrames = 0;
-        uint8_t controllerMask = 0;
-    };
-
-    struct DebugFrameSubmitEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFramesAfter = 0;
-        uint64_t targetFrames = 0;
-    };
-
-    struct DebugRunFramesRequestEvent {
-        uint64_t sequence = 0;
-        uint64_t renderedFrames = 0;
-        uint64_t targetFramesAfter = 0;
-        uint64_t targetFramesBefore = 0;
-        uint32_t requestedFrameCount = 0;
-    };
-
-    struct DebugSnapshot {
-        DebugControllerEvent lastControllerSet{};
-        DebugControllerEvent lastFrameBegin{};
-        DebugFrameSubmitEvent lastFrameSubmit{};
-        DebugRunFramesRequestEvent lastRunFramesRequest{};
-    };
-
     SmolnesRuntime();
     virtual ~SmolnesRuntime();
 
@@ -120,7 +92,6 @@ public:
     };
 
     virtual std::optional<MemorySnapshot> copyMemorySnapshot() const;
-    virtual std::optional<DebugSnapshot> copyDebugSnapshot() const;
     virtual std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
     virtual std::optional<ApuSnapshot> copyApuSnapshot() const;
     virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;

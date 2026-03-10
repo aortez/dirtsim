@@ -39,34 +39,6 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t memory_snapshot_copy_calls;
 } SmolnesRuntimeProfilingSnapshot;
 
-typedef struct SmolnesRuntimeDebugControllerEvent {
-    uint64_t sequence;
-    uint64_t rendered_frames;
-    uint64_t target_frames;
-    uint8_t controller_mask;
-} SmolnesRuntimeDebugControllerEvent;
-
-typedef struct SmolnesRuntimeDebugFrameSubmitEvent {
-    uint64_t sequence;
-    uint64_t rendered_frames_after;
-    uint64_t target_frames;
-} SmolnesRuntimeDebugFrameSubmitEvent;
-
-typedef struct SmolnesRuntimeDebugRunFramesRequestEvent {
-    uint64_t sequence;
-    uint64_t rendered_frames;
-    uint64_t target_frames_after;
-    uint64_t target_frames_before;
-    uint32_t requested_frame_count;
-} SmolnesRuntimeDebugRunFramesRequestEvent;
-
-typedef struct SmolnesRuntimeDebugSnapshot {
-    SmolnesRuntimeDebugControllerEvent last_controller_set;
-    SmolnesRuntimeDebugControllerEvent last_frame_begin;
-    SmolnesRuntimeDebugFrameSubmitEvent last_frame_submit;
-    SmolnesRuntimeDebugRunFramesRequestEvent last_run_frames_request;
-} SmolnesRuntimeDebugSnapshot;
-
 #define SMOLNES_RUNTIME_FRAME_WIDTH 256u
 #define SMOLNES_RUNTIME_FRAME_HEIGHT 224u
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
@@ -108,8 +80,6 @@ bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyProfilingSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut);
-bool smolnesRuntimeCopyDebugSnapshot(
-    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeDebugSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSamples(

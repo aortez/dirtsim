@@ -38,7 +38,6 @@ public:
         uint8_t controllerMask = 0;
         bool runtimeHealthy = false;
         bool runtimeRunning = false;
-        std::optional<SmolnesRuntime::DebugSnapshot> runtimeDebugSnapshot = std::nullopt;
         std::optional<SmolnesRuntime::MemorySnapshot> memorySnapshot = std::nullopt;
         std::optional<NesPaletteFrame> paletteFrame = std::nullopt;
         std::optional<ScenarioVideoFrame> scenarioVideoFrame = std::nullopt;
@@ -72,7 +71,6 @@ public:
     uint64_t getRuntimeRenderedFrameCount() const override;
     std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const override;
     std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const override;
-    std::optional<SmolnesRuntime::DebugSnapshot> copyRuntimeDebugSnapshot() const;
     std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const override;
     std::optional<SmolnesRuntime::ApuSnapshot> copyRuntimeApuSnapshot() const;
     uint32_t copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const;
@@ -96,7 +94,6 @@ private:
     RuntimeConfig runtimeConfig_;
     std::unique_ptr<SmolnesRuntime> runtime_;
     std::unique_ptr<NesAudioPlayer> audioPlayer_;
-    std::optional<SmolnesRuntime::DebugSnapshot> lastRuntimeDebugSnapshot_;
     std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;
     bool audioPlaybackEnabled_ = false;
     uint8_t controller1State_ = 0;

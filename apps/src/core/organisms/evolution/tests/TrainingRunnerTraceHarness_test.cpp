@@ -341,17 +341,6 @@ std::string buildTraceCsvHeader()
     return "step_ordinal,sim_time,state,frame_advanced,rendered_frames_before,"
            "rendered_frames_after,advanced_frames,inferred_controller_mask,"
            "resolved_controller_mask,controller_source,controller_source_frame_index,"
-           "runtime_last_controller_set_seq,runtime_last_controller_set_rendered_frames,"
-           "runtime_last_controller_set_target_frames,runtime_last_controller_set_mask,"
-           "runtime_last_frame_begin_seq,runtime_last_frame_begin_rendered_frames,"
-           "runtime_last_frame_begin_target_frames,runtime_last_frame_begin_mask,"
-           "runtime_last_run_frames_request_seq,"
-           "runtime_last_run_frames_request_rendered_frames,"
-           "runtime_last_run_frames_request_target_frames_before,"
-           "runtime_last_run_frames_request_target_frames_after,"
-           "runtime_last_run_frames_request_requested_frame_count,"
-           "runtime_last_frame_submit_seq,runtime_last_frame_submit_rendered_frames_after,"
-           "runtime_last_frame_submit_target_frames,"
            "reward_delta,evaluation_done,last_game_state_before,last_game_state_after,"
            "command_signature,command_outcome,debug_advanced_frame_count,debug_phase,"
            "debug_life_state,debug_lives,debug_world,debug_level,debug_absolute_x,"
@@ -366,10 +355,6 @@ std::string buildTraceCsvRow(const TrainingRunner::FrameTrace& trace)
     const NesGameAdapterDebugState* debugState =
         (nesTrace != nullptr && nesTrace->debugState.has_value()) ? &nesTrace->debugState.value()
                                                                   : nullptr;
-    const TrainingRunner::NesRuntimeDebugSnapshot* runtimeDebugSnapshot =
-        (nesTrace != nullptr && nesTrace->runtimeDebugSnapshot.has_value())
-        ? &nesTrace->runtimeDebugSnapshot.value()
-        : nullptr;
 
     std::ostringstream out;
     out << std::fixed << std::setprecision(6);
@@ -398,102 +383,6 @@ std::string buildTraceCsvRow(const TrainingRunner::FrameTrace& trace)
     out << ',' << (nesTrace != nullptr ? formatControllerSource(nesTrace->controllerSource) : "");
     out << ','
         << (nesTrace != nullptr ? formatOptionalUint64(nesTrace->controllerSourceFrameIndex) : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastControllerSet.sequence))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastControllerSet.renderedFrames))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastControllerSet.targetFrames))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned int>(
-                          runtimeDebugSnapshot->lastControllerSet.controllerMask))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameBegin.sequence))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameBegin.renderedFrames))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameBegin.targetFrames))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned int>(
-                          runtimeDebugSnapshot->lastFrameBegin.controllerMask))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastRunFramesRequest.sequence))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastRunFramesRequest.renderedFrames))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastRunFramesRequest.targetFramesBefore))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastRunFramesRequest.targetFramesAfter))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned int>(
-                          runtimeDebugSnapshot->lastRunFramesRequest.requestedFrameCount))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameSubmit.sequence))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameSubmit.renderedFramesAfter))
-                : "");
-    out << ','
-        << (runtimeDebugSnapshot != nullptr
-                ? std::to_string(
-                      static_cast<unsigned long long>(
-                          runtimeDebugSnapshot->lastFrameSubmit.targetFrames))
-                : "");
     out << ',' << (nesTrace != nullptr ? std::to_string(nesTrace->rewardDelta) : "");
     out << ',' << (nesTrace != nullptr ? formatBool(nesTrace->evaluationDone) : "");
     out << ',' << (nesTrace != nullptr ? formatOptionalUint8(nesTrace->lastGameStateBefore) : "");
@@ -730,7 +619,15 @@ TEST(TrainingRunnerTraceHarnessTest, ResolveConfiguredGenomeSelectionLoadsReposi
     std::filesystem::remove(dbPath);
 }
 
-TEST(TrainingRunnerTraceHarnessTest, ManualTraceHarness_WritesRepeatedSmbRunData)
+// Manual harness for SMB trace capture and replay diffs.
+//
+// This stays disabled because it writes CSV artifacts, prints run details, and is intended for
+// targeted investigations. Run it explicitly with
+// `./build-debug/bin/dirtsim-tests
+// --gtest_filter=TrainingRunnerTraceHarnessTest.DISABLED_ManualTraceHarness_WritesRepeatedSmbRunData
+// --gtest_also_run_disabled_tests` and optionally set `DIRTSIM_TRAINING_TRACE_GENOME_DB_PATH`,
+// `DIRTSIM_TRAINING_TRACE_GENOME_ID`, and `DIRTSIM_TRAINING_TRACE_MAX_SIMULATION_TIME`.
+TEST(TrainingRunnerTraceHarnessTest, DISABLED_ManualTraceHarness_WritesRepeatedSmbRunData)
 {
     const std::optional<std::filesystem::path> romPath = DirtSim::Test::resolveSmbRomPath();
     if (!romPath.has_value()) {

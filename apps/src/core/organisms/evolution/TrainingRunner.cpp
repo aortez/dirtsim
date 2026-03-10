@@ -40,41 +40,6 @@ void addSignatureCount(std::unordered_map<std::string, int>& counts, const std::
     ++it->second;
 }
 
-TrainingRunner::NesRuntimeDebugSnapshot convertRuntimeDebugSnapshot(
-    const SmolnesRuntime::DebugSnapshot& snapshot)
-{
-    return TrainingRunner::NesRuntimeDebugSnapshot{
-        .lastControllerSet =
-            TrainingRunner::NesRuntimeDebugControllerEvent{
-                .sequence = snapshot.lastControllerSet.sequence,
-                .renderedFrames = snapshot.lastControllerSet.renderedFrames,
-                .targetFrames = snapshot.lastControllerSet.targetFrames,
-                .controllerMask = snapshot.lastControllerSet.controllerMask,
-            },
-        .lastFrameBegin =
-            TrainingRunner::NesRuntimeDebugControllerEvent{
-                .sequence = snapshot.lastFrameBegin.sequence,
-                .renderedFrames = snapshot.lastFrameBegin.renderedFrames,
-                .targetFrames = snapshot.lastFrameBegin.targetFrames,
-                .controllerMask = snapshot.lastFrameBegin.controllerMask,
-            },
-        .lastFrameSubmit =
-            TrainingRunner::NesRuntimeDebugFrameSubmitEvent{
-                .sequence = snapshot.lastFrameSubmit.sequence,
-                .renderedFramesAfter = snapshot.lastFrameSubmit.renderedFramesAfter,
-                .targetFrames = snapshot.lastFrameSubmit.targetFrames,
-            },
-        .lastRunFramesRequest =
-            TrainingRunner::NesRuntimeDebugRunFramesRequestEvent{
-                .sequence = snapshot.lastRunFramesRequest.sequence,
-                .renderedFrames = snapshot.lastRunFramesRequest.renderedFrames,
-                .targetFramesAfter = snapshot.lastRunFramesRequest.targetFramesAfter,
-                .targetFramesBefore = snapshot.lastRunFramesRequest.targetFramesBefore,
-                .requestedFrameCount = snapshot.lastRunFramesRequest.requestedFrameCount,
-            },
-    };
-}
-
 std::vector<std::pair<std::string, int>> getTopSignatureEntries(
     const std::unordered_map<std::string, int>& counts, size_t maxEntries)
 {
@@ -880,10 +845,6 @@ TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
 
         nesDriver_->tick(nesTimers_, nesScenarioVideoFrame_);
         nesWorldData_.timestep += 1;
-        if (const auto runtimeDebugSnapshot = nesDriver_->copyRuntimeDebugSnapshot();
-            runtimeDebugSnapshot.has_value()) {
-            trace.runtimeDebugSnapshot = convertRuntimeDebugSnapshot(runtimeDebugSnapshot.value());
-        }
         if (nesScenarioVideoFrame_.has_value()) {
             nesWorldData_.width = static_cast<int16_t>(nesScenarioVideoFrame_->width);
             nesWorldData_.height = static_cast<int16_t>(nesScenarioVideoFrame_->height);
