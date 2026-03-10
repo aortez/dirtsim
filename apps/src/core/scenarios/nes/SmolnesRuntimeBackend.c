@@ -91,9 +91,9 @@ struct SmolnesRuntimeHandle {
     SmolnesApuSampleCallback apuSampleCallback;
     void* apuSampleCallbackUserdata;
 
-    bool selfPacing;
-    double selfPacingOriginMs;
-    uint64_t selfPacingOriginFrame;
+    SmolnesRuntimePacingModeValue pacingMode;
+    double realtimePacingOriginMs;
+    uint64_t realtimePacingOriginFrame;
 };
 
 // NTSC NES frame period: CPU clock 1789773 Hz / 29780.5 cycles per frame ≈ 60.0988 fps.
@@ -175,6 +175,11 @@ static void recordIdleWaitLocked(SmolnesRuntimeHandle* runtime, double waitMs)
 {
     runtime->runtimeThreadIdleWaitMs += waitMs;
     runtime->runtimeThreadIdleWaitCalls++;
+}
+
+static bool isRealtimePacingMode(const SmolnesRuntimeHandle* runtime)
+{
+    return runtime != NULL && runtime->pacingMode == SMOLNES_RUNTIME_PACING_MODE_REALTIME;
 }
 
 static uint8_t latchThreadKeyboardStateFromRuntime(SmolnesRuntimeHandle* runtime)
@@ -487,8 +492,8 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
-    while (runtime->waitingForInitialFrameRequest && !runtime->stopRequested && !runtime->selfPacing
-           && runtime->renderedFrames >= runtime->targetFrames) {
+    while (runtime->waitingForInitialFrameRequest && !runtime->stopRequested
+           && !isRealtimePacingMode(runtime) && runtime->renderedFrames >= runtime->targetFrames) {
         const double waitStartMs = monotonicNowMs();
         pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
         recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
@@ -674,7 +679,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
 
     pthread_mutex_lock(&runtime->runtimeMutex);
 
-    if (runtime->selfPacing) {
+    if (isRealtimePacingMode(runtime)) {
         double sleepMs = 0.0;
         if (!runtime->stopRequested) {
             gApuState.sampleCallback = runtime->apuSampleCallback;
@@ -690,13 +695,14 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
 
-            if (runtime->selfPacingOriginMs == 0.0) {
-                runtime->selfPacingOriginMs = presentStartMs;
-                runtime->selfPacingOriginFrame = runtime->renderedFrames;
+            if (runtime->realtimePacingOriginMs == 0.0) {
+                runtime->realtimePacingOriginMs = presentStartMs;
+                runtime->realtimePacingOriginFrame = runtime->renderedFrames;
             }
             const double elapsed =
-                (double)(runtime->renderedFrames - runtime->selfPacingOriginFrame);
-            const double nextFrameMs = runtime->selfPacingOriginMs + elapsed * kNtscFramePeriodMs;
+                (double)(runtime->renderedFrames - runtime->realtimePacingOriginFrame);
+            const double nextFrameMs =
+                runtime->realtimePacingOriginMs + elapsed * kNtscFramePeriodMs;
             sleepMs = nextFrameMs - monotonicNowMs();
         }
         pthread_mutex_unlock(&runtime->runtimeMutex);
@@ -709,7 +715,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
         }
     }
     else {
-        if (!runtime->stopRequested && !runtime->selfPacing) {
+        if (!runtime->stopRequested && !isRealtimePacingMode(runtime)) {
             gApuState.sampleCallback = runtime->apuSampleCallback;
             gApuState.sampleCallbackUserdata = runtime->apuSampleCallbackUserdata;
             const double presentStartMs = monotonicNowMs();
@@ -719,7 +725,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
-            while (!runtime->stopRequested && !runtime->selfPacing
+            while (!runtime->stopRequested && !isRealtimePacingMode(runtime)
                    && runtime->renderedFrames >= runtime->targetFrames) {
                 const double waitStartMs = monotonicNowMs();
                 pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
@@ -953,9 +959,9 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->apuSampleBufferLastIndex = 0;
     runtime->apuSampleCallback = NULL;
     runtime->apuSampleCallbackUserdata = NULL;
-    runtime->selfPacing = false;
-    runtime->selfPacingOriginMs = 0.0;
-    runtime->selfPacingOriginFrame = 0;
+    runtime->pacingMode = SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP;
+    runtime->realtimePacingOriginMs = 0.0;
+    runtime->realtimePacingOriginFrame = 0;
     runtime->waitingForInitialFrameRequest = true;
     runtime->latchedController1State = 0;
     runtime->pendingController1State = 0;
@@ -1307,15 +1313,15 @@ void smolnesRuntimeSetApuSampleCallback(
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled)
+void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode)
 {
     if (runtime == NULL) {
         return;
     }
     pthread_mutex_lock(&runtime->runtimeMutex);
-    runtime->selfPacing = enabled;
-    runtime->selfPacingOriginMs = 0.0;
-    runtime->selfPacingOriginFrame = 0;
+    runtime->pacingMode = mode;
+    runtime->realtimePacingOriginMs = 0.0;
+    runtime->realtimePacingOriginFrame = 0;
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }

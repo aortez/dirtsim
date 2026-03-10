@@ -70,7 +70,7 @@ public:
     }
 
     void setApuSampleCallback(SmolnesApuSampleCallback /*callback*/, void* /*userdata*/) override {}
-    void setSelfPacing(bool /*enabled*/) override {}
+    void setPacingMode(SmolnesRuntimePacingMode /*mode*/) override {}
     std::string getLastError() const override { return {}; }
 
     const std::string& getStartedRomPath() const { return startedRomPath_; }

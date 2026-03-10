@@ -39,6 +39,11 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t memory_snapshot_copy_calls;
 } SmolnesRuntimeProfilingSnapshot;
 
+typedef enum SmolnesRuntimePacingModeValue {
+    SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP = 0,
+    SMOLNES_RUNTIME_PACING_MODE_REALTIME = 1,
+} SmolnesRuntimePacingModeValue;
+
 #define SMOLNES_RUNTIME_FRAME_WIDTH 256u
 #define SMOLNES_RUNTIME_FRAME_HEIGHT 224u
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
@@ -88,7 +93,7 @@ void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 void smolnesRuntimeSetApuSampleCallback(
     SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
-void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
 
 #ifdef __cplusplus
 }

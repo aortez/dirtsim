@@ -126,7 +126,7 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setSelfPacing(true);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
 
@@ -378,12 +378,12 @@ void NesSmolnesScenarioDriver::setAudioPlaybackEnabled(bool enabled)
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setSelfPacing(true);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
     if (!enabled) {
         if (runtime_) {
-            runtime_->setSelfPacing(false);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
             runtime_->setApuSampleCallback(nullptr, nullptr);
         }
         audioPlayer_.reset();
@@ -402,7 +402,7 @@ void NesSmolnesScenarioDriver::stopRuntime()
     if (!runtime_) {
         return;
     }
-    runtime_->setSelfPacing(false);
+    runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
     runtime_->stop();
     audioPlayer_.reset();
     lastRuntimeProfilingSnapshot_.reset();

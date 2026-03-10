@@ -11,6 +11,11 @@
 
 namespace DirtSim {
 
+enum class SmolnesRuntimePacingMode : uint8_t {
+    Lockstep = 0,
+    Realtime = 1,
+};
+
 class SmolnesRuntime {
 public:
     struct MemorySnapshot {
@@ -96,7 +101,7 @@ public:
     virtual std::optional<ApuSnapshot> copyApuSnapshot() const;
     virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
     virtual void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
-    virtual void setSelfPacing(bool enabled);
+    virtual void setPacingMode(SmolnesRuntimePacingMode mode);
     virtual std::string getLastError() const;
 
 private:
