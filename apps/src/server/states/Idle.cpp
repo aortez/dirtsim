@@ -407,6 +407,8 @@ std::optional<ApiError> validateTrainingConfig(
                 const int maxSeedsToInject = computeWarmStartSeedTargetCount(
                     spec.randomCount, warmStartSeedPercent, warmStartSeedCount);
                 if (maxSeedsToInject > 0) {
+                    std::unordered_map<GenomeId, std::optional<Genome>> genomeCache;
+                    genomeCache.reserve(warmSeedCandidates.size() + spec.seedGenomes.size());
                     std::vector<const WarmSeedCandidate*> compatibleCandidates;
                     compatibleCandidates.reserve(warmSeedCandidates.size());
                     for (const auto& candidate : warmSeedCandidates) {
@@ -422,13 +424,18 @@ std::optional<ApiError> validateTrainingConfig(
                             != spec.seedGenomes.end()) {
                             continue;
                         }
+                        if (entry->isGenomeCompatible) {
+                            const Genome* genome = loadWarmGenome(repo, candidate.id, genomeCache);
+                            if (genome == nullptr || !entry->isGenomeCompatible(*genome)) {
+                                continue;
+                            }
+                        }
                         compatibleCandidates.push_back(&candidate);
                     }
 
                     if (!compatibleCandidates.empty()) {
                         std::vector<bool> selectedMask(compatibleCandidates.size(), false);
                         std::vector<GenomeId> selectedSeedIds = spec.seedGenomes;
-                        std::unordered_map<GenomeId, std::optional<Genome>> genomeCache;
                         genomeCache.reserve(compatibleCandidates.size() + selectedSeedIds.size());
 
                         int injectedForSpec = 0;

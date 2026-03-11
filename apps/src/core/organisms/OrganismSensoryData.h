@@ -158,6 +158,12 @@ extern template void gatherMaterialHistograms<15, 10>(
     std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     Vector2i& world_offset);
 
+extern template void gatherMaterialHistograms<21, 10>(
+    const World& world,
+    Vector2i center,
+    std::array<std::array<std::array<double, 10>, 21>, 21>& histograms,
+    Vector2i& world_offset);
+
 extern template void gatherMaterialHistograms<9, 10>(
     const World& world,
     Vector2i center,

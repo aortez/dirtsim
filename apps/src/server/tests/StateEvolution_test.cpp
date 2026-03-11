@@ -1,3 +1,4 @@
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -30,6 +31,12 @@ namespace {
 Genome makeNeuralNetGenome(WeightType value)
 {
     return Genome(static_cast<size_t>(NeuralNetBrain::getGenomeLayout().totalSize()), value);
+}
+
+Genome makeDuckRecurrentV2Genome(WeightType value)
+{
+    return Genome(
+        static_cast<size_t>(DuckNeuralNetRecurrentBrainV2::getGenomeLayout().totalSize()), value);
 }
 
 TrainingSpec makeTrainingSpec(int populationSize)
@@ -499,6 +506,76 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
         spec.seedGenomes.end());
     EXPECT_EQ(
         std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), weak), spec.seedGenomes.end());
+    EXPECT_EQ(spec.randomCount, 2);
+}
+
+TEST(StateEvolutionTest, EvolutionStartWarmResumeSkipsIncompatibleGenomeLayouts)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const auto makeMetadata = [](const std::string& name, double robustFitness) {
+        return GenomeMetadata{
+            .name = name,
+            .fitness = robustFitness,
+            .robustFitness = robustFitness,
+            .robustEvalCount = 4,
+            .robustFitnessSamples = {
+                robustFitness - 1.0,
+                robustFitness,
+                robustFitness + 1.0,
+                robustFitness,
+            },
+            .generation = 7,
+            .createdTimestamp = 1234567890,
+            .scenarioId = Scenario::EnumType::Clock,
+            .notes = "",
+            .organismType = OrganismType::DUCK,
+            .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
+        };
+    };
+
+    const GenomeId staleId = UUID::generate();
+    const GenomeId validId = UUID::generate();
+    repo.store(staleId, Genome(10, 0.25f), makeMetadata("stale-layout", 100.0));
+    repo.store(validId, makeDuckRecurrentV2Genome(0.5f), makeMetadata("valid-layout", 90.0));
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.evolution.warmStartSeedCount = 1;
+    cmd.evolution.warmStartSeedPercent = 0.0;
+    cmd.evolution.warmStartMinRobustEvalCount = 1;
+    cmd.scenarioId = Scenario::EnumType::Clock;
+    cmd.organismType = OrganismType::DUCK;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    population.count = 3;
+    population.randomCount = 3;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 1u);
+    EXPECT_EQ(spec.seedGenomes.front(), validId);
     EXPECT_EQ(spec.randomCount, 2);
 }
 
