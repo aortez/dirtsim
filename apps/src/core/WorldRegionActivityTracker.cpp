@@ -241,12 +241,14 @@ void WorldRegionActivityTracker::summarizeFrame(
                 summary.has_water_adjacency = true;
             }
 
-            const int material_value = static_cast<int>(cell.material_type);
-            if (region_primary_material[region_idx] < 0) {
-                region_primary_material[region_idx] = material_value;
-            }
-            else if (region_primary_material[region_idx] != material_value) {
-                summary.has_mixed_material = true;
+            if (!cell.isWall()) {
+                const int material_value = static_cast<int>(cell.material_type);
+                if (region_primary_material[region_idx] < 0) {
+                    region_primary_material[region_idx] = material_value;
+                }
+                else if (region_primary_material[region_idx] != material_value) {
+                    summary.has_mixed_material = true;
+                }
             }
         }
     }

@@ -1,9 +1,11 @@
 #include "core/GridOfCells.h"
 #include "core/PhysicsSettings.h"
 #include "core/RegionDebugInfo.h"
+#include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldRegionActivityTracker.h"
+#include "core/scenarios/SandboxScenario.h"
 
 #include <gtest/gtest.h>
 
@@ -24,6 +26,8 @@ namespace {
 constexpr double kDt = 0.016;
 constexpr int kWorldWidth = 64;
 constexpr int kWorldHeight = 40;
+constexpr int kSandboxWorldWidth = 50;
+constexpr int kSandboxWorldHeight = 30;
 constexpr int kSettleSteps = 180;
 constexpr int kPileCenterX = kWorldWidth / 2;
 constexpr int kPileBaseY = kWorldHeight - 2;
@@ -175,6 +179,32 @@ struct ForceIsolationObservation {
     double final_mean_pressure = 0.0;
 };
 
+struct SandboxRegionBuckets {
+    std::vector<RegionCoord> dirt_regions;
+    std::vector<RegionCoord> exposed_dirt_regions;
+    std::vector<RegionCoord> interior_dirt_regions;
+    std::vector<RegionCoord> mixed_dirt_regions;
+};
+
+struct SandboxForceIsolationObservation {
+    std::string name;
+    int dirt_regions = 0;
+    int exposed_dirt_regions = 0;
+    int interior_dirt_regions = 0;
+    int mixed_dirt_regions = 0;
+    int quiet_interior_regions = 0;
+    bool representative_interior_found = false;
+    RegionState representative_interior_state = RegionState::Awake;
+    WakeReason representative_interior_wake_reason = WakeReason::None;
+    double representative_interior_mean_velocity = 0.0;
+    double representative_interior_max_velocity = 0.0;
+};
+
+struct NamedRegion {
+    const char* label = "";
+    RegionCoord region{};
+};
+
 struct CellTrack {
     int x = 0;
     int y = 0;
@@ -216,9 +246,22 @@ std::string dumpInitialWorldPressureSourceTimeSeries(const World& world);
 std::string dumpWorldPressureSourceSettleScan(
     const World& world, std::optional<RegionCoord> region);
 std::string dumpWorldPressureSourceTimeSeries(const World& world);
+std::string dumpRegionStates(const World& world);
+std::string dumpWakeReasons(const World& world);
+std::string dumpBuriedRegionCellDetails(
+    const World& world, const std::vector<RegionCoord>& buried_regions);
+std::string dumpBuriedRegionCellMaps(
+    const World& world, const std::vector<RegionCoord>& buried_regions);
+std::string dumpSandboxTrackedRegionTimeSeries(
+    const World& world, const std::vector<NamedRegion>& tracked_regions);
 std::string dumpSettlingDiagnostics(
     const World& world, const GridOfCells& grid, const std::vector<RegionCoord>& buriedRegions);
 void initializeSleepAnalysisWorld(World& world);
+void initializeSandboxQuadrantWorld(World& world);
+bool cellHasEmptyAdjacency(const GridOfCells& grid, int x, int y);
+char regionStateToChar(RegionState state);
+char wakeReasonToChar(WakeReason reason);
+std::vector<CellTrack> selectTrackedCells(const World& world, RegionCoord region);
 
 bool isLoadBearingGranularCell(const Cell& cell)
 {
@@ -273,6 +316,39 @@ void buildSymmetricDirtPile(World& world)
             kPileCenterX + half_width,
             Material::EnumType::Dirt);
     }
+}
+
+void carveLeftToeNotch(World& world)
+{
+    fillHorizontalSpan(world, 36, 12, 14, Material::EnumType::Air);
+    fillHorizontalSpan(world, 37, 11, 14, Material::EnumType::Air);
+    fillHorizontalSpan(world, 38, 10, 14, Material::EnumType::Air);
+}
+
+void carveLargeLeftToeCut(World& world)
+{
+    fillHorizontalSpan(world, 33, 14, 18, Material::EnumType::Air);
+    fillHorizontalSpan(world, 34, 13, 18, Material::EnumType::Air);
+    fillHorizontalSpan(world, 35, 12, 18, Material::EnumType::Air);
+    fillHorizontalSpan(world, 36, 11, 18, Material::EnumType::Air);
+    fillHorizontalSpan(world, 37, 10, 18, Material::EnumType::Air);
+    fillHorizontalSpan(world, 38, 9, 18, Material::EnumType::Air);
+}
+
+void buildSupportedGranularWedge(World& world)
+{
+    fillHorizontalSpan(world, 13, 28, 34, Material::EnumType::Dirt);
+    fillHorizontalSpan(world, 14, 26, 36, Material::EnumType::Dirt);
+    fillHorizontalSpan(world, 15, 24, 38, Material::EnumType::Dirt);
+    fillHorizontalSpan(world, 16, 24, 38, Material::EnumType::Dirt);
+    for (int y = 17; y <= 38; ++y) {
+        fillHorizontalSpan(world, y, 30, 32, Material::EnumType::Dirt);
+    }
+}
+
+void removeGranularWedgeSupport(World& world)
+{
+    fillHorizontalSpan(world, 16, 24, 38, Material::EnumType::Air);
 }
 
 void settleWorld(World& world, int steps = kSettleSteps, double dt = kDt)
@@ -334,6 +410,90 @@ int countQuietBuriedRegions(const World& world, const std::vector<RegionCoord>& 
     return quiet_buried_regions;
 }
 
+int countExposedGranularSuccessfulTransfers(const World& world, const GridOfCells& grid)
+{
+    const WorldData& data = world.getData();
+    int successful_transfers = 0;
+
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            const Cell& cell = data.at(x, y);
+            const CellDebug& debug = data.debug_info[idx];
+
+            if (!isLoadBearingGranularCell(cell)) {
+                continue;
+            }
+
+            if (!cellHasEmptyAdjacency(grid, x, y)) {
+                continue;
+            }
+
+            successful_transfers += debug.successful_outgoing_transfer_count;
+            successful_transfers += debug.successful_incoming_transfer_count;
+        }
+    }
+
+    return successful_transfers;
+}
+
+int countMaterialCellsInBox(
+    const World& world,
+    int x_begin,
+    int x_end,
+    int y_begin,
+    int y_end,
+    Material::EnumType material_type)
+{
+    const WorldData& data = world.getData();
+    int count = 0;
+
+    for (int y = std::max(0, y_begin); y <= std::min(static_cast<int>(data.height) - 1, y_end);
+         ++y) {
+        for (int x = std::max(0, x_begin); x <= std::min(static_cast<int>(data.width) - 1, x_end);
+             ++x) {
+            if (data.at(x, y).material_type == material_type) {
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+int countUnsupportedMovingGranularCells(
+    const World& world, int x_begin, int x_end, int y_begin, int y_end, double min_velocity)
+{
+    const WorldData& data = world.getData();
+    int count = 0;
+
+    for (int y = std::max(0, y_begin); y <= std::min(static_cast<int>(data.height) - 1, y_end);
+         ++y) {
+        for (int x = std::max(0, x_begin); x <= std::min(static_cast<int>(data.width) - 1, x_end);
+             ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            const Cell& cell = data.at(x, y);
+            const CellDebug& debug = data.debug_info[idx];
+
+            if (!isLoadBearingGranularCell(cell)) {
+                continue;
+            }
+
+            if (debug.has_granular_support_path || debug.gravity_skipped_for_support) {
+                continue;
+            }
+
+            if (cell.velocity.magnitude() <= min_velocity) {
+                continue;
+            }
+
+            count++;
+        }
+    }
+
+    return count;
+}
+
 bool regionContainsMaterial(const World& world, int block_x, int block_y)
 {
     const WorldData& data = world.getData();
@@ -345,6 +505,26 @@ bool regionContainsMaterial(const World& world, int block_x, int block_y)
     for (int y = y_begin; y < y_end; ++y) {
         for (int x = x_begin; x < x_end; ++x) {
             if (!data.at(x, y).isEmpty()) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool regionContainsMaterialType(
+    const World& world, int block_x, int block_y, Material::EnumType material_type)
+{
+    const WorldData& data = world.getData();
+    const int x_begin = block_x * kRegionSize;
+    const int y_begin = block_y * kRegionSize;
+    const int x_end = std::min(static_cast<int>(data.width), x_begin + kRegionSize);
+    const int y_end = std::min(static_cast<int>(data.height), y_begin + kRegionSize);
+
+    for (int y = y_begin; y < y_end; ++y) {
+        for (int x = x_begin; x < x_end; ++x) {
+            if (data.at(x, y).material_type == material_type) {
                 return true;
             }
         }
@@ -401,6 +581,701 @@ std::vector<RegionCoord> collectBuriedMaterialRegions(const World& world, const 
     }
 
     return buried_regions;
+}
+
+SandboxRegionBuckets classifySandboxDirtRegions(const World& world, const GridOfCells& grid)
+{
+    const WorldData& data = world.getData();
+    const WorldRegionActivityTracker& tracker = world.getRegionActivityTracker();
+    SandboxRegionBuckets buckets;
+
+    for (int block_y = 0; block_y < data.region_debug_blocks_y; ++block_y) {
+        for (int block_x = 0; block_x < data.region_debug_blocks_x; ++block_x) {
+            if (!regionContainsMaterialType(world, block_x, block_y, Material::EnumType::Dirt)) {
+                continue;
+            }
+
+            const RegionCoord region{ .x = block_x, .y = block_y };
+            const RegionSummary& summary = tracker.getRegionSummary(block_x, block_y);
+            buckets.dirt_regions.push_back(region);
+
+            if (summary.has_mixed_material) {
+                buckets.mixed_dirt_regions.push_back(region);
+                continue;
+            }
+
+            if (regionHasEmptyAdjacency(world, grid, block_x, block_y)) {
+                buckets.exposed_dirt_regions.push_back(region);
+                continue;
+            }
+
+            buckets.interior_dirt_regions.push_back(region);
+        }
+    }
+
+    return buckets;
+}
+
+int countQuietRegions(const World& world, const std::vector<RegionCoord>& regions)
+{
+    const WorldData& data = world.getData();
+    int quiet_regions = 0;
+
+    for (const RegionCoord& region : regions) {
+        const int idx = region.y * data.region_debug_blocks_x + region.x;
+        const RegionState state = static_cast<RegionState>(data.region_debug[idx].state);
+        if (state != RegionState::Awake) {
+            quiet_regions++;
+        }
+    }
+
+    return quiet_regions;
+}
+
+bool regionEquals(RegionCoord a, RegionCoord b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+void addNamedRegionIfUnique(
+    std::vector<NamedRegion>& tracked_regions, const char* label, std::optional<RegionCoord> region)
+{
+    if (!region.has_value()) {
+        return;
+    }
+
+    const auto it = std::find_if(
+        tracked_regions.begin(), tracked_regions.end(), [&region](const NamedRegion& candidate) {
+            return regionEquals(candidate.region, *region);
+        });
+    if (it != tracked_regions.end()) {
+        return;
+    }
+
+    tracked_regions.push_back(NamedRegion{ .label = label, .region = *region });
+}
+
+std::vector<RegionCoord> extractNamedRegionCoords(const std::vector<NamedRegion>& tracked_regions)
+{
+    std::vector<RegionCoord> coords;
+    coords.reserve(tracked_regions.size());
+    for (const NamedRegion& tracked_region : tracked_regions) {
+        coords.push_back(tracked_region.region);
+    }
+    return coords;
+}
+
+std::vector<NamedRegion> selectSandboxDiagnosticRegions(const SandboxRegionBuckets& buckets)
+{
+    auto sorted_interiors = buckets.interior_dirt_regions;
+    auto sorted_exposed = buckets.exposed_dirt_regions;
+    auto sorted_mixed = buckets.mixed_dirt_regions;
+    const auto sort_regions = [](std::vector<RegionCoord>& regions) {
+        std::sort(regions.begin(), regions.end(), [](const RegionCoord& a, const RegionCoord& b) {
+            return std::tie(a.y, a.x) < std::tie(b.y, b.x);
+        });
+    };
+    sort_regions(sorted_interiors);
+    sort_regions(sorted_exposed);
+    sort_regions(sorted_mixed);
+
+    std::vector<NamedRegion> tracked_regions;
+    if (sorted_interiors.empty()) {
+        return tracked_regions;
+    }
+
+    const RegionCoord interior = sorted_interiors.front();
+    addNamedRegionIfUnique(tracked_regions, "interior", interior);
+    if (sorted_interiors.size() > 1) {
+        addNamedRegionIfUnique(tracked_regions, "interior_right", sorted_interiors[1]);
+    }
+
+    std::optional<RegionCoord> top_face;
+    for (const RegionCoord& region : sorted_exposed) {
+        if (region.x == interior.x && region.y < interior.y) {
+            top_face = region;
+            break;
+        }
+    }
+    addNamedRegionIfUnique(tracked_regions, "top_face", top_face);
+
+    std::optional<RegionCoord> side_face;
+    for (const RegionCoord& region : sorted_exposed) {
+        if (region.y == interior.y && region.x < interior.x) {
+            side_face = region;
+            break;
+        }
+    }
+    addNamedRegionIfUnique(tracked_regions, "side_face", side_face);
+
+    std::optional<RegionCoord> mixed_wall;
+    for (const RegionCoord& region : sorted_mixed) {
+        if (region.y == interior.y && region.x > interior.x) {
+            mixed_wall = region;
+            break;
+        }
+    }
+    if (!mixed_wall.has_value() && !sorted_mixed.empty()) {
+        mixed_wall = sorted_mixed.front();
+    }
+    addNamedRegionIfUnique(tracked_regions, "mixed_wall", mixed_wall);
+
+    return tracked_regions;
+}
+
+std::string dumpNamedRegionList(const std::vector<NamedRegion>& tracked_regions)
+{
+    std::ostringstream out;
+    out << "Tracked regions\n";
+    if (tracked_regions.empty()) {
+        out << "<none>\n";
+        return out.str();
+    }
+
+    for (const NamedRegion& tracked_region : tracked_regions) {
+        out << tracked_region.label << "=(" << tracked_region.region.x << ","
+            << tracked_region.region.y << ")\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpSandboxDirtRoleMap(const World& world, const SandboxRegionBuckets& buckets)
+{
+    const WorldData& data = world.getData();
+    std::ostringstream out;
+
+    out << "Sandbox dirt role map\n";
+    for (int block_y = 0; block_y < data.region_debug_blocks_y; ++block_y) {
+        for (int block_x = 0; block_x < data.region_debug_blocks_x; ++block_x) {
+            const RegionCoord region{ .x = block_x, .y = block_y };
+            const auto has_region = [&region](const std::vector<RegionCoord>& regions) {
+                return std::find_if(
+                           regions.begin(),
+                           regions.end(),
+                           [&region](const RegionCoord& candidate) {
+                               return candidate.x == region.x && candidate.y == region.y;
+                           })
+                    != regions.end();
+            };
+
+            if (has_region(buckets.interior_dirt_regions)) {
+                out << 'I';
+            }
+            else if (has_region(buckets.exposed_dirt_regions)) {
+                out << 'E';
+            }
+            else if (has_region(buckets.mixed_dirt_regions)) {
+                out << 'M';
+            }
+            else if (has_region(buckets.dirt_regions)) {
+                out << 'D';
+            }
+            else {
+                out << '.';
+            }
+        }
+        out << '\n';
+    }
+
+    return out.str();
+}
+
+std::string dumpSandboxDirtRegionDetails(const World& world, const SandboxRegionBuckets& buckets)
+{
+    const WorldRegionActivityTracker& tracker = world.getRegionActivityTracker();
+    std::ostringstream out;
+
+    out << "Sandbox dirt region details\n";
+    for (const RegionCoord& region : buckets.dirt_regions) {
+        const RegionSummary& summary = tracker.getRegionSummary(region.x, region.y);
+        const RegionFrameSample sample = sampleRegionFrame(world, region, kSettleSteps);
+        const char role = [&]() -> char {
+            if (std::find_if(
+                    buckets.interior_dirt_regions.begin(),
+                    buckets.interior_dirt_regions.end(),
+                    [&region](const RegionCoord& candidate) {
+                        return candidate.x == region.x && candidate.y == region.y;
+                    })
+                != buckets.interior_dirt_regions.end()) {
+                return 'I';
+            }
+            if (std::find_if(
+                    buckets.exposed_dirt_regions.begin(),
+                    buckets.exposed_dirt_regions.end(),
+                    [&region](const RegionCoord& candidate) {
+                        return candidate.x == region.x && candidate.y == region.y;
+                    })
+                != buckets.exposed_dirt_regions.end()) {
+                return 'E';
+            }
+            if (std::find_if(
+                    buckets.mixed_dirt_regions.begin(),
+                    buckets.mixed_dirt_regions.end(),
+                    [&region](const RegionCoord& candidate) {
+                        return candidate.x == region.x && candidate.y == region.y;
+                    })
+                != buckets.mixed_dirt_regions.end()) {
+                return 'M';
+            }
+            return 'D';
+        }();
+
+        out << "(" << region.x << "," << region.y << ")"
+            << " role=" << role << " state=" << regionStateToChar(sample.state)
+            << " wake=" << wakeReasonToChar(sample.wake_reason) << " meanV=" << sample.mean_velocity
+            << " maxV=" << sample.max_velocity
+            << " moves=" << sample.generated_moves + sample.received_moves
+            << " ok=" << sample.successful_outgoing_transfers + sample.successful_incoming_transfers
+            << " empty=" << summary.has_empty_adjacency << " mixed=" << summary.has_mixed_material
+            << " water=" << summary.has_water_adjacency << " touched=" << summary.touched_this_frame
+            << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpSandboxRepresentativeRegionTimeSeries(
+    const World& world, const SandboxRegionBuckets& buckets)
+{
+    std::vector<std::pair<const char*, RegionCoord>> tracked_regions;
+    if (!buckets.interior_dirt_regions.empty()) {
+        tracked_regions.push_back({ "interior", buckets.interior_dirt_regions.front() });
+    }
+    if (!buckets.exposed_dirt_regions.empty()) {
+        tracked_regions.push_back({ "exposed", buckets.exposed_dirt_regions.front() });
+    }
+    if (!buckets.mixed_dirt_regions.empty()) {
+        tracked_regions.push_back({ "mixed", buckets.mixed_dirt_regions.front() });
+    }
+
+    std::ostringstream out;
+    out << "Sandbox representative region time series\n";
+    if (tracked_regions.empty()) {
+        out << "<none>\n";
+        return out.str();
+    }
+
+    World replay(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(replay);
+    replay.getPhysicsSettings() = world.getPhysicsSettings();
+    settleWorld(replay);
+
+    for (const auto& [label, region] : tracked_regions) {
+        out << label << " (" << region.x << "," << region.y << ")\n";
+        out << "frame state wake meanV maxV meanForceY meanP moves ok touched\n";
+        for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
+            const RegionFrameSample sample = sampleRegionFrame(replay, region, frame);
+            const RegionSummary& summary =
+                replay.getRegionActivityTracker().getRegionSummary(region.x, region.y);
+            out << frame << " " << regionStateToChar(sample.state) << " "
+                << wakeReasonToChar(sample.wake_reason) << " " << sample.mean_velocity << " "
+                << sample.max_velocity << " " << sample.mean_abs_pressure_force_y << " "
+                << sample.mean_pressure << " " << sample.generated_moves + sample.received_moves
+                << " "
+                << sample.successful_outgoing_transfers + sample.successful_incoming_transfers
+                << " " << summary.touched_this_frame << "\n";
+
+            if (frame < kDiagnosticFrames) {
+                replay.advanceTime(kDt);
+            }
+        }
+    }
+
+    return out.str();
+}
+
+SandboxForceIsolationObservation runSandboxForceIsolationProfile(
+    const ForceIsolationProfile& profile)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+    applyForceIsolationProfile(world, profile);
+
+    settleWorld(world);
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+
+    SandboxForceIsolationObservation observation{ .name = profile.name };
+    observation.dirt_regions = static_cast<int>(buckets.dirt_regions.size());
+    observation.exposed_dirt_regions = static_cast<int>(buckets.exposed_dirt_regions.size());
+    observation.interior_dirt_regions = static_cast<int>(buckets.interior_dirt_regions.size());
+    observation.mixed_dirt_regions = static_cast<int>(buckets.mixed_dirt_regions.size());
+    observation.quiet_interior_regions = countQuietRegions(world, buckets.interior_dirt_regions);
+
+    if (buckets.interior_dirt_regions.empty()) {
+        return observation;
+    }
+
+    observation.representative_interior_found = true;
+    const RegionCoord region = buckets.interior_dirt_regions.front();
+    const RegionFrameSample sample = sampleRegionFrame(world, region, kSettleSteps);
+    observation.representative_interior_state = sample.state;
+    observation.representative_interior_wake_reason = sample.wake_reason;
+    observation.representative_interior_mean_velocity = sample.mean_velocity;
+    observation.representative_interior_max_velocity = sample.max_velocity;
+    return observation;
+}
+
+std::string dumpSandboxQuadrantDiagnostics(const ForceIsolationProfile& profile)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+    applyForceIsolationProfile(world, profile);
+
+    settleWorld(world);
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+
+    std::ostringstream out;
+    out << "Sandbox quadrant diagnostics\n";
+    out << "Profile: " << profile.name << "\n";
+    out << "World: " << world.getData().width << "x" << world.getData().height << "\n";
+    out << "dirtRegions=" << buckets.dirt_regions.size()
+        << " interior=" << buckets.interior_dirt_regions.size()
+        << " exposed=" << buckets.exposed_dirt_regions.size()
+        << " mixed=" << buckets.mixed_dirt_regions.size()
+        << " quietInterior=" << countQuietRegions(world, buckets.interior_dirt_regions) << "\n";
+    out << dumpRegionStates(world) << "\n";
+    out << dumpWakeReasons(world) << "\n";
+    out << dumpSandboxDirtRoleMap(world, buckets) << "\n";
+    out << dumpSandboxDirtRegionDetails(world, buckets) << "\n";
+    out << dumpSandboxRepresentativeRegionTimeSeries(world, buckets);
+    return out.str();
+}
+
+std::string dumpSandboxQuadrantForceIsolationSweep()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const std::vector<ForceIsolationProfile> profiles{
+        ForceIsolationProfile{
+            .name = "full",
+            .gravity = defaults.gravity,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_contact_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "pressure_only",
+            .gravity = 0.0,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_pressure_only",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "cohesion_only",
+            .gravity = 0.0,
+            .pressure = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_cohesion_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "adhesion_only",
+            .gravity = 0.0,
+            .pressure = false,
+            .cohesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_adhesion_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_cohesion_adhesion_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_cohesion_friction_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .adhesion = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_adhesion_friction_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_cohesion_adhesion_friction_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_swap_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_air_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_air_swap_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+        },
+        ForceIsolationProfile{
+            .name = "friction_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "viscosity_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_pressure",
+            .gravity = defaults.gravity,
+            .pressure = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_cohesion",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_adhesion",
+            .gravity = defaults.gravity,
+            .adhesion = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_friction",
+            .gravity = defaults.gravity,
+            .friction = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_viscosity",
+            .gravity = defaults.gravity,
+            .viscosity = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_cohesion_adhesion",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_friction_viscosity",
+            .gravity = defaults.gravity,
+            .friction = false,
+            .viscosity = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_cohesion_adhesion_friction_viscosity",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_swap",
+            .gravity = defaults.gravity,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_air",
+            .gravity = defaults.gravity,
+            .air_resistance = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_air_swap",
+            .gravity = defaults.gravity,
+            .air_resistance = false,
+            .swap = false,
+        },
+    };
+
+    std::ostringstream out;
+    out << "Sandbox quadrant force isolation sweep\n";
+    out << "profile dirt interior exposed mixed quietInterior repFound repState repWake meanV "
+           "maxV\n";
+
+    for (const ForceIsolationProfile& profile : profiles) {
+        const SandboxForceIsolationObservation observation =
+            runSandboxForceIsolationProfile(profile);
+        out << observation.name << " " << observation.dirt_regions << " "
+            << observation.interior_dirt_regions << " " << observation.exposed_dirt_regions << " "
+            << observation.mixed_dirt_regions << " " << observation.quiet_interior_regions << " "
+            << observation.representative_interior_found << " "
+            << regionStateToChar(observation.representative_interior_state) << " "
+            << wakeReasonToChar(observation.representative_interior_wake_reason) << " "
+            << observation.representative_interior_mean_velocity << " "
+            << observation.representative_interior_max_velocity << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpSandboxQuadrantAsciiDiagrams()
+{
+    World initial_world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(initial_world);
+
+    World settled_world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(settled_world);
+    settleWorld(settled_world);
+
+    std::ostringstream out;
+    out << "Sandbox quadrant ASCII diagrams\n";
+    out << "Initial frame\n";
+    out << initial_world.toAsciiDiagram() << "\n";
+    out << "After settle\n";
+    out << settled_world.toAsciiDiagram();
+    return out.str();
+}
+
+std::string dumpSandboxGravityContactDiagnostics()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "gravity_contact_only",
+        .gravity = defaults.gravity,
+        .pressure = false,
+        .cohesion = false,
+        .adhesion = false,
+        .friction = false,
+        .viscosity = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+    applyForceIsolationProfile(world, profile);
+    settleWorld(world);
+
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+    const std::vector<NamedRegion> tracked_regions = selectSandboxDiagnosticRegions(buckets);
+    const std::vector<RegionCoord> tracked_region_coords =
+        extractNamedRegionCoords(tracked_regions);
+
+    std::ostringstream out;
+    out << "Sandbox gravity-contact diagnostics\n";
+    out << dumpSandboxQuadrantDiagnostics(profile) << "\n";
+    out << dumpNamedRegionList(tracked_regions) << "\n";
+    out << dumpBuriedRegionCellMaps(world, tracked_region_coords) << "\n";
+    out << dumpBuriedRegionCellDetails(world, tracked_region_coords) << "\n";
+    out << dumpSandboxTrackedRegionTimeSeries(world, tracked_regions);
+    return out.str();
+}
+
+std::string dumpSandboxCohesionAdhesionFrictionDiagnostics()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "gravity_cohesion_adhesion_friction_only",
+        .gravity = defaults.gravity,
+        .pressure = false,
+        .viscosity = false,
+        .air_resistance = false,
+        .swap = false,
+    };
+
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+    applyForceIsolationProfile(world, profile);
+    settleWorld(world);
+
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+    const std::vector<NamedRegion> tracked_regions = selectSandboxDiagnosticRegions(buckets);
+    const std::vector<RegionCoord> tracked_region_coords =
+        extractNamedRegionCoords(tracked_regions);
+
+    std::ostringstream out;
+    out << "Sandbox cohesion-adhesion-friction diagnostics\n";
+    out << dumpSandboxQuadrantDiagnostics(profile) << "\n";
+    out << dumpNamedRegionList(tracked_regions) << "\n";
+    out << dumpBuriedRegionCellMaps(world, tracked_region_coords) << "\n";
+    out << dumpBuriedRegionCellDetails(world, tracked_region_coords) << "\n";
+    out << dumpSandboxTrackedRegionTimeSeries(world, tracked_regions);
+    return out.str();
 }
 
 std::optional<RegionCoord> findPureBuriedRegion(
@@ -1942,6 +2817,117 @@ std::string dumpPureBuriedRegionTimeSeries(const World& world, RegionCoord regio
         world, region, kSettleSteps, "Pure buried region time series");
 }
 
+std::string dumpSandboxTrackedRegionTimeSeries(
+    const World& world, const std::vector<NamedRegion>& tracked_regions)
+{
+    std::ostringstream out;
+    out << "Sandbox tracked region time series\n";
+    if (tracked_regions.empty()) {
+        out << "<none>\n";
+        return out.str();
+    }
+
+    for (const NamedRegion& tracked_region : tracked_regions) {
+        World replay(kSandboxWorldWidth, kSandboxWorldHeight);
+        initializeSandboxQuadrantWorld(replay);
+        replay.getPhysicsSettings() = world.getPhysicsSettings();
+        settleWorld(replay);
+        const std::vector<CellTrack> tracks = selectTrackedCells(replay, tracked_region.region);
+
+        out << tracked_region.label << " (" << tracked_region.region.x << ","
+            << tracked_region.region.y << ")\n";
+        out << "frame state wake cells move skip support carry genC genVC recvC recvVC gCandC "
+               "jamCandC compOutC compInC gen recv gCand jamCand compOut compIn okOut okIn blk "
+               "maxV meanV maxVy meanVy\n";
+
+        for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
+            const RegionFrameSample sample =
+                sampleRegionFrame(replay, tracked_region.region, frame);
+            out << sample.frame << " " << regionStateToChar(sample.state) << " "
+                << wakeReasonToChar(sample.wake_reason) << " " << sample.material_cells << " "
+                << sample.moving_cells << " " << sample.gravity_skipped_cells << " "
+                << sample.support_path_cells << " " << sample.carrying_load_cells << " "
+                << sample.generated_move_cells << " " << sample.generated_vertical_move_cells << " "
+                << sample.received_move_cells << " " << sample.received_vertical_move_cells << " "
+                << sample.gravity_compression_candidate_cells << " "
+                << sample.jammed_contact_candidate_cells << " "
+                << sample.outgoing_compression_contact_cells << " "
+                << sample.incoming_compression_contact_cells << " " << sample.generated_moves << " "
+                << sample.received_moves << " " << sample.gravity_compression_candidates << " "
+                << sample.jammed_contact_candidates << " " << sample.outgoing_compression_contacts
+                << " " << sample.incoming_compression_contacts << " "
+                << sample.successful_outgoing_transfers << " "
+                << sample.successful_incoming_transfers << " " << sample.blocked_outgoing_transfers
+                << " " << sample.max_velocity << " " << sample.mean_velocity << " "
+                << sample.max_abs_velocity_y << " " << sample.mean_abs_velocity_y << "\n";
+
+            if (frame < kDiagnosticFrames) {
+                replay.advanceTime(kDt);
+            }
+        }
+
+        out << "Tracked cells\n";
+        for (const CellTrack& track : tracks) {
+            out << "(" << track.x << "," << track.y << ")\n";
+            out << "  frame vel vy comY cForceX cForceY aForceX aForceY fForceX fForceY grav "
+                   "moves gen outDir recv inDir gCand jamCand outComp inComp xfer okOut okIn "
+                   "blk fNbrX fNbrY fMu fNorm fTan fPairFx fPairFy\n";
+
+            World tracked_replay(kSandboxWorldWidth, kSandboxWorldHeight);
+            initializeSandboxQuadrantWorld(tracked_replay);
+            tracked_replay.getPhysicsSettings() = world.getPhysicsSettings();
+            settleWorld(tracked_replay);
+
+            for (int frame = 0; frame <= kDiagnosticFrames; ++frame) {
+                const WorldData& replay_data = tracked_replay.getData();
+                const size_t idx = static_cast<size_t>(track.y) * replay_data.width + track.x;
+                const Cell& cell = replay_data.at(track.x, track.y);
+                const CellDebug& debug = replay_data.debug_info[idx];
+
+                out << "  " << frame << " " << cell.velocity.magnitude() << " " << cell.velocity.y
+                    << " " << cell.com.y << " " << debug.accumulated_com_cohesion_force.x << " "
+                    << debug.accumulated_com_cohesion_force.y << " "
+                    << debug.accumulated_adhesion_force.x << " "
+                    << debug.accumulated_adhesion_force.y << " "
+                    << debug.accumulated_friction_force.x << " "
+                    << debug.accumulated_friction_force.y << " " << gravityStateToChar(cell, debug)
+                    << " " << moveStateToChar(debug) << " " << debug.generated_move_count << " "
+                    << directionMaskToString(debug.generated_move_direction_mask) << " "
+                    << debug.received_move_count << " "
+                    << directionMaskToString(debug.received_move_direction_mask) << " "
+                    << debug.gravity_compression_candidate_count << ":"
+                    << directionMaskToString(debug.gravity_compression_candidate_direction_mask)
+                    << " " << debug.jammed_contact_candidate_count << ":"
+                    << directionMaskToString(debug.jammed_contact_candidate_direction_mask) << " "
+                    << debug.outgoing_compression_contact_count << ":"
+                    << compressionBranchMaskToString(debug.outgoing_compression_branch_mask) << ":"
+                    << debug.max_outgoing_compression_normal_before << "->"
+                    << debug.max_outgoing_compression_normal_after << " "
+                    << debug.incoming_compression_contact_count << ":"
+                    << compressionBranchMaskToString(debug.incoming_compression_branch_mask) << ":"
+                    << debug.max_incoming_compression_normal_before << "->"
+                    << debug.max_incoming_compression_normal_after << " "
+                    << transferStateToChar(debug) << " " << debug.successful_outgoing_transfer_count
+                    << " " << debug.successful_incoming_transfer_count << " "
+                    << debug.blocked_outgoing_transfer_count << " "
+                    << debug.strongest_friction_contact_neighbor_x << " "
+                    << debug.strongest_friction_contact_neighbor_y << " "
+                    << debug.strongest_friction_contact_coefficient << " "
+                    << debug.strongest_friction_contact_normal_force << " "
+                    << debug.strongest_friction_contact_tangential_speed << " "
+                    << debug.strongest_friction_contact_force.x << " "
+                    << debug.strongest_friction_contact_force.y << "\n";
+
+                if (frame < kDiagnosticFrames) {
+                    tracked_replay.advanceTime(kDt);
+                }
+            }
+        }
+    }
+
+    return out.str();
+}
+
 std::string dumpWorldPressureSourceTimeSeriesWithInitialSettle(
     const World& world, int initial_settle_steps, const char* title)
 {
@@ -2113,6 +3099,20 @@ void initializeSleepAnalysisWorld(World& world)
     buildSymmetricDirtPile(world);
 }
 
+void initializeSandboxQuadrantWorld(World& world)
+{
+    SandboxScenario scenario;
+    const Config::Sandbox config{
+        .quadrantEnabled = true,
+        .waterColumnEnabled = false,
+        .rightThrowEnabled = false,
+        .rainRate = 0.0,
+    };
+
+    scenario.setConfig(ScenarioConfig{ config }, world);
+    scenario.setup(world);
+}
+
 class WorldRegionSleepingBehaviorParamTest : public ::testing::TestWithParam<GravityCase> {};
 
 } // namespace
@@ -2150,7 +3150,7 @@ TEST(WorldRegionSleepingBehaviorTest, TransferQuietHeuristicFindsBuriedRegionUnd
         << dumpTransferQuietExperiment(experiment, config);
 }
 
-TEST(WorldRegionSleepingBehaviorTest, PureBuriedRegionCanQualifyDespiteQueuedMoveNoise)
+TEST(WorldRegionSleepingBehaviorTest, PureBuriedRegionCanQualifyWhenFullyQuiet)
 {
     World world(kWorldWidth, kWorldHeight);
     initializeSleepAnalysisWorld(world);
@@ -2170,10 +3170,242 @@ TEST(WorldRegionSleepingBehaviorTest, PureBuriedRegionCanQualifyDespiteQueuedMov
     ASSERT_NE(observation, nullptr) << "Expected observation for the pure buried region.";
 
     EXPECT_TRUE(observation->ever_candidate) << dumpTransferQuietExperiment(experiment, config);
-    EXPECT_GT(observation->max_generated_moves, 0)
+    EXPECT_EQ(observation->max_generated_moves, 0)
         << dumpTransferQuietExperiment(experiment, config);
     EXPECT_EQ(observation->max_successful_transfers, 0)
         << dumpTransferQuietExperiment(experiment, config);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, ToeNotchMovesExposedDirtWithoutDraggingPureBuriedCore)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(world);
+
+    settleWorld(world);
+    GridOfCells settled_grid = makeGrid(world);
+    const std::vector<RegionCoord> buried_regions =
+        collectBuriedMaterialRegions(world, settled_grid);
+    const std::optional<RegionCoord> pure_region = findPureBuriedRegion(world, buried_regions);
+
+    ASSERT_TRUE(pure_region.has_value())
+        << "Expected at least one pure buried region before the surface disturbance.";
+
+    carveLeftToeNotch(world);
+
+    constexpr int kObservationFrames = 24;
+    int frames_with_surface_activity = 0;
+    int total_surface_successful_transfers = 0;
+    int max_pure_successful_transfers = 0;
+    double max_pure_max_velocity = 0.0;
+    double max_pure_mean_velocity = 0.0;
+
+    for (int frame = 0; frame < kObservationFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        GridOfCells frame_grid = makeGrid(world);
+        const int surface_successful_transfers =
+            countExposedGranularSuccessfulTransfers(world, frame_grid);
+        total_surface_successful_transfers += surface_successful_transfers;
+        if (surface_successful_transfers > 0) {
+            frames_with_surface_activity++;
+        }
+
+        const RegionFrameSample pure_region_sample =
+            sampleRegionFrame(world, *pure_region, frame + 1);
+        max_pure_successful_transfers = std::max(
+            max_pure_successful_transfers,
+            pure_region_sample.successful_outgoing_transfers
+                + pure_region_sample.successful_incoming_transfers);
+        max_pure_mean_velocity = std::max(max_pure_mean_velocity, pure_region_sample.mean_velocity);
+        max_pure_max_velocity = std::max(max_pure_max_velocity, pure_region_sample.max_velocity);
+    }
+
+    GridOfCells final_grid = makeGrid(world);
+    const std::vector<RegionCoord> final_buried_regions =
+        collectBuriedMaterialRegions(world, final_grid);
+    std::ostringstream trace;
+    trace << "surfaceActivityFrames=" << frames_with_surface_activity
+          << " totalSurfaceSuccessfulTransfers=" << total_surface_successful_transfers
+          << " maxPureSuccessfulTransfers=" << max_pure_successful_transfers
+          << " maxPureMeanVelocity=" << max_pure_mean_velocity
+          << " maxPureMaxVelocity=" << max_pure_max_velocity;
+
+    SCOPED_TRACE(trace.str());
+    SCOPED_TRACE(dumpSettlingDiagnostics(world, final_grid, final_buried_regions));
+
+    EXPECT_GT(frames_with_surface_activity, 0)
+        << "Expected the toe notch to cause real exposed granular transfers.";
+    EXPECT_GT(total_surface_successful_transfers, 0)
+        << "Expected the toe notch to produce at least one successful transfer.";
+    EXPECT_EQ(max_pure_successful_transfers, 0)
+        << "Expected the pure buried core to remain transfer-quiet during the early surface slide.";
+    EXPECT_LT(max_pure_mean_velocity, 0.02) << "Expected the pure buried core mean velocity to "
+                                               "stay low during the early surface slide.";
+    EXPECT_LT(max_pure_max_velocity, 0.10)
+        << "Expected the pure buried core max velocity to stay low during the early surface slide.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, LargeToeCutStaysSurfaceLocalizedDuringEarlyCollapse)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeSleepAnalysisWorld(world);
+
+    settleWorld(world);
+    GridOfCells settled_grid = makeGrid(world);
+    const std::vector<RegionCoord> buried_regions =
+        collectBuriedMaterialRegions(world, settled_grid);
+    const std::optional<RegionCoord> pure_region = findPureBuriedRegion(world, buried_regions);
+
+    ASSERT_TRUE(pure_region.has_value())
+        << "Expected at least one pure buried region before the larger toe collapse.";
+
+    carveLargeLeftToeCut(world);
+
+    constexpr int kObservationFrames = 48;
+    constexpr int kPureCoreGraceFrames = 16;
+    int frames_with_surface_activity = 0;
+    int total_surface_successful_transfers = 0;
+    int max_pure_successful_transfers = 0;
+    double max_pure_max_velocity = 0.0;
+    double max_pure_mean_velocity = 0.0;
+
+    for (int frame = 0; frame < kObservationFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        GridOfCells frame_grid = makeGrid(world);
+        const int surface_successful_transfers =
+            countExposedGranularSuccessfulTransfers(world, frame_grid);
+        total_surface_successful_transfers += surface_successful_transfers;
+        if (surface_successful_transfers > 0) {
+            frames_with_surface_activity++;
+        }
+
+        if (frame < kPureCoreGraceFrames) {
+            const RegionFrameSample pure_region_sample =
+                sampleRegionFrame(world, *pure_region, frame + 1);
+            max_pure_successful_transfers = std::max(
+                max_pure_successful_transfers,
+                pure_region_sample.successful_outgoing_transfers
+                    + pure_region_sample.successful_incoming_transfers);
+            max_pure_mean_velocity =
+                std::max(max_pure_mean_velocity, pure_region_sample.mean_velocity);
+            max_pure_max_velocity =
+                std::max(max_pure_max_velocity, pure_region_sample.max_velocity);
+        }
+    }
+
+    GridOfCells final_grid = makeGrid(world);
+    const std::vector<RegionCoord> final_buried_regions =
+        collectBuriedMaterialRegions(world, final_grid);
+    std::ostringstream trace;
+    trace << "surfaceActivityFrames=" << frames_with_surface_activity
+          << " totalSurfaceSuccessfulTransfers=" << total_surface_successful_transfers
+          << " maxPureSuccessfulTransfers=" << max_pure_successful_transfers
+          << " maxPureMeanVelocity=" << max_pure_mean_velocity
+          << " maxPureMaxVelocity=" << max_pure_max_velocity;
+
+    SCOPED_TRACE(trace.str());
+    SCOPED_TRACE(dumpSettlingDiagnostics(world, final_grid, final_buried_regions));
+
+    EXPECT_GE(frames_with_surface_activity, 4)
+        << "Expected the larger toe cut to sustain exposed granular activity for multiple frames.";
+    EXPECT_GE(total_surface_successful_transfers, 4)
+        << "Expected the larger toe cut to produce multiple successful exposed transfers.";
+    EXPECT_EQ(max_pure_successful_transfers, 0)
+        << "Expected the pure buried core to remain transfer-quiet during the early collapse "
+           "window.";
+    EXPECT_LT(max_pure_mean_velocity, 0.02) << "Expected the pure buried core mean velocity to "
+                                               "stay low before the failure front reaches"
+                                            << " it.";
+    EXPECT_LT(max_pure_max_velocity, 0.10)
+        << "Expected the pure buried core max velocity to stay bounded during the early collapse"
+        << " window.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, SupportLossReactivatesUnsupportedGranularWedge)
+{
+    World world(kWorldWidth, kWorldHeight);
+    buildBoundaryWalls(world);
+    buildSupportedGranularWedge(world);
+
+    settleWorld(world, 120);
+
+    {
+        const WorldData& data = world.getData();
+        const size_t center_idx = static_cast<size_t>(15) * data.width + 31;
+        const CellDebug& center_debug = data.debug_info[center_idx];
+        ASSERT_TRUE(center_debug.has_granular_support_path)
+            << "Expected the wedge base to be supported before removing the shelf.";
+        ASSERT_TRUE(center_debug.gravity_skipped_for_support)
+            << "Expected the supported wedge base to skip gravity before support removal.";
+    }
+
+    removeGranularWedgeSupport(world);
+
+    constexpr int kObservationFrames = 24;
+    int frames_with_unsupported_motion = 0;
+    int max_unsupported_moving_cells = 0;
+    int total_exposed_successful_transfers = 0;
+
+    for (int frame = 0; frame < kObservationFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        GridOfCells frame_grid = makeGrid(world);
+        total_exposed_successful_transfers +=
+            countExposedGranularSuccessfulTransfers(world, frame_grid);
+
+        const int unsupported_moving_cells =
+            countUnsupportedMovingGranularCells(world, 22, 40, 12, 24, 0.05);
+        max_unsupported_moving_cells =
+            std::max(max_unsupported_moving_cells, unsupported_moving_cells);
+        if (unsupported_moving_cells > 0) {
+            frames_with_unsupported_motion++;
+        }
+    }
+
+    const int dirt_cells_below_support =
+        countMaterialCellsInBox(world, 24, 38, 17, 28, Material::EnumType::Dirt);
+
+    std::ostringstream trace;
+    trace << "framesWithUnsupportedMotion=" << frames_with_unsupported_motion
+          << " maxUnsupportedMovingCells=" << max_unsupported_moving_cells
+          << " totalExposedSuccessfulTransfers=" << total_exposed_successful_transfers
+          << " dirtCellsBelowSupport=" << dirt_cells_below_support;
+
+    SCOPED_TRACE(trace.str());
+
+    EXPECT_GT(frames_with_unsupported_motion, 0)
+        << "Expected the unsupported wedge to start moving after the support shelf is removed.";
+    EXPECT_GT(max_unsupported_moving_cells, 0)
+        << "Expected at least one unsupported granular cell to pick up meaningful velocity.";
+    EXPECT_GT(total_exposed_successful_transfers, 0)
+        << "Expected the unsupported wedge to produce successful transfers while it falls.";
+    EXPECT_GT(dirt_cells_below_support, 0)
+        << "Expected dirt from the former wedge to move below the removed support shelf.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, SandboxQuadrantWallOnlyMixesDoNotCountAsMixedRegions)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+
+    settleWorld(world);
+
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+
+    SCOPED_TRACE(dumpSandboxQuadrantDiagnostics(
+        ForceIsolationProfile{
+            .name = "full",
+            .gravity = getDefaultPhysicsSettings().gravity,
+        }));
+
+    EXPECT_TRUE(buckets.mixed_dirt_regions.empty())
+        << "Expected dirt regions that only share blocks with static walls to stop counting as"
+        << " mixed-material regions.";
+    EXPECT_GE(static_cast<int>(buckets.interior_dirt_regions.size()), 4)
+        << "Expected wall-backed dirt regions to become interior candidates once wall-only mixes"
+        << " stop forcing Awake.";
 }
 
 TEST_P(WorldRegionSleepingBehaviorParamTest, BuriedRegionQuietStateMatchesGravityMode)
@@ -2295,6 +3527,37 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_ViscosityOnlyDiagnostics)
     std::cout << dumpForceIsolationProfileDiagnostics(profile);
 }
 
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantDiagnostics)
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "full",
+        .gravity = defaults.gravity,
+    };
+
+    std::cout << dumpSandboxQuadrantDiagnostics(profile);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantForceIsolationSweep)
+{
+    std::cout << dumpSandboxQuadrantForceIsolationSweep();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantAsciiDiagrams)
+{
+    std::cout << dumpSandboxQuadrantAsciiDiagrams();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantGravityContactDiagnostics)
+{
+    std::cout << dumpSandboxGravityContactDiagnostics();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantCohesionAdhesionFrictionDiagnostics)
+{
+    std::cout << dumpSandboxCohesionAdhesionFrictionDiagnostics();
+}
+
 INSTANTIATE_TEST_SUITE_P(
     GravityModes,
     WorldRegionSleepingBehaviorParamTest,
@@ -2307,6 +3570,6 @@ INSTANTIATE_TEST_SUITE_P(
         GravityCase{
             .name = "gravity_on",
             .gravity = 10.0,
-            .expect_quiet_buried_region = false,
+            .expect_quiet_buried_region = true,
         }),
     [](const ::testing::TestParamInfo<GravityCase>& info) { return info.param.name; });

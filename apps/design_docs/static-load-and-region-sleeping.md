@@ -785,14 +785,57 @@ The current understanding is:
    `full_minus_pressure`, cleaned up `full` in the force-isolation sweep, and made the original
    disabled buried-pile sleeping test pass under the real region tracker.
 
+5. The sandbox quadrant exposed a second gravity/contact case at the free surface.
+
+   In the exact `50x30` sandbox quadrant, the main remaining gravity/contact churn was not coming
+   from the buried interior. It was coming from shallow top-face cells that already had support
+   directly below them but were not yet carrying transmitted load, so they stayed in the
+   non-skipping gravity path and generated tiny blocked downward moves every frame.
+
+   Broadening the compression-contact classification to allow gravity-aligned supported granular
+   contacts even before transmitted load is present removed that sandbox gravity/contact churn and
+   let the supported interior settle under `gravity_contact_only`.
+
+6. The sandbox quadrant also exposed an over-energetic friction model.
+
+   After the gravity/bootstrap bug, granular compaction pressure, and viscosity seepage were fixed,
+   the remaining sandbox jitter reproduced only with `gravity + cohesion + adhesion + friction`.
+   Instrumentation showed the direct force in the supported interior was large horizontal friction,
+   not pressure and not real transport.
+
+   The strongest contacts were vertical dirt-on-dirt pairs inside the supported block. Their normal
+   force came from the full vertical contact weight term, and the old friction solver applied the
+   full Coulomb limit even for tiny tangential slip. That turned friction into an oscillatory
+   impulse source instead of a bounded resistance term.
+
+   Capping per-contact friction by the amount of tangential slip it can actually cancel in one
+   timestep preserved the Coulomb upper bound while removing the overshoot. With that change, the
+   sandbox interior settled under the full physics profile.
+
+7. Wall-only mixed regions were a tracker heuristic, not a physical requirement.
+
+   In the sandbox quadrant, many orange boundary regions were no longer physically noisy. They were
+   only still awake because the 8x8 region straddled dirt and static wall cells, which the tracker
+   treated as `mixed_material`.
+
+   Relaxing `mixed_material` so wall-only mixes no longer force `Awake` turns those wall-backed
+   dirt regions into legitimate interior candidates. After that change, the remaining orange
+   sandbox regions are exposed-surface regions or regions with real residual motion, not merely
+   wall-adjacent bookkeeping artifacts.
+
 This does not mean the broader mechanics are finished. It does mean the branch now has a concrete,
 evidence-backed working direction:
 
 - `static_load` must be valid before force application,
 - supported low-energy buried compression should be resolved as contact, not transport,
+- supported shallow granular contacts at a free surface should also enter that compression path when
+  they already have direct support below them,
 - supported granular compaction should not create a fake diffusive live-pressure field,
 - supported load-bearing granular cells should not participate in same-material viscosity
   diffusion,
+- friction must remain Coulomb-bounded but also slip-bounded so it cannot inject large oscillatory
+  impulses into supported granular contact chains,
+- wall-only region mixes should not by themselves prevent quiet dirt from sleeping,
 - only after those mechanics are quiet should scheduler sleep policy be tightened.
 
 The viscosity result is especially important because it argues against the blunt fix of simply
@@ -940,7 +983,7 @@ Tasks:
 - Build the always-awake shell from:
   - empty adjacency,
   - water adjacency,
-  - mixed materials,
+  - mixed materials other than wall-only mixes,
   - organism occupancy.
 - Add wake hooks for:
   - direct cell edits,
@@ -956,6 +999,9 @@ Tasks:
     tangential motion.
 - Keep compression contacts out of blocked-transfer pressure generation and out of transport-based
   wake bookkeeping.
+- Allow the gravity-aligned compression-contact classification to apply to shallow supported
+  granular cells with a blocked supporting target below, even before they are carrying transmitted
+  load, so flat supported free-surface cells do not generate endless tiny blocked downward moves.
 - Suppress excess-move pressure for granular compaction into already-supporting granular/solid
   targets so buried support compression does not pump a fake live-pressure field into the pile.
 - Gate same-material viscosity coupling for supported load-bearing granular cells:
@@ -965,6 +1011,11 @@ Tasks:
     flowing-surface behavior needs a softer transition.
 - Feed `static_load` into granular friction/contact normal-force estimation only after compression
   contact handling is stable, and keep that first pass bounded.
+- Keep the friction solver slip-bounded as well as Coulomb-bounded:
+  - do not allow a contact to apply more tangential force in one frame than would be required to
+    cancel that contact's tangential slip over the current timestep,
+  - this prevents supported vertical granular contact chains from turning tiny tangential slip into
+    large oscillatory horizontal impulses.
 - Separate queued move attempts from real boundary activity.
 - In the first sleeping heuristic, treat boundary activity primarily as:
   - successful transfers,
@@ -1002,6 +1053,8 @@ Acceptance criteria:
   `viscosity_only` and still allows the buried deep-pile test to pass under the real region
   tracker,
 - bounded load-aware friction further improves settling once added,
+- sandbox wall-backed dirt regions no longer stay awake merely because the region also contains
+  static wall cells,
 - observer-only tests prove that buried dirt can qualify as transfer-quiet even with queued move
   noise,
 - the buried interior of a stable dirt pile reaches `Sleeping`,
@@ -1055,6 +1108,8 @@ Use these scenarios to validate correctness and value:
 
 - Sandbox dirt pile with debug draw enabled:
   - buried interior should become `LoadedQuiet` then `Sleeping`,
+  - wall-backed quiet dirt regions should also become eligible once wall-only mixes stop forcing
+    `Awake`,
   - free surface and toe should remain awake.
 - Sandbox dirt pile under constant gravity before sleeping is enabled:
   - buried interior should stop showing persistent movement-driven wakeups,
@@ -1119,6 +1174,9 @@ Recommended automated coverage:
 - The current viscosity gate is intentionally narrow and somewhat blunt. It may need to evolve into
   a softer load-aware fluidization rule if the boundary between flowing and supported granular
   material looks too abrupt in sandbox scenarios.
+- The current `keep_empty_adjacent_awake` rule is still conservative. After the physics-side fixes
+  and wall-only mixed-region relaxation, some visibly stable exposed regions may remain awake
+  purely because they touch empty space.
 - A transfer-quiet scheduler heuristic may be useful even if the underlying mechanics are still
   somewhat jittery, but wake thresholds will need careful tuning to avoid visible pops.
 - Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
@@ -1143,12 +1201,17 @@ Proceed with the staged design above:
    dirt does not inherit slope motion from nearby flowing dirt,
 7. validate flowing-surface and avalanche behavior with that viscosity gate before redesigning
    granular viscosity more broadly,
-8. add bounded `static_load` friction once the above mechanics are stable,
-9. treat successful boundary crossings, not queued move attempts, as the first sleep-heuristic
+8. keep friction both Coulomb-bounded and slip-bounded so supported granular contact chains do not
+   self-excite under tiny tangential slip,
+9. do not let wall-only mixed regions stay awake merely because they share an 8x8 block with
+   static wall cells,
+10. treat successful boundary crossings, not queued move attempts, as the first sleep-heuristic
    definition of real region activity,
-10. keep water on the current live pressure path,
-11. sleep only buried granular interiors in the first implementation.
+11. keep water on the current live pressure path,
+12. sleep only buried granular interiors in the first implementation.
 
 This gives the expected win for dirt piles without forcing a full pressure-model rewrite in one
 step, and it keeps the next work focused on validating the new load-aware viscosity boundary rather
-than jumping straight to scheduler tuning.
+than jumping straight to scheduler tuning. The immediate tracker follow-on after this checkpoint is
+to understand the remaining tiny residual velocities in quiet wall-backed sandbox regions before
+relaxing the exposed-surface (`empty adjacency`) rule.

@@ -34,11 +34,19 @@ struct CellDebug {
     Vector2d accumulated_friction_force = {};
     Vector2d accumulated_gravity_force = {};
     Vector2d accumulated_pressure_force = {};
+    Vector2d strongest_friction_contact_force = {};
+    Vector2d strongest_friction_contact_normal = {};
 
     // Physics debug values.
     double damping_factor = 1.0;              // Effective damping applied to velocity.
     double cohesion_resistance = 0.0;         // Cohesion resistance threshold.
     double cached_friction_coefficient = 1.0; // Friction coefficient used this frame.
+    double strongest_friction_contact_coefficient = 0.0;
+    double strongest_friction_contact_force_magnitude = 0.0;
+    double strongest_friction_contact_normal_force = 0.0;
+    double strongest_friction_contact_tangential_speed = 0.0;
+    int strongest_friction_contact_neighbor_x = -1;
+    int strongest_friction_contact_neighbor_y = -1;
 
     // Per-frame gravity and move diagnostics.
     bool carries_transmitted_granular_load = false;

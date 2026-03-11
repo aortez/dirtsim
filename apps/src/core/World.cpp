@@ -262,11 +262,14 @@ bool isSupportedGranularCompressionCandidate(
         return false;
     }
 
-    if (!carriesTransmittedGranularLoad(fromCell, gravityMagnitude)) {
+    const bool hasSupportPath =
+        hasSupportedGranularPath(data, fromPos.x, fromPos.y, supportOffsetY, supportCache);
+    if (!hasSupportPath) {
         return false;
     }
 
-    if (!hasSupportedGranularPath(data, fromPos.x, fromPos.y, supportOffsetY, supportCache)) {
+    const bool carriesTransmittedLoad = carriesTransmittedGranularLoad(fromCell, gravityMagnitude);
+    if (!carriesTransmittedLoad && !requireGravityAlignment) {
         return false;
     }
 
