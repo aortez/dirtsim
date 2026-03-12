@@ -130,7 +130,7 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 4;
     population.randomCount = 4;
     cmd.population.push_back(population);
@@ -225,7 +225,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
     cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 2;
     population.randomCount = 2;
     cmd.population.push_back(population);

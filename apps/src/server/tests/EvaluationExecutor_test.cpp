@@ -1,4 +1,4 @@
-#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -67,10 +67,10 @@ EvaluationRequest makeDuckClockGenerationRequest(int index)
         .robustSampleOrdinal = 0,
         .individual =
             EvaluationIndividual{
-                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrent,
+                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
                 .brainVariant = std::nullopt,
                 .scenarioId = Scenario::EnumType::Clock,
-                .genome = DuckNeuralNetRecurrentBrain::randomGenome(rng),
+                .genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng),
             },
     };
 }

@@ -1,5 +1,5 @@
 #include "core/ScenarioConfig.h"
-#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingRunner.h"
@@ -78,7 +78,7 @@ Config::NesSuperMarioBros makeSmbHarnessScenarioConfig(const std::filesystem::pa
 Genome makeSmbHarnessGenome()
 {
     std::mt19937 rng(kSmbHarnessGenomeSeed);
-    return DuckNeuralNetRecurrentBrain::randomGenome(rng);
+    return DuckNeuralNetRecurrentBrainV2::randomGenome(rng);
 }
 
 std::optional<std::string> getEnvValue(const char* envVarName)
@@ -92,8 +92,7 @@ std::optional<std::string> getEnvValue(const char* envVarName)
 
 bool isSupportedSmbHarnessBrainKind(const std::string& brainKind)
 {
-    return brainKind == TrainingBrainKind::DuckNeuralNetRecurrent
-        || brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    return brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2;
 }
 
 std::string formatBrainSpec(const TrainingRunner::BrainSpec& brain)
@@ -110,7 +109,7 @@ GenomeSelection makeSeededSmbHarnessGenomeSelection()
     return GenomeSelection{
         .brain =
             TrainingRunner::BrainSpec{
-                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrent,
+                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
                 .brainVariant = std::nullopt,
             },
         .genome = makeSmbHarnessGenome(),
@@ -181,7 +180,7 @@ GenomeSelectionResult resolveConfiguredSmbHarnessGenomeSelection()
     }
 
     const std::string brainKind =
-        metadata->brainKind.value_or(TrainingBrainKind::DuckNeuralNetRecurrent);
+        metadata->brainKind.value_or(TrainingBrainKind::DuckNeuralNetRecurrentV2);
     if (!isSupportedSmbHarnessBrainKind(brainKind)) {
         return GenomeSelectionResult{
             .error =
@@ -597,7 +596,7 @@ TEST(TrainingRunnerTraceHarnessTest, ResolveConfiguredGenomeSelectionLoadsReposi
                 .scenarioId = Scenario::EnumType::NesSuperMarioBros,
                 .notes = "",
                 .organismType = OrganismType::NES_DUCK,
-                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrent,
+                .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
             });
@@ -609,7 +608,7 @@ TEST(TrainingRunnerTraceHarnessTest, ResolveConfiguredGenomeSelectionLoadsReposi
 
         const GenomeSelectionResult result = resolveConfiguredSmbHarnessGenomeSelection();
         ASSERT_TRUE(result.selection.has_value()) << result.error;
-        EXPECT_EQ(result.selection->brain.brainKind, TrainingBrainKind::DuckNeuralNetRecurrent);
+        EXPECT_EQ(result.selection->brain.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
         EXPECT_EQ(result.selection->genome, expectedGenome);
         EXPECT_EQ(result.selection->genomeId, std::optional<GenomeId>(genomeId));
         EXPECT_EQ(result.selection->repositoryPath, std::optional<std::filesystem::path>(dbPath));

@@ -7,6 +7,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeBrain.h"
 #include "core/organisms/TreeCommandProcessor.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
@@ -639,7 +640,7 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -658,12 +659,12 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = entry->createRandomGenome(rng_);
 
@@ -690,9 +691,9 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfinite
     spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
     std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), 0.0f);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
@@ -751,9 +752,9 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRe
     spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
 
     int controllerCalls = 0;
     int evaluateCalls = 0;
@@ -798,9 +799,9 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerEmitsPerFrameTrace)
     spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
 
     std::vector<TrainingRunner::FrameTrace> traces;
     NesGameAdapterRegistry adapterRegistry;

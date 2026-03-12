@@ -5,7 +5,6 @@
 #include "core/Timers.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
-#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
@@ -225,7 +224,6 @@ private:
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
-    std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
     std::unique_ptr<DuckNeuralNetRecurrentBrainV2> nesDuckBrainV2_;
     std::optional<NesGameAdapterControllerOutput> nesLastControllerOutput_ = std::nullopt;
     std::optional<NesGameAdapterDebugState> nesLastDebugState_ = std::nullopt;
