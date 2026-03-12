@@ -579,6 +579,67 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeSkipsIncompatibleGenomeLayouts)
     EXPECT_EQ(spec.randomCount, 2);
 }
 
+TEST(StateEvolutionTest, EvolutionStartWarmResumeUsesSingleEvalSeedsForDeterministicSmb)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const GenomeId smbBestId = UUID::generate();
+    const GenomeMetadata smbBestMetadata{
+        .name = "smb-best",
+        .fitness = 712.0,
+        .robustFitness = 712.0,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { 712.0 },
+        .generation = 12,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+        .notes = "",
+        .organismType = OrganismType::NES_DUCK,
+        .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::Smb,
+    };
+    repo.store(smbBestId, makeDuckRecurrentV2Genome(0.5f), smbBestMetadata);
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.evolution.warmStartSeedCount = 1;
+    cmd.evolution.warmStartSeedPercent = 0.0;
+    cmd.evolution.warmStartMinRobustEvalCount = 3;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    population.count = 3;
+    population.randomCount = 3;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 1u);
+    EXPECT_EQ(spec.seedGenomes.front(), smbBestId);
+    EXPECT_EQ(spec.randomCount, 2);
+}
+
 TEST(StateEvolutionTest, MissingBrainKindTriggersDeath)
 {
     TestStateMachineFixture fixture;

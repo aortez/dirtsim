@@ -185,6 +185,16 @@ int computeWarmStartSeedTargetCount(
     return std::min(randomCount, std::max(0, warmStartSeedCount));
 }
 
+int resolveWarmStartMinRobustEvalCount(
+    const Api::EvolutionStart::Command& command, const ScenarioMetadata& scenarioMetadata)
+{
+    if (scenarioMetadata.deterministicEvaluation) {
+        return 1;
+    }
+
+    return std::max(1, command.evolution.warmStartMinRobustEvalCount);
+}
+
 double computeWarmSeedFitnessFloor(
     const std::vector<const WarmSeedCandidate*>& compatibleCandidates, double floorPercentile)
 {
@@ -360,6 +370,12 @@ std::optional<ApiError> validateTrainingConfig(
         outSpec.population.push_back(defaultSpec);
     }
 
+    const ScenarioMetadata* scenarioMetadata = registry.getMetadata(outSpec.scenarioId);
+    if (!scenarioMetadata) {
+        return ApiError(
+            std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
+    }
+
     TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
     std::vector<WarmSeedCandidate> warmSeedCandidates;
     const bool warmStartAlwaysIncludeBest = command.evolution.warmStartAlwaysIncludeBest;
@@ -371,7 +387,7 @@ std::optional<ApiError> validateTrainingConfig(
     const double warmStartSeedPercent =
         std::clamp(command.evolution.warmStartSeedPercent, 0.0, 100.0);
     const int warmStartMinRobustEvalCount =
-        std::max(1, command.evolution.warmStartMinRobustEvalCount);
+        resolveWarmStartMinRobustEvalCount(command, *scenarioMetadata);
     std::mt19937 warmSeedSamplingRng(std::random_device{}());
     if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
         warmSeedCandidates = collectWarmSeedCandidates(repo, warmStartMinRobustEvalCount);
@@ -379,11 +395,6 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
-        const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
-        if (!metadata) {
-            return ApiError(
-                std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
-        }
         if (spec.count <= 0) {
             return ApiError("Population entry count must be > 0");
         }
@@ -416,7 +427,7 @@ std::optional<ApiError> validateTrainingConfig(
                                 candidate.metadata,
                                 outSpec.organismType,
                                 spec,
-                                metadata->genomePoolId)) {
+                                scenarioMetadata->genomePoolId)) {
                             continue;
                         }
                         if (std::find(
