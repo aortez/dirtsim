@@ -4,6 +4,7 @@
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
+#include "core/organisms/evolution/NesPolicyLayout.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
@@ -28,10 +29,47 @@ namespace DirtSim {
 namespace Ui {
 
 namespace {
+constexpr std::array<uint8_t, 8> kNesButtonMasks{
+    NesPolicyLayout::ButtonUp,     NesPolicyLayout::ButtonDown,  NesPolicyLayout::ButtonLeft,
+    NesPolicyLayout::ButtonRight,  NesPolicyLayout::ButtonA,     NesPolicyLayout::ButtonB,
+    NesPolicyLayout::ButtonSelect, NesPolicyLayout::ButtonStart,
+};
+constexpr std::array<const char*, 8> kNesButtonLabels{ "U", "D", "L", "R", "A", "B", "SE", "ST" };
+constexpr std::array<const char*, 4> kNesOutputLabels{ "X", "Y", "A", "B" };
+constexpr float kNesOutputBarMaxMagnitude = 4.0f;
+
 struct BestRenderRequest {
     TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
 };
+
+bool isNesControllerOverlayEnabled(const UserSettings& userSettings)
+{
+    return userSettings.uiTraining.nesControllerOverlayEnabled.value_or(false);
+}
+
+float normalizeNesOverlayOutput(float value)
+{
+    return std::clamp(value / kNesOutputBarMaxMagnitude, -1.0f, 1.0f);
+}
+
+std::string nesControllerSourceLabelBuild(NesGameAdapterControllerSource source)
+{
+    switch (source) {
+        case NesGameAdapterControllerSource::InferredPolicy:
+            return "POLICY";
+        case NesGameAdapterControllerSource::ScriptedSetup:
+            return "SCRIPT";
+    }
+    return "POLICY";
+}
+
+std::string nesOutputValueTextBuild(float value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value;
+    return out.str();
+}
 
 std::string presentationMetricDetailTextBuild(const Api::FitnessPresentationMetric& metric)
 {
@@ -607,6 +645,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(worldContainer_, LV_OBJ_FLAG_SCROLLABLE);
 
     renderer_->initialize(worldContainer_, 9, 9);
+    createNesVideoOverlay(worldContainer_, liveNesOverlayWidgets_);
 
     // Right panel: Best snapshot.
     lv_obj_t* rightPanel = lv_obj_create(bottomRow_);
@@ -636,6 +675,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(bestWorldContainer_, LV_OBJ_FLAG_SCROLLABLE);
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
+    createNesVideoOverlay(bestWorldContainer_, bestNesOverlayWidgets_);
 
     fitnessPlotsPanel_ = lv_obj_create(centerLayout);
     lv_obj_set_size(fitnessPlotsPanel_, LV_PCT(100), fitnessPlotPanelHeightPx);
@@ -697,9 +737,227 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
         });
 
     clearFitnessPlots();
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 
     LOG_INFO(
         Controls, "Training active UI created with live feed, best snapshot, and long-term panel");
+}
+
+void TrainingActiveView::createNesVideoOverlay(
+    lv_obj_t* parent, TrainingActiveView::NesOverlayWidgets& overlay)
+{
+    overlay = {};
+
+    overlay.container = lv_obj_create(parent);
+    lv_obj_set_width(overlay.container, LV_PCT(92));
+    lv_obj_set_height(overlay.container, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(overlay.container, lv_color_hex(0x08101A), 0);
+    lv_obj_set_style_bg_opa(overlay.container, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(overlay.container, 1, 0);
+    lv_obj_set_style_border_color(overlay.container, lv_color_hex(0x2A3B52), 0);
+    lv_obj_set_style_radius(overlay.container, 6, 0);
+    lv_obj_set_style_pad_all(overlay.container, 5, 0);
+    lv_obj_set_style_pad_gap(overlay.container, 4, 0);
+    lv_obj_set_flex_flow(overlay.container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        overlay.container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(overlay.container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(overlay.container, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_obj_add_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* headerRow = lv_obj_create(overlay.container);
+    setTransparentRowLayout(headerRow, 4);
+
+    overlay.sourceBadge = lv_label_create(headerRow);
+    lv_obj_set_style_pad_hor(overlay.sourceBadge, 5, 0);
+    lv_obj_set_style_pad_ver(overlay.sourceBadge, 1, 0);
+    lv_obj_set_style_radius(overlay.sourceBadge, 4, 0);
+    lv_obj_set_style_text_font(overlay.sourceBadge, &lv_font_montserrat_12, 0);
+    lv_label_set_text(overlay.sourceBadge, "POLICY");
+
+    overlay.sourceFrameLabel = lv_label_create(headerRow);
+    lv_obj_set_flex_grow(overlay.sourceFrameLabel, 1);
+    lv_obj_set_style_text_align(overlay.sourceFrameLabel, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(overlay.sourceFrameLabel, lv_color_hex(0xA5B5C9), 0);
+    lv_obj_set_style_text_font(overlay.sourceFrameLabel, &lv_font_montserrat_12, 0);
+    lv_label_set_text(overlay.sourceFrameLabel, "--");
+
+    for (size_t i = 0; i < kNesOutputLabels.size(); ++i) {
+        lv_obj_t* row = lv_obj_create(overlay.container);
+        setTransparentRowLayout(row, 4);
+
+        lv_obj_t* label = lv_label_create(row);
+        lv_obj_set_width(label, 12);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xD8E4F5), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+        lv_label_set_text(label, kNesOutputLabels[i]);
+
+        lv_obj_t* track = lv_obj_create(row);
+        lv_obj_set_height(track, 12);
+        lv_obj_set_flex_grow(track, 1);
+        lv_obj_set_style_bg_color(track, lv_color_hex(0x132030), 0);
+        lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(track, 1, 0);
+        lv_obj_set_style_border_color(track, lv_color_hex(0x22364D), 0);
+        lv_obj_set_style_radius(track, 4, 0);
+        lv_obj_set_style_pad_all(track, 1, 0);
+        lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* centerLine = lv_obj_create(track);
+        lv_obj_set_size(centerLine, 2, LV_PCT(100));
+        lv_obj_set_style_bg_color(centerLine, lv_color_hex(0x72839B), 0);
+        lv_obj_set_style_bg_opa(centerLine, LV_OPA_70, 0);
+        lv_obj_set_style_border_width(centerLine, 0, 0);
+        lv_obj_set_style_radius(centerLine, 0, 0);
+        lv_obj_align(centerLine, LV_ALIGN_CENTER, 0, 0);
+
+        overlay.outputFills[i] = lv_obj_create(track);
+        lv_obj_set_size(overlay.outputFills[i], 1, 8);
+        lv_obj_set_style_border_width(overlay.outputFills[i], 0, 0);
+        lv_obj_set_style_radius(overlay.outputFills[i], 3, 0);
+        lv_obj_align(overlay.outputFills[i], LV_ALIGN_LEFT_MID, lv_obj_get_width(track) / 2, 0);
+
+        overlay.outputValueLabels[i] = lv_label_create(row);
+        lv_obj_set_width(overlay.outputValueLabels[i], 34);
+        lv_obj_set_style_text_align(overlay.outputValueLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_color(overlay.outputValueLabels[i], lv_color_hex(0xA5B5C9), 0);
+        lv_obj_set_style_text_font(overlay.outputValueLabels[i], &lv_font_montserrat_12, 0);
+        lv_label_set_text(overlay.outputValueLabels[i], "0.00");
+    }
+
+    lv_obj_t* buttons = lv_obj_create(overlay.container);
+    lv_obj_set_size(buttons, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(buttons, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(buttons, 0, 0);
+    lv_obj_set_style_pad_all(buttons, 0, 0);
+    lv_obj_set_style_pad_row(buttons, 3, 0);
+    lv_obj_set_style_pad_column(buttons, 3, 0);
+    lv_obj_set_flex_flow(buttons, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(buttons, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(buttons, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (size_t i = 0; i < kNesButtonLabels.size(); ++i) {
+        overlay.buttonChips[i] = lv_label_create(buttons);
+        lv_obj_set_size(overlay.buttonChips[i], 24, 18);
+        lv_obj_set_style_text_align(overlay.buttonChips[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(overlay.buttonChips[i], &lv_font_montserrat_12, 0);
+        lv_obj_set_style_pad_top(overlay.buttonChips[i], 2, 0);
+        lv_obj_set_style_radius(overlay.buttonChips[i], 4, 0);
+        lv_label_set_text(overlay.buttonChips[i], kNesButtonLabels[i]);
+    }
+}
+
+void TrainingActiveView::updateNesVideoOverlay(
+    TrainingActiveView::NesOverlayWidgets& overlay,
+    const std::optional<NesControllerTelemetry>& telemetry,
+    bool videoVisible)
+{
+    if (!overlay.container) {
+        return;
+    }
+
+    if (!videoVisible || !isNesControllerOverlayEnabled(userSettings_) || !telemetry.has_value()) {
+        lv_obj_add_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    const NesControllerTelemetry& value = telemetry.value();
+    lv_obj_clear_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(overlay.container);
+
+    const std::string sourceLabel = nesControllerSourceLabelBuild(value.controllerSource);
+    lv_label_set_text(overlay.sourceBadge, sourceLabel.c_str());
+    if (value.controllerSource == NesGameAdapterControllerSource::ScriptedSetup) {
+        lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x3F2032), 0);
+        lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xFFD6E6), 0);
+    }
+    else {
+        lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x173629), 0);
+        lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xA8FFD4), 0);
+    }
+
+    if (value.controllerSourceFrameIndex.has_value()) {
+        lv_label_set_text_fmt(
+            overlay.sourceFrameLabel,
+            "F%llu",
+            static_cast<unsigned long long>(value.controllerSourceFrameIndex.value()));
+    }
+    else {
+        lv_label_set_text(overlay.sourceFrameLabel, "--");
+    }
+
+    const std::array<float, 4> rawOutputs{ value.xRaw, value.yRaw, value.aRaw, value.bRaw };
+    for (size_t i = 0; i < rawOutputs.size(); ++i) {
+        if (!overlay.outputFills[i] || !overlay.outputValueLabels[i]) {
+            continue;
+        }
+
+        lv_label_set_text(
+            overlay.outputValueLabels[i], nesOutputValueTextBuild(rawOutputs[i]).c_str());
+
+        lv_obj_t* track = lv_obj_get_parent(overlay.outputFills[i]);
+        lv_obj_update_layout(track);
+        const int trackWidth = std::max(4, lv_obj_get_width(track) - 2);
+        const int trackHeight = std::max(4, lv_obj_get_height(track) - 2);
+        const int halfWidth = std::max(1, (trackWidth / 2) - 1);
+        const float normalized = normalizeNesOverlayOutput(rawOutputs[i]);
+        const int fillWidth =
+            std::max(1, static_cast<int>(std::round(std::abs(normalized) * halfWidth)));
+        const int fillX = normalized >= 0.0f ? (trackWidth / 2) : ((trackWidth / 2) - fillWidth);
+
+        lv_obj_set_size(overlay.outputFills[i], fillWidth, std::max(4, trackHeight - 2));
+        lv_obj_align(overlay.outputFills[i], LV_ALIGN_LEFT_MID, fillX, 0);
+        lv_obj_set_style_bg_color(
+            overlay.outputFills[i],
+            normalized >= 0.0f ? lv_color_hex(0xFF9A62) : lv_color_hex(0x66B8FF),
+            0);
+        lv_obj_set_style_bg_opa(overlay.outputFills[i], LV_OPA_COVER, 0);
+    }
+
+    for (size_t i = 0; i < overlay.buttonChips.size(); ++i) {
+        const uint8_t bit = kNesButtonMasks[i];
+        updateNesVideoOverlayButton(
+            overlay.buttonChips[i],
+            (value.inferredControllerMask & bit) != 0,
+            (value.resolvedControllerMask & bit) != 0,
+            i >= 4);
+    }
+}
+
+void TrainingActiveView::updateNesVideoOverlayButton(
+    lv_obj_t* chip, bool inferredPressed, bool resolvedPressed, bool actionButton)
+{
+    if (!chip) {
+        return;
+    }
+
+    if (resolvedPressed) {
+        lv_obj_set_style_bg_color(
+            chip, actionButton ? lv_color_hex(0xFFB359) : lv_color_hex(0x78D5FF), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(chip, 0, 0);
+        lv_obj_set_style_text_color(chip, lv_color_hex(0x08101A), 0);
+        return;
+    }
+
+    if (inferredPressed) {
+        lv_obj_set_style_bg_color(chip, lv_color_hex(0x0B1624), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(chip, 1, 0);
+        lv_obj_set_style_border_color(
+            chip, actionButton ? lv_color_hex(0xFF9A62) : lv_color_hex(0x66B8FF), 0);
+        lv_obj_set_style_text_color(
+            chip, actionButton ? lv_color_hex(0xFFD0B2) : lv_color_hex(0xC5EBFF), 0);
+        return;
+    }
+
+    lv_obj_set_style_bg_color(chip, lv_color_hex(0x0B1624), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(chip, 1, 0);
+    lv_obj_set_style_border_color(chip, lv_color_hex(0x22364D), 0);
+    lv_obj_set_style_text_color(chip, lv_color_hex(0x637389), 0);
 }
 
 void TrainingActiveView::destroyUI()
@@ -749,6 +1007,7 @@ void TrainingActiveView::destroyUI()
     streamIntervalStepper_ = nullptr;
     bestPlaybackToggle_ = nullptr;
     bestPlaybackIntervalStepper_ = nullptr;
+    nesControllerOverlayToggle_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
     scenarioControlsButton_ = nullptr;
@@ -761,6 +1020,10 @@ void TrainingActiveView::destroyUI()
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
+    liveNesOverlayWidgets_ = {};
+    bestNesOverlayWidgets_ = {};
+    liveNesControllerTelemetry_.reset();
+    bestNesControllerTelemetry_.reset();
     currentScenarioConfig_ = Config::Empty{};
     currentScenarioId_ = Scenario::EnumType::Empty;
     scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
@@ -769,12 +1032,15 @@ void TrainingActiveView::destroyUI()
 }
 
 void TrainingActiveView::renderWorld(
-    const WorldData& worldData, const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const WorldData& worldData,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry)
 {
     if (!worldContainer_) {
         return;
     }
 
+    liveNesControllerTelemetry_ = nesControllerTelemetry;
     if (scenarioVideoFrame.has_value()) {
         if (!videoSurface_) {
             if (renderer_) {
@@ -783,9 +1049,12 @@ void TrainingActiveView::renderWorld(
             videoSurface_ = std::make_unique<VideoSurface>();
         }
         videoSurface_->present(scenarioVideoFrame.value(), worldContainer_);
+        updateNesVideoOverlay(liveNesOverlayWidgets_, liveNesControllerTelemetry_, true);
         return;
     }
 
+    liveNesControllerTelemetry_.reset();
+    updateNesVideoOverlay(liveNesOverlayWidgets_, liveNesControllerTelemetry_, false);
     if (videoSurface_) {
         videoSurface_.reset();
     }
@@ -816,6 +1085,9 @@ void TrainingActiveView::updateBestSnapshot(
     }
     else {
         bestVideoFrame_.reset();
+    }
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
+        bestNesControllerTelemetry_.reset();
     }
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
@@ -1020,6 +1292,11 @@ void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
         }
     }
 
+    if (!enabled) {
+        bestNesControllerTelemetry_.reset();
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, false);
+    }
+
     if (!enabled && hasBestSnapshot_ && bestSnapshotWorldData_) {
         bestWorldData_ = std::make_unique<WorldData>(*bestSnapshotWorldData_);
         bestFitness_ = bestSnapshotFitness_;
@@ -1035,6 +1312,19 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
         LVGLBuilder::ActionStepperBuilder::setValue(
             bestPlaybackIntervalStepper_, userSettings_.uiTraining.bestPlaybackIntervalMs);
     }
+}
+
+void TrainingActiveView::setNesControllerOverlayEnabled(bool enabled)
+{
+    userSettings_.uiTraining.nesControllerOverlayEnabled = enabled;
+    if (nesControllerOverlayToggle_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(nesControllerOverlayToggle_, enabled);
+    }
+
+    updateNesVideoOverlay(
+        liveNesOverlayWidgets_, liveNesControllerTelemetry_, videoSurface_ != nullptr);
+    updateNesVideoOverlay(
+        bestNesOverlayWidgets_, bestNesControllerTelemetry_, bestVideoFrame_.has_value());
 }
 
 void TrainingActiveView::updateScenarioConfig(
@@ -1258,13 +1548,15 @@ void TrainingActiveView::updateBestPlaybackFrame(
     const WorldData& worldData,
     double fitness,
     int generation,
-    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry)
 {
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         return;
     }
 
     bestWorldData_ = std::make_unique<WorldData>(worldData);
+    bestNesControllerTelemetry_ = nesControllerTelemetry;
     if (scenarioVideoFrame.has_value()) {
         bestVideoFrame_ = scenarioVideoFrame;
     }
@@ -1568,6 +1860,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         bestWorldData_.reset();
         bestSnapshotWorldData_.reset();
         bestVideoFrame_.reset();
+        liveNesControllerTelemetry_.reset();
+        bestNesControllerTelemetry_.reset();
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
         bestSnapshotFitness_ = 0.0;
@@ -1614,6 +1908,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
 void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
@@ -1648,8 +1943,10 @@ void TrainingActiveView::renderBestWorld()
             bestVideoSurface_ = std::make_unique<VideoSurface>();
         }
         bestVideoSurface_->present(bestVideoFrame_.value(), bestWorldContainer_);
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, true);
     }
     else {
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, false);
         if (!bestRenderer_) {
             LOG_WARN(Controls, "TrainingActiveView: renderBestWorld skipped (no renderer)");
             return;
@@ -1819,6 +2116,17 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     pauseResumeButton_ = pauseBuilder.buildOrLog();
     pauseResumeLabel_ = pauseBuilder.getLabel();
 
+    nesControllerOverlayToggle_ = LVGLBuilder::actionButton(streamPanel_)
+                                      .text("NN + Pad")
+                                      .mode(LVGLBuilder::ActionMode::Toggle)
+                                      .checked(isNesControllerOverlayEnabled(userSettings_))
+                                      .width(LV_PCT(100))
+                                      .height(LVGLBuilder::Style::ACTION_SIZE)
+                                      .layoutRow()
+                                      .alignLeft()
+                                      .callback(onNesControllerOverlayToggled, this)
+                                      .buildOrLog();
+
     cpuCorePlot_ = std::make_unique<TimeSeriesPlotWidget>(
         streamPanel_,
         TimeSeriesPlotWidget::Config{
@@ -1848,6 +2156,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     updateScenarioButtonState();
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
@@ -1864,6 +2173,8 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
             .intervalMs = value,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
         });
 }
 
@@ -1881,6 +2192,8 @@ void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
             .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
         });
 }
 
@@ -1899,6 +2212,27 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
             .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+        });
+}
+
+void TrainingActiveView::onNesControllerOverlayToggled(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->nesControllerOverlayToggle_) {
+        return;
+    }
+
+    const bool enabled =
+        LVGLBuilder::ActionButtonBuilder::isChecked(self->nesControllerOverlayToggle_);
+    self->setNesControllerOverlayEnabled(enabled);
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled = enabled,
         });
 }
 

@@ -275,6 +275,7 @@ TrainingRunner::TrainingRunner(
     nesFitnessDetails_ = std::monostate{};
     nesDuckBrainV2_.reset();
     nesLastControllerOutput_.reset();
+    nesLastControllerTelemetry_.reset();
     nesLastDebugState_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
         if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2) {
@@ -645,6 +646,7 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         }
         nesFitnessDetails_ = std::monostate{};
         nesLastControllerOutput_.reset();
+        nesLastControllerTelemetry_.reset();
         nesLastDebugState_.reset();
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
@@ -788,6 +790,7 @@ void TrainingRunner::resolveBrainEntry()
 TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
 {
     NesFrameTrace trace;
+    nesLastControllerTelemetry_.reset();
     trace.lastGameStateBefore = nesLastGameState_;
 
     if (!nesDriver_) {
@@ -819,6 +822,11 @@ TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
         nesGameAdapter_->resolveControllerMask(controllerInput);
     nesLastControllerOutput_ = controllerOutput;
     const uint8_t controllerMask = controllerOutput.resolvedControllerMask;
+    if (nesLastControllerTelemetry_.has_value()) {
+        nesLastControllerTelemetry_->resolvedControllerMask = controllerMask;
+        nesLastControllerTelemetry_->controllerSource = controllerOutput.source;
+        nesLastControllerTelemetry_->controllerSourceFrameIndex = controllerOutput.sourceFrameIndex;
+    }
     trace.resolvedControllerMask = controllerMask;
     trace.controllerSource = controllerOutput.source;
     trace.controllerSourceFrameIndex = controllerOutput.sourceFrameIndex;
@@ -910,6 +918,7 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
 
 uint8_t TrainingRunner::inferNesControllerMask()
 {
+    nesLastControllerTelemetry_.reset();
     const DuckSensoryData sensory = makeNesDuckSensoryData();
     uint8_t mask = 0;
     if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
@@ -938,6 +947,16 @@ uint8_t TrainingRunner::inferNesControllerMask()
             mask |= NesPolicyLayout::ButtonDown;
         }
 
+        nesLastControllerTelemetry_ = NesControllerTelemetry{
+            .aRaw = output.aRaw,
+            .bRaw = output.bRaw,
+            .xRaw = output.xRaw,
+            .yRaw = output.yRaw,
+            .inferredControllerMask = mask,
+            .resolvedControllerMask = mask,
+            .controllerSource = NesGameAdapterControllerSource::InferredPolicy,
+            .controllerSourceFrameIndex = std::nullopt,
+        };
         return mask;
     }
 

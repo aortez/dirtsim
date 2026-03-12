@@ -332,6 +332,9 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
     settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
     settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
     settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    if (evt.nesControllerOverlayEnabled.has_value()) {
+        settings.uiTraining.nesControllerOverlayEnabled = evt.nesControllerOverlayEnabled;
+    }
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
     view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);

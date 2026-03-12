@@ -404,6 +404,7 @@ void broadcastTrainingBestPlaybackFrame(
     std::vector<OrganismId> organismIds,
     double fitness,
     int generation,
+    std::optional<NesControllerTelemetry> nesControllerTelemetry,
     std::optional<ScenarioVideoFrame> scenarioVideoFrame)
 {
     Api::TrainingBestPlaybackFrame frame;
@@ -411,6 +412,7 @@ void broadcastTrainingBestPlaybackFrame(
     frame.organismIds = std::move(organismIds);
     frame.fitness = fitness;
     frame.generation = generation;
+    frame.nesControllerTelemetry = std::move(nesControllerTelemetry);
     frame.scenarioVideoFrame = std::move(scenarioVideoFrame);
 
     dsm.broadcastEventData(
@@ -665,6 +667,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
                 visibleTick.frame->organismIds,
                 visibleTick.frame->scenarioId,
                 visibleTick.frame->scenarioConfig,
+                visibleTick.frame->nesControllerTelemetry,
                 visibleTick.frame->scenarioVideoFrame);
         }
         for (auto& result : visibleTick.completed) {
@@ -1878,6 +1881,7 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
                 *organismGrid,
                 bestPlayback_.fitness,
                 bestPlayback_.generation,
+                bestPlayback_.runner->getNesLastControllerTelemetry(),
                 videoFrame);
         }
     }

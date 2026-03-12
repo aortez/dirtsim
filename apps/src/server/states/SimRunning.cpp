@@ -362,6 +362,7 @@ void SimRunning::tick(StateMachine& dsm)
                 *organismGrid,
                 session.getScenarioId(),
                 session.getScenarioConfig(),
+                std::nullopt,
                 *nes.value().scenarioVideoFrame);
 
             // Track FPS for frame send rate.
@@ -668,6 +669,7 @@ void SimRunning::tick(StateMachine& dsm)
             world->getOrganismManager().getGrid(),
             session.getScenarioId(),
             scenario->getConfig(),
+            std::nullopt,
             std::nullopt);
 
         timers.stopTimer("broadcast_render_message");

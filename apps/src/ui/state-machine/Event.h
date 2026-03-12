@@ -44,6 +44,7 @@
 #include "server/api/TrainingResult.h"
 #include "ui/state-machine/api/TrainingStart.h"
 #include <concepts>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -200,6 +201,7 @@ struct TrainingStreamConfigChangedEvent {
     int intervalMs = 0;
     bool bestPlaybackEnabled = false;
     int bestPlaybackIntervalMs = 16;
+    std::optional<bool> nesControllerOverlayEnabled = std::nullopt;
     static constexpr const char* name() { return "TrainingStreamConfigChangedEvent"; }
 };
 

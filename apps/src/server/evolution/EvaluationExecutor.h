@@ -8,6 +8,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 #include "server/evolution/FitnessEvaluation.h"
 #include "server/evolution/FitnessModelBundle.h"
 
@@ -78,6 +79,7 @@ struct VisibleRenderFrame {
     std::vector<OrganismId> organismIds;
     Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
     ScenarioConfig scenarioConfig = Config::Empty{};
+    std::optional<NesControllerTelemetry> nesControllerTelemetry = std::nullopt;
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;
 };
 

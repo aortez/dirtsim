@@ -2,6 +2,7 @@
 
 #include "core/organisms/DuckSensoryData.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 #include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
@@ -13,11 +14,6 @@
 #include <string>
 
 namespace DirtSim {
-
-enum class NesGameAdapterControllerSource : uint8_t {
-    InferredPolicy = 0,
-    ScriptedSetup = 1,
-};
 
 struct NesGameAdapterControllerInput {
     uint8_t inferredControllerMask = 0;

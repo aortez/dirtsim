@@ -488,6 +488,11 @@ DuckNeuralNetRecurrentBrainV2::ControllerOutput DuckNeuralNetRecurrentBrainV2::
     const auto& input = impl_->flattenSensoryData(sensory);
     const auto& output = impl_->forward(input);
 
+    const float xRaw = static_cast<float>(output[0]);
+    const float yRaw = static_cast<float>(output[1]);
+    const float aRaw = static_cast<float>(output[2]);
+    const float bRaw = static_cast<float>(output[3]);
+
     lastMoveX_ = static_cast<float>(std::tanh(output[0]));
     lastMoveY_ = static_cast<float>(std::tanh(output[1]));
     buttonAHeld_ = output[2] > 0.0f;
@@ -498,6 +503,10 @@ DuckNeuralNetRecurrentBrainV2::ControllerOutput DuckNeuralNetRecurrentBrainV2::
         .y = lastMoveY_,
         .a = buttonAHeld_,
         .b = buttonBHeld_,
+        .xRaw = xRaw,
+        .yRaw = yRaw,
+        .aRaw = aRaw,
+        .bRaw = bRaw,
     };
 }
 

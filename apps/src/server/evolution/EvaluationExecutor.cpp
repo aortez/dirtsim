@@ -502,6 +502,7 @@ std::optional<VisibleRenderFrame> visibleFrameBuild(const EvaluationExecutor::Im
     frame.organismIds = *organismGrid;
     frame.scenarioId = impl.visible.activeRequest->request.individual.scenarioId;
     frame.scenarioConfig = impl.visible.runner->getScenarioConfig();
+    frame.nesControllerTelemetry = impl.visible.runner->getNesLastControllerTelemetry();
     frame.scenarioVideoFrame = videoFrame;
     return frame;
 }

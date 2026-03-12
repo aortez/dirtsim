@@ -27,6 +27,7 @@
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -840,6 +841,15 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerEmitsPerFrameTrace)
     ASSERT_TRUE(traces.front().nes->debugState.has_value());
     EXPECT_EQ(traces.front().nes->debugState->world, std::optional<uint8_t>(2u));
     EXPECT_EQ(traces.front().nes->debugState->level, std::optional<uint8_t>(3u));
+    ASSERT_TRUE(runner.getNesLastControllerTelemetry().has_value());
+    const NesControllerTelemetry& telemetry = runner.getNesLastControllerTelemetry().value();
+    EXPECT_EQ(telemetry.resolvedControllerMask, NesPolicyLayout::ButtonStart);
+    EXPECT_EQ(telemetry.controllerSource, NesGameAdapterControllerSource::ScriptedSetup);
+    EXPECT_EQ(telemetry.controllerSourceFrameIndex, std::optional<uint64_t>(42u));
+    EXPECT_TRUE(std::isfinite(telemetry.xRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.yRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.aRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.bRaw));
     EXPECT_EQ(status.state, TrainingRunner::State::Running);
 }
 

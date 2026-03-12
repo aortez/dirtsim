@@ -171,6 +171,10 @@ public:
     {
         return nesLastDebugState_;
     }
+    const std::optional<NesControllerTelemetry>& getNesLastControllerTelemetry() const
+    {
+        return nesLastControllerTelemetry_;
+    }
     std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
     std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
         size_t maxEntries) const;
@@ -226,6 +230,7 @@ private:
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
     std::unique_ptr<DuckNeuralNetRecurrentBrainV2> nesDuckBrainV2_;
     std::optional<NesGameAdapterControllerOutput> nesLastControllerOutput_ = std::nullopt;
+    std::optional<NesControllerTelemetry> nesLastControllerTelemetry_ = std::nullopt;
     std::optional<NesGameAdapterDebugState> nesLastDebugState_ = std::nullopt;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;

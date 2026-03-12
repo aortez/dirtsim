@@ -1981,6 +1981,7 @@ void StateMachine::broadcastRenderMessage(
     const std::vector<OrganismId>& organism_grid,
     Scenario::EnumType scenario_id,
     const ScenarioConfig& scenario_config,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
     const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     if (pImpl->subscribedClients_.empty()) {
@@ -2034,6 +2035,7 @@ void StateMachine::broadcastRenderMessage(
         fullMsg.render_data = std::move(msg);
         fullMsg.scenario_id = scenario_id;
         fullMsg.scenario_config = scenario_config;
+        fullMsg.nes_controller_telemetry = nesControllerTelemetry;
 
         Network::MessageEnvelope& envelope = pImpl->renderEnvelopeScratch_;
         envelope.id = 0;

@@ -257,7 +257,11 @@ State::Any TrainingActive::onEvent(
     WorldData worldData = evt.frame.worldData;
     worldData.organism_ids = evt.frame.organismIds;
     view_->updateBestPlaybackFrame(
-        worldData, evt.frame.fitness, evt.frame.generation, evt.frame.scenarioVideoFrame);
+        worldData,
+        evt.frame.fitness,
+        evt.frame.generation,
+        evt.frame.scenarioVideoFrame,
+        evt.frame.nesControllerTelemetry);
     return std::move(*this);
 }
 
@@ -399,11 +403,16 @@ State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, 
     settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
     settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
     settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    if (evt.nesControllerOverlayEnabled.has_value()) {
+        settings.uiTraining.nesControllerOverlayEnabled = evt.nesControllerOverlayEnabled;
+    }
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
     view_->setBestPlaybackEnabled(settings.uiTraining.bestPlaybackEnabled);
     view_->setBestPlaybackIntervalMs(settings.uiTraining.bestPlaybackIntervalMs);
+    view_->setNesControllerOverlayEnabled(
+        settings.uiTraining.nesControllerOverlayEnabled.value_or(false));
 
     Api::UserSettingsPatch::Command patchCmd{ .uiTraining = settings.uiTraining };
     sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
@@ -448,7 +457,7 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
     }
 
     view_->updateScenarioConfig(evt.scenario_id, evt.scenario_config);
-    view_->renderWorld(evt.worldData, evt.scenarioVideoFrame);
+    view_->renderWorld(evt.worldData, evt.scenarioVideoFrame, evt.nesControllerTelemetry);
     return std::move(*this);
 }
 
