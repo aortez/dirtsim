@@ -383,6 +383,9 @@ TrainingRunner::Status TrainingRunner::step(int frames)
                     if (childTree->hasBrain()) {
                         return;
                     }
+                    if (childTree->getSeedParentId() != organismId_) {
+                        return;
+                    }
                     // Check if already tracked.
                     for (const auto& cs : childSeeds_) {
                         if (cs.id == body.getId()) {

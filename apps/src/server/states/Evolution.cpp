@@ -1192,7 +1192,6 @@ void Evolution::finalizePendingBestWithoutRobustnessPass(StateMachine& dsm)
                         .totalFitness = bestFitness,
                         .details = std::monostate{},
                     });
-            snapshotFitnessEvaluation.totalFitness = bestFitness;
             broadcastTrainingBestSnapshot(
                 dsm,
                 std::move(pendingBest_.snapshot.value()),
@@ -1348,7 +1347,6 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
                         .totalFitness = robustFitness,
                         .details = std::monostate{},
                     });
-            snapshotFitnessEvaluation.totalFitness = robustFitness;
             broadcastTrainingBestSnapshot(
                 dsm,
                 std::move(pendingBest_.snapshot.value()),

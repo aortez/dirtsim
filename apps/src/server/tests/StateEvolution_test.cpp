@@ -886,6 +886,15 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Stored fitness should preserve the original first robust sample";
     EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples.front(), 0.0)
         << "Trimmed robust sample window should contain only post-mutation samples";
+
+    const auto cachedSnapshot = fixture.stateMachine->getCachedTrainingBestSnapshot();
+    ASSERT_TRUE(cachedSnapshot.has_value());
+    EXPECT_DOUBLE_EQ(cachedSnapshot->fitness, metadata->fitness)
+        << "Best snapshot should report the captured sample fitness for the displayed run";
+    EXPECT_DOUBLE_EQ(cachedSnapshot->fitnessPresentation.totalFitness, metadata->fitness)
+        << "Best snapshot presentation should stay aligned with the captured sample fitness";
+    EXPECT_NE(cachedSnapshot->fitness, metadata->robustFitness)
+        << "Best snapshot should not relabel a captured sample as the robust aggregate result";
 }
 
 TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)

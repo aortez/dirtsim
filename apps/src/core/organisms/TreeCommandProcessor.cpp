@@ -283,7 +283,11 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 return { CommandResult::SUCCESS, "ROOT growth successful" };
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
-                TreeSpawnParams seedParams{ .startingEnergy = 0.0, .passive = true };
+                TreeSpawnParams seedParams{
+                    .startingEnergy = 0.0,
+                    .passive = true,
+                    .seedParentId = tree.getId(),
+                };
                 world.getOrganismManager().createTree(
                     world,
                     static_cast<uint32_t>(command.position.x),

@@ -110,6 +110,28 @@ private:
     size_t nextCommandIndex_ = 0;
 };
 
+class ProduceSeedThenWaitTreeBrain : public TreeBrain {
+public:
+    TreeCommand decide(const TreeSensoryData& sensory) override
+    {
+        if (producedSeed_) {
+            return WaitCommand{};
+        }
+
+        producedSeed_ = true;
+        return ProduceSeedCommand{
+            .position = {
+                static_cast<int16_t>(sensory.seed_position.x + 2),
+                static_cast<int16_t>(sensory.seed_position.y),
+            },
+            .execution_time_seconds = 0.1,
+        };
+    }
+
+private:
+    bool producedSeed_ = false;
+};
+
 class RecordingTreeBrain : public TreeBrain {
 public:
     RecordingTreeBrain(std::unique_ptr<TreeBrain> inner, std::vector<TreeCommand>* issued)
@@ -1770,6 +1792,54 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
     runner.step(0);
 
     EXPECT_TRUE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
+}
+
+TEST_F(TrainingRunnerTest, TreeLandingCreditTracksProducedSeedsOnly)
+{
+    config_.maxSimulationTime = 12.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    runner.step(0);
+
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    const Organism::Body* organism = runner.getOrganism();
+    ASSERT_NE(organism, nullptr);
+
+    Tree* tree = world->getOrganismManager().getTree(organism->getId());
+    ASSERT_NE(tree, nullptr);
+
+    const Vector2i anchor = tree->getAnchorCell();
+    ASSERT_GE(anchor.x, 6);
+    ASSERT_LT(anchor.x + 2, world->getData().width);
+
+    tree->setBrain(std::make_unique<ProduceSeedThenWaitTreeBrain>());
+    tree->setEnergy(100.0);
+    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
+
+    TreeSpawnParams unrelatedSeedParams{ .startingEnergy = 0.0, .passive = true };
+    world->getOrganismManager().createTree(
+        *world,
+        static_cast<uint32_t>(anchor.x - 6),
+        static_cast<uint32_t>(anchor.y),
+        nullptr,
+        unrelatedSeedParams);
+
+    runner.step(550);
+
+    const auto treeResources = runner.getTreeResourceTotals();
+    ASSERT_TRUE(treeResources.has_value());
+    EXPECT_EQ(treeResources->seedsProduced, 1);
+    ASSERT_EQ(treeResources->landedSeeds.size(), 1u);
 }
 
 TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)

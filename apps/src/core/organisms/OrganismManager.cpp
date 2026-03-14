@@ -180,6 +180,7 @@ OrganismId OrganismManager::createTree(
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
     tree->setAnchorCell(pos);
     tree->setEnergy(params.startingEnergy);
+    tree->setSeedParentId(params.seedParentId);
 
     // Place seed material in world.
     world.addMaterialAtCell(

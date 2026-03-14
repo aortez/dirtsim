@@ -276,6 +276,10 @@ void NesSmolnesScenarioDriver::tick(
     StepResult stepResult = step(timers, controller1State_);
     if (stepResult.scenarioVideoFrame.has_value()) {
         scenarioVideoFrame = std::move(stepResult.scenarioVideoFrame);
+        return;
+    }
+    if (!stepResult.runtimeHealthy || !stepResult.runtimeRunning) {
+        scenarioVideoFrame.reset();
     }
 }
 

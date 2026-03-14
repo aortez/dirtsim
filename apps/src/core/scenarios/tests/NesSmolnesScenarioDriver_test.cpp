@@ -21,8 +21,12 @@ public:
 
     bool runFrames(uint32_t frameCount, uint32_t /*timeoutMs*/) override
     {
-        renderedFrameCount_ += frameCount;
         runFramesCalls_++;
+        if (failNextRun_) {
+            failNextRun_ = false;
+            return false;
+        }
+        renderedFrameCount_ += frameCount;
         return true;
     }
 
@@ -71,17 +75,24 @@ public:
 
     void setApuSampleCallback(SmolnesApuSampleCallback /*callback*/, void* /*userdata*/) override {}
     void setPacingMode(SmolnesRuntimePacingMode /*mode*/) override {}
-    std::string getLastError() const override { return {}; }
+    std::string getLastError() const override { return lastError_; }
 
     const std::string& getStartedRomPath() const { return startedRomPath_; }
     uint8_t getLastControllerMask() const { return lastControllerMask_; }
     int getRunFramesCalls() const { return runFramesCalls_; }
+    void failNextRun(std::string lastError)
+    {
+        failNextRun_ = true;
+        lastError_ = lastError;
+    }
 
 private:
+    bool failNextRun_ = false;
     bool running_ = false;
     int runFramesCalls_ = 0;
     uint8_t lastControllerMask_ = 0;
     uint64_t renderedFrameCount_ = 0;
+    std::string lastError_;
     std::string startedRomPath_;
 };
 
@@ -146,4 +157,40 @@ TEST(NesSmolnesScenarioDriverTest, StepUsesInjectedRuntimeFactory)
     EXPECT_EQ(stepResult.paletteFrame->frameId, 9u);
     ASSERT_TRUE(stepResult.scenarioVideoFrame.has_value());
     EXPECT_EQ(stepResult.scenarioVideoFrame->frame_id, 7u);
+}
+
+TEST(NesSmolnesScenarioDriverTest, TickClearsScenarioFrameAfterRuntimeFailure)
+{
+    FakeSmolnesRuntime* runtime = nullptr;
+    const std::filesystem::path romPath = writeFakeRom();
+
+    NesSmolnesScenarioDriver driver(
+        Scenario::EnumType::NesSuperMarioBros,
+        NesSmolnesScenarioDriver::RuntimeConfig{
+            .runtimeFactory =
+                [&runtime]() {
+                    auto fakeRuntime = std::make_unique<FakeSmolnesRuntime>();
+                    runtime = fakeRuntime.get();
+                    return fakeRuntime;
+                },
+        });
+
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath.string();
+    ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
+    ASSERT_FALSE(driver.setup().isError());
+    ASSERT_NE(runtime, nullptr);
+
+    Timers timers;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame;
+    driver.tick(timers, scenarioVideoFrame);
+    ASSERT_TRUE(scenarioVideoFrame.has_value());
+
+    runtime->failNextRun("Injected run failure");
+    driver.tick(timers, scenarioVideoFrame);
+
+    EXPECT_FALSE(scenarioVideoFrame.has_value());
+    EXPECT_FALSE(driver.isRuntimeRunning());
 }

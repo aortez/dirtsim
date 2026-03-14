@@ -33,6 +33,22 @@ protected:
     std::unique_ptr<ScenarioRunner> scenario;
 };
 
+TEST_F(TreeGerminationTest, SetupScalesSoilDepthForSmallerWorlds)
+{
+    scenario->setup(*world);
+
+    for (uint32_t y = 0; y < 6; ++y) {
+        for (uint32_t x = 0; x < 9; ++x) {
+            EXPECT_EQ(world->getData().at(x, y).material_type, Material::EnumType::Air);
+        }
+    }
+    for (uint32_t y = 6; y < 9; ++y) {
+        for (uint32_t x = 0; x < 9; ++x) {
+            EXPECT_EQ(world->getData().at(x, y).material_type, Material::EnumType::Dirt);
+        }
+    }
+}
+
 TEST_F(TreeGerminationTest, SeedFallsOntoGround)
 {
     // Custom setup for this test: seed at (4,1) to test falling.

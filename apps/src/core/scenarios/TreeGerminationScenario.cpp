@@ -8,9 +8,27 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
+#include <algorithm>
+#include <cmath>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
+
+namespace {
+constexpr int kReferenceSoilDepth = 12;
+constexpr int kReferenceWorldHeight = 32;
+
+int resolveSoilDepth(int worldHeight)
+{
+    if (worldHeight <= 0) {
+        return 0;
+    }
+
+    const int scaledDepth = static_cast<int>(std::lround(
+        (static_cast<double>(worldHeight) * kReferenceSoilDepth) / kReferenceWorldHeight));
+    return std::clamp(scaledDepth, 1, worldHeight);
+}
+} // namespace
 
 TreeGerminationScenario::TreeGerminationScenario(GenomeRepository& genomeRepository)
     : genomeRepository_(genomeRepository)
@@ -67,7 +85,10 @@ void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& 
 
 void TreeGerminationScenario::setup(World& world)
 {
-    spdlog::info("TreeGerminationScenario::setup - creating 32x32 world with balanced tree growth");
+    spdlog::info(
+        "TreeGerminationScenario::setup - configuring {}x{} world with balanced tree growth",
+        world.getData().width,
+        world.getData().height);
 
     // Clear world to air.
     for (int y = 0; y < world.getData().height; ++y) {
@@ -76,8 +97,10 @@ void TreeGerminationScenario::setup(World& world)
         }
     }
 
-    // Dirt at bottom 12 rows.
-    for (int y = world.getData().height - 12; y < world.getData().height; ++y) {
+    // Scale soil depth from the canonical 32x32 layout for smaller test worlds.
+    const int soilDepth = resolveSoilDepth(world.getData().height);
+    const int soilStartY = std::max(0, world.getData().height - soilDepth);
+    for (int y = soilStartY; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
             world.addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) },

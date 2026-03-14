@@ -25,6 +25,7 @@ enum class MultiCellShape;
 struct TreeSpawnParams {
     double startingEnergy = 50.0;
     bool passive = false; // If true and no brain provided, tree has no brain.
+    OrganismId seedParentId = INVALID_ORGANISM_ID;
 };
 
 /**
