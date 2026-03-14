@@ -84,13 +84,9 @@ bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
     return false;
 }
 
-bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
+bool isGranularSupportSinkMaterial(DirtSim::Material::EnumType material)
 {
-    if (cell.isEmpty()) {
-        return false;
-    }
-
-    switch (cell.material_type) {
+    switch (material) {
         case DirtSim::Material::EnumType::Metal:
         case DirtSim::Material::EnumType::Wall:
         case DirtSim::Material::EnumType::Wood:
@@ -106,6 +102,15 @@ bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
     }
 
     return false;
+}
+
+bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
+{
+    if (cell.isEmpty()) {
+        return false;
+    }
+
+    return isGranularSupportSinkMaterial(cell.material_type);
 }
 
 bool hasSupportedGranularPath(
@@ -1437,6 +1442,11 @@ void World::applyCohesionForces(const GridOfCells& grid)
                     adhesion_calc.calculateAdhesionForce(*this, x, y, mat_n);
                 Vector2d adhesion_force = adhesion.force_direction * adhesion.force_magnitude
                     * settings.adhesion_strength;
+                const CellDebug& debug = grid.debugAt(x, y);
+                if (isLoadBearingGranularCell(cell) && debug.has_granular_support_path
+                    && isGranularSupportSinkMaterial(adhesion.target_material)) {
+                    adhesion_force = {};
+                }
                 cell.addPendingForce(adhesion_force);
                 // Store for visualization in GridOfCells debug info.
                 const_cast<GridOfCells&>(grid).debugAt(x, y).accumulated_adhesion_force =

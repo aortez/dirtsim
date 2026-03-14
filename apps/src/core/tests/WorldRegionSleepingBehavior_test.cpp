@@ -1278,6 +1278,166 @@ std::string dumpSandboxCohesionAdhesionFrictionDiagnostics()
     return out.str();
 }
 
+std::string dumpSandboxWallBackedInteriorDiagnostics()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "full",
+        .gravity = defaults.gravity,
+    };
+
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+    applyForceIsolationProfile(world, profile);
+    settleWorld(world);
+
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+    auto sorted_interiors = buckets.interior_dirt_regions;
+    auto sorted_exposed = buckets.exposed_dirt_regions;
+    const auto sort_regions = [](std::vector<RegionCoord>& regions) {
+        std::sort(regions.begin(), regions.end(), [](const RegionCoord& a, const RegionCoord& b) {
+            return std::tie(a.y, a.x) < std::tie(b.y, b.x);
+        });
+    };
+    sort_regions(sorted_interiors);
+    sort_regions(sorted_exposed);
+
+    std::vector<NamedRegion> tracked_regions;
+    if (!sorted_interiors.empty()) {
+        const int max_interior_x =
+            std::max_element(
+                sorted_interiors.begin(),
+                sorted_interiors.end(),
+                [](const RegionCoord& a, const RegionCoord& b) { return a.x < b.x; })
+                ->x;
+        const int max_interior_y =
+            std::max_element(
+                sorted_interiors.begin(),
+                sorted_interiors.end(),
+                [](const RegionCoord& a, const RegionCoord& b) { return a.y < b.y; })
+                ->y;
+        const auto find_interior = [&](int x, int y) -> std::optional<RegionCoord> {
+            const auto it = std::find_if(
+                sorted_interiors.begin(),
+                sorted_interiors.end(),
+                [x, y](const RegionCoord& region) { return region.x == x && region.y == y; });
+            if (it == sorted_interiors.end()) {
+                return std::nullopt;
+            }
+
+            return *it;
+        };
+
+        addNamedRegionIfUnique(
+            tracked_regions,
+            "bottom_left_wall_backed",
+            find_interior(max_interior_x - 2, max_interior_y));
+        addNamedRegionIfUnique(
+            tracked_regions,
+            "bottom_mid_wall_backed",
+            find_interior(max_interior_x - 1, max_interior_y));
+        addNamedRegionIfUnique(
+            tracked_regions, "right_edge_upper", find_interior(max_interior_x, max_interior_y - 1));
+        addNamedRegionIfUnique(
+            tracked_regions, "right_edge_lower", find_interior(max_interior_x, max_interior_y));
+
+        std::optional<RegionCoord> top_face_right;
+        for (const RegionCoord& region : sorted_exposed) {
+            if (region.x == max_interior_x && region.y < max_interior_y) {
+                top_face_right = region;
+                break;
+            }
+        }
+        addNamedRegionIfUnique(tracked_regions, "top_face_right", top_face_right);
+
+        std::optional<RegionCoord> left_exposed_lower;
+        for (const RegionCoord& region : sorted_exposed) {
+            if (region.y == max_interior_y && region.x < max_interior_x - 1) {
+                left_exposed_lower = region;
+                break;
+            }
+        }
+        addNamedRegionIfUnique(tracked_regions, "left_exposed_lower", left_exposed_lower);
+    }
+
+    const std::vector<RegionCoord> tracked_region_coords =
+        extractNamedRegionCoords(tracked_regions);
+
+    std::ostringstream out;
+    out << "Sandbox wall-backed interior diagnostics\n";
+    out << dumpSandboxQuadrantDiagnostics(profile) << "\n";
+    out << dumpNamedRegionList(tracked_regions) << "\n";
+    out << dumpBuriedRegionCellMaps(world, tracked_region_coords) << "\n";
+    out << dumpBuriedRegionCellDetails(world, tracked_region_coords) << "\n";
+    out << dumpSandboxTrackedRegionTimeSeries(world, tracked_regions);
+    return out.str();
+}
+
+std::string dumpSandboxQuadrantLongRunRegionTransitions()
+{
+    constexpr int kLongRunFrames = 96;
+
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const ForceIsolationProfile profile{
+        .name = "full",
+        .gravity = defaults.gravity,
+    };
+
+    World replay(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(replay);
+    applyForceIsolationProfile(replay, profile);
+    settleWorld(replay);
+
+    const GridOfCells initialGrid = makeGrid(replay);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(replay, initialGrid);
+    auto dirt_regions = buckets.dirt_regions;
+    std::sort(
+        dirt_regions.begin(), dirt_regions.end(), [](const RegionCoord& a, const RegionCoord& b) {
+            return std::tie(a.y, a.x) < std::tie(b.y, b.x);
+        });
+
+    std::ostringstream out;
+    out << "Sandbox long-run region transitions\n";
+    out << "Profile: " << profile.name << "\n";
+    out << "Tracked dirt regions:";
+    for (const RegionCoord& region : dirt_regions) {
+        out << " (" << region.x << "," << region.y << ")";
+    }
+    out << "\n";
+    out << "frame quietInterior sleepingInterior states\n";
+
+    for (int frame = 0; frame <= kLongRunFrames; ++frame) {
+        const GridOfCells grid = makeGrid(replay);
+        const SandboxRegionBuckets frameBuckets = classifySandboxDirtRegions(replay, grid);
+        int quietInterior = 0;
+        int sleepingInterior = 0;
+
+        for (const RegionCoord& region : frameBuckets.interior_dirt_regions) {
+            const RegionState state =
+                replay.getRegionActivityTracker().getRegionState(region.x, region.y);
+            if (state == RegionState::Sleeping) {
+                quietInterior++;
+                sleepingInterior++;
+            }
+        }
+
+        out << frame << " " << quietInterior << " " << sleepingInterior;
+        for (const RegionCoord& region : dirt_regions) {
+            const RegionFrameSample sample = sampleRegionFrame(replay, region, frame);
+            out << " (" << region.x << "," << region.y << "):" << regionStateToChar(sample.state)
+                << wakeReasonToChar(sample.wake_reason) << ":" << sample.max_velocity;
+        }
+        out << "\n";
+
+        if (frame < kLongRunFrames) {
+            replay.advanceTime(kDt);
+        }
+    }
+
+    return out.str();
+}
+
 std::optional<RegionCoord> findPureBuriedRegion(
     const World& world, const std::vector<RegionCoord>& buried_regions)
 {
@@ -3556,6 +3716,16 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantGravityContactDiag
 TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantCohesionAdhesionFrictionDiagnostics)
 {
     std::cout << dumpSandboxCohesionAdhesionFrictionDiagnostics();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantWallBackedInteriorDiagnostics)
+{
+    std::cout << dumpSandboxWallBackedInteriorDiagnostics();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantLongRunRegionTransitions)
+{
+    std::cout << dumpSandboxQuadrantLongRunRegionTransitions();
 }
 
 INSTANTIATE_TEST_SUITE_P(
