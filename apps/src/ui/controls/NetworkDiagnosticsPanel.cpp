@@ -47,9 +47,6 @@ constexpr uint32_t ERROR_TEXT_COLOR = 0xFF7777;
 constexpr uint32_t MUTED_TEXT_COLOR = 0xB0B0B0;
 constexpr uint32_t NETWORK_ROW_BG_COLOR = 0x1C1C1C;
 constexpr uint32_t NETWORK_ROW_BORDER_COLOR = 0x383838;
-constexpr int PASSWORD_MODAL_HEIGHT = 420;
-constexpr int PASSWORD_MODAL_WIDTH = 540;
-
 lv_obj_t* getActionButtonInnerButton(lv_obj_t* container)
 {
     if (!container) {
@@ -481,50 +478,84 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_size(passwordOverlay_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(passwordOverlay_, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(passwordOverlay_, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(passwordOverlay_, 0, 0);
+    lv_obj_set_style_pad_all(passwordOverlay_, 0, 0);
+    lv_obj_set_style_radius(passwordOverlay_, 0, 0);
     lv_obj_clear_flag(passwordOverlay_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(passwordOverlay_);
 
     lv_obj_t* modal = lv_obj_create(passwordOverlay_);
-    lv_obj_set_size(modal, PASSWORD_MODAL_WIDTH, PASSWORD_MODAL_HEIGHT);
-    lv_obj_center(modal);
+    lv_obj_set_size(modal, LV_PCT(90), LV_PCT(100));
+    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
     lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
     lv_obj_set_style_border_width(modal, 1, 0);
     lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
-    lv_obj_set_style_radius(modal, 12, 0);
-    lv_obj_set_style_pad_all(modal, 12, 0);
-    lv_obj_set_style_pad_row(modal, 10, 0);
+    lv_obj_set_style_radius(modal, 0, 0);
+    lv_obj_set_style_pad_all(modal, 10, 0);
+    lv_obj_set_style_pad_row(modal, 8, 0);
     lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* title = lv_label_create(modal);
-    lv_label_set_text(title, "Join Wi-Fi");
+    lv_obj_t* headerRow = lv_obj_create(modal);
+    lv_obj_set_size(headerRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(headerRow, 0, 0);
+    lv_obj_set_style_pad_column(headerRow, 10, 0);
+    lv_obj_set_style_bg_opa(headerRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(headerRow, 0, 0);
+    lv_obj_set_flex_flow(headerRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        headerRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(headerRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto configureHeaderCell = [](lv_obj_t* cell) {
+        lv_obj_set_size(cell, 0, LV_SIZE_CONTENT);
+        lv_obj_set_flex_grow(cell, 1);
+        lv_obj_set_style_pad_all(cell, 0, 0);
+        lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(cell, 0, 0);
+        lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+    };
+
+    lv_obj_t* titleCell = lv_obj_create(headerRow);
+    configureHeaderCell(titleCell);
+
+    lv_obj_t* title = lv_label_create(titleCell);
+    const std::string titleText = "Join Wi-Fi";
+    lv_label_set_text(title, titleText.c_str());
+    lv_obj_set_width(title, LV_PCT(100));
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
 
-    lv_obj_t* ssidLabel = lv_label_create(modal);
+    lv_obj_t* ssidCell = lv_obj_create(headerRow);
+    configureHeaderCell(ssidCell);
+
+    lv_obj_t* ssidLabel = lv_label_create(ssidCell);
     const std::string ssidText = "SSID: " + network.ssid;
     lv_label_set_text(ssidLabel, ssidText.c_str());
-    lv_obj_set_style_text_color(ssidLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(ssidLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_width(ssidLabel, LV_PCT(100));
+    lv_label_set_long_mode(ssidLabel, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(ssidLabel, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(ssidLabel, lv_color_hex(0xFFDD66), 0);
+    lv_obj_set_style_text_font(ssidLabel, &lv_font_montserrat_18, 0);
 
-    lv_obj_t* securityLabel = lv_label_create(modal);
+    lv_obj_t* securityCell = lv_obj_create(headerRow);
+    configureHeaderCell(securityCell);
+
+    lv_obj_t* securityLabel = lv_label_create(securityCell);
     const std::string securityText =
         "Security: " + (network.security.empty() ? std::string("unknown") : network.security);
     lv_label_set_text(securityLabel, securityText.c_str());
-    lv_obj_set_style_text_color(securityLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    lv_obj_set_width(securityLabel, LV_PCT(100));
+    lv_obj_set_style_text_align(securityLabel, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(securityLabel, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(securityLabel, &lv_font_montserrat_12, 0);
-
-    lv_obj_t* helperLabel = lv_label_create(modal);
-    lv_label_set_text(helperLabel, "Enter the password for this network.");
-    lv_obj_set_style_text_color(helperLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
-    lv_obj_set_style_text_font(helperLabel, &lv_font_montserrat_12, 0);
 
     lv_obj_t* passwordRow = lv_obj_create(modal);
     lv_obj_set_size(passwordRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(passwordRow, 8, 0);
-    lv_obj_set_style_pad_column(passwordRow, 8, 0);
+    lv_obj_set_style_pad_all(passwordRow, 6, 0);
+    lv_obj_set_style_pad_column(passwordRow, 6, 0);
     lv_obj_set_style_bg_color(passwordRow, lv_color_hex(ACCESSORY_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(passwordRow, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(passwordRow, 1, 0);
@@ -536,7 +567,7 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_clear_flag(passwordRow, LV_OBJ_FLAG_SCROLLABLE);
 
     passwordTextArea_ = lv_textarea_create(passwordRow);
-    lv_obj_set_size(passwordTextArea_, 0, 52);
+    lv_obj_set_size(passwordTextArea_, 0, 48);
     lv_obj_set_flex_grow(passwordTextArea_, 1);
     lv_textarea_set_one_line(passwordTextArea_, true);
     lv_textarea_set_max_length(passwordTextArea_, 64);
@@ -547,7 +578,7 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_border_width(passwordTextArea_, 0, 0);
     lv_obj_set_style_outline_width(passwordTextArea_, 0, 0);
     lv_obj_set_style_pad_hor(passwordTextArea_, 6, 0);
-    lv_obj_set_style_pad_ver(passwordTextArea_, 10, 0);
+    lv_obj_set_style_pad_ver(passwordTextArea_, 8, 0);
     lv_obj_set_style_text_color(passwordTextArea_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(passwordTextArea_, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(
@@ -558,10 +589,26 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     passwordVisibilityButton_ = LVGLBuilder::actionButton(passwordRow)
                                     .text("Show")
                                     .mode(LVGLBuilder::ActionMode::Push)
-                                    .width(100)
-                                    .height(52)
+                                    .width(88)
+                                    .height(48)
                                     .callback(onPasswordVisibilityClicked, this)
                                     .buildOrLog();
+
+    passwordJoinButton_ = LVGLBuilder::actionButton(passwordRow)
+                              .text("Join")
+                              .mode(LVGLBuilder::ActionMode::Push)
+                              .width(92)
+                              .height(48)
+                              .callback(onPasswordJoinClicked, this)
+                              .buildOrLog();
+
+    passwordCancelButton_ = LVGLBuilder::actionButton(passwordRow)
+                                .text("Cancel")
+                                .mode(LVGLBuilder::ActionMode::Push)
+                                .width(92)
+                                .height(48)
+                                .callback(onPasswordCancelClicked, this)
+                                .buildOrLog();
 
     passwordErrorLabel_ = lv_label_create(modal);
     lv_obj_set_width(passwordErrorLabel_, LV_PCT(100));
@@ -570,35 +617,9 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_text_font(passwordErrorLabel_, &lv_font_montserrat_12, 0);
     lv_obj_add_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t* buttonRow = lv_obj_create(modal);
-    lv_obj_set_size(buttonRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(buttonRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(buttonRow, 0, 0);
-    lv_obj_set_style_pad_all(buttonRow, 0, 0);
-    lv_obj_set_style_pad_column(buttonRow, 12, 0);
-    lv_obj_set_flex_flow(buttonRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        buttonRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(buttonRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    passwordCancelButton_ = LVGLBuilder::actionButton(buttonRow)
-                                .text("Cancel")
-                                .mode(LVGLBuilder::ActionMode::Push)
-                                .width(130)
-                                .height(56)
-                                .callback(onPasswordCancelClicked, this)
-                                .buildOrLog();
-
-    passwordJoinButton_ = LVGLBuilder::actionButton(buttonRow)
-                              .text("Join")
-                              .mode(LVGLBuilder::ActionMode::Push)
-                              .width(130)
-                              .height(56)
-                              .callback(onPasswordJoinClicked, this)
-                              .buildOrLog();
-
     passwordKeyboard_ = lv_keyboard_create(modal);
-    lv_obj_set_size(passwordKeyboard_, LV_PCT(100), 200);
+    lv_obj_set_size(passwordKeyboard_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(passwordKeyboard_, 1);
     lv_obj_set_style_bg_color(passwordKeyboard_, lv_color_hex(CARD_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(passwordKeyboard_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(passwordKeyboard_, 0, 0);
@@ -609,6 +630,7 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_border_color(
         passwordKeyboard_, lv_color_hex(ACCESSORY_BORDER_COLOR), LV_PART_ITEMS);
     lv_obj_set_style_text_color(passwordKeyboard_, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(passwordKeyboard_, &lv_font_montserrat_18, LV_PART_ITEMS);
     lv_obj_add_event_cb(passwordKeyboard_, onPasswordKeyboardEvent, LV_EVENT_ALL, this);
     lv_keyboard_set_textarea(passwordKeyboard_, passwordTextArea_);
 
