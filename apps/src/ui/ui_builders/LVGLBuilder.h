@@ -607,22 +607,23 @@ public:
     };
 
     /**
-     * @brief ActionStepperBuilder - Creates a stepper control with − value + layout.
+     * @brief ActionStepperBuilder - Creates a stepper control with a top label bar and − value +
+     * row.
      *
      * Visual structure (80px tall to match ActionButton):
-     * ┌─────────┬─────────────────┬─────────┐
-     * │         │      Label      │         │
-     * │    −    │      5.0        │    +    │
-     * │         │                 │         │
+     * ┌─────────────────────────────────────┐
+     * │                Label                │
+     * ├─────────┬─────────────────┬─────────┤
+     * │    −    │       5.0       │    +    │
      * └─────────┴─────────────────┴─────────┘
      *
-     * Three sections inside one trough: minus button, center label+value, plus button.
+     * The label gets its own full-width bar so long captions do not fight the value for space.
      */
     class ActionStepperBuilder {
     public:
         explicit ActionStepperBuilder(lv_obj_t* parent);
 
-        // Label displayed above the value.
+        // Label displayed in the top bar.
         ActionStepperBuilder& label(const char* text);
 
         // Value range and step.
@@ -687,10 +688,6 @@ public:
         void* user_data_ = nullptr;
 
         Result<lv_obj_t*, std::string> createActionStepper();
-        void updateValueDisplay();
-
-        static void onMinusClicked(lv_event_t* e);
-        static void onPlusClicked(lv_event_t* e);
     };
 
     /**
