@@ -442,6 +442,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                                .timestamp = now,
                                .scenario_id = fullMsg.scenario_id,
                                .scenario_config = fullMsg.scenario_config,
+                               .nesControllerTelemetry = fullMsg.nes_controller_telemetry,
                                .scenarioVideoFrame = renderMsg.scenario_video_frame };
 
             sm.queueEvent(evt);

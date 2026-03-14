@@ -51,13 +51,19 @@ public:
         cachedSpecialSenses_.fill(0.0);
     }
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
+        NesGameAdapterControllerOutput output;
         if (advancedFrameCount_ < kSetupScriptEndFrame) {
-            return scriptedSetupMaskForFrame(advancedFrameCount_);
+            output.resolvedControllerMask = scriptedSetupMaskForFrame(advancedFrameCount_);
+            output.source = NesGameAdapterControllerSource::ScriptedSetup;
+            output.sourceFrameIndex = advancedFrameCount_;
+            return output;
         }
 
-        return input.inferredControllerMask;
+        output.resolvedControllerMask = input.inferredControllerMask;
+        return output;
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override

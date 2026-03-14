@@ -360,7 +360,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
     // Grid size should match duck sensory constants.
     EXPECT_EQ(sensory.actual_width, DuckSensoryData::GRID_SIZE);
     EXPECT_EQ(sensory.actual_height, DuckSensoryData::GRID_SIZE);
-    EXPECT_EQ(DuckSensoryData::GRID_SIZE, 15);
+    EXPECT_EQ(DuckSensoryData::GRID_SIZE, 21);
 }
 
 /**

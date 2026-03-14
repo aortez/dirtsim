@@ -33,7 +33,7 @@
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
@@ -77,11 +77,6 @@ std::filesystem::path getDefaultDataDir()
         home = "/tmp";
     }
     return std::filesystem::path(home) / ".dirtsim";
-}
-
-int getMaxTimezoneIndex()
-{
-    return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
 }
 
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
@@ -177,9 +172,9 @@ UserSettings sanitizeUserSettings(
         changed = true;
     };
 
-    if (settings.clockScenarioConfig.timezoneIndex > getMaxTimezoneIndex()) {
-        settings.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(getMaxTimezoneIndex());
-        recordUpdate("clockScenarioConfig.timezoneIndex clamped to maximum timezone");
+    if (!ClockTimezones::isValid(settings.clockScenarioConfig.timezone)) {
+        settings.clockScenarioConfig.timezone = Config::ClockTimezone::LosAngeles;
+        recordUpdate("clockScenarioConfig.timezone reset to default timezone");
     }
 
     if (settings.volumePercent < 0) {
@@ -242,9 +237,9 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = kGenomeArchiveMaxSizePerBucketMax;
         recordUpdate("genomeArchiveMaxSize clamped to 1000");
     }
-    if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
-        settings.evolutionConfig.robustFitnessEvaluationCount = 1;
-        recordUpdate("robustFitnessEvaluationCount clamped to 1");
+    if (settings.evolutionConfig.robustFitnessEvaluationCount < 0) {
+        settings.evolutionConfig.robustFitnessEvaluationCount = 0;
+        recordUpdate("robustFitnessEvaluationCount clamped to 0");
     }
     if (settings.evolutionConfig.warmStartSeedCount < 0) {
         settings.evolutionConfig.warmStartSeedCount = 0;
@@ -543,21 +538,14 @@ void applyScenarioConfigUpdatesToActiveState(
                 }
 
                 state.scenarioConfigOverride_ = *config;
-                if (state.workerState_) {
-                    state.workerState_->scenarioConfigOverride = state.scenarioConfigOverride_;
-                }
-
-                if (state.visible_.runner
-                    && state.visibleScenarioId_ == state.trainingSpec.scenarioId) {
-                    const auto result = state.visible_.runner->setScenarioConfig(*config);
-                    if (result.isError()) {
+                if (state.executor_) {
+                    const auto error = state.executor_->scenarioConfigOverrideSet(
+                        state.scenarioConfigOverride_, state.trainingSpec.scenarioId);
+                    if (error.has_value()) {
                         LOG_WARN(
                             State,
                             "Failed to apply scenario config override to visible runner: {}",
-                            result.errorValue());
-                    }
-                    else {
-                        state.visibleScenarioConfig_ = state.visible_.runner->getScenarioConfig();
+                            error.value());
                     }
                 }
 
@@ -1993,6 +1981,7 @@ void StateMachine::broadcastRenderMessage(
     const std::vector<OrganismId>& organism_grid,
     Scenario::EnumType scenario_id,
     const ScenarioConfig& scenario_config,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
     const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     if (pImpl->subscribedClients_.empty()) {
@@ -2046,6 +2035,7 @@ void StateMachine::broadcastRenderMessage(
         fullMsg.render_data = std::move(msg);
         fullMsg.scenario_id = scenario_id;
         fullMsg.scenario_config = scenario_config;
+        fullMsg.nes_controller_telemetry = nesControllerTelemetry;
 
         Network::MessageEnvelope& envelope = pImpl->renderEnvelopeScratch_;
         envelope.id = 0;

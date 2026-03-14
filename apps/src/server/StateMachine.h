@@ -8,6 +8,7 @@
 #include "core/StateMachineInterface.h"
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/ClockConfig.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 #include "server/api/TrainingBestSnapshot.h"
 
 #include <filesystem>
@@ -108,6 +109,7 @@ public:
         const std::vector<OrganismId>& organism_grid,
         Scenario::EnumType scenario_id,
         const ScenarioConfig& scenario_config,
+        const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
         const std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
 
     void broadcastCommand(const std::string& messageType);

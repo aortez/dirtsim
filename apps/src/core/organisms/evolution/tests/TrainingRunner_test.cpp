@@ -7,6 +7,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeBrain.h"
 #include "core/organisms/TreeCommandProcessor.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
@@ -26,6 +27,7 @@
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -108,6 +110,28 @@ private:
     size_t nextCommandIndex_ = 0;
 };
 
+class ProduceSeedThenWaitTreeBrain : public TreeBrain {
+public:
+    TreeCommand decide(const TreeSensoryData& sensory) override
+    {
+        if (producedSeed_) {
+            return WaitCommand{};
+        }
+
+        producedSeed_ = true;
+        return ProduceSeedCommand{
+            .position = {
+                static_cast<int16_t>(sensory.seed_position.x + 2),
+                static_cast<int16_t>(sensory.seed_position.y),
+            },
+            .execution_time_seconds = 0.1,
+        };
+    }
+
+private:
+    bool producedSeed_ = false;
+};
+
 class RecordingTreeBrain : public TreeBrain {
 public:
     RecordingTreeBrain(std::unique_ptr<TreeBrain> inner, std::vector<TreeCommand>* issued)
@@ -188,12 +212,15 @@ public:
         : controllerCallCount_(controllerCallCount), evaluateCallCount_(evaluateCallCount)
     {}
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
         if (controllerCallCount_) {
             ++(*controllerCallCount_);
         }
-        return input.inferredControllerMask;
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = input.inferredControllerMask,
+        };
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
@@ -221,6 +248,55 @@ public:
 private:
     int* controllerCallCount_ = nullptr;
     int* evaluateCallCount_ = nullptr;
+};
+
+class TraceNesAdapter : public NesGameAdapter {
+public:
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& /*input*/) override
+    {
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = NesPolicyLayout::ButtonStart,
+            .source = NesGameAdapterControllerSource::ScriptedSetup,
+            .sourceFrameIndex = 42u,
+        };
+    }
+
+    NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
+    {
+        return NesGameAdapterFrameOutput{
+            .debugState =
+                NesGameAdapterDebugState{
+                    .advancedFrameCount = input.advancedFrames,
+                    .level = 3u,
+                    .lifeState = 0u,
+                    .lives = 4u,
+                    .phase = 1u,
+                    .playerXScreen = 120u,
+                    .playerYScreen = 80u,
+                    .powerupState = 2u,
+                    .world = 2u,
+                    .absoluteX = 512u,
+                    .setupFailure = false,
+                    .setupScriptActive = false,
+                },
+            .fitnessDetails = std::monostate{},
+            .rewardDelta = 7.5,
+            .gameState = 1u,
+        };
+    }
+
+    DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
+    {
+        DuckSensoryData sensory{};
+        sensory.actual_width = DuckSensoryData::GRID_SIZE;
+        sensory.actual_height = DuckSensoryData::GRID_SIZE;
+        sensory.scale_factor = 1.0;
+        sensory.world_offset = { 0, 0 };
+        sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
+        sensory.delta_time_seconds = input.deltaTimeSeconds;
+        return sensory;
+    }
 };
 
 struct ExecutedCommand {
@@ -510,7 +586,8 @@ void printTreeFitnessBreakdown(const TreeFitnessBreakdown& breakdown)
     const double coreTerm =
         breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore);
     const double bonusTerm = breakdown.partialStructureBonus + breakdown.stageBonus
-        + breakdown.structureBonus + breakdown.milestoneBonus + breakdown.commandScore;
+        + breakdown.structureBonus + breakdown.milestoneBonus + breakdown.commandScore
+        + breakdown.seedScore;
 
     const std::ios::fmtflags oldFlags = std::cout.flags();
     const std::streamsize oldPrecision = std::cout.precision();
@@ -525,6 +602,7 @@ void printTreeFitnessBreakdown(const TreeFitnessBreakdown& breakdown)
     std::cout << "  - structure bonus: " << breakdown.structureBonus << "\n";
     std::cout << "  - milestone bonus: " << breakdown.milestoneBonus << "\n";
     std::cout << "  - command score: " << breakdown.commandScore << "\n";
+    std::cout << "  - seed score: " << breakdown.seedScore << "\n";
     std::cout << "  - core term: " << coreTerm << "\n";
     std::cout << "  - bonus term: " << bonusTerm << "\n";
 
@@ -563,11 +641,29 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
+TEST_F(TrainingRunnerTest, TreeGerminationUsesScenarioInitialWorldSize)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_EQ(world->getData().width, 32);
+    EXPECT_EQ(world->getData().height, 32);
+}
+
 TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -586,12 +682,12 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrent, "");
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     individual.genome = entry->createRandomGenome(rng_);
 
@@ -618,9 +714,9 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfinite
     spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
     std::fill(individual.genome->weights.begin(), individual.genome->weights.end(), 0.0f);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
@@ -679,9 +775,9 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRe
     spec.organismType = OrganismType::NES_DUCK;
 
     TrainingRunner::Individual individual;
-    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
-    individual.genome = DuckNeuralNetRecurrentBrain::randomGenome(rng_);
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
 
     int controllerCalls = 0;
     int evaluateCalls = 0;
@@ -709,6 +805,74 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerUsesConfiguredNesGameAdapterRe
     EXPECT_GT(controllerCalls, 0);
     EXPECT_GT(evaluateCalls, 0);
     EXPECT_GT(status.nesFramesSurvived, 0u);
+}
+
+TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerEmitsPerFrameTrace)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
+
+    std::vector<TrainingRunner::FrameTrace> traces;
+    NesGameAdapterRegistry adapterRegistry;
+    adapterRegistry.registerAdapter(Scenario::EnumType::NesFlappyParatroopa, []() {
+        return std::make_unique<TraceNesAdapter>();
+    });
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesGameAdapterRegistry = adapterRegistry,
+        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnRngSeed = std::nullopt,
+        .frameTraceSink =
+            [&traces](const TrainingRunner::FrameTrace& trace) { traces.push_back(trace); },
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    const TrainingRunner::Status status = runner.step(3);
+
+    ASSERT_FALSE(traces.empty());
+    EXPECT_EQ(traces.front().stepOrdinal, 1u);
+    EXPECT_GT(traces.front().simTime, 0.0);
+    ASSERT_TRUE(traces.front().nes.has_value());
+    EXPECT_TRUE(traces.front().nes->frameAdvanced);
+    EXPECT_EQ(traces.front().nes->resolvedControllerMask, NesPolicyLayout::ButtonStart);
+    EXPECT_EQ(
+        traces.front().nes->controllerSource,
+        std::optional<NesGameAdapterControllerSource>(
+            NesGameAdapterControllerSource::ScriptedSetup));
+    EXPECT_EQ(traces.front().nes->controllerSourceFrameIndex, std::optional<uint64_t>(42u));
+    EXPECT_EQ(traces.front().nes->commandSignature, "Start");
+    EXPECT_EQ(traces.front().nes->commandOutcome, "FrameAdvanced");
+    EXPECT_DOUBLE_EQ(traces.front().nes->rewardDelta, 7.5);
+    EXPECT_EQ(traces.front().nes->lastGameStateBefore, std::nullopt);
+    EXPECT_EQ(traces.front().nes->lastGameStateAfter, std::optional<uint8_t>(1u));
+    ASSERT_TRUE(traces.front().nes->debugState.has_value());
+    EXPECT_EQ(traces.front().nes->debugState->world, std::optional<uint8_t>(2u));
+    EXPECT_EQ(traces.front().nes->debugState->level, std::optional<uint8_t>(3u));
+    ASSERT_TRUE(runner.getNesLastControllerTelemetry().has_value());
+    const NesControllerTelemetry& telemetry = runner.getNesLastControllerTelemetry().value();
+    EXPECT_EQ(telemetry.resolvedControllerMask, NesPolicyLayout::ButtonStart);
+    EXPECT_EQ(telemetry.controllerSource, NesGameAdapterControllerSource::ScriptedSetup);
+    EXPECT_EQ(telemetry.controllerSourceFrameIndex, std::optional<uint64_t>(42u));
+    EXPECT_TRUE(std::isfinite(telemetry.xRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.yRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.aRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.bRaw));
+    EXPECT_EQ(status.state, TrainingRunner::State::Running);
 }
 
 // Proves we can finish and get results.
@@ -1630,6 +1794,54 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
     EXPECT_TRUE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
 }
 
+TEST_F(TrainingRunnerTest, TreeLandingCreditTracksProducedSeedsOnly)
+{
+    config_.maxSimulationTime = 12.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = NeuralNetBrain::randomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    runner.step(0);
+
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    const Organism::Body* organism = runner.getOrganism();
+    ASSERT_NE(organism, nullptr);
+
+    Tree* tree = world->getOrganismManager().getTree(organism->getId());
+    ASSERT_NE(tree, nullptr);
+
+    const Vector2i anchor = tree->getAnchorCell();
+    ASSERT_GE(anchor.x, 6);
+    ASSERT_LT(anchor.x + 2, world->getData().width);
+
+    tree->setBrain(std::make_unique<ProduceSeedThenWaitTreeBrain>());
+    tree->setEnergy(100.0);
+    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
+
+    TreeSpawnParams unrelatedSeedParams{ .startingEnergy = 0.0, .passive = true };
+    world->getOrganismManager().createTree(
+        *world,
+        static_cast<uint32_t>(anchor.x - 6),
+        static_cast<uint32_t>(anchor.y),
+        nullptr,
+        unrelatedSeedParams);
+
+    runner.step(550);
+
+    const auto treeResources = runner.getTreeResourceTotals();
+    ASSERT_TRUE(treeResources.has_value());
+    EXPECT_EQ(treeResources->seedsProduced, 1);
+    ASSERT_EQ(treeResources->landedSeeds.size(), 1u);
+}
+
 TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)
 {
     config_.maxSimulationTime = 10.0;
@@ -1725,15 +1937,14 @@ TEST_F(TrainingRunnerTest, ClockDuckPitDamageKillsDuck)
 
 TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
 {
-    // Verify that valid_grow_targets masking forces all action brains to pick
-    // positions adjacent to tree-owned cells.
+    // Verify that command-specific action masking forces all action brains to pick
+    // commands that pass the runtime validator.
     constexpr int kTrials = 5;
 
     int successes = 0;
     int wait_brains = 0;
     int cancel_brains = 0;
     int action_brains = 0;
-    int valid_position = 0;
     std::map<std::string, int> rejection_reasons;
 
     for (int trial = 0; trial < kTrials; ++trial) {
@@ -1765,8 +1976,6 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
         }
         tree = world->getOrganismManager().getTree(id);
         if (!tree) continue;
-
-        const Vector2i seed_pos = tree->getAnchorCell();
 
         // Ask the brain for one decision and inspect it.
         const TreeSensoryData sensory = tree->gatherSensoryData(*world);
@@ -1808,54 +2017,31 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
             continue;
         }
         if (cmd_type == "Cancel") {
-            cancel_brains++;
+            if (sensory.current_action.has_value()) {
+                cancel_brains++;
+            }
+            else {
+                rejection_reasons["cancel_while_idle"]++;
+            }
             continue;
         }
 
         action_brains++;
 
-        const bool in_bounds = target.x >= 0 && target.x < 9 && target.y >= 0 && target.y < 9;
-
-        // Check if target is cardinally adjacent to ANY tree-owned cell (not just seed).
-        // The tree may have grown during the settling phase.
-        bool is_adjacent = false;
-        if (in_bounds) {
-            const Vector2i dirs[] = { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };
-            for (const auto& dir : dirs) {
-                const Vector2i neighbor = target + dir;
-                if (neighbor.x >= 0 && neighbor.x < 9 && neighbor.y >= 0 && neighbor.y < 9) {
-                    if (world->getOrganismManager().at(neighbor) == id) {
-                        is_adjacent = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (is_adjacent) {
-            valid_position++;
+        TreeCommandProcessor processor;
+        const CommandExecutionResult validation = processor.validate(*tree, *world, cmd);
+        if (validation.succeeded()) {
             successes++;
+            const Vector2i seed_pos = tree->getAnchorCell();
             std::cout << "Trial " << trial << " *** VALID *** " << cmd_type << " at (" << target.x
                       << "," << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ")\n";
         }
         else {
-            const int manhattan = std::abs(target.x - seed_pos.x) + std::abs(target.y - seed_pos.y);
-            std::string reason;
-            if (!in_bounds) {
-                reason = "out_of_bounds";
-            }
-            else if (manhattan == 0) {
-                reason = "targets_self";
-            }
-            else {
-                reason = "not_adjacent(d=" + std::to_string(manhattan) + ")";
-            }
-            rejection_reasons[reason]++;
+            rejection_reasons[validation.message]++;
 
             if (trial < 10) {
                 std::cout << "Trial " << trial << " " << cmd_type << " at (" << target.x << ","
-                          << target.y << ") seed=(" << seed_pos.x << "," << seed_pos.y << ") "
-                          << reason << "\n";
+                          << target.y << ") validation=\"" << validation.message << "\"\n";
             }
         }
     }
@@ -1867,20 +2053,18 @@ TEST_F(TrainingRunnerTest, NeuralNetTreeGrowthReplication)
               << "%)\n";
     std::cout << "Action brains:     " << action_brains << " (" << 100.0 * action_brains / kTrials
               << "%)\n";
-    std::cout << "Valid position:    " << valid_position << "/" << action_brains << " ("
-              << (action_brains > 0 ? 100.0 * valid_position / action_brains : 0.0) << "%)\n";
     std::cout << "Successes:         " << successes << "/" << kTrials << "\n";
     std::cout << "\nRejection reasons:\n";
     for (const auto& [reason, count] : rejection_reasons) {
         std::cout << "  " << reason << ": " << count << "\n";
     }
 
-    // With valid_grow_targets masking, every action brain should pick a valid position.
+    EXPECT_EQ(rejection_reasons["cancel_while_idle"], 0) << "Cancel should be masked while idle.";
+
+    // With command-specific masking, every action brain should pass runtime validation.
     if (action_brains > 0) {
-        const double valid_rate = 100.0 * valid_position / action_brains;
-        EXPECT_EQ(valid_position, action_brains)
-            << "Expected all action brains to pick valid positions with masking, but only "
-            << valid_rate << "% did.";
+        EXPECT_EQ(successes, action_brains)
+            << "Expected all action brains to pass validation with command-specific masking.";
     }
 }
 

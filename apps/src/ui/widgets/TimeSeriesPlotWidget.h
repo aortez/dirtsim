@@ -19,6 +19,7 @@ public:
         float defaultMaxY = 1.0f;
         float valueScale = 100.0f;
         bool autoScaleY = true;
+        bool autoScaleClampToZero = false;
         bool hideZeroValuePoints = false;
         bool showSecondarySeries = false;
         bool showHighlights = false;

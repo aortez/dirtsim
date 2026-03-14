@@ -201,12 +201,15 @@ void SmolnesRuntime::setApuSampleCallback(SmolnesApuSampleCallback callback, voi
     smolnesRuntimeSetApuSampleCallback(runtimeHandle_, callback, userdata);
 }
 
-void SmolnesRuntime::setSelfPacing(bool enabled)
+void SmolnesRuntime::setPacingMode(SmolnesRuntimePacingMode mode)
 {
     if (runtimeHandle_ == nullptr) {
         return;
     }
-    smolnesRuntimeSetSelfPacing(runtimeHandle_, enabled);
+    smolnesRuntimeSetPacingMode(
+        runtimeHandle_,
+        mode == SmolnesRuntimePacingMode::Realtime ? SMOLNES_RUNTIME_PACING_MODE_REALTIME
+                                                   : SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP);
 }
 
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const

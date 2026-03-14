@@ -4,11 +4,14 @@
 #include "core/Result.h"
 #include "core/ScenarioConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 #include "ui/UserSettings.h"
 #include "ui/rendering/Starfield.h"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,7 +26,7 @@ struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
-struct FitnessBreakdownReport;
+struct FitnessPresentation;
 } // namespace Api
 
 namespace Network {
@@ -54,15 +57,16 @@ public:
 
     void updateProgress(const Api::EvolutionProgress& progress);
     void updateFitnessPlots(
-        const std::vector<float>& robustFitnessSeries,
+        const std::vector<float>& bestFitnessSeries,
         const std::vector<float>& averageFitnessSeries,
-        const std::vector<uint8_t>& robustHighMask);
+        const std::vector<uint8_t>& newBestMask);
     void clearFitnessPlots();
     void updateAnimations();
 
     void renderWorld(
         const WorldData& worldData,
-        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt,
+        const std::optional<NesControllerTelemetry>& nesControllerTelemetry = std::nullopt);
     void updateBestSnapshot(
         const WorldData& worldData,
         double fitness,
@@ -71,13 +75,14 @@ public:
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
         const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-        const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown,
+        const Api::FitnessPresentation& fitnessPresentation,
         const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
     void updateBestPlaybackFrame(
         const WorldData& worldData,
         double fitness,
         int generation,
-        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt);
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame = std::nullopt,
+        const std::optional<NesControllerTelemetry>& nesControllerTelemetry = std::nullopt);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
@@ -85,6 +90,7 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void setNesControllerOverlayEnabled(bool enabled);
     void updateScenarioConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config);
     void showScenarioControlsOverlay();
 
@@ -92,24 +98,43 @@ public:
     Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
+    struct NesOverlayWidgets {
+        lv_obj_t* container = nullptr;
+        lv_obj_t* sourceBadge = nullptr;
+        lv_obj_t* sourceFrameLabel = nullptr;
+        std::array<lv_obj_t*, 4> outputFills{};
+        std::array<lv_obj_t*, 4> outputValueLabels{};
+        std::array<lv_obj_t*, 8> buttonChips{};
+    };
+
     static std::vector<float> buildCpuCoreSeries(const Api::EvolutionProgress& progress);
     static std::vector<float> buildDistributionSeries(const Api::EvolutionProgress& progress);
 
     void createUI();
     void destroyUI();
     void createActiveUI(int displayWidth, int displayHeight);
+    void createNesVideoOverlay(lv_obj_t* parent, NesOverlayWidgets& overlay);
     void renderBestWorld();
     void scheduleBestRender();
     static void renderBestWorldAsync(void* data);
     void createStreamPanel(lv_obj_t* parent);
     void createScenarioControlsOverlay();
     void hideScenarioControlsOverlay();
+    void renderBestFitnessPresentation(const Api::FitnessPresentation& fitnessPresentation);
+    void renderBestFitnessPresentationPlaceholder(const char* text);
     void refreshScenarioControlsOverlay();
     void updateScenarioButtonState();
+    void updateNesVideoOverlay(
+        NesOverlayWidgets& overlay,
+        const std::optional<NesControllerTelemetry>& telemetry,
+        bool videoVisible);
+    void updateNesVideoOverlayButton(
+        lv_obj_t* chip, bool inferredPressed, bool resolvedPressed, bool actionButton);
 
     static void onStreamIntervalChanged(lv_event_t* e);
     static void onBestPlaybackToggled(lv_event_t* e);
     static void onBestPlaybackIntervalChanged(lv_event_t* e);
+    static void onNesControllerOverlayToggled(lv_event_t* e);
     static void onStopTrainingClicked(lv_event_t* e);
     static void onPauseResumeClicked(lv_event_t* e);
     static void onScenarioControlsClicked(lv_event_t* e);
@@ -152,6 +177,7 @@ private:
     lv_obj_t* streamIntervalStepper_ = nullptr;
     lv_obj_t* bestPlaybackToggle_ = nullptr;
     lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
+    lv_obj_t* nesControllerOverlayToggle_ = nullptr;
     lv_obj_t* pauseResumeButton_ = nullptr;
     lv_obj_t* pauseResumeLabel_ = nullptr;
     lv_obj_t* scenarioControlsButton_ = nullptr;
@@ -163,7 +189,9 @@ private:
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
     lv_obj_t* bestCommandSummaryLabel_ = nullptr;
-    lv_obj_t* bestFitnessBreakdownLabel_ = nullptr;
+    lv_obj_t* bestFitnessPresentationContent_ = nullptr;
+    NesOverlayWidgets liveNesOverlayWidgets_{};
+    NesOverlayWidgets bestNesOverlayWidgets_{};
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
@@ -179,6 +207,8 @@ private:
 
     std::unique_ptr<WorldData> bestWorldData_;
     std::unique_ptr<WorldData> bestSnapshotWorldData_;
+    std::optional<NesControllerTelemetry> liveNesControllerTelemetry_ = std::nullopt;
+    std::optional<NesControllerTelemetry> bestNesControllerTelemetry_ = std::nullopt;
     ScenarioConfig currentScenarioConfig_ = Config::Empty{};
     Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;
     Scenario::EnumType scenarioControlsScenarioId_ = Scenario::EnumType::Empty;

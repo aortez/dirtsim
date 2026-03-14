@@ -9,6 +9,7 @@
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +27,25 @@ class NesAudioPlayer;
  */
 class NesSmolnesScenarioDriver final : public NesScenarioRuntime {
 public:
+    struct RuntimeConfig {
+        std::function<std::unique_ptr<SmolnesRuntime>()> runtimeFactory;
+    };
+
+    struct StepResult {
+        uint64_t advancedFrames = 0;
+        uint64_t renderedFramesAfter = 0;
+        uint64_t renderedFramesBefore = 0;
+        uint8_t controllerMask = 0;
+        bool runtimeHealthy = false;
+        bool runtimeRunning = false;
+        std::optional<SmolnesRuntime::MemorySnapshot> memorySnapshot = std::nullopt;
+        std::optional<NesPaletteFrame> paletteFrame = std::nullopt;
+        std::optional<ScenarioVideoFrame> scenarioVideoFrame = std::nullopt;
+        std::string lastError;
+    };
+
     explicit NesSmolnesScenarioDriver(Scenario::EnumType scenarioId);
+    NesSmolnesScenarioDriver(Scenario::EnumType scenarioId, RuntimeConfig runtimeConfig);
     ~NesSmolnesScenarioDriver() override;
 
     NesSmolnesScenarioDriver(const NesSmolnesScenarioDriver&) = delete;
@@ -44,6 +63,7 @@ public:
     Result<std::monostate, std::string> setup();
     Result<std::monostate, std::string> reset();
 
+    StepResult step(Timers& timers, uint8_t buttonMask);
     void tick(Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
 
     bool isRuntimeHealthy() const override;
@@ -62,6 +82,7 @@ public:
     void setAudioVolumePercent(int percent);
 
 private:
+    static RuntimeConfig makeDefaultRuntimeConfig();
     void stopRuntime();
     void updateRuntimeProfilingTimers(Timers& timers);
     NesConfigValidationResult validateConfig() const;
@@ -70,6 +91,7 @@ private:
     ScenarioConfig config_;
     NesRomCheckResult lastRomCheck_;
     std::string runtimeResolvedRomId_;
+    RuntimeConfig runtimeConfig_;
     std::unique_ptr<SmolnesRuntime> runtime_;
     std::unique_ptr<NesAudioPlayer> audioPlayer_;
     std::optional<SmolnesRuntime::ProfilingSnapshot> lastRuntimeProfilingSnapshot_;

@@ -187,9 +187,9 @@ void TimeSeriesPlotWidget::clear()
         return;
     }
 
-    chartValues_.assign(minPointCount_, 0);
+    chartValues_.assign(minPointCount_, LV_CHART_POINT_NONE);
     lv_chart_set_point_count(chart_, minPointCount_);
-    lv_chart_set_all_values(chart_, series_, 0);
+    lv_chart_set_all_values(chart_, series_, LV_CHART_POINT_NONE);
     if (secondarySeries_) {
         lv_chart_set_all_values(chart_, secondarySeries_, LV_CHART_POINT_NONE);
     }
@@ -459,7 +459,17 @@ void TimeSeriesPlotWidget::updateYAxisRange(
     }
     const float range = std::max(maxValue - minValue, minAxisPadding);
     const float padding = std::max(range * axisPaddingRatio, minAxisPadding);
-    setYAxisRange(minValue - padding, maxValue + padding);
+    float axisMin = minValue - padding;
+    float axisMax = maxValue + padding;
+    if (config_.autoScaleClampToZero) {
+        if (minValue >= 0.0f) {
+            axisMin = 0.0f;
+        }
+        if (maxValue <= 0.0f) {
+            axisMax = 0.0f;
+        }
+    }
+    setYAxisRange(axisMin, axisMax);
 }
 
 void TimeSeriesPlotWidget::updateYAxisRangeLabels(float minValue, float maxValue)

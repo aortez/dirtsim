@@ -37,6 +37,15 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeCompatibilityRejectsWrongSize)
     EXPECT_FALSE(DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome));
 }
 
+TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutMatchesRandomGenomeSize)
+{
+    std::mt19937 rng(42);
+    const Genome genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng);
+    const GenomeLayout layout = DuckNeuralNetRecurrentBrainV2::getGenomeLayout();
+
+    EXPECT_EQ(layout.totalSize(), static_cast<int>(genome.weights.size()));
+}
+
 TEST(DuckNeuralNetRecurrentBrainV2Test, RandomGenomesProduceCommandDiversity)
 {
     // Suppress noisy per-frame duck logging.

@@ -121,14 +121,14 @@ TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
     NeuralNetBrain brain(42);
     Genome g = brain.getGenome();
 
-    // New size with light channel and action feedback inputs:
-    // (2488 * 48) + 48 + (48 * 231) + 231 = 119424 + 48 + 11088 + 231 = 130791.
-    EXPECT_EQ(g.weights.size(), 130791u);
+    // Joint action head:
+    // (2488 * 48) + 48 + (48 * 902) + 902 = 119424 + 48 + 43296 + 902 = 163670.
+    EXPECT_EQ(g.weights.size(), 163670u);
 }
 
 TEST_F(NeuralNetBrainTest, ConstantGenomeProducesConsistentOutput)
 {
-    Genome g(130791, 0.1f);
+    Genome g(163670, 0.1f);
     NeuralNetBrain brain(g);
 
     auto sensory = createTestSensoryData();

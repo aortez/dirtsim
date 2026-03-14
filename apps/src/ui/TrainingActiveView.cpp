@@ -4,21 +4,24 @@
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
+#include "core/organisms/evolution/NesPolicyLayout.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
 #include "rendering/VideoSurface.h"
 #include "server/api/EvolutionProgress.h"
-#include "server/api/FitnessBreakdownReport.h"
+#include "server/api/FitnessPresentation.h"
 #include "state-machine/Event.h"
 #include "state-machine/EventSink.h"
 #include "ui_builders/LVGLBuilder.h"
 #include "widgets/TimeSeriesPlotWidget.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <lvgl/lvgl.h>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -26,10 +29,237 @@ namespace DirtSim {
 namespace Ui {
 
 namespace {
+constexpr std::array<uint8_t, 8> kNesButtonMasks{
+    NesPolicyLayout::ButtonUp,     NesPolicyLayout::ButtonDown,  NesPolicyLayout::ButtonLeft,
+    NesPolicyLayout::ButtonRight,  NesPolicyLayout::ButtonA,     NesPolicyLayout::ButtonB,
+    NesPolicyLayout::ButtonSelect, NesPolicyLayout::ButtonStart,
+};
+constexpr std::array<const char*, 8> kNesButtonLabels{ "U", "D", "L", "R", "A", "B", "SE", "ST" };
+constexpr std::array<const char*, 4> kNesOutputLabels{ "X", "Y", "A", "B" };
+constexpr float kNesOutputBarMaxMagnitude = 4.0f;
+
 struct BestRenderRequest {
     TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
 };
+
+bool isNesControllerOverlayEnabled(const UserSettings& userSettings)
+{
+    return userSettings.uiTraining.nesControllerOverlayEnabled.value_or(false);
+}
+
+float normalizeNesOverlayOutput(float value)
+{
+    return std::clamp(value / kNesOutputBarMaxMagnitude, -1.0f, 1.0f);
+}
+
+std::string nesControllerSourceLabelBuild(NesGameAdapterControllerSource source)
+{
+    switch (source) {
+        case NesGameAdapterControllerSource::InferredPolicy:
+            return "POLICY";
+        case NesGameAdapterControllerSource::ScriptedSetup:
+            return "SCRIPT";
+    }
+    return "POLICY";
+}
+
+std::string nesOutputValueTextBuild(float value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value;
+    return out.str();
+}
+
+std::string presentationMetricDetailTextBuild(const Api::FitnessPresentationMetric& metric)
+{
+    std::ostringstream detail;
+    detail << std::fixed;
+
+    bool hasDetail = false;
+    if (metric.reference.has_value()) {
+        detail << "ref " << std::setprecision(4) << metric.reference.value();
+        if (!metric.unit.empty()) {
+            detail << " " << metric.unit;
+        }
+        hasDetail = true;
+    }
+    if (metric.normalized.has_value()) {
+        if (hasDetail) {
+            detail << " | ";
+        }
+        detail << "norm " << std::setprecision(4) << metric.normalized.value();
+        hasDetail = true;
+    }
+
+    return hasDetail ? detail.str() : std::string{};
+}
+
+std::string presentationNumberTextBuild(double value)
+{
+    const bool isIntegerLike = std::abs(value - std::round(value)) < 0.00005;
+    std::ostringstream text;
+    if (isIntegerLike) {
+        text << std::llround(value);
+    }
+    else {
+        text << std::fixed << std::setprecision(4) << value;
+    }
+    return text.str();
+}
+
+std::string presentationValueTextBuild(const Api::FitnessPresentationMetric& metric)
+{
+    std::string valueText = presentationNumberTextBuild(metric.value);
+    if (!metric.unit.empty()) {
+        valueText += " ";
+        valueText += metric.unit;
+    }
+    return valueText;
+}
+
+std::string presentationSectionScoreTextBuild(const Api::FitnessPresentationSection& section)
+{
+    if (!section.score.has_value()) {
+        return std::string{};
+    }
+
+    std::ostringstream score;
+    score << "Score " << std::fixed << std::setprecision(4) << section.score.value();
+    return score.str();
+}
+
+void setPresentationCardStyle(lv_obj_t* card, lv_color_t bgColor, lv_color_t borderColor)
+{
+    lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(card, bgColor, 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_90, 0);
+    lv_obj_set_style_radius(card, LVGLBuilder::Style::RADIUS, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, borderColor, 0);
+    lv_obj_set_style_pad_all(card, LVGLBuilder::Style::TROUGH_PADDING, 0);
+    lv_obj_set_style_pad_gap(card, 6, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void setPresentationMetricValueLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(0xE8F0FF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+}
+
+void setPresentationMetricLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0xD6DFEF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
+void setPresentationDetailLabelStyle(lv_obj_t* label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0x90A4BF), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
+void setPresentationWrappedLabelCommon(lv_obj_t* label)
+{
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+}
+
+void setTransparentColumnLayout(lv_obj_t* container, int gapPx)
+{
+    lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_pad_all(container, 0, 0);
+    lv_obj_set_style_pad_gap(container, gapPx, 0);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void setTransparentRowLayout(lv_obj_t* container, int gapPx)
+{
+    lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_pad_all(container, 0, 0);
+    lv_obj_set_style_pad_gap(container, gapPx, 0);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void presentationPlaceholderRender(lv_obj_t* parent, const char* text)
+{
+    lv_obj_clean(parent);
+
+    lv_obj_t* placeholder = lv_label_create(parent);
+    setPresentationWrappedLabelCommon(placeholder);
+    setPresentationDetailLabelStyle(placeholder);
+    lv_label_set_text(placeholder, text);
+}
+
+void presentationSectionRender(lv_obj_t* parent, const Api::FitnessPresentationSection& section)
+{
+    lv_obj_t* card = lv_obj_create(parent);
+    setPresentationCardStyle(card, lv_color_hex(0x121A2A), lv_color_hex(0x344A6A));
+
+    lv_obj_t* headerRow = lv_obj_create(card);
+    setTransparentRowLayout(headerRow, 8);
+
+    lv_obj_t* titleLabel = lv_label_create(headerRow);
+    lv_obj_set_flex_grow(titleLabel, 1);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x99DDFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text(titleLabel, section.label.c_str());
+
+    const std::string scoreText = presentationSectionScoreTextBuild(section);
+    if (!scoreText.empty()) {
+        lv_obj_t* scoreLabel = lv_label_create(headerRow);
+        lv_obj_set_style_text_color(scoreLabel, lv_color_hex(0xE8F0FF), 0);
+        lv_obj_set_style_text_font(scoreLabel, LVGLBuilder::Style::CONTROL_FONT, 0);
+        lv_label_set_text(scoreLabel, scoreText.c_str());
+    }
+
+    if (section.metrics.empty()) {
+        lv_obj_t* emptyLabel = lv_label_create(card);
+        setPresentationWrappedLabelCommon(emptyLabel);
+        setPresentationDetailLabelStyle(emptyLabel);
+        lv_label_set_text(emptyLabel, "No details.");
+        return;
+    }
+
+    for (const auto& metric : section.metrics) {
+        lv_obj_t* metricCard = lv_obj_create(card);
+        setPresentationCardStyle(metricCard, lv_color_hex(0x0D1421), lv_color_hex(0x22324A));
+
+        lv_obj_t* metricHeader = lv_obj_create(metricCard);
+        setTransparentRowLayout(metricHeader, 8);
+
+        lv_obj_t* metricLabel = lv_label_create(metricHeader);
+        lv_obj_set_width(metricLabel, LV_PCT(60));
+        lv_label_set_long_mode(metricLabel, LV_LABEL_LONG_WRAP);
+        setPresentationMetricLabelStyle(metricLabel);
+        lv_label_set_text(metricLabel, metric.label.c_str());
+
+        lv_obj_t* valueLabel = lv_label_create(metricHeader);
+        setPresentationMetricValueLabelStyle(valueLabel);
+        lv_label_set_text(valueLabel, presentationValueTextBuild(metric).c_str());
+
+        const std::string detailText = presentationMetricDetailTextBuild(metric);
+        if (!detailText.empty()) {
+            lv_obj_t* detailLabel = lv_label_create(metricCard);
+            setPresentationWrappedLabelCommon(detailLabel);
+            setPresentationDetailLabelStyle(detailLabel);
+            lv_label_set_text(detailLabel, detailText.c_str());
+        }
+    }
+}
 
 } // namespace
 
@@ -214,17 +444,14 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_color(bestCommandSummaryLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
 
-    lv_obj_t* bestBreakdownTitle = lv_label_create(longTermPanel_);
-    lv_label_set_text(bestBreakdownTitle, "Best Fitness Breakdown");
-    lv_obj_set_style_text_color(bestBreakdownTitle, lv_color_hex(0x99DDFF), 0);
-    lv_obj_set_style_text_font(bestBreakdownTitle, &lv_font_montserrat_14, 0);
+    lv_obj_t* bestPresentationTitle = lv_label_create(longTermPanel_);
+    lv_label_set_text(bestPresentationTitle, "Best Fitness Presentation");
+    lv_obj_set_style_text_color(bestPresentationTitle, lv_color_hex(0x99DDFF), 0);
+    lv_obj_set_style_text_font(bestPresentationTitle, &lv_font_montserrat_14, 0);
 
-    bestFitnessBreakdownLabel_ = lv_label_create(longTermPanel_);
-    lv_obj_set_width(bestFitnessBreakdownLabel_, LV_PCT(100));
-    lv_label_set_long_mode(bestFitnessBreakdownLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(bestFitnessBreakdownLabel_, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(bestFitnessBreakdownLabel_, lv_color_hex(0xBBD6E8), 0);
-    lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
+    bestFitnessPresentationContent_ = lv_obj_create(longTermPanel_);
+    setTransparentColumnLayout(bestFitnessPresentationContent_, 8);
+    renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
 
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
@@ -418,6 +645,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(worldContainer_, LV_OBJ_FLAG_SCROLLABLE);
 
     renderer_->initialize(worldContainer_, 9, 9);
+    createNesVideoOverlay(worldContainer_, liveNesOverlayWidgets_);
 
     // Right panel: Best snapshot.
     lv_obj_t* rightPanel = lv_obj_create(bottomRow_);
@@ -447,6 +675,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(bestWorldContainer_, LV_OBJ_FLAG_SCROLLABLE);
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
+    createNesVideoOverlay(bestWorldContainer_, bestNesOverlayWidgets_);
 
     fitnessPlotsPanel_ = lv_obj_create(centerLayout);
     lv_obj_set_size(fitnessPlotsPanel_, LV_PCT(100), fitnessPlotPanelHeightPx);
@@ -493,7 +722,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     bestFitnessPlot_ = std::make_unique<TimeSeriesPlotWidget>(
         fitnessPlotsRow_,
         TimeSeriesPlotWidget::Config{
-            .title = "Robust Evaluated",
+            .title = "Fitness",
             .lineColor = lv_color_hex(0x666666),
             .secondaryLineColor = lv_color_hex(0x66BBFF),
             .highlightColor = lv_color_hex(0xFF4FA3),
@@ -501,15 +730,234 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
             .defaultMaxY = 1.0f,
             .valueScale = 100.0f,
             .autoScaleY = true,
+            .autoScaleClampToZero = true,
             .showSecondarySeries = true,
             .showHighlights = true,
             .highlightMarkerSizePx = 8,
         });
 
     clearFitnessPlots();
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 
     LOG_INFO(
         Controls, "Training active UI created with live feed, best snapshot, and long-term panel");
+}
+
+void TrainingActiveView::createNesVideoOverlay(
+    lv_obj_t* parent, TrainingActiveView::NesOverlayWidgets& overlay)
+{
+    overlay = {};
+
+    overlay.container = lv_obj_create(parent);
+    lv_obj_set_width(overlay.container, LV_PCT(92));
+    lv_obj_set_height(overlay.container, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(overlay.container, lv_color_hex(0x08101A), 0);
+    lv_obj_set_style_bg_opa(overlay.container, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(overlay.container, 1, 0);
+    lv_obj_set_style_border_color(overlay.container, lv_color_hex(0x2A3B52), 0);
+    lv_obj_set_style_radius(overlay.container, 6, 0);
+    lv_obj_set_style_pad_all(overlay.container, 5, 0);
+    lv_obj_set_style_pad_gap(overlay.container, 4, 0);
+    lv_obj_set_flex_flow(overlay.container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        overlay.container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(overlay.container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(overlay.container, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_obj_add_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* headerRow = lv_obj_create(overlay.container);
+    setTransparentRowLayout(headerRow, 4);
+
+    overlay.sourceBadge = lv_label_create(headerRow);
+    lv_obj_set_style_pad_hor(overlay.sourceBadge, 5, 0);
+    lv_obj_set_style_pad_ver(overlay.sourceBadge, 1, 0);
+    lv_obj_set_style_radius(overlay.sourceBadge, 4, 0);
+    lv_obj_set_style_text_font(overlay.sourceBadge, &lv_font_montserrat_12, 0);
+    lv_label_set_text(overlay.sourceBadge, "POLICY");
+
+    overlay.sourceFrameLabel = lv_label_create(headerRow);
+    lv_obj_set_flex_grow(overlay.sourceFrameLabel, 1);
+    lv_obj_set_style_text_align(overlay.sourceFrameLabel, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(overlay.sourceFrameLabel, lv_color_hex(0xA5B5C9), 0);
+    lv_obj_set_style_text_font(overlay.sourceFrameLabel, &lv_font_montserrat_12, 0);
+    lv_label_set_text(overlay.sourceFrameLabel, "--");
+
+    for (size_t i = 0; i < kNesOutputLabels.size(); ++i) {
+        lv_obj_t* row = lv_obj_create(overlay.container);
+        setTransparentRowLayout(row, 4);
+
+        lv_obj_t* label = lv_label_create(row);
+        lv_obj_set_width(label, 12);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xD8E4F5), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+        lv_label_set_text(label, kNesOutputLabels[i]);
+
+        lv_obj_t* track = lv_obj_create(row);
+        lv_obj_set_height(track, 12);
+        lv_obj_set_flex_grow(track, 1);
+        lv_obj_set_style_bg_color(track, lv_color_hex(0x132030), 0);
+        lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(track, 1, 0);
+        lv_obj_set_style_border_color(track, lv_color_hex(0x22364D), 0);
+        lv_obj_set_style_radius(track, 4, 0);
+        lv_obj_set_style_pad_all(track, 1, 0);
+        lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* centerLine = lv_obj_create(track);
+        lv_obj_set_size(centerLine, 2, LV_PCT(100));
+        lv_obj_set_style_bg_color(centerLine, lv_color_hex(0x72839B), 0);
+        lv_obj_set_style_bg_opa(centerLine, LV_OPA_70, 0);
+        lv_obj_set_style_border_width(centerLine, 0, 0);
+        lv_obj_set_style_radius(centerLine, 0, 0);
+        lv_obj_align(centerLine, LV_ALIGN_CENTER, 0, 0);
+
+        overlay.outputFills[i] = lv_obj_create(track);
+        lv_obj_set_size(overlay.outputFills[i], 1, 8);
+        lv_obj_set_style_border_width(overlay.outputFills[i], 0, 0);
+        lv_obj_set_style_radius(overlay.outputFills[i], 3, 0);
+        lv_obj_align(overlay.outputFills[i], LV_ALIGN_LEFT_MID, lv_obj_get_width(track) / 2, 0);
+
+        overlay.outputValueLabels[i] = lv_label_create(row);
+        lv_obj_set_width(overlay.outputValueLabels[i], 34);
+        lv_obj_set_style_text_align(overlay.outputValueLabels[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_color(overlay.outputValueLabels[i], lv_color_hex(0xA5B5C9), 0);
+        lv_obj_set_style_text_font(overlay.outputValueLabels[i], &lv_font_montserrat_12, 0);
+        lv_label_set_text(overlay.outputValueLabels[i], "0.00");
+    }
+
+    lv_obj_t* buttons = lv_obj_create(overlay.container);
+    lv_obj_set_size(buttons, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(buttons, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(buttons, 0, 0);
+    lv_obj_set_style_pad_all(buttons, 0, 0);
+    lv_obj_set_style_pad_row(buttons, 3, 0);
+    lv_obj_set_style_pad_column(buttons, 3, 0);
+    lv_obj_set_flex_flow(buttons, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(buttons, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(buttons, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (size_t i = 0; i < kNesButtonLabels.size(); ++i) {
+        overlay.buttonChips[i] = lv_label_create(buttons);
+        lv_obj_set_size(overlay.buttonChips[i], 24, 18);
+        lv_obj_set_style_text_align(overlay.buttonChips[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(overlay.buttonChips[i], &lv_font_montserrat_12, 0);
+        lv_obj_set_style_pad_top(overlay.buttonChips[i], 2, 0);
+        lv_obj_set_style_radius(overlay.buttonChips[i], 4, 0);
+        lv_label_set_text(overlay.buttonChips[i], kNesButtonLabels[i]);
+    }
+}
+
+void TrainingActiveView::updateNesVideoOverlay(
+    TrainingActiveView::NesOverlayWidgets& overlay,
+    const std::optional<NesControllerTelemetry>& telemetry,
+    bool videoVisible)
+{
+    if (!overlay.container) {
+        return;
+    }
+
+    if (!videoVisible || !isNesControllerOverlayEnabled(userSettings_) || !telemetry.has_value()) {
+        lv_obj_add_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    const NesControllerTelemetry& value = telemetry.value();
+    lv_obj_clear_flag(overlay.container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(overlay.container);
+
+    const std::string sourceLabel = nesControllerSourceLabelBuild(value.controllerSource);
+    lv_label_set_text(overlay.sourceBadge, sourceLabel.c_str());
+    if (value.controllerSource == NesGameAdapterControllerSource::ScriptedSetup) {
+        lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x3F2032), 0);
+        lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xFFD6E6), 0);
+    }
+    else {
+        lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x173629), 0);
+        lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xA8FFD4), 0);
+    }
+
+    if (value.controllerSourceFrameIndex.has_value()) {
+        lv_label_set_text_fmt(
+            overlay.sourceFrameLabel,
+            "F%llu",
+            static_cast<unsigned long long>(value.controllerSourceFrameIndex.value()));
+    }
+    else {
+        lv_label_set_text(overlay.sourceFrameLabel, "--");
+    }
+
+    const std::array<float, 4> rawOutputs{ value.xRaw, value.yRaw, value.aRaw, value.bRaw };
+    for (size_t i = 0; i < rawOutputs.size(); ++i) {
+        if (!overlay.outputFills[i] || !overlay.outputValueLabels[i]) {
+            continue;
+        }
+
+        lv_label_set_text(
+            overlay.outputValueLabels[i], nesOutputValueTextBuild(rawOutputs[i]).c_str());
+
+        lv_obj_t* track = lv_obj_get_parent(overlay.outputFills[i]);
+        lv_obj_update_layout(track);
+        const int trackWidth = std::max(4, lv_obj_get_width(track) - 2);
+        const int trackHeight = std::max(4, lv_obj_get_height(track) - 2);
+        const int halfWidth = std::max(1, (trackWidth / 2) - 1);
+        const float normalized = normalizeNesOverlayOutput(rawOutputs[i]);
+        const int fillWidth =
+            std::max(1, static_cast<int>(std::round(std::abs(normalized) * halfWidth)));
+        const int fillX = normalized >= 0.0f ? (trackWidth / 2) : ((trackWidth / 2) - fillWidth);
+
+        lv_obj_set_size(overlay.outputFills[i], fillWidth, std::max(4, trackHeight - 2));
+        lv_obj_align(overlay.outputFills[i], LV_ALIGN_LEFT_MID, fillX, 0);
+        lv_obj_set_style_bg_color(
+            overlay.outputFills[i],
+            normalized >= 0.0f ? lv_color_hex(0xFF9A62) : lv_color_hex(0x66B8FF),
+            0);
+        lv_obj_set_style_bg_opa(overlay.outputFills[i], LV_OPA_COVER, 0);
+    }
+
+    for (size_t i = 0; i < overlay.buttonChips.size(); ++i) {
+        const uint8_t bit = kNesButtonMasks[i];
+        updateNesVideoOverlayButton(
+            overlay.buttonChips[i],
+            (value.inferredControllerMask & bit) != 0,
+            (value.resolvedControllerMask & bit) != 0,
+            i >= 4);
+    }
+}
+
+void TrainingActiveView::updateNesVideoOverlayButton(
+    lv_obj_t* chip, bool inferredPressed, bool resolvedPressed, bool actionButton)
+{
+    if (!chip) {
+        return;
+    }
+
+    if (resolvedPressed) {
+        lv_obj_set_style_bg_color(
+            chip, actionButton ? lv_color_hex(0xFFB359) : lv_color_hex(0x78D5FF), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(chip, 0, 0);
+        lv_obj_set_style_text_color(chip, lv_color_hex(0x08101A), 0);
+        return;
+    }
+
+    if (inferredPressed) {
+        lv_obj_set_style_bg_color(chip, lv_color_hex(0x0B1624), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(chip, 1, 0);
+        lv_obj_set_style_border_color(
+            chip, actionButton ? lv_color_hex(0xFF9A62) : lv_color_hex(0x66B8FF), 0);
+        lv_obj_set_style_text_color(
+            chip, actionButton ? lv_color_hex(0xFFD0B2) : lv_color_hex(0xC5EBFF), 0);
+        return;
+    }
+
+    lv_obj_set_style_bg_color(chip, lv_color_hex(0x0B1624), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(chip, 1, 0);
+    lv_obj_set_style_border_color(chip, lv_color_hex(0x22364D), 0);
+    lv_obj_set_style_text_color(chip, lv_color_hex(0x637389), 0);
 }
 
 void TrainingActiveView::destroyUI()
@@ -536,7 +984,7 @@ void TrainingActiveView::destroyUI()
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
-    bestFitnessBreakdownLabel_ = nullptr;
+    bestFitnessPresentationContent_ = nullptr;
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
@@ -559,6 +1007,7 @@ void TrainingActiveView::destroyUI()
     streamIntervalStepper_ = nullptr;
     bestPlaybackToggle_ = nullptr;
     bestPlaybackIntervalStepper_ = nullptr;
+    nesControllerOverlayToggle_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
     scenarioControlsButton_ = nullptr;
@@ -571,6 +1020,10 @@ void TrainingActiveView::destroyUI()
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
+    liveNesOverlayWidgets_ = {};
+    bestNesOverlayWidgets_ = {};
+    liveNesControllerTelemetry_.reset();
+    bestNesControllerTelemetry_.reset();
     currentScenarioConfig_ = Config::Empty{};
     currentScenarioId_ = Scenario::EnumType::Empty;
     scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
@@ -579,12 +1032,15 @@ void TrainingActiveView::destroyUI()
 }
 
 void TrainingActiveView::renderWorld(
-    const WorldData& worldData, const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const WorldData& worldData,
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry)
 {
     if (!worldContainer_) {
         return;
     }
 
+    liveNesControllerTelemetry_ = nesControllerTelemetry;
     if (scenarioVideoFrame.has_value()) {
         if (!videoSurface_) {
             if (renderer_) {
@@ -593,9 +1049,12 @@ void TrainingActiveView::renderWorld(
             videoSurface_ = std::make_unique<VideoSurface>();
         }
         videoSurface_->present(scenarioVideoFrame.value(), worldContainer_);
+        updateNesVideoOverlay(liveNesOverlayWidgets_, liveNesControllerTelemetry_, true);
         return;
     }
 
+    liveNesControllerTelemetry_.reset();
+    updateNesVideoOverlay(liveNesOverlayWidgets_, liveNesControllerTelemetry_, false);
     if (videoSurface_) {
         videoSurface_.reset();
     }
@@ -614,7 +1073,7 @@ void TrainingActiveView::updateBestSnapshot(
     int commandsRejected,
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
     const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures,
-    const std::optional<Api::FitnessBreakdownReport>& fitnessBreakdown,
+    const Api::FitnessPresentation& fitnessPresentation,
     const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
 {
     bestSnapshotWorldData_ = std::make_unique<WorldData>(worldData);
@@ -626,6 +1085,9 @@ void TrainingActiveView::updateBestSnapshot(
     }
     else {
         bestVideoFrame_.reset();
+    }
+    if (!userSettings_.uiTraining.bestPlaybackEnabled) {
+        bestNesControllerTelemetry_.reset();
     }
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
@@ -744,79 +1206,65 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
-    if (bestFitnessBreakdownLabel_) {
-        std::ostringstream summary;
-        summary << std::fixed << std::setprecision(4);
-        if (!fitnessBreakdown.has_value()) {
-            summary << "Not available.";
-        }
-        else {
-            const auto& breakdown = fitnessBreakdown.value();
-            const auto formatGroupLabel = [](std::string group) {
-                if (group.empty()) {
-                    return std::string("Other");
-                }
-                bool uppercaseNext = true;
-                for (char& c : group) {
-                    if (c == '_' || c == '-') {
-                        c = ' ';
-                        uppercaseNext = true;
-                        continue;
-                    }
-                    if (uppercaseNext && c >= 'a' && c <= 'z') {
-                        c = static_cast<char>(c - ('a' - 'A'));
-                    }
-                    uppercaseNext = false;
-                }
-                return group;
-            };
-            summary << "Model: " << breakdown.modelId << " v" << breakdown.modelVersion << "\n";
-            summary << "Formula: " << breakdown.totalFormula << "\n";
-            summary << "Total Fitness: " << breakdown.totalFitness;
-            if (!breakdown.metrics.empty()) {
-                summary << "\n\nMetrics:";
-                std::vector<std::string> groupOrder;
-                std::unordered_map<std::string, std::vector<const Api::FitnessMetric*>>
-                    metricsByGroup;
-                metricsByGroup.reserve(breakdown.metrics.size());
-                for (const auto& metric : breakdown.metrics) {
-                    const std::string group = metric.group.empty() ? "other" : metric.group;
-                    auto [it, inserted] =
-                        metricsByGroup.emplace(group, std::vector<const Api::FitnessMetric*>{});
-                    if (inserted) {
-                        groupOrder.push_back(group);
-                    }
-                    it->second.push_back(&metric);
-                }
-
-                for (size_t groupIndex = 0; groupIndex < groupOrder.size(); ++groupIndex) {
-                    const std::string& group = groupOrder[groupIndex];
-                    summary << "\n\n" << formatGroupLabel(group) << ":";
-                    const auto& metrics = metricsByGroup[group];
-                    for (const Api::FitnessMetric* metric : metrics) {
-                        summary << "\n- " << metric->label << ": raw=" << metric->raw
-                                << ", norm=" << metric->normalized;
-                        if (metric->reference.has_value()) {
-                            summary << ", ref=" << metric->reference.value();
-                        }
-                        if (metric->weight.has_value()) {
-                            summary << ", weight=" << metric->weight.value();
-                        }
-                        if (metric->contribution.has_value()) {
-                            summary << ", contrib=" << metric->contribution.value();
-                        }
-                        if (!metric->unit.empty()) {
-                            summary << " " << metric->unit;
-                        }
-                    }
-                }
-            }
-        }
-        lv_label_set_text(bestFitnessBreakdownLabel_, summary.str().c_str());
-    }
+    renderBestFitnessPresentation(fitnessPresentation);
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         scheduleBestRender();
     }
+}
+
+void TrainingActiveView::renderBestFitnessPresentation(
+    const Api::FitnessPresentation& fitnessPresentation)
+{
+    if (!bestFitnessPresentationContent_) {
+        return;
+    }
+
+    lv_obj_clean(bestFitnessPresentationContent_);
+
+    lv_obj_t* headerCard = lv_obj_create(bestFitnessPresentationContent_);
+    setPresentationCardStyle(headerCard, lv_color_hex(0x162236), lv_color_hex(0x35557A));
+
+    lv_obj_t* titleRow = lv_obj_create(headerCard);
+    setTransparentRowLayout(titleRow, 8);
+
+    lv_obj_t* modelLabel = lv_label_create(titleRow);
+    lv_obj_set_flex_grow(modelLabel, 1);
+    lv_obj_set_style_text_color(modelLabel, lv_color_hex(0xDCE6FF), 0);
+    lv_obj_set_style_text_font(modelLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text_fmt(modelLabel, "Model: %s", fitnessPresentation.modelId.c_str());
+
+    lv_obj_t* totalLabel = lv_label_create(titleRow);
+    lv_obj_set_style_text_color(totalLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(totalLabel, &lv_font_montserrat_14, 0);
+    lv_label_set_text_fmt(totalLabel, "Total %.4f", fitnessPresentation.totalFitness);
+
+    if (!fitnessPresentation.summary.empty()) {
+        lv_obj_t* summaryLabel = lv_label_create(headerCard);
+        setPresentationWrappedLabelCommon(summaryLabel);
+        setPresentationDetailLabelStyle(summaryLabel);
+        lv_label_set_text(summaryLabel, fitnessPresentation.summary.c_str());
+    }
+
+    if (fitnessPresentation.sections.empty()) {
+        lv_obj_t* emptyLabel = lv_label_create(headerCard);
+        setPresentationWrappedLabelCommon(emptyLabel);
+        setPresentationDetailLabelStyle(emptyLabel);
+        lv_label_set_text(emptyLabel, "No presentation sections.");
+        return;
+    }
+
+    for (const auto& section : fitnessPresentation.sections) {
+        presentationSectionRender(bestFitnessPresentationContent_, section);
+    }
+}
+
+void TrainingActiveView::renderBestFitnessPresentationPlaceholder(const char* text)
+{
+    if (!bestFitnessPresentationContent_) {
+        return;
+    }
+
+    presentationPlaceholderRender(bestFitnessPresentationContent_, text);
 }
 
 void TrainingActiveView::setStreamIntervalMs(int value)
@@ -844,6 +1292,11 @@ void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
         }
     }
 
+    if (!enabled) {
+        bestNesControllerTelemetry_.reset();
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, false);
+    }
+
     if (!enabled && hasBestSnapshot_ && bestSnapshotWorldData_) {
         bestWorldData_ = std::make_unique<WorldData>(*bestSnapshotWorldData_);
         bestFitness_ = bestSnapshotFitness_;
@@ -859,6 +1312,19 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
         LVGLBuilder::ActionStepperBuilder::setValue(
             bestPlaybackIntervalStepper_, userSettings_.uiTraining.bestPlaybackIntervalMs);
     }
+}
+
+void TrainingActiveView::setNesControllerOverlayEnabled(bool enabled)
+{
+    userSettings_.uiTraining.nesControllerOverlayEnabled = enabled;
+    if (nesControllerOverlayToggle_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(nesControllerOverlayToggle_, enabled);
+    }
+
+    updateNesVideoOverlay(
+        liveNesOverlayWidgets_, liveNesControllerTelemetry_, videoSurface_ != nullptr);
+    updateNesVideoOverlay(
+        bestNesOverlayWidgets_, bestNesControllerTelemetry_, bestVideoFrame_.has_value());
 }
 
 void TrainingActiveView::updateScenarioConfig(
@@ -1082,13 +1548,15 @@ void TrainingActiveView::updateBestPlaybackFrame(
     const WorldData& worldData,
     double fitness,
     int generation,
-    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry)
 {
     if (!userSettings_.uiTraining.bestPlaybackEnabled) {
         return;
     }
 
     bestWorldData_ = std::make_unique<WorldData>(worldData);
+    bestNesControllerTelemetry_ = nesControllerTelemetry;
     if (scenarioVideoFrame.has_value()) {
         bestVideoFrame_ = scenarioVideoFrame;
     }
@@ -1151,6 +1619,20 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     if (isComplete) {
         setEvolutionCompleted(progress.bestGenomeId);
+    }
+    else if (statusLabel_) {
+        if (progress.validatingBest) {
+            lv_label_set_text(statusLabel_, "Validating Best...");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x66CCFF), 0);
+        }
+        else if (evolutionStarted_) {
+            lv_label_set_text(statusLabel_, "Training...");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
+        }
+        else {
+            lv_label_set_text(statusLabel_, "Ready");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
+        }
     }
 
     char buf[64];
@@ -1235,11 +1717,25 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     lv_bar_set_value(generationBar_, genPercent, LV_ANIM_ON);
 
     // Update evaluation progress.
-    snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
-    lv_label_set_text(evalLabel_, buf);
-
-    const int evalPercent =
-        progress.populationSize > 0 ? (progress.currentEval * 100) / progress.populationSize : 0;
+    int evalPercent = 0;
+    if (progress.validatingBest && progress.validatingBestTargetSamples > 0) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Validate: %d/%d",
+            progress.validatingBestCompletedSamples,
+            progress.validatingBestTargetSamples);
+        lv_label_set_text(evalLabel_, buf);
+        evalPercent =
+            (progress.validatingBestCompletedSamples * 100) / progress.validatingBestTargetSamples;
+    }
+    else {
+        snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
+        lv_label_set_text(evalLabel_, buf);
+        evalPercent = progress.populationSize > 0
+            ? (progress.currentEval * 100) / progress.populationSize
+            : 0;
+    }
     lv_bar_set_value(evaluationBar_, evalPercent, LV_ANIM_ON);
 
     if (genomeCountLabel_) {
@@ -1262,16 +1758,16 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     // Update fitness labels (compact format).
     if (bestThisGenLabel_) {
-        if (progress.robustEvaluationCount > 0) {
-            snprintf(buf, sizeof(buf), "Last Robust: %.2f", progress.bestFitnessThisGen);
+        if (progress.lastCompletedGeneration >= 0) {
+            snprintf(buf, sizeof(buf), "Last Gen Best: %.2f", progress.lastGenerationFitnessMax);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
-        else if (progress.bestThisGenSource != "none") {
-            snprintf(buf, sizeof(buf), "Last Eval: %.2f", progress.bestFitnessThisGen);
+        else if (progress.bestThisGenSource != "none" || progress.robustEvaluationCount > 0) {
+            snprintf(buf, sizeof(buf), "Current Best: %.2f", progress.bestFitnessThisGen);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
         else {
-            lv_label_set_text(bestThisGenLabel_, "Last Fitness: --");
+            lv_label_set_text(bestThisGenLabel_, "Last Gen Best: --");
         }
     }
 
@@ -1316,13 +1812,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 }
 
 void TrainingActiveView::updateFitnessPlots(
-    const std::vector<float>& robustFitnessSeries,
+    const std::vector<float>& bestFitnessSeries,
     const std::vector<float>& averageFitnessSeries,
-    const std::vector<uint8_t>& robustHighMask)
+    const std::vector<uint8_t>& newBestMask)
 {
     if (bestFitnessPlot_) {
         bestFitnessPlot_->setSamplesWithSecondaryAndHighlights(
-            robustFitnessSeries, averageFitnessSeries, robustHighMask);
+            bestFitnessSeries, averageFitnessSeries, newBestMask);
     }
     if (fitnessPlotsPanel_) {
         lv_obj_invalidate(fitnessPlotsPanel_);
@@ -1364,6 +1860,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         bestWorldData_.reset();
         bestSnapshotWorldData_.reset();
         bestVideoFrame_.reset();
+        liveNesControllerTelemetry_.reset();
+        bestNesControllerTelemetry_.reset();
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
         bestSnapshotFitness_ = 0.0;
@@ -1377,9 +1875,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }
-        if (bestFitnessBreakdownLabel_) {
-            lv_label_set_text(bestFitnessBreakdownLabel_, "No best snapshot yet.");
-        }
+        renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
         scenarioControls_.reset();
         currentScenarioConfig_ = Config::Empty{};
         currentScenarioId_ = Scenario::EnumType::Empty;
@@ -1412,6 +1908,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
 void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
@@ -1446,8 +1943,10 @@ void TrainingActiveView::renderBestWorld()
             bestVideoSurface_ = std::make_unique<VideoSurface>();
         }
         bestVideoSurface_->present(bestVideoFrame_.value(), bestWorldContainer_);
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, true);
     }
     else {
+        updateNesVideoOverlay(bestNesOverlayWidgets_, bestNesControllerTelemetry_, false);
         if (!bestRenderer_) {
             LOG_WARN(Controls, "TrainingActiveView: renderBestWorld skipped (no renderer)");
             return;
@@ -1617,6 +2116,17 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     pauseResumeButton_ = pauseBuilder.buildOrLog();
     pauseResumeLabel_ = pauseBuilder.getLabel();
 
+    nesControllerOverlayToggle_ = LVGLBuilder::actionButton(streamPanel_)
+                                      .text("NN + Pad")
+                                      .mode(LVGLBuilder::ActionMode::Toggle)
+                                      .checked(isNesControllerOverlayEnabled(userSettings_))
+                                      .width(LV_PCT(100))
+                                      .height(LVGLBuilder::Style::ACTION_SIZE)
+                                      .layoutRow()
+                                      .alignLeft()
+                                      .callback(onNesControllerOverlayToggled, this)
+                                      .buildOrLog();
+
     cpuCorePlot_ = std::make_unique<TimeSeriesPlotWidget>(
         streamPanel_,
         TimeSeriesPlotWidget::Config{
@@ -1646,6 +2156,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     updateScenarioButtonState();
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
@@ -1662,6 +2173,8 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
             .intervalMs = value,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
         });
 }
 
@@ -1679,6 +2192,8 @@ void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
             .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
         });
 }
 
@@ -1697,6 +2212,27 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
             .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+        });
+}
+
+void TrainingActiveView::onNesControllerOverlayToggled(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->nesControllerOverlayToggle_) {
+        return;
+    }
+
+    const bool enabled =
+        LVGLBuilder::ActionButtonBuilder::isChecked(self->nesControllerOverlayToggle_);
+    self->setNesControllerOverlayEnabled(enabled);
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled = enabled,
         });
 }
 

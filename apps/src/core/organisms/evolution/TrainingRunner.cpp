@@ -18,6 +18,7 @@
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -190,7 +191,8 @@ TrainingRunner::TrainingRunner(
       duckClockSpawnLeftFirst_(runnerConfig.duckClockSpawnLeftFirst),
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
-      evolutionConfig_(evolutionConfig)
+      evolutionConfig_(evolutionConfig),
+      frameTraceSink_(runnerConfig.frameTraceSink)
 {
     resolveBrainEntry();
 
@@ -253,10 +255,14 @@ TrainingRunner::TrainingRunner(
         scenario_ = registry.createScenario(individual_.scenarioId);
         DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario factory returned null");
 
-        // Create world with scenario's required dimensions.
-        int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
-        int height = metadata->requiredHeight > 0 ? metadata->requiredHeight : 9;
-        world_ = std::make_unique<World>(width, height);
+        scenarioConfig = scenario_->resolveInitialConfig(scenarioConfig, Vector2s{});
+        const Vector2i defaultWorldSize{ 9, 9 };
+        const Vector2i resolvedWorldSize =
+            scenario_->resolveInitialWorldSize(scenarioConfig, defaultWorldSize);
+        DIRTSIM_ASSERT(
+            resolvedWorldSize.x > 0 && resolvedWorldSize.y > 0,
+            "TrainingRunner: Scenario returned invalid initial world size");
+        world_ = std::make_unique<World>(resolvedWorldSize.x, resolvedWorldSize.y);
 
         scenario_->setConfig(scenarioConfig, *world_);
         scenario_->setup(*world_);
@@ -266,17 +272,13 @@ TrainingRunner::TrainingRunner(
     }
 
     nesPaletteFrame_.reset();
-    nesDuckBrain_.reset();
+    nesFitnessDetails_ = std::monostate{};
     nesDuckBrainV2_.reset();
+    nesLastControllerOutput_.reset();
+    nesLastControllerTelemetry_.reset();
+    nesLastDebugState_.reset();
     if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
-        if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent) {
-            DIRTSIM_ASSERT(
-                individual_.genome.has_value(),
-                "TrainingRunner: NES duck recurrent controller requires a genome");
-            nesDuckBrain_ =
-                std::make_unique<DuckNeuralNetRecurrentBrain>(individual_.genome.value());
-        }
-        else if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2) {
+        if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2) {
             DIRTSIM_ASSERT(
                 individual_.genome.has_value(),
                 "TrainingRunner: NES duck recurrent V2 controller requires a genome");
@@ -324,10 +326,20 @@ TrainingRunner::Status TrainingRunner::step(int frames)
     }
 
     for (int i = 0; i < frames && state_ == State::Running; ++i) {
+        const uint64_t stepOrdinal = ++stepOrdinal_;
         if (controlMode_ == BrainRegistryEntry::ControlMode::ScenarioDriven) {
-            runScenarioDrivenStep();
+            const NesFrameTrace nesTrace = runScenarioDrivenStep();
             if (simTime_ >= maxTime_ && state_ == State::Running) {
                 state_ = State::TimeExpired;
+            }
+            if (frameTraceSink_) {
+                frameTraceSink_(
+                    FrameTrace{
+                        .state = state_,
+                        .simTime = simTime_,
+                        .stepOrdinal = stepOrdinal,
+                        .nes = nesTrace,
+                    });
             }
             continue;
         }
@@ -358,6 +370,70 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
                 treeEvaluator_.update(*tree);
+
+                // Detect new child seeds (brainless trees spawned by this parent).
+                world_->getOrganismManager().forEachOrganism([&](const Organism::Body& body) {
+                    if (body.getId() == organismId_) {
+                        return;
+                    }
+                    if (body.getType() != OrganismType::TREE) {
+                        return;
+                    }
+                    const Tree* childTree = static_cast<const Tree*>(&body);
+                    if (childTree->hasBrain()) {
+                        return;
+                    }
+                    if (childTree->getSeedParentId() != organismId_) {
+                        return;
+                    }
+                    // Check if already tracked.
+                    for (const auto& cs : childSeeds_) {
+                        if (cs.id == body.getId()) {
+                            return;
+                        }
+                    }
+                    const Vector2i anchor = childTree->getAnchorCell();
+                    childSeeds_.push_back(
+                        ChildSeedState{
+                            .id = body.getId(),
+                            .spawnPosition = anchor,
+                            .lastPosition = anchor,
+                        });
+                });
+
+                // Update existing child seeds for landing detection.
+                const Vector2i parentAnchor = tree->getAnchorCell();
+                for (auto& cs : childSeeds_) {
+                    if (cs.landed) {
+                        continue;
+                    }
+                    const Tree* childTree = world_->getOrganismManager().getTree(cs.id);
+                    if (!childTree) {
+                        cs.landed = true; // Gone — treat as landed in place.
+                        continue;
+                    }
+                    const Vector2i currentPos = childTree->getAnchorCell();
+                    if (currentPos == cs.lastPosition) {
+                        cs.timeAtCurrentPosition += TIMESTEP;
+                    }
+                    else {
+                        cs.timeAtCurrentPosition = 0.0;
+                        cs.lastPosition = currentPos;
+                    }
+                    // Landed: dropped at least 1 cell (+y = down) and rested for 5s.
+                    if (currentPos.y > cs.spawnPosition.y && cs.timeAtCurrentPosition >= 5.0) {
+                        cs.landed = true;
+                        const double dx = currentPos.x - parentAnchor.x;
+                        const double dy = currentPos.y - parentAnchor.y;
+                        const double distance = std::sqrt(dx * dx + dy * dy);
+                        tree->addLandedSeed(
+                            LandedSeed{
+                                .landingPosition = currentPos,
+                                .distanceFromParent = distance,
+                            });
+                    }
+                }
+
                 const FitnessResult result{
                     .lifespan = tree->getAge(),
                     .maxEnergy = treeEvaluator_.getMaxEnergy(),
@@ -415,6 +491,11 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     }
 
     return status;
+}
+
+const NesFitnessDetails& TrainingRunner::getNesFitnessDetails() const
+{
+    return nesFitnessDetails_;
 }
 
 const OrganismTrackingHistory& TrainingRunner::getOrganismTrackingHistory() const
@@ -566,6 +647,10 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         if (nesGameAdapter_) {
             nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
         }
+        nesFitnessDetails_ = std::monostate{};
+        nesLastControllerOutput_.reset();
+        nesLastControllerTelemetry_.reset();
+        nesLastDebugState_.reset();
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
@@ -705,8 +790,12 @@ void TrainingRunner::resolveBrainEntry()
     controlMode_ = entry->controlMode;
 }
 
-void TrainingRunner::runScenarioDrivenStep()
+TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
 {
+    NesFrameTrace trace;
+    nesLastControllerTelemetry_.reset();
+    trace.lastGameStateBefore = nesLastGameState_;
+
     if (!nesDriver_) {
         DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before stepping");
         DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before stepping");
@@ -714,24 +803,39 @@ void TrainingRunner::runScenarioDrivenStep()
 
     if (!nesRuntime_ || !nesGameAdapter_) {
         state_ = State::OrganismDied;
-        return;
+        trace.commandOutcome = "RuntimeUnavailable";
+        return trace;
     }
 
     if (!nesRuntime_->isRuntimeRunning() || !nesRuntime_->isRuntimeHealthy()) {
         state_ = State::OrganismDied;
-        return;
+        trace.commandOutcome = "RuntimeUnavailable";
+        return trace;
     }
 
-    bool frameAdvanced = false;
     std::string commandOutcome = "NoFrameAdvance";
     const uint64_t renderedFramesBefore = nesRuntime_->getRuntimeRenderedFrameCount();
+    trace.renderedFramesBefore = renderedFramesBefore;
     const NesGameAdapterControllerInput controllerInput{
         .inferredControllerMask = inferNesControllerMask(),
         .lastGameState = nesLastGameState_,
     };
-    const uint8_t controllerMask = nesGameAdapter_->resolveControllerMask(controllerInput);
+    trace.inferredControllerMask = controllerInput.inferredControllerMask;
+    const NesGameAdapterControllerOutput controllerOutput =
+        nesGameAdapter_->resolveControllerMask(controllerInput);
+    nesLastControllerOutput_ = controllerOutput;
+    const uint8_t controllerMask = controllerOutput.resolvedControllerMask;
+    if (nesLastControllerTelemetry_.has_value()) {
+        nesLastControllerTelemetry_->resolvedControllerMask = controllerMask;
+        nesLastControllerTelemetry_->controllerSource = controllerOutput.source;
+        nesLastControllerTelemetry_->controllerSourceFrameIndex = controllerOutput.sourceFrameIndex;
+    }
+    trace.resolvedControllerMask = controllerMask;
+    trace.controllerSource = controllerOutput.source;
+    trace.controllerSourceFrameIndex = controllerOutput.sourceFrameIndex;
 
     const std::string commandSignature = buildNesCommandSignature(controllerMask);
+    trace.commandSignature = commandSignature;
     addSignatureCount(nesCommandSignatureCounts_, commandSignature);
 
     nesControllerMask_ = controllerMask;
@@ -753,10 +857,12 @@ void TrainingRunner::runScenarioDrivenStep()
     simTime_ += TIMESTEP;
 
     const uint64_t renderedFramesAfter = nesRuntime_->getRuntimeRenderedFrameCount();
+    trace.renderedFramesAfter = renderedFramesAfter;
     if (renderedFramesAfter > renderedFramesBefore) {
-        frameAdvanced = true;
+        trace.frameAdvanced = true;
         commandOutcome = "FrameAdvanced";
         const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
+        trace.advancedFrames = advancedFrames;
         nesFramesSurvived_ += advancedFrames;
 
         nesPaletteFrame_ = nesRuntime_->copyRuntimePaletteFrame();
@@ -767,6 +873,11 @@ void TrainingRunner::runScenarioDrivenStep()
             .memorySnapshot = nesRuntime_->copyRuntimeMemorySnapshot(),
         };
         const NesGameAdapterFrameOutput evaluation = nesGameAdapter_->evaluateFrame(frameInput);
+        nesLastDebugState_ = evaluation.debugState;
+        trace.debugState = evaluation.debugState;
+        trace.evaluationDone = evaluation.done;
+        nesFitnessDetails_ = evaluation.fitnessDetails;
+        trace.rewardDelta = evaluation.rewardDelta;
         nesRewardTotal_ += evaluation.rewardDelta;
         if (evaluation.gameState.has_value()) {
             nesLastGameState_ = evaluation.gameState;
@@ -782,12 +893,15 @@ void TrainingRunner::runScenarioDrivenStep()
         state_ = State::OrganismDied;
         commandOutcome = "EpisodeEnd";
     }
-    if (state_ != State::Running && frameAdvanced) {
+    if (state_ != State::Running && trace.frameAdvanced) {
         commandOutcome = "EpisodeEnd";
     }
+    trace.commandOutcome = commandOutcome;
+    trace.lastGameStateAfter = nesLastGameState_;
 
     addSignatureCount(
         nesCommandOutcomeSignatureCounts_, commandSignature + " -> " + commandOutcome);
+    return trace;
 }
 
 DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
@@ -807,24 +921,9 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
 
 uint8_t TrainingRunner::inferNesControllerMask()
 {
+    nesLastControllerTelemetry_.reset();
     const DuckSensoryData sensory = makeNesDuckSensoryData();
     uint8_t mask = 0;
-    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrent && nesDuckBrain_) {
-        const DuckInput input = nesDuckBrain_->inferInput(sensory);
-
-        if (input.jump) {
-            mask |= NesPolicyLayout::ButtonA;
-        }
-        if (input.move.x <= -kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonLeft;
-        }
-        else if (input.move.x >= kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonRight;
-        }
-
-        return mask;
-    }
-
     if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
         && nesDuckBrainV2_) {
         const DuckNeuralNetRecurrentBrainV2::ControllerOutput output =
@@ -851,6 +950,16 @@ uint8_t TrainingRunner::inferNesControllerMask()
             mask |= NesPolicyLayout::ButtonDown;
         }
 
+        nesLastControllerTelemetry_ = NesControllerTelemetry{
+            .aRaw = output.aRaw,
+            .bRaw = output.bRaw,
+            .xRaw = output.xRaw,
+            .yRaw = output.yRaw,
+            .inferredControllerMask = mask,
+            .resolvedControllerMask = mask,
+            .controllerSource = NesGameAdapterControllerSource::InferredPolicy,
+            .controllerSourceFrameIndex = std::nullopt,
+        };
         return mask;
     }
 

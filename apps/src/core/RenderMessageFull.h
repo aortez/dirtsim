@@ -2,7 +2,9 @@
 
 #include "RenderMessage.h"
 #include "ScenarioConfig.h"
+#include "scenarios/nes/NesControllerTelemetry.h"
 
+#include <optional>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -21,8 +23,9 @@ struct RenderMessageFull {
     // Scenario metadata (sent alongside render data).
     Scenario::EnumType scenario_id = Scenario::EnumType::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
+    std::optional<NesControllerTelemetry> nes_controller_telemetry = std::nullopt;
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 } // namespace DirtSim
