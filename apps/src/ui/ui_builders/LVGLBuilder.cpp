@@ -947,18 +947,21 @@ static void labeledSwitchContainerClicked(lv_event_t* e)
     lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
     lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_obj_get_user_data(container));
 
-    if (switch_obj) {
-        // Toggle switch state.
-        if (lv_obj_has_state(switch_obj, LV_STATE_CHECKED)) {
-            lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
-        }
-        else {
-            lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
-        }
-
-        // Send VALUE_CHANGED event to trigger the callback.
-        lv_obj_send_event(switch_obj, LV_EVENT_VALUE_CHANGED, nullptr);
+    if (!switch_obj || lv_obj_has_state(switch_obj, LV_STATE_DISABLED)
+        || lv_obj_has_state(container, LV_STATE_DISABLED)) {
+        return;
     }
+
+    // Toggle switch state.
+    if (lv_obj_has_state(switch_obj, LV_STATE_CHECKED)) {
+        lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
+    }
+    else {
+        lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
+    }
+
+    // Send VALUE_CHANGED event to trigger the callback.
+    lv_obj_send_event(switch_obj, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 
 Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledSwitch()
@@ -978,8 +981,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
     lv_obj_set_style_pad_right(container_, Style::PAD_HORIZONTAL, 0);
     lv_obj_set_style_pad_column(container_, Style::GAP, 0);
 
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(container_, 1, 0);
+    lv_obj_set_style_border_color(container_, lv_color_hex(0x404040), 0);
 
     // Rounded corners (from Style constants).
     lv_obj_set_style_radius(container_, Style::RADIUS, 0);
@@ -993,6 +998,21 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
         return Result<lv_obj_t*, std::string>::error("Failed to create switch");
     }
     lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
+    const auto mainSelector = static_cast<lv_style_selector_t>(LV_PART_MAIN)
+        | static_cast<lv_style_selector_t>(LV_STATE_DEFAULT);
+    const auto checkedIndicatorSelector = static_cast<lv_style_selector_t>(LV_PART_INDICATOR)
+        | static_cast<lv_style_selector_t>(LV_STATE_CHECKED);
+    const auto knobSelector = static_cast<lv_style_selector_t>(LV_PART_KNOB)
+        | static_cast<lv_style_selector_t>(LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::TROUGH_INNER_COLOR), mainSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, mainSelector);
+    lv_obj_set_style_bg_color(
+        switch_, lv_color_hex(Style::SWITCH_ACTIVE_COLOR), checkedIndicatorSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, checkedIndicatorSelector);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::SLIDER_KNOB_COLOR), knobSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, knobSelector);
+    lv_obj_set_style_border_width(switch_, 0, mainSelector);
+    lv_obj_set_style_shadow_width(switch_, 0, mainSelector);
 
     // Set initial state.
     if (initial_checked_) {
@@ -1016,6 +1036,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
             lv_label_set_text(label_, label_text_.c_str());
             lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
             lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
+            lv_obj_set_flex_grow(label_, 1);
         }
     }
 
@@ -1920,7 +1941,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         if (icon_label_) {
             lv_label_set_text(icon_label_, icon_.c_str());
             lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
-            const lv_font_t* icon_font = font_ ? font_ : &lv_font_montserrat_40;
+            const lv_font_t* icon_font = font_
+                ? font_
+                : (layout_flow_ == LV_FLEX_FLOW_ROW ? &lv_font_montserrat_24
+                                                    : &lv_font_montserrat_40);
             lv_obj_set_style_text_font(icon_label_, icon_font, 0);
         }
     };
@@ -1937,8 +1961,17 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
             lv_obj_set_style_text_font(
                 label_, use_small_font ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(label_, LV_TEXT_ALIGN_CENTER, 0);
-            lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
+            if (layout_flow_ == LV_FLEX_FLOW_ROW) {
+                lv_label_set_long_mode(label_, LV_LABEL_LONG_DOT);
+                if (!icon_.empty()) {
+                    lv_obj_set_width(label_, 0);
+                    lv_obj_set_flex_grow(label_, 1);
+                }
+            }
+            else {
+                lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
+                lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
+            }
         }
     };
 

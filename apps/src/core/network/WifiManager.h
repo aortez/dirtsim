@@ -8,7 +8,7 @@
 namespace DirtSim {
 namespace Network {
 
-enum class WifiNetworkStatus { Connected = 0, Saved, Open };
+enum class WifiNetworkStatus { Connected = 0, Saved, Open, Available };
 
 struct WifiNetworkInfo {
     std::string ssid;

@@ -1411,33 +1411,31 @@ Result<std::vector<WifiNetworkInfo>, std::string> WifiManager::listNetworks() co
             return a.info.ssid < b.info.ssid;
         });
 
-    std::vector<WifiNetworkInfo> openEntries;
+    std::vector<WifiNetworkInfo> availableEntries;
     for (const auto& [ssid, ap] : bestBySsid) {
-        if (ap.security != "open") {
-            continue;
-        }
         if (savedIndexBySsid.find(ssid) != savedIndexBySsid.end()) {
             continue;
         }
 
         WifiNetworkInfo info{
             .ssid = ssid,
-            .status = WifiNetworkStatus::Open,
+            .status =
+                ap.security == "open" ? WifiNetworkStatus::Open : WifiNetworkStatus::Available,
             .signalDbm = ap.signalDbm,
             .security = ap.security,
             .autoConnect = false,
             .hasCredentials = false,
             .lastUsedDate = std::nullopt,
-            .lastUsedRelative = "n/a",
+            .lastUsedRelative = "not saved",
             .connectionId = std::string{},
         };
 
-        openEntries.push_back(info);
+        availableEntries.push_back(info);
     }
 
     std::sort(
-        openEntries.begin(),
-        openEntries.end(),
+        availableEntries.begin(),
+        availableEntries.end(),
         [](const WifiNetworkInfo& a, const WifiNetworkInfo& b) {
             const int signalA = a.signalDbm.has_value() ? a.signalDbm.value() : -200;
             const int signalB = b.signalDbm.has_value() ? b.signalDbm.value() : -200;
@@ -1448,11 +1446,11 @@ Result<std::vector<WifiNetworkInfo>, std::string> WifiManager::listNetworks() co
         });
 
     std::vector<WifiNetworkInfo> networks;
-    networks.reserve(savedEntries.size() + openEntries.size());
+    networks.reserve(savedEntries.size() + availableEntries.size());
     for (const auto& entry : savedEntries) {
         networks.push_back(entry.info);
     }
-    for (const auto& entry : openEntries) {
+    for (const auto& entry : availableEntries) {
         networks.push_back(entry);
     }
 

@@ -24,8 +24,10 @@ struct Network {
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
 
     static constexpr const char* name() { return "Network"; }
+    bool blocksAutoShrink() const { return true; }
 
 private:
+    IconId activeSubviewIcon_ = IconId::NETWORK;
     lv_obj_t* contentRoot_ = nullptr;
     std::unique_ptr<NetworkDiagnosticsPanel> networkPanel_;
 };

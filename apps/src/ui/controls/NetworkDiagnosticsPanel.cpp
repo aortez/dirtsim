@@ -37,6 +37,152 @@ void updateAccessCache(const NetworkAccessCache& status)
     std::lock_guard<std::mutex> lock(accessCacheMutex);
     accessCache = status;
 }
+
+constexpr uint32_t ACCESSORY_BG_COLOR = 0x1A1A1A;
+constexpr uint32_t ACCESSORY_BORDER_COLOR = 0x404040;
+constexpr uint32_t CARD_BG_COLOR = 0x101010;
+constexpr uint32_t CARD_BORDER_COLOR = 0x303030;
+constexpr uint32_t HEADER_TEXT_COLOR = 0xAAAAAA;
+constexpr uint32_t ERROR_TEXT_COLOR = 0xFF7777;
+constexpr uint32_t MUTED_TEXT_COLOR = 0xB0B0B0;
+constexpr uint32_t NETWORK_ROW_BG_COLOR = 0x1C1C1C;
+constexpr uint32_t NETWORK_ROW_BORDER_COLOR = 0x383838;
+constexpr int PASSWORD_MODAL_HEIGHT = 420;
+constexpr int PASSWORD_MODAL_WIDTH = 540;
+
+lv_obj_t* getActionButtonInnerButton(lv_obj_t* container)
+{
+    if (!container) {
+        return nullptr;
+    }
+
+    return lv_obj_get_child(container, 0);
+}
+
+lv_obj_t* getActionButtonLabel(lv_obj_t* container)
+{
+    lv_obj_t* button = getActionButtonInnerButton(container);
+    if (!button) {
+        return nullptr;
+    }
+
+    const uint32_t childCount = lv_obj_get_child_cnt(button);
+    if (childCount == 0) {
+        return nullptr;
+    }
+
+    return lv_obj_get_child(button, childCount - 1);
+}
+
+bool isOpenSecurity(const std::string& security)
+{
+    return security.empty() || security == "open";
+}
+
+void setActionButtonEnabled(lv_obj_t* container, bool enabled)
+{
+    lv_obj_t* button = getActionButtonInnerButton(container);
+    if (!button) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_state(button, LV_STATE_DISABLED);
+        return;
+    }
+
+    lv_obj_add_state(button, LV_STATE_DISABLED);
+}
+
+void setActionButtonText(lv_obj_t* container, const std::string& text)
+{
+    lv_obj_t* label = getActionButtonLabel(container);
+    if (!label) {
+        return;
+    }
+
+    lv_label_set_text(label, text.c_str());
+}
+
+lv_obj_t* createSectionCard(lv_obj_t* parent, const char* title)
+{
+    lv_obj_t* card = lv_obj_create(parent);
+    lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_set_style_pad_row(card, 10, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(CARD_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(CARD_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(card, 10, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(card);
+    lv_label_set_text(titleLabel, title);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(HEADER_TEXT_COLOR), 0);
+    lv_obj_set_width(titleLabel, LV_PCT(100));
+
+    return card;
+}
+
+void stylePanelColumn(lv_obj_t* column)
+{
+    lv_obj_set_size(column, 0, LV_PCT(100));
+    lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(column, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(column, 0, 0);
+    lv_obj_set_style_pad_row(column, 14, 0);
+    lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(column, 0, 0);
+    lv_obj_clear_flag(column, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void styleSwitchRow(lv_obj_t* switchObj)
+{
+    if (!switchObj) {
+        return;
+    }
+
+    lv_obj_t* container = lv_obj_get_parent(switchObj);
+    if (!container) {
+        return;
+    }
+
+    lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(container, 12, 0);
+    lv_obj_set_style_pad_column(container, 12, 0);
+    lv_obj_set_style_bg_color(container, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(container, 1, 0);
+    lv_obj_set_style_border_color(container, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(container, 10, 0);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* label = lv_obj_get_child(container, 1);
+    if (label) {
+        lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    }
+}
+
+std::string joinTextParts(const std::vector<std::string>& parts, const char* separator)
+{
+    std::string text;
+    for (const auto& part : parts) {
+        if (part.empty()) {
+            continue;
+        }
+
+        if (!text.empty()) {
+            text += separator;
+        }
+        text += part;
+    }
+
+    return text;
+}
 } // namespace
 
 NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
@@ -48,6 +194,8 @@ NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
 
 NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
 {
+    closePasswordPrompt();
+
     if (refreshTimer_) {
         lv_timer_delete(refreshTimer_);
         refreshTimer_ = nullptr;
@@ -57,137 +205,185 @@ NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
 
 void NetworkDiagnosticsPanel::createUI()
 {
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(container_, 16, 0);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleRow = lv_obj_create(container_);
+    lv_obj_set_size(titleRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(titleRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        titleRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(titleRow, 0, 0);
+    lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(titleRow, 0, 0);
+    lv_obj_clear_flag(titleRow, LV_OBJ_FLAG_SCROLLABLE);
+
     // Title.
-    lv_obj_t* title = lv_label_create(container_);
+    lv_obj_t* title = lv_label_create(titleRow);
     lv_label_set_text(title, "Network");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_width(title, LV_PCT(100));
 
-    lv_obj_t* contentRow = lv_obj_create(container_);
-    lv_obj_set_size(contentRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(contentRow, LV_FLEX_FLOW_ROW);
+    pagesContainer_ = lv_obj_create(container_);
+    lv_obj_set_size(pagesContainer_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(pagesContainer_, 1);
+    lv_obj_set_flex_flow(pagesContainer_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        contentRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(contentRow, 0, 0);
-    lv_obj_set_style_pad_column(contentRow, 16, 0);
-    lv_obj_set_style_bg_opa(contentRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(contentRow, 0, 0);
-    lv_obj_clear_flag(contentRow, LV_OBJ_FLAG_SCROLLABLE);
+        pagesContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(pagesContainer_, 0, 0);
+    lv_obj_set_style_bg_opa(pagesContainer_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(pagesContainer_, 0, 0);
+    lv_obj_clear_flag(pagesContainer_, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* leftColumn = lv_obj_create(contentRow);
-    lv_obj_set_size(leftColumn, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_grow(leftColumn, 3);
-    lv_obj_set_flex_flow(leftColumn, LV_FLEX_FLOW_COLUMN);
+    wifiView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(wifiView_);
+    lv_obj_set_size(wifiView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(wifiView_, 1);
+
+    lanAccessView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(lanAccessView_);
+    lv_obj_set_size(lanAccessView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(lanAccessView_, 1);
+
+    lv_obj_t* wifiCard = lv_obj_create(wifiView_);
+    lv_obj_set_size(wifiCard, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(wifiCard, 1);
+    lv_obj_set_flex_flow(wifiCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(wifiCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(wifiCard, 12, 0);
+    lv_obj_set_style_pad_row(wifiCard, 10, 0);
+    lv_obj_set_style_bg_color(wifiCard, lv_color_hex(CARD_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(wifiCard, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(wifiCard, 1, 0);
+    lv_obj_set_style_border_color(wifiCard, lv_color_hex(CARD_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(wifiCard, 10, 0);
+    lv_obj_clear_flag(wifiCard, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* wifiHeaderRow = lv_obj_create(wifiCard);
+    lv_obj_set_size(wifiHeaderRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(wifiHeaderRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        leftColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(leftColumn, 0, 0);
-    lv_obj_set_style_pad_row(leftColumn, 6, 0);
-    lv_obj_set_style_bg_opa(leftColumn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(leftColumn, 0, 0);
-    lv_obj_clear_flag(leftColumn, LV_OBJ_FLAG_SCROLLABLE);
+        wifiHeaderRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(wifiHeaderRow, 0, 0);
+    lv_obj_set_style_pad_column(wifiHeaderRow, 12, 0);
+    lv_obj_set_style_bg_opa(wifiHeaderRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wifiHeaderRow, 0, 0);
+    lv_obj_clear_flag(wifiHeaderRow, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* rightColumn = lv_obj_create(contentRow);
-    lv_obj_set_size(rightColumn, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_grow(rightColumn, 2);
-    lv_obj_set_flex_flow(rightColumn, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(
-        rightColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(rightColumn, 0, 0);
-    lv_obj_set_style_pad_row(rightColumn, 8, 0);
-    lv_obj_set_style_bg_opa(rightColumn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(rightColumn, 0, 0);
-    lv_obj_clear_flag(rightColumn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* wifiTitleLabel = lv_label_create(wifiHeaderRow);
+    lv_label_set_text(wifiTitleLabel, "Wi-Fi");
+    lv_obj_set_style_text_font(wifiTitleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(wifiTitleLabel, lv_color_hex(HEADER_TEXT_COLOR), 0);
 
-    // WiFi status label.
-    wifiStatusLabel_ = lv_label_create(leftColumn);
-    lv_obj_set_style_text_font(wifiStatusLabel_, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(wifiStatusLabel_, lv_color_hex(0x00CED1), 0);
+    refreshButton_ = LVGLBuilder::actionButton(wifiHeaderRow)
+                         .text("Refresh")
+                         .icon(LV_SYMBOL_REFRESH)
+                         .mode(LVGLBuilder::ActionMode::Push)
+                         .layoutRow()
+                         .width(188)
+                         .height(48)
+                         .callback(onRefreshClicked, this)
+                         .buildOrLog();
+
+    wifiStatusLabel_ = lv_label_create(wifiCard);
+    lv_obj_set_style_text_font(wifiStatusLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(wifiStatusLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
     lv_obj_set_width(wifiStatusLabel_, LV_PCT(100));
     lv_label_set_long_mode(wifiStatusLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(wifiStatusLabel_, 8, 0);
+    lv_obj_add_flag(wifiStatusLabel_, LV_OBJ_FLAG_HIDDEN);
 
-    // Networks section header.
-    lv_obj_t* networksHeader = lv_label_create(leftColumn);
-    lv_label_set_text(networksHeader, "Networks");
-    lv_obj_set_style_text_font(networksHeader, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(networksHeader, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_set_style_pad_top(networksHeader, 16, 0);
+    currentNetworkContainer_ = lv_obj_create(wifiCard);
+    lv_obj_set_size(currentNetworkContainer_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(currentNetworkContainer_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        currentNetworkContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(currentNetworkContainer_, 12, 0);
+    lv_obj_set_style_pad_row(currentNetworkContainer_, 8, 0);
+    lv_obj_set_style_bg_color(currentNetworkContainer_, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(currentNetworkContainer_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(currentNetworkContainer_, 1, 0);
+    lv_obj_set_style_border_color(
+        currentNetworkContainer_, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(currentNetworkContainer_, 10, 0);
+    lv_obj_clear_flag(currentNetworkContainer_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(currentNetworkContainer_, LV_OBJ_FLAG_HIDDEN);
 
-    // Networks list container.
-    networksContainer_ = lv_obj_create(leftColumn);
-    lv_obj_set_size(networksContainer_, LV_PCT(100), LV_SIZE_CONTENT);
+    networksTitleLabel_ = lv_label_create(wifiCard);
+    lv_label_set_text(networksTitleLabel_, "Networks");
+    lv_obj_set_style_text_font(networksTitleLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(networksTitleLabel_, lv_color_hex(HEADER_TEXT_COLOR), 0);
+    lv_obj_set_width(networksTitleLabel_, LV_PCT(100));
+
+    networksContainer_ = lv_obj_create(wifiCard);
+    lv_obj_set_size(networksContainer_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(networksContainer_, 1);
     lv_obj_set_flex_flow(networksContainer_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         networksContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(networksContainer_, 0, 0);
-    lv_obj_set_style_pad_row(networksContainer_, 8, 0);
+    lv_obj_set_style_pad_row(networksContainer_, 10, 0);
     lv_obj_set_style_bg_opa(networksContainer_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(networksContainer_, 0, 0);
+    lv_obj_set_scroll_dir(networksContainer_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(networksContainer_, LV_SCROLLBAR_MODE_AUTO);
 
-    // IP Address section header.
-    lv_obj_t* ipHeader = lv_label_create(leftColumn);
-    lv_label_set_text(ipHeader, "IP Address:");
-    lv_obj_set_style_text_font(ipHeader, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(ipHeader, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_set_style_pad_top(ipHeader, 16, 0);
+    lv_obj_t* accessCard = createSectionCard(lanAccessView_, "LAN Access");
 
-    // Address display label (will be updated with actual addresses).
-    addressLabel_ = lv_label_create(leftColumn);
-    lv_obj_set_style_text_font(addressLabel_, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(addressLabel_, lv_color_hex(0x00CED1), 0);
-    lv_obj_set_width(addressLabel_, LV_PCT(100));
-    lv_label_set_long_mode(addressLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(addressLabel_, 8, 0);
+    lv_obj_t* accessHint = lv_label_create(accessCard);
+    lv_label_set_text(
+        accessHint, "Control which services are visible to devices on your local network.");
+    lv_obj_set_style_text_font(accessHint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(accessHint, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    lv_label_set_long_mode(accessHint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(accessHint, LV_PCT(100));
 
-    webUiToggle_ = LVGLBuilder::labeledSwitch(rightColumn)
+    webUiToggle_ = LVGLBuilder::labeledSwitch(accessCard)
                        .label("LAN Web UI")
                        .initialState(false)
+                       .width(LV_PCT(100))
+                       .height(72)
                        .callback(onWebUiToggleChanged, this)
                        .buildOrLog();
+    styleSwitchRow(webUiToggle_);
 
-    if (webUiToggle_) {
-        lv_obj_set_style_pad_top(webUiToggle_, 8, 0);
-    }
-
-    webSocketToggle_ = LVGLBuilder::labeledSwitch(rightColumn)
+    webSocketToggle_ = LVGLBuilder::labeledSwitch(accessCard)
                            .label("Incoming WebSocket Traffic")
                            .initialState(false)
+                           .width(LV_PCT(100))
+                           .height(72)
                            .callback(onWebSocketToggleChanged, this)
                            .buildOrLog();
+    styleSwitchRow(webSocketToggle_);
 
-    if (webSocketToggle_) {
-        lv_obj_set_style_pad_top(webSocketToggle_, 12, 0);
-    }
+    lv_obj_t* tokenCard = lv_obj_create(accessCard);
+    lv_obj_set_size(tokenCard, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(tokenCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(tokenCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(tokenCard, 12, 0);
+    lv_obj_set_style_pad_row(tokenCard, 6, 0);
+    lv_obj_set_style_bg_color(tokenCard, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(tokenCard, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(tokenCard, 1, 0);
+    lv_obj_set_style_border_color(tokenCard, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(tokenCard, 10, 0);
+    lv_obj_clear_flag(tokenCard, LV_OBJ_FLAG_SCROLLABLE);
 
-    webSocketTokenTitleLabel_ = lv_label_create(rightColumn);
+    webSocketTokenTitleLabel_ = lv_label_create(tokenCard);
     lv_obj_set_style_text_font(webSocketTokenTitleLabel_, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(webSocketTokenTitleLabel_, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_color(webSocketTokenTitleLabel_, lv_color_hex(HEADER_TEXT_COLOR), 0);
     lv_obj_set_width(webSocketTokenTitleLabel_, LV_PCT(100));
     lv_label_set_long_mode(webSocketTokenTitleLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(webSocketTokenTitleLabel_, 12, 0);
     lv_label_set_text(webSocketTokenTitleLabel_, "WebSocket token");
 
-    webSocketTokenLabel_ = lv_label_create(rightColumn);
+    webSocketTokenLabel_ = lv_label_create(tokenCard);
     lv_obj_set_style_text_font(webSocketTokenLabel_, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(webSocketTokenLabel_, lv_color_hex(0x00CED1), 0);
     lv_obj_set_width(webSocketTokenLabel_, LV_PCT(100));
     lv_label_set_long_mode(webSocketTokenLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(webSocketTokenLabel_, 4, 0);
     lv_label_set_text(webSocketTokenLabel_, "--");
-
-    // Refresh button.
-    refreshButton_ = LVGLBuilder::actionButton(leftColumn)
-                         .text("Refresh")
-                         .icon(LV_SYMBOL_REFRESH)
-                         .mode(LVGLBuilder::ActionMode::Push)
-                         .width(LV_PCT(95))
-                         .callback(onRefreshClicked, this)
-                         .buildOrLog();
-
-    if (refreshButton_) {
-        lv_obj_set_style_pad_top(refreshButton_, 16, 0);
-    }
 
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
     if (refreshTimer_) {
@@ -206,8 +402,219 @@ void NetworkDiagnosticsPanel::createUI()
         updateWebSocketStatus(statusResult);
     }
 
+    setViewMode(viewMode_);
+
     // Initial display update.
     refresh();
+}
+
+void NetworkDiagnosticsPanel::showLanAccessView()
+{
+    setViewMode(ViewMode::LanAccess);
+}
+
+void NetworkDiagnosticsPanel::showWifiView()
+{
+    setViewMode(ViewMode::Wifi);
+}
+
+void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
+{
+    auto setVisibility = [](lv_obj_t* view, bool visible) {
+        if (!view) {
+            return;
+        }
+
+        if (visible) {
+            lv_obj_clear_flag(view, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(view, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(view, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(view, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    };
+
+    setVisibility(wifiView_, mode == ViewMode::Wifi);
+    setVisibility(lanAccessView_, mode == ViewMode::LanAccess);
+    viewMode_ = mode;
+}
+
+void NetworkDiagnosticsPanel::closePasswordPrompt()
+{
+    if (passwordOverlay_) {
+        lv_obj_del(passwordOverlay_);
+        passwordOverlay_ = nullptr;
+    }
+
+    passwordCancelButton_ = nullptr;
+    passwordErrorLabel_ = nullptr;
+    passwordJoinButton_ = nullptr;
+    passwordKeyboard_ = nullptr;
+    passwordTextArea_ = nullptr;
+    passwordVisibilityButton_ = nullptr;
+    passwordPromptNetwork_.reset();
+    passwordVisible_ = false;
+}
+
+bool NetworkDiagnosticsPanel::networkRequiresPassword(const Network::WifiNetworkInfo& network) const
+{
+    if (network.status == Network::WifiNetworkStatus::Connected) {
+        return false;
+    }
+
+    if (isOpenSecurity(network.security)) {
+        return false;
+    }
+
+    return !network.hasCredentials;
+}
+
+void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo& network)
+{
+    closePasswordPrompt();
+
+    passwordPromptNetwork_ = network;
+    passwordVisible_ = false;
+
+    passwordOverlay_ = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(passwordOverlay_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(passwordOverlay_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(passwordOverlay_, LV_OPA_60, 0);
+    lv_obj_clear_flag(passwordOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(passwordOverlay_);
+
+    lv_obj_t* modal = lv_obj_create(passwordOverlay_);
+    lv_obj_set_size(modal, PASSWORD_MODAL_WIDTH, PASSWORD_MODAL_HEIGHT);
+    lv_obj_center(modal);
+    lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
+    lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(modal, 1, 0);
+    lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(modal, 12, 0);
+    lv_obj_set_style_pad_all(modal, 12, 0);
+    lv_obj_set_style_pad_row(modal, 10, 0);
+    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(modal);
+    lv_label_set_text(title, "Join Wi-Fi");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFDD66), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
+
+    lv_obj_t* ssidLabel = lv_label_create(modal);
+    const std::string ssidText = "SSID: " + network.ssid;
+    lv_label_set_text(ssidLabel, ssidText.c_str());
+    lv_obj_set_style_text_color(ssidLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(ssidLabel, &lv_font_montserrat_16, 0);
+
+    lv_obj_t* securityLabel = lv_label_create(modal);
+    const std::string securityText =
+        "Security: " + (network.security.empty() ? std::string("unknown") : network.security);
+    lv_label_set_text(securityLabel, securityText.c_str());
+    lv_obj_set_style_text_color(securityLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    lv_obj_set_style_text_font(securityLabel, &lv_font_montserrat_12, 0);
+
+    lv_obj_t* helperLabel = lv_label_create(modal);
+    lv_label_set_text(helperLabel, "Enter the password for this network.");
+    lv_obj_set_style_text_color(helperLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    lv_obj_set_style_text_font(helperLabel, &lv_font_montserrat_12, 0);
+
+    lv_obj_t* passwordRow = lv_obj_create(modal);
+    lv_obj_set_size(passwordRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(passwordRow, 8, 0);
+    lv_obj_set_style_pad_column(passwordRow, 8, 0);
+    lv_obj_set_style_bg_color(passwordRow, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(passwordRow, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(passwordRow, 1, 0);
+    lv_obj_set_style_border_color(passwordRow, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(passwordRow, 10, 0);
+    lv_obj_set_flex_flow(passwordRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        passwordRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(passwordRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    passwordTextArea_ = lv_textarea_create(passwordRow);
+    lv_obj_set_size(passwordTextArea_, 0, 52);
+    lv_obj_set_flex_grow(passwordTextArea_, 1);
+    lv_textarea_set_one_line(passwordTextArea_, true);
+    lv_textarea_set_max_length(passwordTextArea_, 64);
+    lv_textarea_set_password_mode(passwordTextArea_, true);
+    lv_textarea_set_password_show_time(passwordTextArea_, 0);
+    lv_textarea_set_placeholder_text(passwordTextArea_, "Password");
+    lv_obj_set_style_bg_opa(passwordTextArea_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(passwordTextArea_, 0, 0);
+    lv_obj_set_style_outline_width(passwordTextArea_, 0, 0);
+    lv_obj_set_style_pad_hor(passwordTextArea_, 6, 0);
+    lv_obj_set_style_pad_ver(passwordTextArea_, 10, 0);
+    lv_obj_set_style_text_color(passwordTextArea_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(passwordTextArea_, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(
+        passwordTextArea_, lv_color_hex(MUTED_TEXT_COLOR), LV_PART_TEXTAREA_PLACEHOLDER);
+    lv_obj_set_style_text_color(passwordTextArea_, lv_color_hex(0x00CED1), LV_PART_CURSOR);
+    lv_obj_add_event_cb(passwordTextArea_, onPasswordTextAreaEvent, LV_EVENT_ALL, this);
+
+    passwordVisibilityButton_ = LVGLBuilder::actionButton(passwordRow)
+                                    .text("Show")
+                                    .mode(LVGLBuilder::ActionMode::Push)
+                                    .width(100)
+                                    .height(52)
+                                    .callback(onPasswordVisibilityClicked, this)
+                                    .buildOrLog();
+
+    passwordErrorLabel_ = lv_label_create(modal);
+    lv_obj_set_width(passwordErrorLabel_, LV_PCT(100));
+    lv_label_set_long_mode(passwordErrorLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(passwordErrorLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
+    lv_obj_set_style_text_font(passwordErrorLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_add_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* buttonRow = lv_obj_create(modal);
+    lv_obj_set_size(buttonRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(buttonRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(buttonRow, 0, 0);
+    lv_obj_set_style_pad_all(buttonRow, 0, 0);
+    lv_obj_set_style_pad_column(buttonRow, 12, 0);
+    lv_obj_set_flex_flow(buttonRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        buttonRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(buttonRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    passwordCancelButton_ = LVGLBuilder::actionButton(buttonRow)
+                                .text("Cancel")
+                                .mode(LVGLBuilder::ActionMode::Push)
+                                .width(130)
+                                .height(56)
+                                .callback(onPasswordCancelClicked, this)
+                                .buildOrLog();
+
+    passwordJoinButton_ = LVGLBuilder::actionButton(buttonRow)
+                              .text("Join")
+                              .mode(LVGLBuilder::ActionMode::Push)
+                              .width(130)
+                              .height(56)
+                              .callback(onPasswordJoinClicked, this)
+                              .buildOrLog();
+
+    passwordKeyboard_ = lv_keyboard_create(modal);
+    lv_obj_set_size(passwordKeyboard_, LV_PCT(100), 200);
+    lv_obj_set_style_bg_color(passwordKeyboard_, lv_color_hex(CARD_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(passwordKeyboard_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(passwordKeyboard_, 0, 0);
+    lv_obj_set_style_radius(passwordKeyboard_, 10, 0);
+    lv_obj_set_style_bg_color(passwordKeyboard_, lv_color_hex(NETWORK_ROW_BG_COLOR), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(passwordKeyboard_, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(passwordKeyboard_, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(
+        passwordKeyboard_, lv_color_hex(ACCESSORY_BORDER_COLOR), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(passwordKeyboard_, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_add_event_cb(passwordKeyboard_, onPasswordKeyboardEvent, LV_EVENT_ALL, this);
+    lv_keyboard_set_textarea(passwordKeyboard_, passwordTextArea_);
+
+    updatePasswordVisibilityButton();
+    updatePasswordJoinButton();
+    setPasswordPromptError("");
 }
 
 void NetworkDiagnosticsPanel::refresh()
@@ -219,41 +626,170 @@ void NetworkDiagnosticsPanel::refresh()
 
 void NetworkDiagnosticsPanel::updateAddressDisplay()
 {
-    std::vector<NetworkInterfaceInfo> addresses = getLocalAddresses();
+    localAddresses_ = getLocalAddresses();
+    updateCurrentConnectionSummary();
 
-    if (addresses.empty()) {
-        lv_label_set_text(addressLabel_, "No network");
+    const std::string addressSummary = formatAddressSummary();
+    if (addressSummary.empty()) {
+        LOG_DEBUG(Controls, "No non-loopback IPv4 addresses found.");
         return;
     }
 
-    // Build display string with all addresses.
-    std::string displayText;
-    for (const auto& info : addresses) {
-        if (!displayText.empty()) {
-            displayText += "\n";
-        }
-        displayText += info.name + ": " + info.address;
+    LOG_DEBUG(Controls, "Network addresses updated: {}", addressSummary);
+}
+
+void NetworkDiagnosticsPanel::setWifiStatusMessage(const std::string& text, uint32_t color)
+{
+    if (!wifiStatusLabel_) {
+        return;
     }
 
-    lv_label_set_text(addressLabel_, displayText.c_str());
-    LOG_DEBUG(Controls, "Network addresses updated: {}", displayText);
+    if (text.empty()) {
+        lv_label_set_text(wifiStatusLabel_, "");
+        lv_obj_add_flag(wifiStatusLabel_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(wifiStatusLabel_, text.c_str());
+    lv_obj_set_style_text_color(wifiStatusLabel_, lv_color_hex(color), 0);
+    lv_obj_clear_flag(wifiStatusLabel_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
+{
+    if (!currentNetworkContainer_ || !networksTitleLabel_) {
+        return;
+    }
+
+    lv_obj_clean(currentNetworkContainer_);
+
+    size_t connectedIndex = 0;
+    const Network::WifiNetworkInfo* connectedNetwork = nullptr;
+    for (size_t i = 0; i < networks_.size(); ++i) {
+        if (networks_[i].status == Network::WifiNetworkStatus::Connected) {
+            connectedNetwork = &networks_[i];
+            connectedIndex = i;
+            break;
+        }
+    }
+
+    if (!connectedNetwork) {
+        lv_label_set_text(networksTitleLabel_, "Networks");
+        lv_obj_add_flag(currentNetworkContainer_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(networksTitleLabel_, "Available networks");
+    lv_obj_clear_flag(currentNetworkContainer_, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* summaryHeader = lv_obj_create(currentNetworkContainer_);
+    lv_obj_set_size(summaryHeader, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(summaryHeader, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        summaryHeader, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(summaryHeader, 0, 0);
+    lv_obj_set_style_pad_column(summaryHeader, 10, 0);
+    lv_obj_set_style_bg_opa(summaryHeader, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summaryHeader, 0, 0);
+    lv_obj_clear_flag(summaryHeader, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(summaryHeader);
+    const std::string titleText = "Connected to " + connectedNetwork->ssid;
+    lv_label_set_text(titleLabel, titleText.c_str());
+    lv_obj_set_width(titleLabel, 0);
+    lv_obj_set_flex_grow(titleLabel, 1);
+    lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00FF7F), 0);
+
+    const bool isForgetting =
+        actionState_.kind == AsyncActionKind::Forget && connectedNetwork->ssid == actionState_.ssid;
+    const bool actionsDisabled = isActionInProgress();
+    if (!connectedNetwork->connectionId.empty()) {
+        auto forgetContext = std::make_unique<ForgetContext>();
+        forgetContext->panel = this;
+        forgetContext->index = connectedIndex;
+        forgetContexts_.push_back(std::move(forgetContext));
+        ForgetContext* forgetContextPtr = forgetContexts_.back().get();
+
+        lv_obj_t* forgetButton = LVGLBuilder::actionButton(summaryHeader)
+                                     .text(isForgetting ? "Forgetting" : "Forget")
+                                     .mode(LVGLBuilder::ActionMode::Push)
+                                     .width(96)
+                                     .height(40)
+                                     .callback(onForgetClicked, forgetContextPtr)
+                                     .buildOrLog();
+        setActionButtonEnabled(forgetButton, !actionsDisabled);
+    }
+
+    lv_obj_t* detailsLabel = lv_label_create(currentNetworkContainer_);
+    const std::string detailsText = formatCurrentConnectionDetails(*connectedNetwork);
+    lv_label_set_text(detailsLabel, detailsText.c_str());
+    lv_obj_set_width(detailsLabel, LV_PCT(100));
+    lv_label_set_long_mode(detailsLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(detailsLabel, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(detailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
 }
 
 void NetworkDiagnosticsPanel::setLoadingState()
 {
-    if (wifiStatusLabel_) {
-        lv_label_set_text(wifiStatusLabel_, "WiFi: checking...");
-    }
+    setWifiStatusMessage("", MUTED_TEXT_COLOR);
 
     if (networksContainer_) {
         lv_obj_clean(networksContainer_);
         lv_obj_t* label = lv_label_create(networksContainer_);
-        lv_label_set_text(label, "Scanning networks...");
+        lv_label_set_text(label, "Scanning nearby networks...");
         lv_obj_set_style_text_color(label, lv_color_hex(0xAAAAAA), 0);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
     }
 
     setRefreshButtonEnabled(false);
+}
+
+void NetworkDiagnosticsPanel::setPasswordPromptBusy(bool busy)
+{
+    if (passwordTextArea_) {
+        if (busy) {
+            lv_obj_add_state(passwordTextArea_, LV_STATE_DISABLED);
+        }
+        else {
+            lv_obj_clear_state(passwordTextArea_, LV_STATE_DISABLED);
+        }
+    }
+
+    if (passwordKeyboard_) {
+        if (busy) {
+            lv_obj_add_state(passwordKeyboard_, LV_STATE_DISABLED);
+        }
+        else {
+            lv_obj_clear_state(passwordKeyboard_, LV_STATE_DISABLED);
+        }
+    }
+
+    setActionButtonEnabled(passwordCancelButton_, !busy);
+    setActionButtonEnabled(passwordVisibilityButton_, !busy);
+    if (busy) {
+        setActionButtonEnabled(passwordJoinButton_, false);
+    }
+    else {
+        updatePasswordJoinButton();
+    }
+}
+
+void NetworkDiagnosticsPanel::setPasswordPromptError(const std::string& message)
+{
+    if (!passwordErrorLabel_) {
+        return;
+    }
+
+    if (message.empty()) {
+        lv_label_set_text(passwordErrorLabel_, "");
+        lv_obj_add_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(passwordErrorLabel_, message.c_str());
+    lv_obj_clear_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void NetworkDiagnosticsPanel::setRefreshButtonEnabled(bool enabled)
@@ -281,11 +817,18 @@ void NetworkDiagnosticsPanel::setWebUiToggleEnabled(bool enabled)
         return;
     }
 
+    lv_obj_t* container = lv_obj_get_parent(webUiToggle_);
     if (enabled) {
         lv_obj_clear_state(webUiToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_clear_state(container, LV_STATE_DISABLED);
+        }
     }
     else {
         lv_obj_add_state(webUiToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_add_state(container, LV_STATE_DISABLED);
+        }
     }
 }
 
@@ -295,11 +838,18 @@ void NetworkDiagnosticsPanel::setWebSocketToggleEnabled(bool enabled)
         return;
     }
 
+    lv_obj_t* container = lv_obj_get_parent(webSocketToggle_);
     if (enabled) {
         lv_obj_clear_state(webSocketToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_clear_state(container, LV_STATE_DISABLED);
+        }
     }
     else {
         lv_obj_add_state(webSocketToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_add_state(container, LV_STATE_DISABLED);
+        }
     }
 }
 
@@ -395,20 +945,26 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
     return true;
 }
 
-void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& network)
+void NetworkDiagnosticsPanel::startAsyncConnect(
+    const Network::WifiNetworkInfo& network, const std::optional<std::string>& password)
 {
     Network::WifiNetworkInfo networkCopy = network;
-    if (!beginAsyncAction(AsyncActionKind::Connect, networkCopy, "connecting to")) {
+    if (!beginAsyncAction(AsyncActionKind::Connect, networkCopy, "Connecting to")) {
         return;
     }
 
     auto state = asyncState_;
-    std::thread([state, networkCopy]() {
+    std::thread([state, networkCopy, password]() {
         Result<Network::WifiConnectResult, std::string> result =
             Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
         try {
             Network::WifiManager wifiManager;
-            result = wifiManager.connect(networkCopy);
+            if (password.has_value()) {
+                result = wifiManager.connectBySsid(networkCopy.ssid, password);
+            }
+            else {
+                result = wifiManager.connect(networkCopy);
+            }
         }
         catch (const std::exception& e) {
             LOG_WARN(Controls, "WiFi connect exception: {}", e.what());
@@ -427,7 +983,7 @@ void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& 
 void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& network)
 {
     Network::WifiNetworkInfo networkCopy = network;
-    if (!beginAsyncAction(AsyncActionKind::Forget, networkCopy, "forgetting")) {
+    if (!beginAsyncAction(AsyncActionKind::Forget, networkCopy, "Forgetting")) {
         return;
     }
 
@@ -679,13 +1235,12 @@ bool NetworkDiagnosticsPanel::beginAsyncAction(
     actionState_.kind = kind;
     actionState_.ssid = network.ssid;
 
-    if (wifiStatusLabel_) {
-        std::string text = "WiFi: " + verb;
-        if (!network.ssid.empty()) {
-            text += " " + network.ssid;
-        }
-        lv_label_set_text(wifiStatusLabel_, text.c_str());
+    std::string text = verb;
+    if (!network.ssid.empty()) {
+        text += " " + network.ssid;
     }
+    text += "...";
+    setWifiStatusMessage(text, 0x00CED1);
 
     setRefreshButtonEnabled(false);
     if (!networks_.empty()) {
@@ -715,27 +1270,63 @@ bool NetworkDiagnosticsPanel::isActionInProgress() const
     return actionState_.kind != AsyncActionKind::None;
 }
 
-void NetworkDiagnosticsPanel::updateWifiStatus(
-    const Result<Network::WifiStatus, std::string>& statusResult)
+void NetworkDiagnosticsPanel::submitPasswordPrompt()
 {
-    if (!wifiStatusLabel_) {
+    if (!passwordPromptNetwork_.has_value() || !passwordTextArea_) {
         return;
     }
 
+    const char* passwordText = lv_textarea_get_text(passwordTextArea_);
+    if (!passwordText || *passwordText == '\0') {
+        setPasswordPromptError("Password is required.");
+        updatePasswordJoinButton();
+        return;
+    }
+
+    setPasswordPromptError("");
+    setPasswordPromptBusy(true);
+    startAsyncConnect(passwordPromptNetwork_.value(), std::string(passwordText));
+}
+
+void NetworkDiagnosticsPanel::updatePasswordJoinButton()
+{
+    if (!passwordJoinButton_) {
+        return;
+    }
+
+    const char* passwordText = passwordTextArea_ ? lv_textarea_get_text(passwordTextArea_) : "";
+    const bool hasPassword = passwordText && *passwordText != '\0';
+    setActionButtonEnabled(passwordJoinButton_, hasPassword && !isActionInProgress());
+}
+
+void NetworkDiagnosticsPanel::updatePasswordVisibilityButton()
+{
+    if (!passwordVisibilityButton_ || !passwordTextArea_) {
+        return;
+    }
+
+    lv_textarea_set_password_mode(passwordTextArea_, !passwordVisible_);
+    setActionButtonText(passwordVisibilityButton_, passwordVisible_ ? "Hide" : "Show");
+}
+
+void NetworkDiagnosticsPanel::updateWifiStatus(
+    const Result<Network::WifiStatus, std::string>& statusResult)
+{
     if (statusResult.isError()) {
-        lv_label_set_text(wifiStatusLabel_, "WiFi: unavailable");
+        setWifiStatusMessage("Wi-Fi unavailable", ERROR_TEXT_COLOR);
         LOG_WARN(Controls, "WiFi status failed: {}", statusResult.errorValue());
         return;
     }
 
     const auto& status = statusResult.value();
     if (!status.connected || status.ssid.empty()) {
-        lv_label_set_text(wifiStatusLabel_, "WiFi: disconnected");
+        setWifiStatusMessage("Wi-Fi disconnected", MUTED_TEXT_COLOR);
         return;
     }
 
-    const std::string text = "WiFi: " + status.ssid;
-    lv_label_set_text(wifiStatusLabel_, text.c_str());
+    if (!isActionInProgress()) {
+        setWifiStatusMessage("", MUTED_TEXT_COLOR);
+    }
 }
 
 void NetworkDiagnosticsPanel::updateWebUiStatus(
@@ -809,33 +1400,62 @@ void NetworkDiagnosticsPanel::updateWebSocketTokenLabel()
     lv_label_set_text(webSocketTokenLabel_, labelText.c_str());
 }
 
-std::string NetworkDiagnosticsPanel::statusText(const Network::WifiNetworkInfo& info) const
+std::string NetworkDiagnosticsPanel::formatAddressSummary() const
 {
-    switch (info.status) {
-        case Network::WifiNetworkStatus::Connected:
-            return "connected";
-        case Network::WifiNetworkStatus::Open:
-            return "open";
-        case Network::WifiNetworkStatus::Saved:
-        default:
-            return "saved";
+    std::vector<std::string> parts;
+    parts.reserve(localAddresses_.size());
+    for (const auto& info : localAddresses_) {
+        parts.push_back(info.name + " " + info.address);
     }
+
+    return joinTextParts(parts, " • ");
+}
+
+std::string NetworkDiagnosticsPanel::formatCurrentConnectionDetails(
+    const Network::WifiNetworkInfo& info) const
+{
+    std::vector<std::string> parts;
+    if (info.signalDbm.has_value()) {
+        parts.push_back(std::to_string(info.signalDbm.value()) + " dBm");
+    }
+
+    parts.push_back(info.security.empty() ? "unknown" : info.security);
+
+    const std::string addressSummary = formatAddressSummary();
+    if (!addressSummary.empty()) {
+        parts.push_back(addressSummary);
+    }
+
+    if (!info.lastUsedRelative.empty() && info.lastUsedRelative != "not saved") {
+        parts.push_back("used " + info.lastUsedRelative);
+    }
+
+    return joinTextParts(parts, " • ");
 }
 
 std::string NetworkDiagnosticsPanel::formatNetworkDetails(
     const Network::WifiNetworkInfo& info) const
 {
-    const std::string status = statusText(info);
-    const std::string signal =
-        info.signalDbm.has_value() ? std::to_string(info.signalDbm.value()) + " dBm" : "--";
-    const std::string security = info.security.empty() ? "unknown" : info.security;
-
-    std::string lastUsed = info.lastUsedRelative.empty() ? "n/a" : info.lastUsedRelative;
-    if (info.lastUsedDate.has_value() && !info.lastUsedDate.value().empty()) {
-        lastUsed = info.lastUsedDate.value() + " (" + lastUsed + ")";
+    std::vector<std::string> parts;
+    if (info.signalDbm.has_value()) {
+        parts.push_back(std::to_string(info.signalDbm.value()) + " dBm");
     }
 
-    return status + " | " + signal + " | " + security + " | " + lastUsed;
+    parts.push_back(info.security.empty() ? "unknown" : info.security);
+
+    if (!info.connectionId.empty()) {
+        if (!info.lastUsedRelative.empty() && info.lastUsedRelative != "not saved") {
+            parts.push_back("used " + info.lastUsedRelative);
+        }
+        else {
+            parts.push_back("saved");
+        }
+    }
+    else if (!info.lastUsedRelative.empty()) {
+        parts.push_back(info.lastUsedRelative);
+    }
+
+    return joinTextParts(parts, " • ");
 }
 
 void NetworkDiagnosticsPanel::updateNetworkDisplay(
@@ -851,6 +1471,7 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     forgetContexts_.clear();
 
     if (listResult.isError()) {
+        updateCurrentConnectionSummary();
         std::string text = "WiFi unavailable: " + listResult.errorValue();
         lv_obj_t* label = lv_label_create(networksContainer_);
         lv_label_set_text(label, text.c_str());
@@ -860,34 +1481,38 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     }
 
     networks_ = listResult.value();
-    if (networks_.empty()) {
-        lv_obj_t* label = lv_label_create(networksContainer_);
-        lv_label_set_text(label, "No saved or open networks");
-        lv_obj_set_style_text_color(label, lv_color_hex(0xAAAAAA), 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
-        return;
-    }
+    updateCurrentConnectionSummary();
+
+    bool hasConnectedNetwork = false;
+    bool hasVisibleNetworks = false;
 
     for (size_t i = 0; i < networks_.size(); ++i) {
         const auto& network = networks_[i];
+        if (network.status == Network::WifiNetworkStatus::Connected) {
+            hasConnectedNetwork = true;
+            continue;
+        }
+
+        hasVisibleNetworks = true;
 
         lv_obj_t* row = lv_obj_create(networksContainer_);
         lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
         lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_all(row, 6, 0);
+        lv_obj_set_style_pad_all(row, 8, 0);
         lv_obj_set_style_pad_column(row, 8, 0);
-        lv_obj_set_style_bg_color(row, lv_color_hex(0x202020), 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(NETWORK_ROW_BG_COLOR), 0);
         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(row, 1, 0);
-        lv_obj_set_style_border_color(row, lv_color_hex(0x404040), 0);
-        lv_obj_set_style_radius(row, 6, 0);
+        lv_obj_set_style_border_color(row, lv_color_hex(NETWORK_ROW_BORDER_COLOR), 0);
+        lv_obj_set_style_radius(row, 10, 0);
 
         lv_obj_t* textColumn = lv_obj_create(row);
-        lv_obj_set_size(textColumn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_size(textColumn, 0, LV_SIZE_CONTENT);
         lv_obj_set_flex_grow(textColumn, 1);
         lv_obj_set_flex_flow(textColumn, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(textColumn, 0, 0);
+        lv_obj_set_style_pad_row(textColumn, 2, 0);
         lv_obj_set_style_bg_opa(textColumn, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(textColumn, 0, 0);
 
@@ -898,8 +1523,11 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
             ssidLabel,
             network.status == Network::WifiNetworkStatus::Connected
                 ? lv_color_hex(0x00FF7F)
-                : (network.status == Network::WifiNetworkStatus::Open ? lv_color_hex(0x00CED1)
-                                                                      : lv_color_hex(0xFFFFFF)),
+                : (network.status == Network::WifiNetworkStatus::Open
+                       ? lv_color_hex(0x00CED1)
+                       : (network.status == Network::WifiNetworkStatus::Available
+                              ? lv_color_hex(0xFFD166)
+                              : lv_color_hex(0xFFFFFF))),
             0);
         lv_label_set_long_mode(ssidLabel, LV_LABEL_LONG_DOT);
         lv_obj_set_width(ssidLabel, LV_PCT(100));
@@ -908,36 +1536,22 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         lv_obj_t* detailsLabel = lv_label_create(textColumn);
         lv_label_set_text(detailsLabel, details.c_str());
         lv_obj_set_style_text_font(detailsLabel, &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_color(detailsLabel, lv_color_hex(0xAAAAAA), 0);
+        lv_obj_set_style_text_color(detailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
         lv_label_set_long_mode(detailsLabel, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(detailsLabel, LV_PCT(100));
 
-        lv_obj_t* buttonColumn = lv_obj_create(row);
-        lv_obj_set_size(buttonColumn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(buttonColumn, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(
-            buttonColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_all(buttonColumn, 0, 0);
-        lv_obj_set_style_pad_row(buttonColumn, 6, 0);
-        lv_obj_set_style_bg_opa(buttonColumn, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(buttonColumn, 0, 0);
-
         const bool isConnecting =
             actionState_.kind == AsyncActionKind::Connect && network.ssid == actionState_.ssid;
-        const bool isForgetting =
-            actionState_.kind == AsyncActionKind::Forget && network.ssid == actionState_.ssid;
         const bool actionsDisabled = isActionInProgress();
-        const bool canForget = network.autoConnect || network.hasCredentials;
+        const bool requiresPassword = networkRequiresPassword(network);
 
-        std::string buttonText = "Connect";
-        if (network.status == Network::WifiNetworkStatus::Open) {
-            buttonText = "Join";
-        }
-        else if (network.status == Network::WifiNetworkStatus::Connected) {
-            buttonText = "Connected";
-        }
-        else if (isConnecting) {
-            buttonText = "Connecting";
+        std::string buttonText =
+            (network.status == Network::WifiNetworkStatus::Open || requiresPassword) ? "Join"
+                                                                                     : "Connect";
+        if (isConnecting) {
+            buttonText = (network.status == Network::WifiNetworkStatus::Open || requiresPassword)
+                ? "Joining"
+                : "Connecting";
         }
 
         auto context = std::make_unique<ConnectContext>();
@@ -946,45 +1560,23 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         connectContexts_.push_back(std::move(context));
         ConnectContext* contextPtr = connectContexts_.back().get();
 
-        lv_obj_t* buttonContainer = LVGLBuilder::actionButton(buttonColumn)
+        lv_obj_t* buttonContainer = LVGLBuilder::actionButton(row)
                                         .text(buttonText.c_str())
                                         .mode(LVGLBuilder::ActionMode::Push)
-                                        .width(90)
-                                        .height(60)
+                                        .width(92)
+                                        .height(40)
                                         .callback(onConnectClicked, contextPtr)
                                         .buildOrLog();
+        setActionButtonEnabled(buttonContainer, !actionsDisabled);
+    }
 
-        if (buttonContainer) {
-            lv_obj_t* button = lv_obj_get_child(buttonContainer, 0);
-            if (button
-                && (network.status == Network::WifiNetworkStatus::Connected || actionsDisabled)) {
-                lv_obj_add_state(button, LV_STATE_DISABLED);
-            }
-        }
-
-        if (canForget) {
-            auto forgetContext = std::make_unique<ForgetContext>();
-            forgetContext->panel = this;
-            forgetContext->index = i;
-            forgetContexts_.push_back(std::move(forgetContext));
-            ForgetContext* forgetContextPtr = forgetContexts_.back().get();
-
-            const char* forgetText = isForgetting ? "Forgetting" : "Forget";
-            lv_obj_t* forgetContainer = LVGLBuilder::actionButton(buttonColumn)
-                                            .text(forgetText)
-                                            .mode(LVGLBuilder::ActionMode::Push)
-                                            .width(90)
-                                            .height(48)
-                                            .callback(onForgetClicked, forgetContextPtr)
-                                            .buildOrLog();
-
-            if (forgetContainer) {
-                lv_obj_t* button = lv_obj_get_child(forgetContainer, 0);
-                if (button && actionsDisabled) {
-                    lv_obj_add_state(button, LV_STATE_DISABLED);
-                }
-            }
-        }
+    if (!hasVisibleNetworks) {
+        lv_obj_t* label = lv_label_create(networksContainer_);
+        lv_label_set_text(
+            label,
+            hasConnectedNetwork ? "No other Wi-Fi networks found" : "No Wi-Fi networks found");
+        lv_obj_set_style_text_color(label, lv_color_hex(0xAAAAAA), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
     }
 }
 
@@ -1076,11 +1668,16 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     if (connectResult.has_value()) {
+        const bool passwordPromptConnect = passwordPromptNetwork_.has_value()
+            && actionState_.kind == AsyncActionKind::Connect
+            && actionState_.ssid == passwordPromptNetwork_->ssid;
         endAsyncAction(AsyncActionKind::Connect);
         if (connectResult->isError()) {
             LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
-            if (wifiStatusLabel_) {
-                lv_label_set_text(wifiStatusLabel_, "WiFi: connect failed");
+            setWifiStatusMessage("Wi-Fi connect failed", ERROR_TEXT_COLOR);
+            if (passwordPromptConnect) {
+                setPasswordPromptBusy(false);
+                setPasswordPromptError(connectResult->errorValue());
             }
             if (!networks_.empty()) {
                 updateNetworkDisplay(
@@ -1089,6 +1686,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "WiFi connect requested for {}", connectResult->value().ssid);
+            if (passwordPromptConnect) {
+                closePasswordPrompt();
+            }
             refresh();
         }
     }
@@ -1097,9 +1697,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         endAsyncAction(AsyncActionKind::Forget);
         if (forgetResult->isError()) {
             LOG_WARN(Controls, "WiFi forget failed: {}", forgetResult->errorValue());
-            if (wifiStatusLabel_) {
-                lv_label_set_text(wifiStatusLabel_, "WiFi: forget failed");
-            }
+            setWifiStatusMessage("Wi-Fi forget failed", ERROR_TEXT_COLOR);
             if (!networks_.empty()) {
                 updateNetworkDisplay(
                     Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
@@ -1204,7 +1802,13 @@ void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)
         return;
     }
 
-    ctx->panel->startAsyncConnect(ctx->panel->networks_[ctx->index]);
+    const auto& network = ctx->panel->networks_[ctx->index];
+    if (ctx->panel->networkRequiresPassword(network)) {
+        ctx->panel->openPasswordPrompt(network);
+        return;
+    }
+
+    ctx->panel->startAsyncConnect(network);
 }
 
 void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
@@ -1223,6 +1827,86 @@ void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
     }
 
     ctx->panel->startAsyncForget(ctx->panel->networks_[ctx->index]);
+}
+
+void NetworkDiagnosticsPanel::onPasswordCancelClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self || self->isActionInProgress()) {
+        return;
+    }
+
+    self->closePasswordPrompt();
+}
+
+void NetworkDiagnosticsPanel::onPasswordJoinClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->submitPasswordPrompt();
+}
+
+void NetworkDiagnosticsPanel::onPasswordKeyboardEvent(lv_event_t* e)
+{
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    const auto code = lv_event_get_code(e);
+    if (code == LV_EVENT_CANCEL && !self->isActionInProgress()) {
+        self->closePasswordPrompt();
+        return;
+    }
+
+    if (code == LV_EVENT_READY) {
+        self->submitPasswordPrompt();
+    }
+}
+
+void NetworkDiagnosticsPanel::onPasswordTextAreaEvent(lv_event_t* e)
+{
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    const auto code = lv_event_get_code(e);
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        self->setPasswordPromptError("");
+        self->updatePasswordJoinButton();
+        return;
+    }
+
+    if (code == LV_EVENT_READY) {
+        self->submitPasswordPrompt();
+    }
+}
+
+void NetworkDiagnosticsPanel::onPasswordVisibilityClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->passwordTextArea_ || self->isActionInProgress()) {
+        return;
+    }
+
+    self->passwordVisible_ = !self->passwordVisible_;
+    self->updatePasswordVisibilityButton();
 }
 
 void NetworkDiagnosticsPanel::onWebSocketToggleChanged(lv_event_t* e)

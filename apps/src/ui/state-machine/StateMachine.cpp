@@ -430,8 +430,15 @@ bool StateMachine::isAutoShrinkBlocked() const
 
     return std::visit(
         [](const auto& state) -> bool {
+            if constexpr (requires { state.blocksAutoShrink(); }) {
+                if (state.blocksAutoShrink()) {
+                    return true;
+                }
+            }
             if constexpr (requires { state.isTrainingResultModalVisible(); }) {
-                return state.isTrainingResultModalVisible();
+                if (state.isTrainingResultModalVisible()) {
+                    return true;
+                }
             }
             return false;
         },

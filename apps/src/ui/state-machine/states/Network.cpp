@@ -25,11 +25,18 @@ void Network::onEnter(StateMachine& sm)
     lv_obj_set_size(contentRoot_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(contentRoot_, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(contentRoot_, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_all(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_top(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_right(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_bottom(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_left(contentRoot_, IconRail::RAIL_WIDTH + 20, 0);
     lv_obj_set_style_border_width(contentRoot_, 0, 0);
     lv_obj_clear_flag(contentRoot_, LV_OBJ_FLAG_SCROLLABLE);
 
+    activeSubviewIcon_ = IconId::NETWORK;
     networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(contentRoot_);
+    if (networkPanel_) {
+        networkPanel_->showWifiView();
+    }
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->hide();
@@ -40,10 +47,11 @@ void Network::onEnter(StateMachine& sm)
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
     iconRail->setVisible(true);
+    iconRail->setAllowMinimize(false);
     iconRail->setLayout(RailLayout::SingleColumn);
-    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftBottomSquare());
-    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK });
-    iconRail->selectIcon(IconId::NETWORK);
+    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK, IconId::SETTINGS });
+    iconRail->showIcons();
+    iconRail->selectIcon(activeSubviewIcon_);
 }
 
 void Network::onExit(StateMachine& sm)
@@ -53,6 +61,9 @@ void Network::onExit(StateMachine& sm)
     networkPanel_.reset();
 
     if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* iconRail = uiManager->getIconRail()) {
+            iconRail->setAllowMinimize(true);
+        }
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
@@ -83,6 +94,18 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     if (evt.selectedId == IconId::NETWORK) {
+        activeSubviewIcon_ = IconId::NETWORK;
+        if (networkPanel_) {
+            networkPanel_->showWifiView();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.selectedId == IconId::SETTINGS) {
+        activeSubviewIcon_ = IconId::SETTINGS;
+        if (networkPanel_) {
+            networkPanel_->showLanAccessView();
+        }
         return std::move(*this);
     }
 
@@ -94,8 +117,20 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Network::onEvent(const RailModeChangedEvent& evt, StateMachine& sm)
 {
+    if (evt.newMode != RailMode::Minimized) {
+        return std::move(*this);
+    }
+
+    auto* uiManager = sm.getUiComponentManager();
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+
+    auto* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->showIcons();
+    iconRail->selectIcon(activeSubviewIcon_);
+
     return std::move(*this);
 }
 

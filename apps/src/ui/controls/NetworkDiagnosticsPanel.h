@@ -35,6 +35,7 @@ public:
     explicit NetworkDiagnosticsPanel(lv_obj_t* container);
     ~NetworkDiagnosticsPanel();
 
+    void showLanAccessView();
     /**
      * @brief Refresh the network information display.
      *
@@ -42,6 +43,7 @@ public:
      * configuration changes).
      */
     void refresh();
+    void showWifiView();
 
     /**
      * @brief Get all non-loopback IPv4 addresses on the system.
@@ -50,11 +52,24 @@ public:
     static std::vector<NetworkInterfaceInfo> getLocalAddresses();
 
 private:
+    enum class ViewMode { LanAccess, Wifi };
+
     lv_obj_t* container_;
-    lv_obj_t* addressLabel_ = nullptr;
+    lv_obj_t* currentNetworkContainer_ = nullptr;
+    lv_obj_t* lanAccessView_ = nullptr;
+    lv_obj_t* networksTitleLabel_ = nullptr;
+    lv_obj_t* pagesContainer_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
     lv_obj_t* wifiStatusLabel_ = nullptr;
+    lv_obj_t* wifiView_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
+    lv_obj_t* passwordCancelButton_ = nullptr;
+    lv_obj_t* passwordErrorLabel_ = nullptr;
+    lv_obj_t* passwordJoinButton_ = nullptr;
+    lv_obj_t* passwordKeyboard_ = nullptr;
+    lv_obj_t* passwordOverlay_ = nullptr;
+    lv_obj_t* passwordTextArea_ = nullptr;
+    lv_obj_t* passwordVisibilityButton_ = nullptr;
     lv_obj_t* webUiToggle_ = nullptr;
     lv_obj_t* webSocketToggle_ = nullptr;
     lv_obj_t* webSocketTokenTitleLabel_ = nullptr;
@@ -102,20 +117,29 @@ private:
         bool webUiUpdateInProgress = false;
     };
 
+    std::vector<NetworkInterfaceInfo> localAddresses_;
     std::vector<Network::WifiNetworkInfo> networks_;
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::shared_ptr<AsyncState> asyncState_;
     AsyncActionState actionState_;
     bool webUiEnabled_ = false;
+    bool passwordVisible_ = false;
     bool webSocketEnabled_ = false;
+    std::optional<Network::WifiNetworkInfo> passwordPromptNetwork_;
     std::string webSocketToken_;
+    ViewMode viewMode_ = ViewMode::Wifi;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
 
     void createUI();
     bool startAsyncRefresh();
-    void startAsyncConnect(const Network::WifiNetworkInfo& network);
+    void closePasswordPrompt();
+    bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
+    void openPasswordPrompt(const Network::WifiNetworkInfo& network);
+    void startAsyncConnect(
+        const Network::WifiNetworkInfo& network,
+        const std::optional<std::string>& password = std::nullopt);
     void startAsyncForget(const Network::WifiNetworkInfo& network);
     bool beginAsyncAction(
         AsyncActionKind kind, const Network::WifiNetworkInfo& network, const std::string& verb);
@@ -123,12 +147,19 @@ private:
     bool isActionInProgress() const;
     void applyPendingUpdates();
     void setLoadingState();
+    void setPasswordPromptBusy(bool busy);
+    void setPasswordPromptError(const std::string& message);
     void setRefreshButtonEnabled(bool enabled);
+    void setViewMode(ViewMode mode);
     void setWebSocketToggleEnabled(bool enabled);
     void setWebUiToggleEnabled(bool enabled);
+    void submitPasswordPrompt();
     void updateAddressDisplay();
+    void updateCurrentConnectionSummary();
     void updateNetworkDisplay(
         const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);
+    void updatePasswordJoinButton();
+    void updatePasswordVisibilityButton();
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWebSocketTokenLabel();
@@ -136,13 +167,20 @@ private:
     bool startAsyncWebUiAccessSet(bool enabled);
     bool startAsyncWebSocketAccessSet(bool enabled);
 
+    std::string formatAddressSummary() const;
+    std::string formatCurrentConnectionDetails(const Network::WifiNetworkInfo& info) const;
     std::string formatNetworkDetails(const Network::WifiNetworkInfo& info) const;
-    std::string statusText(const Network::WifiNetworkInfo& info) const;
+    void setWifiStatusMessage(const std::string& text, uint32_t color);
 
     static void onRefreshClicked(lv_event_t* e);
     static void onRefreshTimer(lv_timer_t* timer);
     static void onConnectClicked(lv_event_t* e);
     static void onForgetClicked(lv_event_t* e);
+    static void onPasswordCancelClicked(lv_event_t* e);
+    static void onPasswordJoinClicked(lv_event_t* e);
+    static void onPasswordKeyboardEvent(lv_event_t* e);
+    static void onPasswordTextAreaEvent(lv_event_t* e);
+    static void onPasswordVisibilityClicked(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);
     static void onWebUiToggleChanged(lv_event_t* e);
 };
