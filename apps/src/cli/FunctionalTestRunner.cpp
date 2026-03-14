@@ -3155,7 +3155,7 @@ FunctionalTestSummary FunctionalTestRunner::runVerifyTraining(
         UiApi::TrainingStart::Command trainCmd;
         trainCmd.evolution.populationSize = populationSize;
         trainCmd.evolution.maxGenerations = 1;
-        trainCmd.evolution.maxSimulationTime = 1000.0;
+        trainCmd.evolution.maxSimulationTime = 0.1;
         trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
         trainCmd.training.organismType = OrganismType::TREE;
         PopulationSpec population;
