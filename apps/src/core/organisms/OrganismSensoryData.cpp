@@ -252,6 +252,12 @@ template void gatherMaterialHistograms<15, 10>(
     std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     Vector2i& world_offset);
 
+template void gatherMaterialHistograms<21, 10>(
+    const World& world,
+    Vector2i center,
+    std::array<std::array<std::array<double, 10>, 21>, 21>& histograms,
+    Vector2i& world_offset);
+
 template void gatherMaterialHistograms<9, 10>(
     const World& world,
     Vector2i center,
@@ -261,11 +267,17 @@ template void gatherMaterialHistograms<9, 10>(
 template Material::EnumType getDominantMaterial<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
+template Material::EnumType getDominantMaterial<21, 10>(
+    const std::array<std::array<std::array<double, 10>, 21>, 21>& histograms, int gx, int gy);
+
 template Material::EnumType getDominantMaterial<9, 10>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool isSolid<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
+
+template bool isSolid<21, 10>(
+    const std::array<std::array<std::array<double, 10>, 21>, 21>& histograms, int gx, int gy);
 
 template bool isSolid<9, 10>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
@@ -273,11 +285,20 @@ template bool isSolid<9, 10>(
 template bool isEmpty<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
+template bool isEmpty<21, 10>(
+    const std::array<std::array<std::array<double, 10>, 21>, 21>& histograms, int gx, int gy);
+
 template bool isEmpty<9, 10>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool matchesTemplate<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row);
+
+template bool matchesTemplate<21, 10>(
+    const std::array<std::array<std::array<double, 10>, 21>, 21>& histograms,
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row);
@@ -290,6 +311,10 @@ template bool matchesTemplate<9, 10>(
 
 template TemplateMatch findTemplate<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
+    const SensoryTemplate& template_pattern);
+
+template TemplateMatch findTemplate<21, 10>(
+    const std::array<std::array<std::array<double, 10>, 21>, 21>& histograms,
     const SensoryTemplate& template_pattern);
 
 template TemplateMatch findTemplate<9, 10>(

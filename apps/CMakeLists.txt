@@ -330,6 +330,10 @@ add_library(dirtsim-server-lib STATIC
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
     src/server/EventProcessor.cpp
+    src/server/evolution/EvaluationExecutor.cpp
+    src/server/evolution/FitnessModelBundle.cpp
+    src/server/evolution/FitnessPresentationGenerator.cpp
+    src/server/evolution/TrainingBestSnapshotGenerator.cpp
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
     src/server/states/Idle.cpp
@@ -350,7 +354,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
-    src/server/api/FitnessBreakdownReport.cpp
+    src/server/api/FitnessPresentation.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
@@ -394,10 +398,12 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/ClockTimezone.cpp
     src/core/scenarios/RainingConfig.cpp
     src/core/scenarios/SandboxConfig.cpp
     src/core/scenarios/TreeGerminationConfig.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
+    src/core/scenarios/clock_scenario/ClockTimeResolver.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorEntrySpawn.cpp
@@ -416,6 +422,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/nes/NesAudioPlayer.cpp
+    src/core/scenarios/nes/NesControllerTelemetry.cpp
     src/core/scenarios/nes/NesDuckSensoryBuilder.cpp
     src/core/scenarios/nes/NesGameAdapterRegistry.cpp
     src/core/scenarios/nes/NesSmolnesScenarioDriver.cpp
@@ -423,6 +430,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosEvaluator.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
@@ -469,7 +479,6 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/Genome.cpp
 	    src/core/organisms/brains/DuckNeuralNetBrain.cpp
-	    src/core/organisms/brains/DuckNeuralNetRecurrentBrain.cpp
 	    src/core/organisms/brains/DuckNeuralNetRecurrentBrainV2.cpp
 	    src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
@@ -767,11 +776,16 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
     src/audio/AudioEngine.cpp
+    src/server/tests/EvaluationExecutor_test.cpp
+    src/server/tests/FitnessModelBundle_test.cpp
+    src/server/tests/FitnessPresentationGenerator_test.cpp
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/server/tests/TestStateMachineFixture.cpp
+    src/server/tests/TrainingBestSnapshotGenerator_test.cpp
+    src/server/tests/TrainingBestSnapshotCache_test.cpp
     src/server/tests/UserSettings_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp
@@ -853,11 +867,15 @@ add_executable(dirtsim-tests
 
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
+    src/core/scenarios/clock_scenario/tests/ClockTimeResolver_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
     src/core/scenarios/tests/NesGameAdapterRegistry_test.cpp
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
+    src/core/scenarios/tests/NesSmolnesScenarioDriver_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
@@ -880,7 +898,6 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckHealth_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
-	    src/core/organisms/tests/DuckNeuralNetRecurrentBrain_test.cpp
 	    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
 	    src/core/organisms/tests/DuckWings_test.cpp
 	    src/core/organisms/tests/Genome_test.cpp
@@ -900,6 +917,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
+    src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 
     # Core tests.
     src/core/tests/FontSampler_test.cpp

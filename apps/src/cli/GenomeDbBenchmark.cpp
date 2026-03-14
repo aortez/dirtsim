@@ -19,7 +19,7 @@ namespace {
 
 constexpr const char* kServerAddress = "ws://localhost:8080";
 constexpr int kTimeoutMs = 5000;
-constexpr size_t kBenchmarkWeightCount = 130791; // Representative genome size for benchmarks.
+constexpr size_t kBenchmarkWeightCount = 196704; // Representative genome size for benchmarks.
 
 std::vector<WeightType> createSentinelWeights(float seedValue)
 {

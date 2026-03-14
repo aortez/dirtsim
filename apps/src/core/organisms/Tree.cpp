@@ -3,6 +3,7 @@
 #include "TreeCommandProcessor.h"
 #include "brains/NeuralNetBrain.h"
 #include "components/RigidBodyComponent.h"
+#include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/ColorNames.h"
 #include "core/LightBuffer.h"
@@ -20,8 +21,8 @@
 namespace DirtSim {
 
 namespace {
-constexpr double kEnergyCap = 250.0;
-constexpr double kMaintenanceCostPerCell = 0.1;
+constexpr double kEnergyCap = 100.0;
+constexpr double kMaintenanceCostPerCell = 0.2;
 constexpr double kPhotosynthesisRate = 0.6;
 constexpr double kWaterCapacity = 120.0;
 constexpr double kWaterDecayRate = 0.02;
@@ -29,7 +30,7 @@ constexpr double kWaterFromAir = 0.02;
 constexpr double kWaterFromSoil = 0.3;
 constexpr double kWaterFromWater = 1.2;
 constexpr double kWaterUsePerLeaf = 0.12;
-constexpr double kMatureAgeSeconds = 1000.0;
+constexpr double kMatureAgeSeconds = 300.0;
 constexpr int kMatureLeafCount = 10;
 constexpr int kMatureRootCount = 10;
 constexpr int kMatureWoodCount = 10;
@@ -198,6 +199,27 @@ GrowthStage computeDynamicStage(const Tree& tree, const TreeMaterialCounts& coun
 
     return GrowthStage::SAPLING;
 }
+
+TreeCommand buildTargetedCommand(TreeCommandType commandType, Vector2i worldPos)
+{
+    switch (commandType) {
+        case TreeCommandType::WaitCommand:
+            return WaitCommand{};
+        case TreeCommandType::CancelCommand:
+            return CancelCommand{};
+        case TreeCommandType::GrowWoodCommand:
+            return GrowWoodCommand{ .target_pos = worldPos };
+        case TreeCommandType::GrowLeafCommand:
+            return GrowLeafCommand{ .target_pos = worldPos };
+        case TreeCommandType::GrowRootCommand:
+            return GrowRootCommand{ .target_pos = worldPos };
+        case TreeCommandType::ProduceSeedCommand:
+            return ProduceSeedCommand{ .position = worldPos };
+    }
+
+    DIRTSIM_ASSERT(false, "Tree: Unknown TreeCommandType");
+    return WaitCommand{};
+}
 } // namespace
 
 Tree::Tree(
@@ -360,6 +382,10 @@ void Tree::executeCommand(World& world)
 
 void Tree::processBrainDecision(World& world)
 {
+    if (!brain_) {
+        return;
+    }
+
     // Gather sensory data.
     TreeSensoryData sensory;
     {
@@ -567,7 +593,6 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     int min_x = INT32_MAX, min_y = INT32_MAX;
     int max_x = INT32_MIN, max_y = INT32_MIN;
     int cell_count = 0;
-    std::vector<Vector2i> tree_cells;
 
     for (int16_t y = 0; y < worldData.height; y++) {
         for (int16_t x = 0; x < worldData.width; x++) {
@@ -578,7 +603,6 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                 max_x = std::max(max_x, static_cast<int>(x));
                 max_y = std::max(max_y, static_cast<int>(y));
                 cell_count++;
-                tree_cells.push_back(pos);
             }
         }
     }
@@ -702,29 +726,23 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
         }
     }
 
-    // Compute valid grow targets mask: positions cardinally adjacent to any tree cell,
-    // that are in world bounds and not already owned by this tree.
-    constexpr Vector2i kDirs[] = { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } };
-    for (const auto& cell_pos : tree_cells) {
-        for (const auto& dir : kDirs) {
-            const Vector2i neighbor = cell_pos + dir;
-            if (neighbor.x < 0 || neighbor.x >= worldData.width || neighbor.y < 0
-                || neighbor.y >= worldData.height) {
-                continue;
-            }
-            // Skip positions already owned by this tree.
-            if (world.getOrganismManager().at(neighbor) == id_) {
-                continue;
-            }
-            // Reverse-map world coords to neural grid coords.
-            const int nx = static_cast<int>((neighbor.x - data.world_offset.x) / data.scale_factor);
-            const int ny = static_cast<int>((neighbor.y - data.world_offset.y) / data.scale_factor);
-            if (nx >= 0 && nx < TreeSensoryData::GRID_SIZE && ny >= 0
-                && ny < TreeSensoryData::GRID_SIZE) {
-                data.valid_grow_targets[ny * TreeSensoryData::GRID_SIZE + nx] = true;
+    const auto computeCommandMask = [&](auto& mask, TreeCommandType commandType) {
+        for (int ny = 0; ny < TreeSensoryData::GRID_SIZE; ny++) {
+            for (int nx = 0; nx < TreeSensoryData::GRID_SIZE; nx++) {
+                const int idx = ny * TreeSensoryData::GRID_SIZE + nx;
+                const Vector2i worldPos{
+                    data.world_offset.x + static_cast<int>(nx * data.scale_factor),
+                    data.world_offset.y + static_cast<int>(ny * data.scale_factor),
+                };
+                const TreeCommand command = buildTargetedCommand(commandType, worldPos);
+                mask[idx] = treeCommandValidate(*this, world, command, true).succeeded();
             }
         }
-    }
+    };
+    computeCommandMask(data.valid_wood_targets, TreeCommandType::GrowWoodCommand);
+    computeCommandMask(data.valid_leaf_targets, TreeCommandType::GrowLeafCommand);
+    computeCommandMask(data.valid_root_targets, TreeCommandType::GrowRootCommand);
+    computeCommandMask(data.valid_seed_targets, TreeCommandType::ProduceSeedCommand);
 
     data.seed_position = getAnchorCell();
     data.age_seconds = age_seconds_;

@@ -3,6 +3,7 @@
 #include "core/RenderMessage.h"
 #include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 
 #include <chrono>
 #include <cstdint>
@@ -21,6 +22,7 @@ struct UiUpdateEvent {
     // Scenario metadata (sent alongside world data).
     Scenario::EnumType scenario_id = Scenario::EnumType::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
+    std::optional<NesControllerTelemetry> nesControllerTelemetry = std::nullopt;
 
     // Standalone video frame for NES scenarios (not part of WorldData).
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;

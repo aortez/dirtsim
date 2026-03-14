@@ -81,6 +81,13 @@ public:
 
     // Replace the brain (for testing with custom brain implementations).
     void setBrain(std::unique_ptr<TreeBrain> brain) { brain_ = std::move(brain); }
+    bool hasBrain() const { return brain_ != nullptr; }
+
+    // Seed tracking.
+    void incrementSeedsProduced() { resourceTotals_.seedsProduced++; }
+    void addLandedSeed(const LandedSeed& seed) { resourceTotals_.landedSeeds.push_back(seed); }
+    OrganismId getSeedParentId() const { return seedParentId_; }
+    void setSeedParentId(OrganismId seedParentId) { seedParentId_ = seedParentId; }
 
     // Command processor (public for testing with recording/mock processors).
     std::unique_ptr<ITreeCommandProcessor> processor;
@@ -106,6 +113,7 @@ private:
     mutable bool hasLastFitness_ = false;
     std::optional<TreeCommand> current_command_;
     std::optional<Vector2i> currentCommandSeedPosition_;
+    OrganismId seedParentId_ = INVALID_ORGANISM_ID;
     double time_remaining_seconds_ = 0.0;
     double total_command_time_seconds_ = 0.0; // Original duration for progress calculation.
     std::unique_ptr<TreeBrain> brain_;

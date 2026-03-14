@@ -5,7 +5,6 @@
 #include "core/Timers.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
-#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
@@ -16,10 +15,13 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include "core/scenarios/clock_scenario/ClockEventTypes.h"
+#include "core/scenarios/nes/NesFitnessDetails.h"
+#include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -78,6 +80,33 @@ public:
         std::optional<std::string> brainVariant;
     };
 
+    struct NesFrameTrace {
+        uint64_t advancedFrames = 0;
+        uint64_t renderedFramesAfter = 0;
+        uint64_t renderedFramesBefore = 0;
+        uint8_t inferredControllerMask = 0;
+        uint8_t resolvedControllerMask = 0;
+        bool evaluationDone = false;
+        bool frameAdvanced = false;
+        double rewardDelta = 0.0;
+        std::optional<NesGameAdapterControllerSource> controllerSource = std::nullopt;
+        std::optional<uint64_t> controllerSourceFrameIndex = std::nullopt;
+        std::optional<NesGameAdapterDebugState> debugState = std::nullopt;
+        std::optional<uint8_t> lastGameStateAfter = std::nullopt;
+        std::optional<uint8_t> lastGameStateBefore = std::nullopt;
+        std::string commandOutcome;
+        std::string commandSignature;
+    };
+
+    struct FrameTrace {
+        State state = State::Running;
+        double simTime = 0.0;
+        uint64_t stepOrdinal = 0;
+        std::optional<NesFrameTrace> nes = std::nullopt;
+    };
+
+    using FrameTraceSink = std::function<void(const FrameTrace&)>;
+
     struct Individual {
         BrainSpec brain;
         Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
@@ -89,6 +118,7 @@ public:
         NesGameAdapterRegistry nesGameAdapterRegistry = NesGameAdapterRegistry::createDefault();
         std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
+        FrameTraceSink frameTraceSink = nullptr;
         std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
     };
 
@@ -132,6 +162,19 @@ public:
     const Organism::Body* getOrganism() const;
     const OrganismTrackingHistory& getOrganismTrackingHistory() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
+    const NesFitnessDetails& getNesFitnessDetails() const;
+    const std::optional<NesGameAdapterControllerOutput>& getNesLastControllerOutput() const
+    {
+        return nesLastControllerOutput_;
+    }
+    const std::optional<NesGameAdapterDebugState>& getNesLastDebugState() const
+    {
+        return nesLastDebugState_;
+    }
+    const std::optional<NesControllerTelemetry>& getNesLastControllerTelemetry() const
+    {
+        return nesLastControllerTelemetry_;
+    }
     std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
     std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
         size_t maxEntries) const;
@@ -147,7 +190,7 @@ public:
 
 private:
     void resolveBrainEntry();
-    void runScenarioDrivenStep();
+    NesFrameTrace runScenarioDrivenStep();
     DuckSensoryData makeNesDuckSensoryData() const;
     uint8_t inferNesControllerMask();
     void spawnEvaluationOrganism();
@@ -178,16 +221,21 @@ private:
     std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
     std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
+    FrameTraceSink frameTraceSink_ = nullptr;
+    uint64_t stepOrdinal_ = 0;
     BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
     NesScenarioRuntime* nesRuntime_ = nullptr;
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
-    std::unique_ptr<DuckNeuralNetRecurrentBrain> nesDuckBrain_;
     std::unique_ptr<DuckNeuralNetRecurrentBrainV2> nesDuckBrainV2_;
+    std::optional<NesGameAdapterControllerOutput> nesLastControllerOutput_ = std::nullopt;
+    std::optional<NesControllerTelemetry> nesLastControllerTelemetry_ = std::nullopt;
+    std::optional<NesGameAdapterDebugState> nesLastDebugState_ = std::nullopt;
     std::optional<uint8_t> nesLastGameState_ = std::nullopt;
     std::unordered_map<std::string, int> nesCommandOutcomeSignatureCounts_;
     std::unordered_map<std::string, int> nesCommandSignatureCounts_;
+    NesFitnessDetails nesFitnessDetails_{};
     uint64_t nesFramesSurvived_ = 0;
     double nesRewardTotal_ = 0.0;
 
@@ -205,6 +253,15 @@ private:
     };
     std::optional<DuckClockDoorState> duckClockDoors_;
     std::optional<DuckStatsSnapshot> duckStatsSnapshot_;
+
+    struct ChildSeedState {
+        OrganismId id = INVALID_ORGANISM_ID;
+        Vector2i spawnPosition;
+        Vector2i lastPosition;
+        double timeAtCurrentPosition = 0.0;
+        bool landed = false;
+    };
+    std::vector<ChildSeedState> childSeeds_;
 
     void snapshotDuckStats();
 };

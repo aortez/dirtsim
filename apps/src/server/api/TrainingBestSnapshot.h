@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FitnessBreakdownReport.h"
+#include "FitnessPresentation.h"
 #include "core/WorldData.h"
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -33,7 +33,7 @@ struct TrainingBestSnapshot {
     std::vector<CommandSignatureCount> topCommandSignatures;
     std::vector<CommandSignatureCount> topCommandOutcomeSignatures;
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;
-    std::optional<FitnessBreakdownReport> fitnessBreakdown;
+    FitnessPresentation fitnessPresentation;
 
     static constexpr const char* name() { return "TrainingBestSnapshot"; }
 

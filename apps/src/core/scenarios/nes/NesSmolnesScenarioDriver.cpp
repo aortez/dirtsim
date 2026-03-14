@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 extern "C" void nesApuSampleCallback(float sample, void* userdata)
 {
@@ -39,7 +40,14 @@ uint32_t getMaxEpisodeFrames(const NesConfigT& config)
 } // namespace
 
 NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(Scenario::EnumType scenarioId)
-    : scenarioId_(scenarioId), config_(makeDefaultConfig(scenarioId))
+    : NesSmolnesScenarioDriver(scenarioId, makeDefaultRuntimeConfig())
+{}
+
+NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(
+    Scenario::EnumType scenarioId, RuntimeConfig runtimeConfig)
+    : scenarioId_(scenarioId),
+      config_(makeDefaultConfig(scenarioId)),
+      runtimeConfig_(std::move(runtimeConfig))
 {}
 
 NesSmolnesScenarioDriver::~NesSmolnesScenarioDriver()
@@ -85,7 +93,16 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 
     runtimeResolvedRomId_ = validation.resolvedRomId;
     if (!runtime_) {
-        runtime_ = std::make_unique<SmolnesRuntime>();
+        if (runtimeConfig_.runtimeFactory) {
+            runtime_ = runtimeConfig_.runtimeFactory();
+        }
+        else {
+            runtime_ = std::make_unique<SmolnesRuntime>();
+        }
+    }
+    if (!runtime_) {
+        return Result<std::monostate, std::string>::error(
+            "NesSmolnesScenarioDriver: Runtime factory returned null");
     }
 
     if (!runtime_->start(validation.resolvedRomPath.string())) {
@@ -109,7 +126,7 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setSelfPacing(true);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
 
@@ -121,11 +138,25 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::reset()
     return setup();
 }
 
-void NesSmolnesScenarioDriver::tick(
-    Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+NesSmolnesScenarioDriver::RuntimeConfig NesSmolnesScenarioDriver::makeDefaultRuntimeConfig()
 {
-    if (!runtime_ || !runtime_->isRunning()) {
-        return;
+    RuntimeConfig config;
+    config.runtimeFactory = [] { return std::make_unique<SmolnesRuntime>(); };
+    return config;
+}
+
+NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
+    Timers& timers, uint8_t buttonMask)
+{
+    controller1State_ = buttonMask;
+
+    StepResult stepResult;
+    stepResult.controllerMask = controller1State_;
+    stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
+    stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
+    stepResult.lastError = runtime_ ? runtime_->getLastError() : std::string{};
+    if (!runtime_ || !stepResult.runtimeRunning) {
+        return stepResult;
     }
 
     bool runtimeHealthy = false;
@@ -133,20 +164,23 @@ void NesSmolnesScenarioDriver::tick(
         ScopeTimer healthTimer(timers, "nes_runtime_health_check");
         runtimeHealthy = runtime_->isHealthy();
     }
+    stepResult.runtimeHealthy = runtimeHealthy;
     if (!runtimeHealthy) {
         LOG_ERROR(
             Scenario,
             "NesSmolnesScenarioDriver: smolnes runtime unhealthy for '{}': {}",
             toString(scenarioId_),
             runtime_->getLastError());
+        stepResult.lastError = runtime_->getLastError();
         stopRuntime();
-        return;
+        stepResult.runtimeHealthy = false;
+        stepResult.runtimeRunning = false;
+        return stepResult;
     }
 
-    uint64_t renderedFrames = 0;
     {
         ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
-        renderedFrames = runtime_->getRenderedFrameCount();
+        stepResult.renderedFramesBefore = runtime_->getRenderedFrameCount();
     }
 
     uint32_t maxEpisodeFrames = 0;
@@ -165,14 +199,16 @@ void NesSmolnesScenarioDriver::tick(
             "NesSmolnesScenarioDriver: Unsupported scenario config type for '{}'",
             toString(scenarioId_));
         stopRuntime();
-        scenarioVideoFrame.reset();
-        return;
+        stepResult.runtimeHealthy = false;
+        stepResult.runtimeRunning = false;
+        stepResult.lastError = "Unsupported NES scenario config type";
+        return stepResult;
     }
-    if (renderedFrames >= maxEpisodeFrames) {
-        return;
+    if (stepResult.renderedFramesBefore >= maxEpisodeFrames) {
+        return stepResult;
     }
 
-    const uint64_t framesRemaining = maxEpisodeFrames - renderedFrames;
+    const uint64_t framesRemaining = maxEpisodeFrames - stepResult.renderedFramesBefore;
 
     {
         ScopeTimer setControllerTimer(timers, "nes_runtime_set_controller");
@@ -200,27 +236,51 @@ void NesSmolnesScenarioDriver::tick(
                 toString(scenarioId_),
                 failureRenderedFrameCount,
                 runtime_->getLastError());
-            scenarioVideoFrame.reset();
+            stepResult.renderedFramesAfter = failureRenderedFrameCount;
+            stepResult.lastError = runtime_->getLastError();
             stopRuntime();
-            return;
+            stepResult.runtimeHealthy = false;
+            stepResult.runtimeRunning = false;
+            return stepResult;
         }
     }
 
-    const bool hadScenarioFrame = scenarioVideoFrame.has_value();
-    if (!hadScenarioFrame) {
-        scenarioVideoFrame.emplace();
+    {
+        ScopeTimer renderedFramesTimer(timers, "nes_runtime_get_rendered_frame_count");
+        stepResult.renderedFramesAfter = runtime_->getRenderedFrameCount();
+    }
+    if (stepResult.renderedFramesAfter > stepResult.renderedFramesBefore) {
+        stepResult.advancedFrames =
+            stepResult.renderedFramesAfter - stepResult.renderedFramesBefore;
     }
 
-    bool copiedFrame = false;
-    {
-        ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
-        copiedFrame = runtime_->copyLatestFrameInto(scenarioVideoFrame.value());
-    }
-    if (!copiedFrame && !hadScenarioFrame) {
-        scenarioVideoFrame.reset();
+    if (stepResult.advancedFrames > 0) {
+        {
+            ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
+            stepResult.scenarioVideoFrame = runtime_->copyLatestFrame();
+        }
+        stepResult.paletteFrame = runtime_->copyLatestPaletteFrame();
+        stepResult.memorySnapshot = runtime_->copyMemorySnapshot();
     }
 
     updateRuntimeProfilingTimers(timers);
+    stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
+    stepResult.runtimeRunning = runtime_ && runtime_->isRunning();
+    stepResult.lastError = runtime_ ? runtime_->getLastError() : std::string{};
+    return stepResult;
+}
+
+void NesSmolnesScenarioDriver::tick(
+    Timers& timers, std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+{
+    StepResult stepResult = step(timers, controller1State_);
+    if (stepResult.scenarioVideoFrame.has_value()) {
+        scenarioVideoFrame = std::move(stepResult.scenarioVideoFrame);
+        return;
+    }
+    if (!stepResult.runtimeHealthy || !stepResult.runtimeRunning) {
+        scenarioVideoFrame.reset();
+    }
 }
 
 bool NesSmolnesScenarioDriver::isRuntimeHealthy() const
@@ -322,12 +382,12 @@ void NesSmolnesScenarioDriver::setAudioPlaybackEnabled(bool enabled)
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setSelfPacing(true);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
     if (!enabled) {
         if (runtime_) {
-            runtime_->setSelfPacing(false);
+            runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
             runtime_->setApuSampleCallback(nullptr, nullptr);
         }
         audioPlayer_.reset();
@@ -346,7 +406,7 @@ void NesSmolnesScenarioDriver::stopRuntime()
     if (!runtime_) {
         return;
     }
-    runtime_->setSelfPacing(false);
+    runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
     runtime_->stop();
     audioPlayer_.reset();
     lastRuntimeProfilingSnapshot_.reset();

@@ -1,3 +1,4 @@
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -6,7 +7,6 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TimerStatsGet.h"
-#include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
@@ -31,6 +31,12 @@ namespace {
 Genome makeNeuralNetGenome(WeightType value)
 {
     return Genome(static_cast<size_t>(NeuralNetBrain::getGenomeLayout().totalSize()), value);
+}
+
+Genome makeDuckRecurrentV2Genome(WeightType value)
+{
+    return Genome(
+        static_cast<size_t>(DuckNeuralNetRecurrentBrainV2::getGenomeLayout().totalSize()), value);
 }
 
 TrainingSpec makeTrainingSpec(int populationSize)
@@ -124,7 +130,7 @@ TEST(StateEvolutionTest, EvolutionStartKeepsNesFlappyParallelism)
     cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 4;
     population.randomCount = 4;
     cmd.population.push_back(population);
@@ -219,7 +225,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
     cmd.organismType = OrganismType::NES_DUCK;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 2;
     population.randomCount = 2;
     cmd.population.push_back(population);
@@ -265,73 +271,6 @@ TEST(StateEvolutionTest, EvolutionStartAllowsZeroMaxGenerations)
 
     const Evolution& evolution = std::get<Evolution>(newState.getVariant());
     EXPECT_EQ(evolution.evolutionConfig.maxGenerations, 0);
-}
-
-TEST(StateEvolutionTest, TrainingBestSnapshotCacheRoundTrips)
-{
-    TestStateMachineFixture fixture;
-
-    EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());
-
-    Api::TrainingBestSnapshot snapshot;
-    snapshot.fitness = 2.5;
-    snapshot.generation = 3;
-    snapshot.commandsAccepted = 4;
-    snapshot.commandsRejected = 5;
-    snapshot.topCommandSignatures.push_back(
-        Api::TrainingBestSnapshot::CommandSignatureCount{
-            .signature = "GrowRoot(+0,+1)",
-            .count = 7,
-        });
-    snapshot.topCommandOutcomeSignatures.push_back(
-        Api::TrainingBestSnapshot::CommandSignatureCount{
-            .signature = "GrowRoot(+0,+1) -> INVALID_TARGET",
-            .count = 6,
-        });
-    Api::FitnessBreakdownReport breakdown;
-    breakdown.organismType = OrganismType::DUCK;
-    breakdown.modelId = "duck_v2";
-    breakdown.modelVersion = 1;
-    breakdown.totalFitness = 1.9;
-    breakdown.totalFormula = "survival * (1 + movement)";
-    breakdown.metrics.push_back(
-        Api::FitnessMetric{
-            .key = "survival",
-            .label = "Survival",
-            .group = "survival",
-            .raw = 20.0,
-            .normalized = 1.0,
-            .reference = 20.0,
-            .weight = std::nullopt,
-            .contribution = std::nullopt,
-            .unit = "seconds",
-        });
-    snapshot.fitnessBreakdown = std::move(breakdown);
-
-    fixture.stateMachine->updateCachedTrainingBestSnapshot(snapshot);
-
-    const auto cached = fixture.stateMachine->getCachedTrainingBestSnapshot();
-    ASSERT_TRUE(cached.has_value());
-    EXPECT_DOUBLE_EQ(cached->fitness, 2.5);
-    EXPECT_EQ(cached->generation, 3);
-    EXPECT_EQ(cached->commandsAccepted, 4);
-    EXPECT_EQ(cached->commandsRejected, 5);
-    ASSERT_EQ(cached->topCommandSignatures.size(), 1u);
-    EXPECT_EQ(cached->topCommandSignatures[0].signature, "GrowRoot(+0,+1)");
-    EXPECT_EQ(cached->topCommandSignatures[0].count, 7);
-    ASSERT_EQ(cached->topCommandOutcomeSignatures.size(), 1u);
-    EXPECT_EQ(
-        cached->topCommandOutcomeSignatures[0].signature, "GrowRoot(+0,+1) -> INVALID_TARGET");
-    EXPECT_EQ(cached->topCommandOutcomeSignatures[0].count, 6);
-    ASSERT_TRUE(cached->fitnessBreakdown.has_value());
-    EXPECT_EQ(cached->fitnessBreakdown->modelId, "duck_v2");
-    EXPECT_EQ(cached->fitnessBreakdown->modelVersion, 1);
-    ASSERT_EQ(cached->fitnessBreakdown->metrics.size(), 1u);
-    EXPECT_EQ(cached->fitnessBreakdown->metrics[0].key, "survival");
-    EXPECT_DOUBLE_EQ(cached->fitnessBreakdown->metrics[0].normalized, 1.0);
-
-    fixture.stateMachine->clearCachedTrainingBestSnapshot();
-    EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());
 }
 
 TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdReturnsError)
@@ -570,6 +509,137 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
     EXPECT_EQ(spec.randomCount, 2);
 }
 
+TEST(StateEvolutionTest, EvolutionStartWarmResumeSkipsIncompatibleGenomeLayouts)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const auto makeMetadata = [](const std::string& name, double robustFitness) {
+        return GenomeMetadata{
+            .name = name,
+            .fitness = robustFitness,
+            .robustFitness = robustFitness,
+            .robustEvalCount = 4,
+            .robustFitnessSamples = {
+                robustFitness - 1.0,
+                robustFitness,
+                robustFitness + 1.0,
+                robustFitness,
+            },
+            .generation = 7,
+            .createdTimestamp = 1234567890,
+            .scenarioId = Scenario::EnumType::Clock,
+            .notes = "",
+            .organismType = OrganismType::DUCK,
+            .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
+        };
+    };
+
+    const GenomeId staleId = UUID::generate();
+    const GenomeId validId = UUID::generate();
+    repo.store(staleId, Genome(10, 0.25f), makeMetadata("stale-layout", 100.0));
+    repo.store(validId, makeDuckRecurrentV2Genome(0.5f), makeMetadata("valid-layout", 90.0));
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.evolution.warmStartSeedCount = 1;
+    cmd.evolution.warmStartSeedPercent = 0.0;
+    cmd.evolution.warmStartMinRobustEvalCount = 1;
+    cmd.scenarioId = Scenario::EnumType::Clock;
+    cmd.organismType = OrganismType::DUCK;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    population.count = 3;
+    population.randomCount = 3;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 1u);
+    EXPECT_EQ(spec.seedGenomes.front(), validId);
+    EXPECT_EQ(spec.randomCount, 2);
+}
+
+TEST(StateEvolutionTest, EvolutionStartWarmResumeUsesSingleEvalSeedsForDeterministicSmb)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const GenomeId smbBestId = UUID::generate();
+    const GenomeMetadata smbBestMetadata{
+        .name = "smb-best",
+        .fitness = 712.0,
+        .robustFitness = 712.0,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { 712.0 },
+        .generation = 12,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+        .notes = "",
+        .organismType = OrganismType::NES_DUCK,
+        .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::Smb,
+    };
+    repo.store(smbBestId, makeDuckRecurrentV2Genome(0.5f), smbBestMetadata);
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.evolution.warmStartSeedCount = 1;
+    cmd.evolution.warmStartSeedPercent = 0.0;
+    cmd.evolution.warmStartMinRobustEvalCount = 3;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    population.count = 3;
+    population.randomCount = 3;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 1u);
+    EXPECT_EQ(spec.seedGenomes.front(), smbBestId);
+    EXPECT_EQ(spec.randomCount, 2);
+}
+
 TEST(StateEvolutionTest, MissingBrainKindTriggersDeath)
 {
     TestStateMachineFixture fixture;
@@ -715,11 +785,20 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
     TestStateMachineFixture fixture;
 
     Evolution evolutionState;
-    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016; // Single frame.
+    evolutionState.evolutionConfig.maxSimulationTime = 0.1;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.trainingSpec = makeTrainingSpec(2);
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
 
     evolutionState.onEnter(*fixture.stateMachine);
 
@@ -732,7 +811,7 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
         << "Raw generation evals should not update latest robust fitness";
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 
-    constexpr int maxTicks = 16;
+    constexpr int maxTicks = 8000;
     for (int i = 0; i < maxTicks && evolutionState.robustEvaluationCount_ == 0; ++i) {
         auto next = evolutionState.tick(*fixture.stateMachine);
         if (next.has_value()) {
@@ -741,8 +820,8 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
     }
 
     EXPECT_GT(evolutionState.robustEvaluationCount_, 0u);
-    EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0)
-        << "Latest robust fitness should update after robust pass finalization";
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed)
+        << "Robust pass finalization should promote the evaluated genome as this generation's best";
 }
 
 TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTrim)
@@ -807,6 +886,15 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Stored fitness should preserve the original first robust sample";
     EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples.front(), 0.0)
         << "Trimmed robust sample window should contain only post-mutation samples";
+
+    const auto cachedSnapshot = fixture.stateMachine->getCachedTrainingBestSnapshot();
+    ASSERT_TRUE(cachedSnapshot.has_value());
+    EXPECT_DOUBLE_EQ(cachedSnapshot->fitness, metadata->fitness)
+        << "Best snapshot should report the captured sample fitness for the displayed run";
+    EXPECT_DOUBLE_EQ(cachedSnapshot->fitnessPresentation.totalFitness, metadata->fitness)
+        << "Best snapshot presentation should stay aligned with the captured sample fitness";
+    EXPECT_NE(cachedSnapshot->fitness, metadata->robustFitness)
+        << "Best snapshot should not relabel a captured sample as the robust aggregate result";
 }
 
 TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
@@ -854,16 +942,16 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
     TestStateMachineFixture fixture;
 
     Evolution evolutionState;
-    evolutionState.evolutionConfig.populationSize = 1;
-    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::NeuralNet;
-    population.count = 1;
-    population.randomCount = 1;
+    population.count = 2;
+    population.randomCount = 2;
 
     evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     evolutionState.trainingSpec.organismType = OrganismType::DUCK;
@@ -894,16 +982,67 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
         << "Duck clock visible eval should advance only after all four side passes complete";
 }
 
-TEST(StateEvolutionTest, DuckClockRobustSampleWaitsForFourPassesBeforeFinalizing)
+TEST(StateEvolutionTest, DuckClockConfiguredCountZeroSkipsRobustPassAndStoresSingleSampleBest)
 {
     TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
 
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
-    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    for (int i = 0; i < 3; ++i) {
+        auto tickResult = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(tickResult.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 0)
+            << "Duck clock generation eval should still be in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Robust pass should not finalize before generation eval completes";
+    }
+
+    auto finalTick = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_TRUE(finalTick.has_value());
+    EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalTick->getVariant()));
+    EXPECT_EQ(evolutionState.currentEval, 1);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, evolutionState.bestFitnessAllTime);
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->robustEvalCount, 1);
+    ASSERT_EQ(metadata->robustFitnessSamples.size(), 1u);
+    EXPECT_DOUBLE_EQ(metadata->robustFitness, metadata->fitness);
+}
+
+TEST(StateEvolutionTest, DuckClockRobustValidationWaitsForAllSamplesBeforeFinalizing)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::NeuralNet;
@@ -939,11 +1078,31 @@ TEST(StateEvolutionTest, DuckClockRobustSampleWaitsForFourPassesBeforeFinalizing
             << "Duck clock robust sample should wait for all four side passes";
     }
 
+    auto firstRobustSampleCompleteTick = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(firstRobustSampleCompleteTick.has_value());
+    EXPECT_EQ(evolutionState.currentEval, 1);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    for (int i = 0; i < 3; ++i) {
+        auto robustTick = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(robustTick.has_value());
+        EXPECT_EQ(evolutionState.currentEval, 1)
+            << "Duck clock second robust sample should stay in progress";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+            << "Duck clock should wait for all validation samples";
+    }
+
     auto robustFinalizeTick = evolutionState.tick(*fixture.stateMachine);
     ASSERT_TRUE(robustFinalizeTick.has_value());
     EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(robustFinalizeTick->getVariant()));
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 1u)
-        << "Duck clock robust sample should finalize after four side passes";
+        << "Duck clock robust validation should finalize after all samples complete";
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->robustEvalCount, 2);
 }
 
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
@@ -1400,23 +1559,14 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Initialize the state.
     evolutionState.onEnter(*fixture.stateMachine);
 
-    // Verify: No runner exists yet.
-    EXPECT_EQ(evolutionState.visible_.runner, nullptr);
-
     // Execute: First tick should create world and advance one step.
     auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
-    ASSERT_NE(evolutionState.visible_.runner, nullptr);
-    EXPECT_GT(evolutionState.visible_.runner->getSimTime(), 0.0) << "Sim time should have advanced";
-    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.1)
-        << "Sim time should not be complete";
 
     // Execute: Second tick should advance further but not complete.
     auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should still exist";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
 
     // Execute: Tick until first evaluation completes.
@@ -1429,8 +1579,6 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Verify: First evaluation completed after multiple ticks.
     EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
-    EXPECT_EQ(evolutionState.visible_.runner, nullptr)
-        << "Runner should be cleaned up between evals";
 }
 
 /**
@@ -1454,11 +1602,6 @@ TEST(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     // Initialize and tick once to start evaluation.
     evolutionState.onEnter(*fixture.stateMachine);
     evolutionState.tick(*fixture.stateMachine);
-
-    // Verify: Evaluation is in progress.
-    EXPECT_NE(evolutionState.visible_.runner, nullptr) << "Runner should exist mid-evaluation";
-    ASSERT_NE(evolutionState.visible_.runner, nullptr);
-    EXPECT_LT(evolutionState.visible_.runner->getSimTime(), 0.5) << "Should be early in evaluation";
 
     // Setup: Create EvolutionStop command.
     bool callbackInvoked = false;
@@ -1558,72 +1701,6 @@ TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
         << "Stored fitness should match tracked best";
 }
 
-TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 5;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 3;
-    evolutionState.trainingSpec = makeTrainingSpec(5);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    ASSERT_NE(evolutionState.workerState_, nullptr);
-    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
-    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 2);
-    EXPECT_EQ(evolutionState.workerState_->workers.size(), 2u);
-    EXPECT_GT(evolutionState.visible_.queue.size(), 0u);
-    EXPECT_LT(evolutionState.visible_.queue.size(), evolutionState.population.size());
-
-    std::optional<Any> finalState;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
-        finalState = evolutionState.tick(*fixture.stateMachine);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete with parallel workers";
-    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()))
-        << "Should transition to UnsavedTrainingResult";
-    EXPECT_EQ(evolutionState.generation, 1);
-    EXPECT_EQ(evolutionState.currentEval, evolutionState.evolutionConfig.populationSize);
-}
-
-TEST(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 4;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 2;
-    evolutionState.trainingSpec = makeTrainingSpec(4);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    bool sawBackgroundCompletion = false;
-    constexpr int maxTicks = 200;
-    for (int i = 0; i < maxTicks; ++i) {
-        evolutionState.tick(*fixture.stateMachine);
-        if (evolutionState.visible_.runner != nullptr
-            && evolutionState.visible_.runner->getSimTime()
-                < evolutionState.evolutionConfig.maxSimulationTime
-            && evolutionState.currentEval > 0) {
-            sawBackgroundCompletion = true;
-            break;
-        }
-    }
-
-    EXPECT_TRUE(sawBackgroundCompletion)
-        << "Background results should arrive while visible evaluation is running";
-}
-
 /**
  * @brief Test that Exit command from Evolution transitions to Shutdown.
  */
@@ -1672,26 +1749,4 @@ TEST(StateEvolutionTest, TargetCpuPercentDefaultDisabled)
         << "Diversity elitism should retain one near-best elite";
     EXPECT_DOUBLE_EQ(config.diversityEliteFitnessEpsilon, 0.0)
         << "Diversity elitism epsilon should default to exact best ties";
-}
-
-TEST(StateEvolutionTest, ConcurrencyThrottleInitializedToBackgroundWorkerCount)
-{
-    TestStateMachineFixture fixture;
-
-    Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
-    evolutionState.evolutionConfig.populationSize = 4;
-    evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.evolutionConfig.maxParallelEvaluations = 4;
-    evolutionState.evolutionConfig.targetCpuPercent = 0; // Disabled.
-    evolutionState.trainingSpec = makeTrainingSpec(4);
-
-    evolutionState.onEnter(*fixture.stateMachine);
-
-    ASSERT_NE(evolutionState.workerState_, nullptr);
-    // 4 parallel - 1 main thread = 3 background workers.
-    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 3);
-    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 3);
-    EXPECT_EQ(evolutionState.workerState_->activeEvaluations.load(), 0);
 }

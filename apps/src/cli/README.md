@@ -251,7 +251,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canPlaySynthKeys
 ./build-debug/bin/cli functional-test verifyTraining
 
-# verifyTraining runs 5 one-generation training loops with a 50-sized population,
+# verifyTraining runs 5 one-generation training loops with a 5-sized population,
 # saving results between runs and verifying the genomes change.
 
 # Note: canExit shuts down the UI, so run it last or restart the UI before other tests.

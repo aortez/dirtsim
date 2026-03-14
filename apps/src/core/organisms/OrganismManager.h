@@ -22,6 +22,12 @@ class LightCalculatorBase;
 class World;
 enum class MultiCellShape;
 
+struct TreeSpawnParams {
+    double startingEnergy = 50.0;
+    bool passive = false; // If true and no brain provided, tree has no brain.
+    OrganismId seedParentId = INVALID_ORGANISM_ID;
+};
+
 /**
  * Manages all organisms in the world.
  *
@@ -52,7 +58,11 @@ public:
 
     // Factory methods for creating organisms.
     OrganismId createTree(
-        World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain = nullptr);
+        World& world,
+        uint32_t x,
+        uint32_t y,
+        std::unique_ptr<TreeBrain> brain = nullptr,
+        const TreeSpawnParams& params = {});
 
     OrganismId createDuck(
         World& world, uint32_t x, uint32_t y, std::unique_ptr<DuckBrain> brain = nullptr);

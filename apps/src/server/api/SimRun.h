@@ -28,7 +28,7 @@ struct Command {
     std::optional<Scenario::EnumType>
         scenario_id;           // Optional scenario (nullopt = use server config default).
     bool start_paused = false; // Load scenario but don't start advancing.
-    Vector2s container_size;   // UI container size in pixels (0,0 = use defaults).
+    Vector2s container_size;   // UI container size in pixels (0,0 = scenarios use defaults).
 
     API_COMMAND();
     nlohmann::json toJson() const;
@@ -40,11 +40,13 @@ struct Command {
 struct Okay {
     bool running;
     uint32_t current_step;
+    int16_t width = 0;
+    int16_t height = 0;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<4>;
 };
 
 using OkayType = Okay;

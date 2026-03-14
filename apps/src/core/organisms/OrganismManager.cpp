@@ -161,12 +161,16 @@ void OrganismManager::advanceTime(World& world, double deltaTime)
 }
 
 OrganismId OrganismManager::createTree(
-    World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain)
+    World& world,
+    uint32_t x,
+    uint32_t y,
+    std::unique_ptr<TreeBrain> brain,
+    const TreeSpawnParams& params)
 {
     OrganismId id = next_id_++;
 
-    // Use default brain if none provided.
-    if (!brain) {
+    // Use default brain if none provided (unless passive).
+    if (!brain && !params.passive) {
         brain = std::make_unique<RuleBasedBrain>();
     }
 
@@ -175,7 +179,8 @@ OrganismId OrganismManager::createTree(
 
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
     tree->setAnchorCell(pos);
-    tree->setEnergy(150.0); // Starting energy for tree growth.
+    tree->setEnergy(params.startingEnergy);
+    tree->setSeedParentId(params.seedParentId);
 
     // Place seed material in world.
     world.addMaterialAtCell(

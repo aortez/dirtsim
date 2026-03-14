@@ -39,17 +39,12 @@ GenomeId getBestGenomeId(const std::vector<Api::TrainingResult::Candidate>& cand
 
 void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
-    state.hasPlottedRobustBestFitness_ = false;
-    state.plottedRobustBestFitness_ = 0.0f;
+    state.hasPlottedBestFitness_ = false;
+    state.plottedBestFitness_ = 0.0f;
     state.plotAverageSeries_.clear();
     state.plotBestSeries_.clear();
-    state.plotBestSeriesRobustHighMask_.clear();
+    state.plotBestSeriesNewHighMask_.clear();
 
-    state.plotAverageSeries_.push_back(0.0f);
-    state.plotBestSeries_.push_back(0.0f);
-    state.plotBestSeriesRobustHighMask_.push_back(0);
-
-    state.lastPlottedRobustEvaluationCount_ = 0;
     state.lastPlottedCompletedGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
@@ -63,7 +58,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
     state.view_->updateFitnessPlots(
-        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesRobustHighMask_);
+        state.plotBestSeries_, state.plotAverageSeries_, state.plotBestSeriesNewHighMask_);
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -209,37 +204,25 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->updateProgress(progress);
 
-    const bool robustSampleAppended =
-        progress.robustEvaluationCount > lastPlottedRobustEvaluationCount_;
-    const bool nonRobustGenerationCompleted = progress.robustEvaluationCount == 0
-        && progress.lastCompletedGeneration >= 0
-        && progress.lastCompletedGeneration > lastPlottedCompletedGeneration_
-        && progress.bestThisGenSource != "none";
+    const bool generationCompleted = progress.lastCompletedGeneration >= 0
+        && progress.lastCompletedGeneration > lastPlottedCompletedGeneration_;
 
-    if (robustSampleAppended) {
-        lastPlottedRobustEvaluationCount_ = progress.robustEvaluationCount;
-    }
-    if (nonRobustGenerationCompleted) {
+    if (generationCompleted) {
         lastPlottedCompletedGeneration_ = progress.lastCompletedGeneration;
-    }
 
-    if (robustSampleAppended || nonRobustGenerationCompleted) {
-        const float plottedValue = static_cast<float>(progress.bestFitnessThisGen);
+        const float plottedValue = static_cast<float>(progress.lastGenerationFitnessMax);
         const float averagePlottedValue = static_cast<float>(progress.lastGenerationAverageFitness);
         plotAverageSeries_.push_back(averagePlottedValue);
         plotBestSeries_.push_back(plottedValue);
 
-        bool isNewRobustHigh = false;
-        constexpr float robustFitnessEpsilon = 0.0001f;
-        if (robustSampleAppended) {
-            if (!hasPlottedRobustBestFitness_
-                || plottedValue > plottedRobustBestFitness_ + robustFitnessEpsilon) {
-                hasPlottedRobustBestFitness_ = true;
-                plottedRobustBestFitness_ = plottedValue;
-                isNewRobustHigh = true;
-            }
+        bool isNewBestHigh = false;
+        constexpr float bestFitnessEpsilon = 0.0001f;
+        if (!hasPlottedBestFitness_ || plottedValue > plottedBestFitness_ + bestFitnessEpsilon) {
+            hasPlottedBestFitness_ = true;
+            plottedBestFitness_ = plottedValue;
+            isNewBestHigh = true;
         }
-        plotBestSeriesRobustHighMask_.push_back(isNewRobustHigh ? 1 : 0);
+        plotBestSeriesNewHighMask_.push_back(isNewBestHigh ? 1 : 0);
         if (plotBestSeries_.size() > plotRefreshPointCount) {
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
             if (plotAverageSeries_.size() > pruneCount) {
@@ -250,18 +233,17 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
                 plotAverageSeries_.clear();
             }
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
-            if (plotBestSeriesRobustHighMask_.size() > pruneCount) {
-                plotBestSeriesRobustHighMask_.erase(
-                    plotBestSeriesRobustHighMask_.begin(),
-                    plotBestSeriesRobustHighMask_.begin() + pruneCount);
+            if (plotBestSeriesNewHighMask_.size() > pruneCount) {
+                plotBestSeriesNewHighMask_.erase(
+                    plotBestSeriesNewHighMask_.begin(),
+                    plotBestSeriesNewHighMask_.begin() + pruneCount);
             }
             else {
-                plotBestSeriesRobustHighMask_.clear();
+                plotBestSeriesNewHighMask_.clear();
             }
         }
 
-        view_->updateFitnessPlots(
-            plotBestSeries_, plotAverageSeries_, plotBestSeriesRobustHighMask_);
+        view_->updateFitnessPlots(plotBestSeries_, plotAverageSeries_, plotBestSeriesNewHighMask_);
     }
 
     return std::move(*this);
@@ -275,7 +257,11 @@ State::Any TrainingActive::onEvent(
     WorldData worldData = evt.frame.worldData;
     worldData.organism_ids = evt.frame.organismIds;
     view_->updateBestPlaybackFrame(
-        worldData, evt.frame.fitness, evt.frame.generation, evt.frame.scenarioVideoFrame);
+        worldData,
+        evt.frame.fitness,
+        evt.frame.generation,
+        evt.frame.scenarioVideoFrame,
+        evt.frame.nesControllerTelemetry);
     return std::move(*this);
 }
 
@@ -320,7 +306,7 @@ State::Any TrainingActive::onEvent(
         evt.snapshot.commandsRejected,
         topCommandSignatures,
         topCommandOutcomeSignatures,
-        evt.snapshot.fitnessBreakdown,
+        evt.snapshot.fitnessPresentation,
         evt.snapshot.scenarioVideoFrame);
 
     return std::move(*this);
@@ -417,11 +403,16 @@ State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, 
     settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
     settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
     settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    if (evt.nesControllerOverlayEnabled.has_value()) {
+        settings.uiTraining.nesControllerOverlayEnabled = evt.nesControllerOverlayEnabled;
+    }
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
     view_->setBestPlaybackEnabled(settings.uiTraining.bestPlaybackEnabled);
     view_->setBestPlaybackIntervalMs(settings.uiTraining.bestPlaybackIntervalMs);
+    view_->setNesControllerOverlayEnabled(
+        settings.uiTraining.nesControllerOverlayEnabled.value_or(false));
 
     Api::UserSettingsPatch::Command patchCmd{ .uiTraining = settings.uiTraining };
     sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
@@ -466,7 +457,7 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
     }
 
     view_->updateScenarioConfig(evt.scenario_id, evt.scenario_config);
-    view_->renderWorld(evt.worldData, evt.scenarioVideoFrame);
+    view_->renderWorld(evt.worldData, evt.scenarioVideoFrame, evt.nesControllerTelemetry);
     return std::move(*this);
 }
 

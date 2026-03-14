@@ -9,6 +9,7 @@
 #include "core/scenarios/SandboxConfig.h"
 #include "core/scenarios/TreeGerminationConfig.h"
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -23,8 +24,9 @@ struct UiTrainingConfig {
     int streamIntervalMs = 16;
     bool bestPlaybackEnabled = false;
     int bestPlaybackIntervalMs = 16;
+    std::optional<bool> nesControllerOverlayEnabled = std::nullopt;
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 struct UserSettings {

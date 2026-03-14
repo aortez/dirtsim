@@ -1,5 +1,6 @@
 #include "ClockScenario.h"
 #include "clock_scenario/CharacterMetrics.h"
+#include "clock_scenario/ClockTimeResolver.h"
 #include "clock_scenario/DoorEntrySpawn.h"
 #include "clock_scenario/GlowManager.h"
 #include "core/Assert.h"
@@ -37,6 +38,73 @@
 namespace DirtSim {
 
 namespace {
+
+struct ClockWorldDimensions {
+    int clockWidth = 0;
+    int clockHeight = 0;
+    int worldWidth = 0;
+    int worldHeight = 0;
+};
+
+int calculateClockTotalWidth(const Config::Clock& config)
+{
+    const CharacterMetrics& metrics = getFont(config.font);
+    const int digitWidth = metrics.digitWidth;
+    const int digitGap = metrics.gap;
+    const int colonWidth = metrics.colonWidth;
+
+    if (config.showSeconds) {
+        return 6 * digitWidth + 2 * colonWidth + 7 * digitGap;
+    }
+    return 4 * digitWidth + colonWidth + 4 * digitGap;
+}
+
+ClockWorldDimensions calculateClockWorldDimensions(const Config::Clock& config)
+{
+    ClockWorldDimensions dimensions;
+    dimensions.clockWidth = calculateClockTotalWidth(config);
+    dimensions.clockHeight = getFont(config.font).digitHeight;
+
+    constexpr int BUFFER = 4;
+
+    if (!config.autoScale || config.targetDisplayWidth == 0 || config.targetDisplayHeight == 0) {
+        dimensions.worldWidth =
+            static_cast<int>(std::ceil(dimensions.clockWidth * config.horizontalScale));
+        dimensions.worldHeight =
+            static_cast<int>(std::ceil(dimensions.clockHeight * config.verticalScale));
+        return dimensions;
+    }
+
+    const double displayAspect =
+        static_cast<double>(config.targetDisplayWidth) / config.targetDisplayHeight;
+
+    if (config.targetDigitHeightPercent > 0) {
+        const double targetPixels =
+            config.targetDisplayHeight * config.targetDigitHeightPercent / 100.0;
+
+        dimensions.worldHeight = static_cast<int>(
+            std::ceil(dimensions.clockHeight * config.targetDisplayHeight / targetPixels));
+        dimensions.worldHeight = std::max(dimensions.worldHeight, dimensions.clockHeight);
+        dimensions.worldWidth = dimensions.clockWidth;
+        return dimensions;
+    }
+
+    const int baseWidth = dimensions.clockWidth + 2 * BUFFER;
+    const int baseHeight = dimensions.clockHeight + 2 * BUFFER;
+    const double clockAspect = static_cast<double>(baseWidth) / baseHeight;
+
+    if (displayAspect > clockAspect) {
+        dimensions.worldHeight = baseHeight;
+        dimensions.worldWidth = std::max(
+            baseWidth, static_cast<int>(std::round(dimensions.worldHeight * displayAspect)));
+        return dimensions;
+    }
+
+    dimensions.worldWidth = baseWidth;
+    dimensions.worldHeight =
+        std::max(baseHeight, static_cast<int>(std::round(dimensions.worldWidth / displayAspect)));
+    return dimensions;
+}
 
 uint32_t getMaterialColor(Material::EnumType mat)
 {
@@ -225,21 +293,16 @@ const CharacterMetrics& ClockScenario::getMetrics() const
 
 void ClockScenario::recalculateDimensions()
 {
-    int clock_width = calculateTotalWidth();
-    int clock_height = getDigitHeight();
-
-    constexpr int BUFFER = 4;
+    const ClockWorldDimensions dimensions = calculateClockWorldDimensions(config_);
 
     if (!config_.autoScale || config_.targetDisplayWidth == 0 || config_.targetDisplayHeight == 0) {
-        metadata_.requiredWidth =
-            static_cast<uint32_t>(std::ceil(clock_width * config_.horizontalScale));
-        metadata_.requiredHeight =
-            static_cast<uint32_t>(std::ceil(clock_height * config_.verticalScale));
+        metadata_.requiredWidth = static_cast<uint32_t>(dimensions.worldWidth);
+        metadata_.requiredHeight = static_cast<uint32_t>(dimensions.worldHeight);
 
         spdlog::info(
             "ClockScenario: Manual scale - clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
-            clock_width,
-            clock_height,
+            dimensions.clockWidth,
+            dimensions.clockHeight,
             config_.horizontalScale,
             config_.verticalScale,
             metadata_.requiredWidth,
@@ -247,76 +310,34 @@ void ClockScenario::recalculateDimensions()
         return;
     }
 
-    double display_aspect =
-        static_cast<double>(config_.targetDisplayWidth) / config_.targetDisplayHeight;
-
-    int world_width, world_height;
-
     if (config_.targetDigitHeightPercent > 0) {
-        // Target height mode: prioritize achieving target height over aspect ratio matching.
-        // pixel_height = cell_height * (display_height / world_height) = target
-        // Solving: world_height = cell_height * display_height / target_pixels
-        //
-        // Gray bars may appear on sides if clock aspect doesn't match display aspect.
-        // This trade-off ensures all fonts render at the same pixel height.
-        double target_pixels =
-            config_.targetDisplayHeight * config_.targetDigitHeightPercent / 100.0;
-
-        // Calculate world height to achieve exact target.
-        world_height =
-            static_cast<int>(std::ceil(clock_height * config_.targetDisplayHeight / target_pixels));
-
-        // Ensure height accommodates clock.
-        if (world_height < clock_height) {
-            world_height = clock_height;
-        }
-
-        // Width: just ensure clock fits (don't force display aspect).
-        world_width = clock_width;
-
         spdlog::info(
             "ClockScenario: Target height {}% - display={}x{}, clock={}x{}, world={}x{} (height "
             "prioritized, aspect={})",
             config_.targetDigitHeightPercent,
             config_.targetDisplayWidth,
             config_.targetDisplayHeight,
-            clock_width,
-            clock_height,
-            world_width,
-            world_height,
-            static_cast<double>(world_width) / world_height);
+            dimensions.clockWidth,
+            dimensions.clockHeight,
+            dimensions.worldWidth,
+            dimensions.worldHeight,
+            static_cast<double>(dimensions.worldWidth) / dimensions.worldHeight);
     }
     else {
-        // Aspect-matching mode: size world to fit clock tightly, matching display aspect.
-        int base_width = clock_width + 2 * BUFFER;
-        int base_height = clock_height + 2 * BUFFER;
-        double clock_aspect = static_cast<double>(base_width) / base_height;
-
-        if (display_aspect > clock_aspect) {
-            world_height = base_height;
-            world_width =
-                std::max(base_width, static_cast<int>(std::round(world_height * display_aspect)));
-        }
-        else {
-            world_width = base_width;
-            world_height =
-                std::max(base_height, static_cast<int>(std::round(world_width / display_aspect)));
-        }
-
         spdlog::info(
             "ClockScenario: Auto-scale - display={}x{}, clock={}x{}, world={}x{} (aspect matched)",
             config_.targetDisplayWidth,
             config_.targetDisplayHeight,
-            clock_width,
-            clock_height,
-            world_width,
-            world_height);
+            dimensions.clockWidth,
+            dimensions.clockHeight,
+            dimensions.worldWidth,
+            dimensions.worldHeight);
     }
 
     config_.horizontalScale = 1.0;
     config_.verticalScale = 1.0;
-    metadata_.requiredWidth = static_cast<uint32_t>(world_width);
-    metadata_.requiredHeight = static_cast<uint32_t>(world_height);
+    metadata_.requiredWidth = static_cast<uint32_t>(dimensions.worldWidth);
+    metadata_.requiredHeight = static_cast<uint32_t>(dimensions.worldHeight);
 }
 
 const ScenarioMetadata& ClockScenario::getMetadata() const
@@ -327,6 +348,34 @@ const ScenarioMetadata& ClockScenario::getMetadata() const
 ScenarioConfig ClockScenario::getConfig() const
 {
     return config_;
+}
+
+ScenarioConfig ClockScenario::resolveInitialConfig(
+    const ScenarioConfig& config, const Vector2s& containerSize) const
+{
+    if (!std::holds_alternative<Config::Clock>(config)) {
+        return config;
+    }
+
+    Config::Clock resolved = std::get<Config::Clock>(config);
+    if (containerSize.x > 0 && containerSize.y > 0) {
+        resolved.targetDisplayWidth = static_cast<uint32_t>(containerSize.x);
+        resolved.targetDisplayHeight = static_cast<uint32_t>(containerSize.y);
+    }
+
+    return resolved;
+}
+
+Vector2i ClockScenario::resolveInitialWorldSize(
+    const ScenarioConfig& config, const Vector2i& defaultWorldSize) const
+{
+    if (!std::holds_alternative<Config::Clock>(config)) {
+        return ScenarioRunner::resolveInitialWorldSize(config, defaultWorldSize);
+    }
+
+    const Config::Clock& clockConfig = std::get<Config::Clock>(config);
+    const ClockWorldDimensions dimensions = calculateClockWorldDimensions(clockConfig);
+    return { dimensions.worldWidth, dimensions.worldHeight };
 }
 
 void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
@@ -629,23 +678,7 @@ void ClockScenario::tick(World& world, double deltaTime)
 
 int ClockScenario::calculateTotalWidth() const
 {
-    // Calculate width based on the time string format.
-    // Format: "H H : M M" or "H H : M M : S S"
-    // - Digits contribute digit width.
-    // - Colons contribute colon width.
-    // - Spaces contribute digit gap.
-    int dw = getDigitWidth();
-    int dg = getDigitGap();
-    int cw = getColonWidth();
-
-    if (config_.showSeconds) {
-        // "H H : M M : S S" = 6 digits, 2 colons, 7 spaces.
-        return 6 * dw + 2 * cw + 7 * dg;
-    }
-    else {
-        // "H H : M M" = 4 digits, 1 colon, 4 spaces.
-        return 4 * dw + 1 * cw + 4 * dg;
-    }
+    return calculateClockTotalWidth(config_);
 }
 
 void ClockScenario::clearDigits(World& world)
@@ -884,23 +917,7 @@ std::string ClockScenario::getCurrentTimeString() const
     }
 
     auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-
-    std::tm* time_info;
-    if (config_.timezoneIndex == 0) {
-        time_info = std::localtime(&now_time);
-    }
-    else {
-        time_info = std::gmtime(&now_time);
-        const auto& tz = TIMEZONES[config_.timezoneIndex];
-        time_info->tm_hour += tz.offset_hours;
-        if (time_info->tm_hour < 0) {
-            time_info->tm_hour += 24;
-        }
-        else if (time_info->tm_hour >= 24) {
-            time_info->tm_hour -= 24;
-        }
-    }
+    const std::tm timeInfo = ClockTimeResolver::resolveClockTime(config_.timezone, now);
 
     // Format: "H H : M M : S S" - spaces control all gaps.
     // Each space advances cursor by digit gap width.
@@ -910,22 +927,22 @@ std::string ClockScenario::getCurrentTimeString() const
             buffer,
             sizeof(buffer),
             "%d %d : %d %d : %d %d",
-            time_info->tm_hour / 10,
-            time_info->tm_hour % 10,
-            time_info->tm_min / 10,
-            time_info->tm_min % 10,
-            time_info->tm_sec / 10,
-            time_info->tm_sec % 10);
+            timeInfo.tm_hour / 10,
+            timeInfo.tm_hour % 10,
+            timeInfo.tm_min / 10,
+            timeInfo.tm_min % 10,
+            timeInfo.tm_sec / 10,
+            timeInfo.tm_sec % 10);
     }
     else {
         std::snprintf(
             buffer,
             sizeof(buffer),
             "%d %d : %d %d",
-            time_info->tm_hour / 10,
-            time_info->tm_hour % 10,
-            time_info->tm_min / 10,
-            time_info->tm_min % 10);
+            timeInfo.tm_hour / 10,
+            timeInfo.tm_hour % 10,
+            timeInfo.tm_min / 10,
+            timeInfo.tm_min % 10);
     }
     return std::string(buffer);
 }

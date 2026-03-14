@@ -5,7 +5,6 @@
 #include "core/organisms/GooseBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/DuckNeuralNetBrain.h"
-#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
@@ -109,27 +108,6 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .isGenomeCompatible =
                 [](const Genome& genome) { return DuckNeuralNetBrain::isGenomeCompatible(genome); },
             .getGenomeLayout = []() { return DuckNeuralNetBrain::getGenomeLayout(); },
-        });
-
-    registry.registerBrain(
-        OrganismType::DUCK,
-        TrainingBrainKind::DuckNeuralNetRecurrent,
-        "",
-        BrainRegistryEntry{
-            .requiresGenome = true,
-            .allowsMutation = true,
-            .spawn = [](World& world, uint32_t x, uint32_t y, const Genome* genome) -> OrganismId {
-                DIRTSIM_ASSERT(genome != nullptr, "DuckNeuralNetRecurrent brain requires a genome");
-                auto brain = std::make_unique<DuckNeuralNetRecurrentBrain>(*genome);
-                return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
-            },
-            .createRandomGenome =
-                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrain::randomGenome(rng); },
-            .isGenomeCompatible =
-                [](const Genome& genome) {
-                    return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
-                },
-            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(
@@ -254,24 +232,6 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .createRandomGenome = nullptr,
             .isGenomeCompatible = nullptr,
             .getGenomeLayout = nullptr,
-        });
-
-    registry.registerBrain(
-        OrganismType::NES_DUCK,
-        TrainingBrainKind::DuckNeuralNetRecurrent,
-        "",
-        BrainRegistryEntry{
-            .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
-            .requiresGenome = true,
-            .allowsMutation = true,
-            .spawn = nullptr,
-            .createRandomGenome =
-                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrain::randomGenome(rng); },
-            .isGenomeCompatible =
-                [](const Genome& genome) {
-                    return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
-                },
-            .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrain::getGenomeLayout(); },
         });
 
     registry.registerBrain(

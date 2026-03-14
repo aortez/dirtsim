@@ -11,12 +11,15 @@ class TestNesGameAdapter : public NesGameAdapter {
 public:
     explicit TestNesGameAdapter(int* resolveCalls) : resolveCalls_(resolveCalls) {}
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
         if (resolveCalls_) {
             ++(*resolveCalls_);
         }
-        return input.inferredControllerMask;
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = input.inferredControllerMask,
+        };
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
@@ -79,8 +82,8 @@ TEST(NesGameAdapterRegistryTest, RegisterAdapterReturnsFreshInstances)
     EXPECT_NE(first.get(), second.get());
     EXPECT_EQ(factoryCalls, 2);
 
-    const uint8_t resolved =
+    const NesGameAdapterControllerOutput resolved =
         first->resolveControllerMask(NesGameAdapterControllerInput{ .inferredControllerMask = 7 });
-    EXPECT_EQ(resolved, 7u);
+    EXPECT_EQ(resolved.resolvedControllerMask, 7u);
     EXPECT_EQ(resolveCalls, 1);
 }

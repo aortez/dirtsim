@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldData.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <vector>
@@ -18,11 +19,12 @@ struct TrainingBestPlaybackFrame {
     std::vector<OrganismId> organismIds;
     double fitness = 0.0;
     int generation = 0;
+    std::optional<NesControllerTelemetry> nesControllerTelemetry = std::nullopt;
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;
 
     static constexpr const char* name() { return "TrainingBestPlaybackFrame"; }
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 void to_json(nlohmann::json& j, const TrainingBestPlaybackFrame& value);
