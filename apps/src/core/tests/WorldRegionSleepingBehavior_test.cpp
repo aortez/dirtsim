@@ -5,6 +5,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldRegionActivityTracker.h"
+#include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/SandboxScenario.h"
 
 #include <gtest/gtest.h>
@@ -29,6 +30,7 @@ constexpr int kWorldHeight = 40;
 constexpr int kSandboxWorldWidth = 50;
 constexpr int kSandboxWorldHeight = 30;
 constexpr int kSettleSteps = 180;
+constexpr int kWaterSettleSteps = 600;
 constexpr int kPileCenterX = kWorldWidth / 2;
 constexpr int kPileBaseY = kWorldHeight - 2;
 constexpr int kPileBaseHalfWidth = 22;
@@ -186,6 +188,12 @@ struct SandboxRegionBuckets {
     std::vector<RegionCoord> mixed_dirt_regions;
 };
 
+struct WaterRegionBuckets {
+    std::vector<RegionCoord> water_regions;
+    std::vector<RegionCoord> exposed_water_regions;
+    std::vector<RegionCoord> interior_water_regions;
+};
+
 struct SandboxForceIsolationObservation {
     std::string name;
     int dirt_regions = 0;
@@ -198,6 +206,20 @@ struct SandboxForceIsolationObservation {
     WakeReason representative_interior_wake_reason = WakeReason::None;
     double representative_interior_mean_velocity = 0.0;
     double representative_interior_max_velocity = 0.0;
+};
+
+struct WaterForceIsolationObservation {
+    std::string name;
+    int water_regions = 0;
+    int interior_water_regions = 0;
+    int quiet_interior_regions = 0;
+    bool representative_interior_found = false;
+    RegionState representative_interior_state = RegionState::Awake;
+    WakeReason representative_interior_wake_reason = WakeReason::None;
+    double representative_interior_mean_velocity = 0.0;
+    double representative_interior_max_velocity = 0.0;
+    double representative_interior_mean_pressure_force_y = 0.0;
+    double representative_interior_mean_viscous_force_y = 0.0;
 };
 
 struct NamedRegion {
@@ -258,6 +280,8 @@ std::string dumpSettlingDiagnostics(
     const World& world, const GridOfCells& grid, const std::vector<RegionCoord>& buriedRegions);
 void initializeSleepAnalysisWorld(World& world);
 void initializeSandboxQuadrantWorld(World& world);
+void initializeStillWaterPoolWorld(World& world);
+void initializeDamBreakWorld(World& world, DamBreakScenario& scenario);
 bool cellHasEmptyAdjacency(const GridOfCells& grid, int x, int y);
 char regionStateToChar(RegionState state);
 char wakeReasonToChar(WakeReason reason);
@@ -616,6 +640,32 @@ SandboxRegionBuckets classifySandboxDirtRegions(const World& world, const GridOf
     return buckets;
 }
 
+WaterRegionBuckets classifyWaterRegions(const World& world, const GridOfCells& grid)
+{
+    const WorldData& data = world.getData();
+    WaterRegionBuckets buckets;
+
+    for (int block_y = 0; block_y < data.region_debug_blocks_y; ++block_y) {
+        for (int block_x = 0; block_x < data.region_debug_blocks_x; ++block_x) {
+            if (!regionContainsMaterialType(world, block_x, block_y, Material::EnumType::Water)) {
+                continue;
+            }
+
+            const RegionCoord region{ .x = block_x, .y = block_y };
+            buckets.water_regions.push_back(region);
+
+            if (regionHasEmptyAdjacency(world, grid, block_x, block_y)) {
+                buckets.exposed_water_regions.push_back(region);
+                continue;
+            }
+
+            buckets.interior_water_regions.push_back(region);
+        }
+    }
+
+    return buckets;
+}
+
 int countQuietRegions(const World& world, const std::vector<RegionCoord>& regions)
 {
     const WorldData& data = world.getData();
@@ -625,6 +675,20 @@ int countQuietRegions(const World& world, const std::vector<RegionCoord>& region
         const int idx = region.y * data.region_debug_blocks_x + region.x;
         const RegionState state = static_cast<RegionState>(data.region_debug[idx].state);
         if (state != RegionState::Awake) {
+            quiet_regions++;
+        }
+    }
+
+    return quiet_regions;
+}
+
+int countQuietRegions(
+    const WorldRegionActivityTracker& tracker, const std::vector<RegionCoord>& regions)
+{
+    int quiet_regions = 0;
+
+    for (const RegionCoord& region : regions) {
+        if (tracker.getRegionState(region.x, region.y) != RegionState::Awake) {
             quiet_regions++;
         }
     }
@@ -663,6 +727,24 @@ std::vector<RegionCoord> extractNamedRegionCoords(const std::vector<NamedRegion>
         coords.push_back(tracked_region.region);
     }
     return coords;
+}
+
+WorldRegionActivityTracker runFrozenTrackerReplay(
+    const World& world, const WorldRegionActivityTracker::Config& config, int frames)
+{
+    WorldData& data = const_cast<World&>(world).getData();
+    GridOfCells grid(data.cells, data.debug_info, data.width, data.height);
+
+    WorldRegionActivityTracker tracker;
+    tracker.resize(data.width, data.height, grid.getBlocksX(), grid.getBlocksY());
+    tracker.setConfig(config);
+
+    for (int frame = 0; frame < frames; ++frame) {
+        tracker.beginFrame(world, grid, static_cast<uint32_t>(frame));
+        tracker.summarizeFrame(world, grid, static_cast<uint32_t>(frame));
+    }
+
+    return tracker;
 }
 
 std::vector<NamedRegion> selectSandboxDiagnosticRegions(const SandboxRegionBuckets& buckets)
@@ -914,6 +996,53 @@ SandboxForceIsolationObservation runSandboxForceIsolationProfile(
     observation.representative_interior_wake_reason = sample.wake_reason;
     observation.representative_interior_mean_velocity = sample.mean_velocity;
     observation.representative_interior_max_velocity = sample.max_velocity;
+    return observation;
+}
+
+WaterForceIsolationObservation runWaterForceIsolationProfile(const ForceIsolationProfile& profile)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+    applyForceIsolationProfile(world, profile);
+
+    settleWorld(world, kWaterSettleSteps);
+    GridOfCells grid = makeGrid(world);
+    const WaterRegionBuckets buckets = classifyWaterRegions(world, grid);
+
+    WorldRegionActivityTracker::Config no_water_policy_config{};
+    no_water_policy_config.keep_water_adjacent_awake = false;
+    const WorldRegionActivityTracker tracker_without_water_policy =
+        runFrozenTrackerReplay(world, no_water_policy_config, 16);
+
+    WaterForceIsolationObservation observation{ .name = profile.name };
+    observation.water_regions = static_cast<int>(buckets.water_regions.size());
+    observation.interior_water_regions = static_cast<int>(buckets.interior_water_regions.size());
+    observation.quiet_interior_regions =
+        countQuietRegions(tracker_without_water_policy, buckets.interior_water_regions);
+
+    if (buckets.interior_water_regions.empty()) {
+        return observation;
+    }
+
+    auto sorted_interiors = buckets.interior_water_regions;
+    std::sort(
+        sorted_interiors.begin(),
+        sorted_interiors.end(),
+        [](const RegionCoord& a, const RegionCoord& b) {
+            return std::tie(a.y, a.x) < std::tie(b.y, b.x);
+        });
+
+    observation.representative_interior_found = true;
+    const RegionCoord region = sorted_interiors.front();
+    const RegionFrameSample sample = sampleRegionFrame(world, region, kWaterSettleSteps);
+    observation.representative_interior_state =
+        tracker_without_water_policy.getRegionState(region.x, region.y);
+    observation.representative_interior_wake_reason =
+        tracker_without_water_policy.getLastWakeReason(region.x, region.y);
+    observation.representative_interior_mean_velocity = sample.mean_velocity;
+    observation.representative_interior_max_velocity = sample.max_velocity;
+    observation.representative_interior_mean_pressure_force_y = sample.mean_abs_pressure_force_y;
+    observation.representative_interior_mean_viscous_force_y = sample.mean_abs_viscous_force_y;
     return observation;
 }
 
@@ -1206,6 +1335,256 @@ std::string dumpSandboxQuadrantAsciiDiagrams()
     out << initial_world.toAsciiDiagram() << "\n";
     out << "After settle\n";
     out << settled_world.toAsciiDiagram();
+    return out.str();
+}
+
+std::string dumpMaterialColumnCounts(const World& world, Material::EnumType material_type)
+{
+    const WorldData& data = world.getData();
+    std::ostringstream out;
+
+    out << "x count\n";
+    for (int x = 0; x < data.width; ++x) {
+        int count = 0;
+        for (int y = 0; y < data.height; ++y) {
+            if (data.at(x, y).material_type == material_type) {
+                count++;
+            }
+        }
+        out << x << " " << count << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpMaterialRowCounts(const World& world, Material::EnumType material_type)
+{
+    const WorldData& data = world.getData();
+    std::ostringstream out;
+
+    out << "y count\n";
+    for (int y = 0; y < data.height; ++y) {
+        int count = 0;
+        for (int x = 0; x < data.width; ++x) {
+            if (data.at(x, y).material_type == material_type) {
+                count++;
+            }
+        }
+        out << y << " " << count << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpWaterPoolDiagnostics()
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+    settleWorld(world, kWaterSettleSteps);
+
+    GridOfCells grid = makeGrid(world);
+    const WaterRegionBuckets buckets = classifyWaterRegions(world, grid);
+
+    auto water_regions = buckets.water_regions;
+    const auto sort_regions = [](std::vector<RegionCoord>& regions) {
+        std::sort(regions.begin(), regions.end(), [](const RegionCoord& a, const RegionCoord& b) {
+            return std::tie(a.y, a.x) < std::tie(b.y, b.x);
+        });
+    };
+    sort_regions(water_regions);
+
+    WorldRegionActivityTracker::Config no_water_policy_config{};
+    no_water_policy_config.keep_water_adjacent_awake = false;
+    const WorldRegionActivityTracker tracker_without_water_policy =
+        runFrozenTrackerReplay(world, no_water_policy_config, 16);
+
+    std::ostringstream out;
+    out << "Still water pool diagnostics\n";
+    out << "waterRegions=" << static_cast<int>(buckets.water_regions.size())
+        << " interior=" << static_cast<int>(buckets.interior_water_regions.size())
+        << " exposed=" << static_cast<int>(buckets.exposed_water_regions.size()) << "\n";
+    out << "actualQuietWaterRegions=" << countQuietRegions(world, buckets.water_regions) << "\n";
+    out << "actualQuietInteriorWaterRegions="
+        << countQuietRegions(world, buckets.interior_water_regions) << "\n";
+    out << "quietWaterRegionsNoWaterPolicy="
+        << countQuietRegions(tracker_without_water_policy, buckets.water_regions) << "\n";
+    out << "quietInteriorWaterRegionsNoWaterPolicy="
+        << countQuietRegions(tracker_without_water_policy, buckets.interior_water_regions) << "\n";
+
+    if (!water_regions.empty()) {
+        const RegionCoord representative_region = buckets.interior_water_regions.empty()
+            ? water_regions.front()
+            : buckets.interior_water_regions.front();
+        const RegionFrameSample sample =
+            sampleRegionFrame(world, representative_region, kWaterSettleSteps);
+        const RegionSummary& actual_summary = world.getRegionActivityTracker().getRegionSummary(
+            representative_region.x, representative_region.y);
+        const RegionSummary& alt_summary = tracker_without_water_policy.getRegionSummary(
+            representative_region.x, representative_region.y);
+        out << "representative=(" << representative_region.x << "," << representative_region.y
+            << ") actualState="
+            << regionStateToChar(world.getRegionActivityTracker().getRegionState(
+                   representative_region.x, representative_region.y))
+            << " actualWake="
+            << wakeReasonToChar(world.getRegionActivityTracker().getLastWakeReason(
+                   representative_region.x, representative_region.y))
+            << " altState="
+            << regionStateToChar(tracker_without_water_policy.getRegionState(
+                   representative_region.x, representative_region.y))
+            << " altWake="
+            << wakeReasonToChar(tracker_without_water_policy.getLastWakeReason(
+                   representative_region.x, representative_region.y))
+            << " meanV=" << sample.mean_velocity << " maxV=" << sample.max_velocity
+            << " actualHasWaterAdj=" << actual_summary.has_water_adjacency
+            << " altHasWaterAdj=" << alt_summary.has_water_adjacency
+            << " actualHasEmptyAdj=" << actual_summary.has_empty_adjacency
+            << " altHasEmptyAdj=" << alt_summary.has_empty_adjacency << "\n";
+    }
+
+    out << "Initial frame\n";
+    World initial_world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(initial_world);
+    out << initial_world.toAsciiDiagram() << "\n";
+    out << "After settle\n";
+    out << world.toAsciiDiagram() << "\n";
+    out << "Water columns\n";
+    out << dumpMaterialColumnCounts(world, Material::EnumType::Water);
+    return out.str();
+}
+
+std::string dumpWaterPoolForceIsolationSweep()
+{
+    const PhysicsSettings defaults = getDefaultPhysicsSettings();
+    const std::vector<ForceIsolationProfile> profiles = {
+        ForceIsolationProfile{
+            .name = "gravity_contact_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_pressure_only",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .viscosity = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_viscosity_only",
+            .gravity = defaults.gravity,
+            .pressure = false,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "gravity_pressure_viscosity_only",
+            .gravity = defaults.gravity,
+            .cohesion = false,
+            .adhesion = false,
+            .friction = false,
+            .air_resistance = false,
+            .swap = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_pressure",
+            .gravity = defaults.gravity,
+            .pressure = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_adhesion",
+            .gravity = defaults.gravity,
+            .adhesion = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_friction",
+            .gravity = defaults.gravity,
+            .friction = false,
+        },
+        ForceIsolationProfile{
+            .name = "full_minus_viscosity",
+            .gravity = defaults.gravity,
+            .viscosity = false,
+        },
+        ForceIsolationProfile{
+            .name = "full",
+            .gravity = defaults.gravity,
+        },
+    };
+
+    std::ostringstream out;
+    out << "Still water pool force isolation sweep\n";
+    out << "profile water interior quietInterior repFound repState repWake meanV maxV meanPFY "
+           "meanVFY\n";
+
+    for (const ForceIsolationProfile& profile : profiles) {
+        const WaterForceIsolationObservation observation = runWaterForceIsolationProfile(profile);
+        out << observation.name << " " << observation.water_regions << " "
+            << observation.interior_water_regions << " " << observation.quiet_interior_regions
+            << " " << observation.representative_interior_found << " "
+            << regionStateToChar(observation.representative_interior_state) << " "
+            << wakeReasonToChar(observation.representative_interior_wake_reason) << " "
+            << observation.representative_interior_mean_velocity << " "
+            << observation.representative_interior_max_velocity << " "
+            << observation.representative_interior_mean_pressure_force_y << " "
+            << observation.representative_interior_mean_viscous_force_y << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpDamBreakDiagnostics()
+{
+    World initial_world(6, 6);
+    DamBreakScenario initial_scenario;
+    initializeDamBreakWorld(initial_world, initial_scenario);
+
+    World released_world(6, 6);
+    DamBreakScenario released_scenario;
+    initializeDamBreakWorld(released_world, released_scenario);
+    released_scenario.tick(released_world, kDt);
+    released_world.advanceTime(kDt);
+
+    World frame_30_world(6, 6);
+    DamBreakScenario frame_30_scenario;
+    initializeDamBreakWorld(frame_30_world, frame_30_scenario);
+    for (int step = 0; step < 30; ++step) {
+        frame_30_scenario.tick(frame_30_world, kDt);
+        frame_30_world.advanceTime(kDt);
+    }
+
+    World settled_world(6, 6);
+    DamBreakScenario settled_scenario;
+    initializeDamBreakWorld(settled_world, settled_scenario);
+    for (int step = 0; step < kWaterSettleSteps; ++step) {
+        settled_scenario.tick(settled_world, kDt);
+        settled_world.advanceTime(kDt);
+    }
+
+    std::ostringstream out;
+    out << "Dam break diagnostics\n";
+    out << "Initial frame\n";
+    out << initial_world.toAsciiDiagram() << "\n";
+    out << "After first released frame\n";
+    out << released_world.toAsciiDiagram() << "\n";
+    out << "After 30 frames\n";
+    out << frame_30_world.toAsciiDiagram() << "\n";
+    out << "After settle\n";
+    out << settled_world.toAsciiDiagram() << "\n";
+    out << "Water columns after settle\n";
+    out << dumpMaterialColumnCounts(settled_world, Material::EnumType::Water);
+    out << "Water rows after settle\n";
+    out << dumpMaterialRowCounts(settled_world, Material::EnumType::Water);
     return out.str();
 }
 
@@ -3273,6 +3652,37 @@ void initializeSandboxQuadrantWorld(World& world)
     scenario.setup(world);
 }
 
+void initializeStillWaterPoolWorld(World& world)
+{
+    for (int y = 8; y <= 32; ++y) {
+        world.replaceMaterialAtCell(
+            Vector2s{ 15, static_cast<int16_t>(y) }, Material::EnumType::Wall);
+        world.replaceMaterialAtCell(
+            Vector2s{ 48, static_cast<int16_t>(y) }, Material::EnumType::Wall);
+    }
+
+    for (int x = 15; x <= 48; ++x) {
+        world.replaceMaterialAtCell(
+            Vector2s{ static_cast<int16_t>(x), 32 }, Material::EnumType::Wall);
+    }
+
+    for (int y = 16; y <= 31; ++y) {
+        fillHorizontalSpan(world, y, 16, 47, Material::EnumType::Water);
+    }
+}
+
+void initializeDamBreakWorld(World& world, DamBreakScenario& scenario)
+{
+    const Config::DamBreak config{
+        .damHeight = 10.0,
+        .autoRelease = true,
+        .releaseTime = kDt,
+    };
+
+    scenario.setConfig(ScenarioConfig{ config }, world);
+    scenario.setup(world);
+}
+
 class WorldRegionSleepingBehaviorParamTest : public ::testing::TestWithParam<GravityCase> {};
 
 } // namespace
@@ -3726,6 +4136,21 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantWallBackedInterior
 TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxQuadrantLongRunRegionTransitions)
 {
     std::cout << dumpSandboxQuadrantLongRunRegionTransitions();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_WaterPoolDiagnostics)
+{
+    std::cout << dumpWaterPoolDiagnostics();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_WaterPoolForceIsolationSweep)
+{
+    std::cout << dumpWaterPoolForceIsolationSweep();
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_DamBreakDiagnostics)
+{
+    std::cout << dumpDamBreakDiagnostics();
 }
 
 INSTANTIATE_TEST_SUITE_P(
