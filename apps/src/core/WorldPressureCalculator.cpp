@@ -54,8 +54,33 @@ void incrementSaturating(uint16_t& value)
 
 } // namespace
 
+void WorldPressureCalculator::ensurePressureBuffers(const World& world)
+{
+    const WorldData& data = world.getData();
+    const size_t cell_count = static_cast<size_t>(data.width) * data.height;
+
+    if (dynamic_pressure_.size() == cell_count && hydrostatic_pressure_.size() == cell_count) {
+        return;
+    }
+
+    dynamic_pressure_.resize(cell_count);
+    hydrostatic_pressure_.resize(cell_count);
+    std::fill(hydrostatic_pressure_.begin(), hydrostatic_pressure_.end(), 0.0f);
+
+    for (size_t idx = 0; idx < cell_count; ++idx) {
+        dynamic_pressure_[idx] = data.cells[idx].pressure;
+    }
+}
+
+void WorldPressureCalculator::beginPressureFrame(World& world)
+{
+    ensurePressureBuffers(world);
+    std::fill(hydrostatic_pressure_.begin(), hydrostatic_pressure_.end(), 0.0f);
+}
+
 void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTime)
 {
+    ensurePressureBuffers(world);
     WorldData& data = world.getData();
     const PhysicsSettings& settings = world.getPhysicsSettings();
     const float gravity_magnitude = std::abs(static_cast<float>(settings.gravity));
@@ -99,13 +124,57 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
             const float pressure_contribution =
                 weight * props.pressure_injection_weight * hydrostatic_strength * deltaTime;
 
-            below.pressure += pressure_contribution;
             const size_t below_idx = static_cast<size_t>(y + 1) * data.width + x;
+            hydrostatic_pressure_[below_idx] += pressure_contribution;
             CellDebug& debug = data.debug_info[below_idx];
             incrementSaturating(debug.hydrostatic_pressure_injection_count);
             debug.hydrostatic_pressure_injection_amount += pressure_contribution;
         }
     }
+}
+
+void WorldPressureCalculator::finalizePressureFrame(World& world)
+{
+    ensurePressureBuffers(world);
+    WorldData& data = world.getData();
+
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
+            Cell& cell = data.at(x, y);
+            cell.pressure = std::max(0.0f, dynamic_pressure_[idx] + hydrostatic_pressure_[idx]);
+        }
+    }
+
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            Cell& cell = data.at(x, y);
+            if (cell.fill_ratio >= MIN_MATTER_THRESHOLD && !cell.isWall()
+                && cell.pressure >= MIN_PRESSURE_THRESHOLD) {
+                cell.pressure_gradient = calculatePressureGradient(world, x, y);
+            }
+            else {
+                cell.pressure_gradient = Vector2f{ 0.0f, 0.0f };
+            }
+        }
+    }
+}
+
+void WorldPressureCalculator::accumulateDynamicPressure(World& world, int x, int y, float amount)
+{
+    if (amount <= 0.0f) {
+        return;
+    }
+
+    ensurePressureBuffers(world);
+    WorldData& data = world.getData();
+    if (!data.inBounds(x, y)) {
+        return;
+    }
+
+    const size_t idx = static_cast<size_t>(y) * data.width + x;
+    dynamic_pressure_[idx] += amount;
+    data.at(x, y).pressure += amount;
 }
 
 void WorldPressureCalculator::queueBlockedTransfer(const BlockedTransfer& transfer)
@@ -116,6 +185,7 @@ void WorldPressureCalculator::queueBlockedTransfer(const BlockedTransfer& transf
 void WorldPressureCalculator::processBlockedTransfers(
     World& world, const std::vector<BlockedTransfer>& blocked_transfers)
 {
+    ensurePressureBuffers(world);
     // Cache data reference.
     WorldData& data = world.getData();
 
@@ -147,9 +217,9 @@ void WorldPressureCalculator::processBlockedTransfers(
                     const float reflected_energy = transfer.energy * material_weight
                         * dynamic_strength * reflection_coefficient;
 
-                    source_cell.pressure += reflected_energy;
                     const size_t source_idx =
                         static_cast<size_t>(transfer.fromY) * data.width + transfer.fromX;
+                    dynamic_pressure_[source_idx] += reflected_energy;
                     CellDebug& debug = data.debug_info[source_idx];
                     incrementSaturating(debug.dynamic_pressure_reflection_injection_count);
                     debug.dynamic_pressure_reflection_injection_amount += reflected_energy;
@@ -184,8 +254,8 @@ void WorldPressureCalculator::processBlockedTransfers(
                 static_cast<float>(world.getPhysicsSettings().pressure_dynamic_strength);
             const float weighted_energy = blocked_energy * material_weight * dynamic_strength;
 
-            target_cell.pressure += weighted_energy;
             const size_t target_idx = static_cast<size_t>(transfer.toY) * data.width + transfer.toX;
+            dynamic_pressure_[target_idx] += weighted_energy;
             CellDebug& debug = data.debug_info[target_idx];
             incrementSaturating(debug.dynamic_pressure_target_injection_count);
             debug.dynamic_pressure_target_injection_amount += weighted_energy;
@@ -373,30 +443,15 @@ Vector2d WorldPressureCalculator::calculateGravityGradient(const World& world, i
 
 void WorldPressureCalculator::applyPressureDecay(World& world, float deltaTime)
 {
-    WorldData& data = world.getData();
+    ensurePressureBuffers(world);
+    const WorldData& data = world.getData();
     const PhysicsSettings& settings = world.getPhysicsSettings();
 
-    for (int y = 0; y < data.height; ++y) {
-        for (int x = 0; x < data.width; ++x) {
-            Cell& cell = data.at(x, y);
-
-            if (cell.pressure > MIN_PRESSURE_THRESHOLD) {
-                cell.pressure *=
-                    (1.0f - static_cast<float>(settings.pressure_decay_rate * deltaTime));
-            }
-
-            // Update pressure gradient for visualization.
-            if (cell.fill_ratio >= MIN_MATTER_THRESHOLD && !cell.isWall()) {
-                if (cell.pressure >= MIN_PRESSURE_THRESHOLD) {
-                    cell.pressure_gradient = calculatePressureGradient(world, x, y);
-                }
-                else {
-                    cell.pressure_gradient = Vector2f{ 0.0f, 0.0f };
-                }
-            }
-            else {
-                cell.pressure_gradient = Vector2f{ 0.0f, 0.0f };
-            }
+    const size_t cell_count = static_cast<size_t>(data.width) * data.height;
+    for (size_t idx = 0; idx < cell_count; ++idx) {
+        if (dynamic_pressure_[idx] > MIN_PRESSURE_THRESHOLD) {
+            dynamic_pressure_[idx] *=
+                (1.0f - static_cast<float>(settings.pressure_decay_rate * deltaTime));
         }
     }
 }
@@ -559,6 +614,7 @@ double WorldPressureCalculator::getSurroundingFluidDensity(const World& world, i
 
 void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTime)
 {
+    ensurePressureBuffers(world);
     // Cache world data and settings to avoid repeated pImpl dereferences.
     WorldData& data = world.getData(); // Cached
     const PhysicsSettings& settings = world.getPhysicsSettings();
@@ -570,8 +626,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const size_t idx = y * width + x;
-            const Cell& cell = data.at(x, y);
-            new_pressure[idx] = cell.pressure;
+            new_pressure[idx] = dynamic_pressure_[idx];
         }
     }
 
@@ -683,8 +738,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const size_t idx = y * width + x;
-            Cell& cell = data.at(x, y);
-            cell.pressure = std::max(0.0f, new_pressure[idx]);
+            dynamic_pressure_[idx] = std::max(0.0f, new_pressure[idx]);
         }
     }
 }

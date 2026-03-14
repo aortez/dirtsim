@@ -155,6 +155,14 @@ public:
         World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move);
 
     /**
+     * @brief Handle blocked downward fluid contact without material transport.
+     * @param fromCell Source cell.
+     * @param toCell Target cell.
+     * @param move Material move data.
+     */
+    void handleFluidBlockedContact(Cell& fromCell, Cell& toCell, const MaterialMove& move);
+
+    /**
      * @brief Handle material fragmentation on high-energy impact.
      * @param fromCell Source cell.
      * @param toCell Target cell.

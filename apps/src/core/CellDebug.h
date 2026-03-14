@@ -64,6 +64,16 @@ struct CellDebug {
     uint16_t jammed_contact_candidate_count = 0;
     uint16_t outgoing_compression_contact_count = 0;
     uint16_t received_move_count = 0;
+    uint16_t downward_generated_move_count = 0;
+    uint16_t downward_zero_amount_move_count = 0;
+    uint16_t downward_transfer_only_count = 0;
+    uint16_t downward_fluid_blocked_contact_count = 0;
+    uint16_t downward_elastic_collision_count = 0;
+    uint16_t downward_inelastic_collision_count = 0;
+    uint16_t downward_absorption_count = 0;
+    uint16_t downward_air_target_count = 0;
+    uint16_t downward_same_material_target_count = 0;
+    uint16_t downward_wall_target_count = 0;
     uint16_t hydrostatic_pressure_injection_count = 0;
     uint16_t dynamic_pressure_target_injection_count = 0;
     uint16_t dynamic_pressure_reflection_injection_count = 0;

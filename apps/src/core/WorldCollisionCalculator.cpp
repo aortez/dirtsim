@@ -53,6 +53,32 @@ bool shouldSuppressGranularExcessMovePressure(const Cell& fromCell, const Cell& 
         || isCompressionSupportSink(toCell.material_type);
 }
 
+bool isFluidBlockedContactCandidate(
+    const Cell& fromCell,
+    const Cell& toCell,
+    const Vector2i& fromPos,
+    const Vector2i& toPos,
+    float amount)
+{
+    constexpr float blocked_capacity_epsilon = 0.0001f;
+    constexpr float blocked_transfer_epsilon = 0.0001f;
+
+    if (fromCell.material_type != Material::EnumType::Water
+        || toCell.material_type != Material::EnumType::Water) {
+        return false;
+    }
+
+    if (toPos.y <= fromPos.y) {
+        return false;
+    }
+
+    if (amount > blocked_transfer_epsilon) {
+        return false;
+    }
+
+    return toCell.getCapacity() <= blocked_capacity_epsilon;
+}
+
 double computeCompressionLoadRatio(const Cell& cell, double gravity_magnitude)
 {
     constexpr double minimum_weight_threshold = 0.001;
@@ -222,6 +248,12 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     // Determine collision type based on materials and energy.
     move.collision_type =
         determineCollisionType(fromCell.material_type, toCell.material_type, move.collision_energy);
+
+    if (isFluidBlockedContactCandidate(fromCell, toCell, fromPos, toPos, move.amount)) {
+        move.collision_type = CollisionType::FLUID_BLOCKED_CONTACT;
+        move.pressure_from_excess = 0.0f;
+        move.restitution_coefficient = 0.0f;
+    }
 
     // Single-cell organisms must not fragment via partial TRANSFER_ONLY.
     // Only allow full transfers into completely empty cells.
@@ -767,6 +799,21 @@ void WorldCollisionCalculator::handleCompressionContact(
     }
     fromCell.velocity = from_comp.tangential;
     toCell.velocity = to_comp.tangential;
+    clampCompressionBoundaryCrossing(fromCell, surface_normal);
+}
+
+void WorldCollisionCalculator::handleFluidBlockedContact(
+    Cell& fromCell, Cell& toCell, const MaterialMove& move)
+{
+    const Vector2d surface_normal = move.getDirection().normalize();
+    const auto from_comp = decomposeVelocity(fromCell.velocity, surface_normal);
+    const auto to_comp = decomposeVelocity(toCell.velocity, surface_normal);
+
+    const double from_normal_after = std::min(0.0, from_comp.normal_scalar);
+    const double to_normal_after = std::min(0.0, to_comp.normal_scalar);
+
+    fromCell.velocity = from_comp.tangential + surface_normal * from_normal_after;
+    toCell.velocity = to_comp.tangential + surface_normal * to_normal_after;
     clampCompressionBoundaryCrossing(fromCell, surface_normal);
 }
 

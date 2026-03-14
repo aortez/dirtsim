@@ -59,6 +59,9 @@ int computeRegionBlockCount(int cells)
 constexpr float kGranularCompressionCandidateCapacityEpsilon = 0.02f;
 constexpr float kGranularCompressionCandidateFillRatioMinimum = 0.95f;
 constexpr float kGranularCompressionCandidateLoadEpsilon = 0.001f;
+constexpr float kFluidSupportCandidateCapacityEpsilon = 0.02f;
+constexpr float kFluidSupportCandidateFillRatioMinimum = 0.95f;
+constexpr float kGeneratedMoveZeroAmountEpsilon = 0.0001f;
 
 bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
 {
@@ -104,6 +107,26 @@ bool isGranularSupportSinkMaterial(DirtSim::Material::EnumType material)
     return false;
 }
 
+bool isFluidSupportSinkMaterial(DirtSim::Material::EnumType material)
+{
+    switch (material) {
+        case DirtSim::Material::EnumType::Metal:
+        case DirtSim::Material::EnumType::Wall:
+        case DirtSim::Material::EnumType::Wood:
+            return true;
+        case DirtSim::Material::EnumType::Air:
+        case DirtSim::Material::EnumType::Dirt:
+        case DirtSim::Material::EnumType::Leaf:
+        case DirtSim::Material::EnumType::Root:
+        case DirtSim::Material::EnumType::Sand:
+        case DirtSim::Material::EnumType::Seed:
+        case DirtSim::Material::EnumType::Water:
+            return false;
+    }
+
+    return false;
+}
+
 bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
 {
     if (cell.isEmpty()) {
@@ -111,6 +134,115 @@ bool isGranularSupportSinkCell(const DirtSim::Cell& cell)
     }
 
     return isGranularSupportSinkMaterial(cell.material_type);
+}
+
+bool isFluidSupportSinkCell(const DirtSim::Cell& cell)
+{
+    if (cell.isEmpty()) {
+        return false;
+    }
+
+    return isFluidSupportSinkMaterial(cell.material_type);
+}
+
+bool isSupportedWaterCell(const DirtSim::Cell& cell)
+{
+    if (cell.isEmpty() || cell.material_type != DirtSim::Material::EnumType::Water) {
+        return false;
+    }
+
+    if (cell.fill_ratio < kFluidSupportCandidateFillRatioMinimum) {
+        return false;
+    }
+
+    return cell.getCapacity() <= kFluidSupportCandidateCapacityEpsilon;
+}
+
+bool hasBuriedFluidExposure(const DirtSim::WorldData& data, int x, int y)
+{
+    constexpr std::array<DirtSim::Vector2i, 4> directions{ {
+        DirtSim::Vector2i{ -1, 0 },
+        DirtSim::Vector2i{ 1, 0 },
+        DirtSim::Vector2i{ 0, -1 },
+        DirtSim::Vector2i{ 0, 1 },
+    } };
+
+    for (const DirtSim::Vector2i& direction : directions) {
+        const int neighborX = x + direction.x;
+        const int neighborY = y + direction.y;
+        if (!data.inBounds(neighborX, neighborY)) {
+            return true;
+        }
+
+        const DirtSim::Cell& neighbor = data.at(neighborX, neighborY);
+        if (neighbor.isEmpty() || neighbor.material_type == DirtSim::Material::EnumType::Air) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool hasSupportedFluidPath(
+    const DirtSim::WorldData& data,
+    int x,
+    int y,
+    int supportOffsetY,
+    std::vector<int8_t>& supportCache)
+{
+    if (!data.inBounds(x, y)) {
+        return false;
+    }
+
+    const size_t cellIndex = static_cast<size_t>(y) * data.width + x;
+    int8_t& cachedResult = supportCache[cellIndex];
+    if (cachedResult >= 0) {
+        return cachedResult != 0;
+    }
+
+    cachedResult = 0;
+
+    const DirtSim::Cell& cell = data.at(x, y);
+    if (!isSupportedWaterCell(cell)) {
+        return false;
+    }
+
+    const int supportY = y + supportOffsetY;
+    if (!data.inBounds(x, supportY)) {
+        return false;
+    }
+
+    const DirtSim::Cell& directSupport = data.at(x, supportY);
+    if (isFluidSupportSinkCell(directSupport)) {
+        cachedResult = 1;
+        return true;
+    }
+
+    if (!isSupportedWaterCell(directSupport)) {
+        return false;
+    }
+
+    if (hasSupportedFluidPath(data, x, supportY, supportOffsetY, supportCache)) {
+        cachedResult = 1;
+        return true;
+    }
+
+    return false;
+}
+
+bool hasBlockedFluidNormalSupport(const DirtSim::WorldData& data, int x, int y, int supportOffsetY)
+{
+    const int supportY = y + supportOffsetY;
+    if (!data.inBounds(x, supportY)) {
+        return true;
+    }
+
+    const DirtSim::Cell& directSupport = data.at(x, supportY);
+    if (isFluidSupportSinkCell(directSupport)) {
+        return true;
+    }
+
+    return isSupportedWaterCell(directSupport);
 }
 
 bool hasSupportedGranularPath(
@@ -309,6 +441,55 @@ void incrementSaturating(uint16_t& value)
 {
     if (value != std::numeric_limits<uint16_t>::max()) {
         value++;
+    }
+}
+
+void noteGeneratedMoveClassification(
+    DirtSim::CellDebug& debug, const DirtSim::MaterialMove& move, const DirtSim::Cell& toCell)
+{
+    const DirtSim::Vector2i direction{
+        static_cast<int>(move.to.x - move.from.x),
+        static_cast<int>(move.to.y - move.from.y),
+    };
+    if (direction.y <= 0) {
+        return;
+    }
+
+    incrementSaturating(debug.downward_generated_move_count);
+
+    if (move.amount <= kGeneratedMoveZeroAmountEpsilon) {
+        incrementSaturating(debug.downward_zero_amount_move_count);
+    }
+
+    if (toCell.material_type == DirtSim::Material::EnumType::Air) {
+        incrementSaturating(debug.downward_air_target_count);
+    }
+    if (toCell.material_type == move.material) {
+        incrementSaturating(debug.downward_same_material_target_count);
+    }
+    if (toCell.material_type == DirtSim::Material::EnumType::Wall) {
+        incrementSaturating(debug.downward_wall_target_count);
+    }
+
+    switch (move.collision_type) {
+        case DirtSim::CollisionType::TRANSFER_ONLY:
+            incrementSaturating(debug.downward_transfer_only_count);
+            break;
+        case DirtSim::CollisionType::FLUID_BLOCKED_CONTACT:
+            incrementSaturating(debug.downward_fluid_blocked_contact_count);
+            break;
+        case DirtSim::CollisionType::ELASTIC_REFLECTION:
+            incrementSaturating(debug.downward_elastic_collision_count);
+            break;
+        case DirtSim::CollisionType::INELASTIC_COLLISION:
+            incrementSaturating(debug.downward_inelastic_collision_count);
+            break;
+        case DirtSim::CollisionType::ABSORPTION:
+            incrementSaturating(debug.downward_absorption_count);
+            break;
+        case DirtSim::CollisionType::COMPRESSION_CONTACT:
+        case DirtSim::CollisionType::FRAGMENTATION:
+            break;
     }
 }
 
@@ -828,6 +1009,8 @@ void World::advanceTime(double deltaTimeSeconds)
         debug.hydrostatic_pressure_injection_count = 0;
     }
 
+    pImpl->pressure_calculator_.beginPressureFrame(*this);
+
     // Inject hydrostatic pressure from gravity.
     if (pImpl->physicsSettings_.pressure_hydrostatic_strength > 0.0) {
         ScopeTimer hydroTimer(pImpl->timers_, "hydrostatic_pressure");
@@ -853,6 +1036,8 @@ void World::advanceTime(double deltaTimeSeconds)
         ScopeTimer decayTimer(pImpl->timers_, "pressure_decay");
         pImpl->pressure_calculator_.applyPressureDecay(*this, scaledDeltaTime);
     }
+
+    pImpl->pressure_calculator_.finalizePressureFrame(*this);
 
     // Update organisms before force accumulation so new cells participate in physics.
     {
@@ -1283,6 +1468,7 @@ void World::applyGravity()
     const float gravityMagnitude = static_cast<float>(std::abs(gravity));
 
     std::vector<int8_t> granularSupportCache(data.cells.size(), -1);
+    std::vector<int8_t> fluidSupportCache(data.cells.size(), -1);
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
@@ -1305,6 +1491,24 @@ void World::applyGravity()
                     debug_info[idx].has_granular_support_path = hasSupportPath;
 
                     if (carriesTransmittedLoad && hasSupportPath) {
+                        debug_info[idx].gravity_skipped_for_support = true;
+                        continue;
+                    }
+                }
+
+                if (gravityMagnitude > 0.0001f && cell.material_type == Material::EnumType::Water) {
+                    const int supportOffsetY = gravity > 0.0 ? 1 : -1;
+                    const bool hasSupportPath =
+                        hasSupportedFluidPath(data, x, y, supportOffsetY, fluidSupportCache);
+                    const bool isBuriedWater = !hasBuriedFluidExposure(data, x, y);
+                    const bool hasBlockedNormalSupport =
+                        hasBlockedFluidNormalSupport(data, x, y, supportOffsetY);
+                    const float normalVelocity =
+                        supportOffsetY > 0 ? cell.velocity.y : -cell.velocity.y;
+                    const bool isRestingSurfaceWater = hasBlockedNormalSupport
+                        && std::abs(cell.velocity.x) < 0.2f && std::abs(normalVelocity) < 0.2f;
+
+                    if (hasSupportPath && (isBuriedWater || isRestingSurfaceWater)) {
                         debug_info[idx].gravity_skipped_for_support = true;
                         continue;
                     }
@@ -1445,6 +1649,11 @@ void World::applyCohesionForces(const GridOfCells& grid)
                 const CellDebug& debug = grid.debugAt(x, y);
                 if (isLoadBearingGranularCell(cell) && debug.has_granular_support_path
                     && isGranularSupportSinkMaterial(adhesion.target_material)) {
+                    adhesion_force = {};
+                }
+                if (cell.material_type == Material::EnumType::Water
+                    && debug.gravity_skipped_for_support
+                    && isFluidSupportSinkMaterial(adhesion.target_material)) {
                     adhesion_force = {};
                 }
                 cell.addPendingForce(adhesion_force);
@@ -1962,6 +2171,16 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     for (CellDebug& debug : data.debug_info) {
         debug.blocked_outgoing_transfer_amount = 0.0f;
         debug.blocked_outgoing_transfer_count = 0;
+        debug.downward_absorption_count = 0;
+        debug.downward_air_target_count = 0;
+        debug.downward_elastic_collision_count = 0;
+        debug.downward_fluid_blocked_contact_count = 0;
+        debug.downward_generated_move_count = 0;
+        debug.downward_inelastic_collision_count = 0;
+        debug.downward_same_material_target_count = 0;
+        debug.downward_transfer_only_count = 0;
+        debug.downward_wall_target_count = 0;
+        debug.downward_zero_amount_move_count = 0;
         debug.generated_move_count = 0;
         debug.generated_move_direction_mask = CellDebug::DirectionNone;
         debug.gravity_compression_candidate_count = 0;
@@ -2106,12 +2325,15 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                         move.restitution_coefficient = 0.0f;
                     }
 
+                    noteGeneratedMoveClassification(debug, move, data.at(targetPos.x, targetPos.y));
+
                     num_moves_generated++;
                     switch (move.collision_type) {
                         case CollisionType::TRANSFER_ONLY:
                             num_transfers_generated++;
                             break;
                         case CollisionType::COMPRESSION_CONTACT:
+                        case CollisionType::FLUID_BLOCKED_CONTACT:
                             num_compression_generated++;
                             break;
                         case CollisionType::ELASTIC_REFLECTION:
@@ -2250,7 +2472,8 @@ void World::processMaterialMoves()
             toDebug.received_move_direction_mask |= receivedDirectionMask;
         }
 
-        if (move.collision_type != CollisionType::COMPRESSION_CONTACT) {
+        if (move.collision_type != CollisionType::COMPRESSION_CONTACT
+            && move.collision_type != CollisionType::FLUID_BLOCKED_CONTACT) {
             pImpl->region_activity_tracker_.noteMaterialMove(
                 move.from.x, move.from.y, move.to.x, move.to.y);
         }
@@ -2261,9 +2484,11 @@ void World::processMaterialMoves()
 
         // Apply any pressure from excess that couldn't transfer.
         if (move.collision_type != CollisionType::COMPRESSION_CONTACT
+            && move.collision_type != CollisionType::FLUID_BLOCKED_CONTACT
             && move.pressure_from_excess > 0.0) {
             if (toCell.material_type == Material::EnumType::Wall) {
-                fromCell.pressure += move.pressure_from_excess;
+                pImpl->pressure_calculator_.accumulateDynamicPressure(
+                    *this, move.from.x, move.from.y, move.pressure_from_excess);
                 if (fromIndex < data.debug_info.size()) {
                     CellDebug& fromDebug = data.debug_info[fromIndex];
                     incrementSaturating(fromDebug.excess_move_pressure_injection_count);
@@ -2277,7 +2502,8 @@ void World::processMaterialMoves()
                     move.pressure_from_excess);
             }
             else {
-                toCell.pressure += move.pressure_from_excess;
+                pImpl->pressure_calculator_.accumulateDynamicPressure(
+                    *this, move.to.x, move.to.y, move.pressure_from_excess);
                 if (toIndex < data.debug_info.size()) {
                     CellDebug& toDebug = data.debug_info[toIndex];
                     incrementSaturating(toDebug.excess_move_pressure_injection_count);
@@ -2294,7 +2520,8 @@ void World::processMaterialMoves()
 
         // Check if materials should swap instead of colliding (if enabled).
         if (settings.swap_enabled && move.collision_type != CollisionType::TRANSFER_ONLY
-            && move.collision_type != CollisionType::COMPRESSION_CONTACT) {
+            && move.collision_type != CollisionType::COMPRESSION_CONTACT
+            && move.collision_type != CollisionType::FLUID_BLOCKED_CONTACT) {
             Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
             bool should_swap = collision_calc.shouldSwapMaterials(
                 *this, move.from.x, move.from.y, fromCell, toCell, direction, move);
@@ -2363,6 +2590,10 @@ void World::processMaterialMoves()
             case CollisionType::COMPRESSION_CONTACT:
                 num_compression++;
                 collision_calc.handleCompressionContact(*this, fromCell, toCell, move);
+                break;
+            case CollisionType::FLUID_BLOCKED_CONTACT:
+                num_compression++;
+                collision_calc.handleFluidBlockedContact(fromCell, toCell, move);
                 break;
             case CollisionType::ELASTIC_REFLECTION:
                 num_elastic++;
