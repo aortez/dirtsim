@@ -77,6 +77,11 @@ public:
         // Trough colors (for ActionButton, ActionDropdown, etc.).
         static constexpr uint32_t TROUGH_COLOR = 0x202020;       // Dark inset trough.
         static constexpr uint32_t TROUGH_INNER_COLOR = 0x404040; // Inner element background.
+        static constexpr uint32_t SLIDER_ACTIVE_COLOR = 0xA0A0A0;
+        static constexpr uint32_t SLIDER_DISABLED_COLOR = 0x606060;
+        static constexpr uint32_t SLIDER_KNOB_COLOR = 0xFFFFFF;
+        static constexpr uint32_t SWITCH_ACTIVE_COLOR = 0x8A8A8A;
+        static constexpr uint32_t TEXT_DISABLED_COLOR = 0xB0B0B0;
     };
 
     /**

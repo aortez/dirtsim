@@ -208,8 +208,16 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
         idleTimeoutSlider_, timeoutMsToSeconds(settings_.startMenuIdleTimeoutMs), LV_ANIM_OFF);
     lv_obj_set_style_bg_color(
         idleTimeoutSlider_, lv_color_hex(LVGLBuilder::Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(idleTimeoutSlider_, lv_color_hex(0x3399FF), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(idleTimeoutSlider_, lv_color_hex(0x3399FF), LV_PART_KNOB);
+    lv_obj_set_style_bg_color(
+        idleTimeoutSlider_,
+        lv_color_hex(LVGLBuilder::Style::SLIDER_ACTIVE_COLOR),
+        LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(
+        idleTimeoutSlider_, lv_color_hex(LVGLBuilder::Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(idleTimeoutSlider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(idleTimeoutSlider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(idleTimeoutSlider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(idleTimeoutSlider_, 0, LV_PART_KNOB);
     lv_obj_set_style_radius(
         idleTimeoutSlider_, LVGLBuilder::Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
     lv_obj_set_style_radius(

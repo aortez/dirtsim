@@ -274,6 +274,19 @@ Result<lv_obj_t*, std::string> LVGLBuilder::SliderBuilder::createSlider()
     }
     lv_slider_set_value(slider_, clamped_value, LV_ANIM_OFF);
 
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(slider_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::SLIDER_ACTIVE_COLOR), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_radius(slider_, size_.height / 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider_, size_.height / 2, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider_, Style::SLIDER_KNOB_RADIUS, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider_, Style::SLIDER_KNOB_SIZE / 2 - size_.height / 2, LV_PART_KNOB);
+
     return Result<lv_obj_t*, std::string>::okay(slider_);
 }
 
@@ -286,7 +299,8 @@ void LVGLBuilder::SliderBuilder::createLabel()
     }
 
     lv_label_set_text(label_, label_text_.c_str());
-    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
     lv_obj_align(label_, label_position_.align, label_position_.x, label_position_.y);
 }
 
@@ -298,7 +312,8 @@ void LVGLBuilder::SliderBuilder::createValueLabel()
         return;
     }
 
-    lv_obj_set_style_text_color(value_label_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_set_style_text_color(value_label_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(value_label_, Style::CONTROL_FONT, 0);
 
     // Set initial value text based on slider's current value.
     char buf[32];
@@ -1022,6 +1037,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
 
 // State structure for toggle slider callbacks.
 struct ToggleSliderState {
+    lv_obj_t* labelObj;
     lv_obj_t* slider;
     lv_obj_t* valueLabel;
     lv_obj_t* switch_obj;
@@ -1037,6 +1053,19 @@ struct ToggleSliderState {
     bool sliderInteractionActive;
 };
 
+static void toggleSliderSetTextColors(ToggleSliderState* state, bool isEnabled)
+{
+    if (!state) return;
+
+    const uint32_t textColor = isEnabled ? 0xFFFFFF : LVGLBuilder::Style::TEXT_DISABLED_COLOR;
+    if (state->labelObj) {
+        lv_obj_set_style_text_color(state->labelObj, lv_color_hex(textColor), 0);
+    }
+    if (state->valueLabel) {
+        lv_obj_set_style_text_color(state->valueLabel, lv_color_hex(textColor), 0);
+    }
+}
+
 static void toggleSliderSwitchCallback(lv_event_t* e)
 {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
@@ -1051,10 +1080,12 @@ static void toggleSliderSwitchCallback(lv_event_t* e)
         int valueToRestore = (state->savedValue > 0) ? state->savedValue : state->defaultValue;
         lv_slider_set_value(state->slider, valueToRestore, LV_ANIM_OFF);
 
-        // Restore blue color.
         lv_obj_set_style_bg_color(
-            state->slider, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(state->slider, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+            state->slider,
+            lv_color_hex(LVGLBuilder::Style::SLIDER_ACTIVE_COLOR),
+            LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            state->slider, lv_color_hex(LVGLBuilder::Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
 
         // Update value label.
         double scaledValue = valueToRestore * state->valueScale;
@@ -1072,15 +1103,20 @@ static void toggleSliderSwitchCallback(lv_event_t* e)
 
         lv_slider_set_value(state->slider, 0, LV_ANIM_OFF);
 
-        // Grey color when disabled (visual feedback only, still interactive).
-        lv_obj_set_style_bg_color(state->slider, lv_color_hex(0x808080), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(state->slider, lv_color_hex(0x808080), LV_PART_KNOB);
+        lv_obj_set_style_bg_color(
+            state->slider,
+            lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR),
+            LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            state->slider, lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR), LV_PART_KNOB);
 
         // Update value label to 0.
         char buf[32];
         snprintf(buf, sizeof(buf), state->valueFormat.c_str(), 0.0);
         lv_label_set_text(state->valueLabel, buf);
     }
+
+    toggleSliderSetTextColors(state, isEnabled);
 
     const std::string label = state->label.empty() ? "Toggle" : state->label;
     LOG_INFO(Controls, "Toggle '{}' {}", label, isEnabled ? "on" : "off");
@@ -1244,6 +1280,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     // Create container for the whole control group.
     // Height accommodates: top row (switch height) + gap + slider (with large knob).
     constexpr int containerHeight = Style::SWITCH_HEIGHT + Style::GAP + Style::SLIDER_KNOB_SIZE + 8;
+    const lv_style_selector_t checkedIndicatorSelector = static_cast<lv_style_selector_t>(
+        static_cast<unsigned>(LV_PART_INDICATOR) | static_cast<unsigned>(LV_STATE_CHECKED));
     container_ = lv_obj_create(parent_);
     lv_obj_set_size(container_, Style::CONTROL_WIDTH, containerHeight);
     lv_obj_set_style_pad_all(container_, Style::GAP, 0);
@@ -1251,8 +1289,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_radius(container_, Style::RADIUS, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Blue background to match LabeledSwitch theme.
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
 
     // Create label (top left, vertically centered with switch).
@@ -1266,6 +1303,14 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     switch_ = lv_switch_create(container_);
     lv_obj_align(switch_, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(
+        switch_, lv_color_hex(Style::SWITCH_ACTIVE_COLOR), checkedIndicatorSelector);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(switch_, 0, LV_PART_KNOB);
 
     if (initially_enabled_) {
         lv_obj_add_state(switch_, LV_STATE_CHECKED);
@@ -1287,15 +1332,20 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_INDICATOR);
 
-    // Set initial color (slider always interactive for auto-enable).
-    if (!initially_enabled_) {
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_KNOB);
-    }
-    else {
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
-    }
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(
+        slider_,
+        lv_color_hex(
+            initially_enabled_ ? Style::SLIDER_ACTIVE_COLOR : Style::SLIDER_DISABLED_COLOR),
+        LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(
+        slider_,
+        lv_color_hex(initially_enabled_ ? Style::SLIDER_KNOB_COLOR : Style::SLIDER_DISABLED_COLOR),
+        LV_PART_KNOB);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(slider_, 0, LV_PART_KNOB);
 
     // Create value label (right of label, shows current value).
     valueLabel_ = lv_label_create(container_);
@@ -1308,19 +1358,15 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_text_color(valueLabel_, lv_color_hex(0xFFFFFF), 0);
 
     // Create persistent state for callbacks.
-    ToggleSliderState* state = new ToggleSliderState{ slider_,
-                                                      valueLabel_,
-                                                      switch_,
-                                                      value_scale_,
-                                                      value_format_,
-                                                      initial_value_,
-                                                      default_value_,
-                                                      slider_callback_,
-                                                      slider_user_data_,
-                                                      toggle_callback_,
-                                                      toggle_user_data_,
-                                                      label_text_,
-                                                      false };
+    ToggleSliderState* state = new ToggleSliderState{ label_,           slider_,
+                                                      valueLabel_,      switch_,
+                                                      value_scale_,     value_format_,
+                                                      initial_value_,   default_value_,
+                                                      slider_callback_, slider_user_data_,
+                                                      toggle_callback_, toggle_user_data_,
+                                                      label_text_,      false };
+
+    toggleSliderSetTextColors(state, initially_enabled_);
 
     // Set user_data on widgets so user callbacks can access it.
     if (toggle_user_data_) {
