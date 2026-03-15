@@ -76,6 +76,8 @@ private:
     lv_obj_t* passwordFormContainer_ = nullptr;
     lv_obj_t* passwordJoinButton_ = nullptr;
     lv_obj_t* passwordKeyboard_ = nullptr;
+    lv_obj_t* networkDetailsOverlay_ = nullptr;
+    lv_obj_t* networkDetailsContent_ = nullptr;
     lv_obj_t* passwordOverlay_ = nullptr;
     lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
@@ -92,6 +94,11 @@ private:
     };
 
     struct DisconnectContext {
+        NetworkDiagnosticsPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
+    struct NetworkDetailsContext {
         NetworkDiagnosticsPanel* panel = nullptr;
         size_t index = 0;
     };
@@ -118,6 +125,7 @@ private:
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
+        std::optional<std::vector<Network::WifiAccessPointInfo>> accessPoints;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
         std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;
@@ -143,10 +151,12 @@ private:
     };
 
     std::vector<NetworkInterfaceInfo> localAddresses_;
+    std::vector<Network::WifiAccessPointInfo> accessPoints_;
     std::vector<Network::WifiNetworkInfo> networks_;
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
     std::vector<std::unique_ptr<DisconnectContext>> disconnectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
+    std::vector<std::unique_ptr<NetworkDetailsContext>> networkDetailsContexts_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
@@ -159,6 +169,7 @@ private:
     std::optional<Network::WifiStatus> latestWifiStatus_;
     bool webUiEnabled_ = false;
     bool connectOverlayHasPasswordEntry_ = false;
+    std::optional<Network::WifiNetworkInfo> networkDetailsNetwork_;
     bool passwordVisible_ = false;
     bool scanInProgress_ = false;
     bool webSocketEnabled_ = false;
@@ -178,8 +189,10 @@ private:
         const std::optional<std::string>& password = std::nullopt);
     bool startAsyncConnectCancel();
     void startAsyncDisconnect(const Network::WifiNetworkInfo& network);
+    void closeNetworkDetailsOverlay();
     void closePasswordPrompt();
     bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
+    void openNetworkDetailsOverlay(const Network::WifiNetworkInfo& network);
     void openConnectingOverlay(const Network::WifiNetworkInfo& network);
     void openPasswordPrompt(const Network::WifiNetworkInfo& network);
     void startAsyncForget(const Network::WifiNetworkInfo& network);
@@ -229,6 +242,10 @@ private:
     static void onConnectProgressCancelClicked(lv_event_t* e);
     static void onDisconnectClicked(lv_event_t* e);
     static void onForgetClicked(lv_event_t* e);
+    static void onNetworkDetailsClicked(lv_event_t* e);
+    static void onNetworkDetailsCloseClicked(lv_event_t* e);
+    static void onNetworkDetailsForgetClicked(lv_event_t* e);
+    static void onNetworkDetailsUpdatePasswordClicked(lv_event_t* e);
     static void onPasswordCancelClicked(lv_event_t* e);
     static void onPasswordJoinClicked(lv_event_t* e);
     static void onPasswordKeyboardEvent(lv_event_t* e);

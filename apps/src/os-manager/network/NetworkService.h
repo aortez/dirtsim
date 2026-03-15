@@ -22,6 +22,7 @@ public:
     struct Snapshot {
         Network::WifiStatus status;
         std::vector<Network::WifiNetworkInfo> networks;
+        std::vector<Network::WifiAccessPointInfo> accessPoints;
         std::vector<LocalAddressInfo> localAddresses;
         std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;

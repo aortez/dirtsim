@@ -94,6 +94,31 @@ bool wifiNetworksEqual(
     return true;
 }
 
+bool wifiAccessPointInfoEqual(
+    const Network::WifiAccessPointInfo& lhs, const Network::WifiAccessPointInfo& rhs)
+{
+    return lhs.ssid == rhs.ssid && lhs.bssid == rhs.bssid && lhs.signalDbm == rhs.signalDbm
+        && lhs.frequencyMhz == rhs.frequencyMhz && lhs.channel == rhs.channel
+        && lhs.security == rhs.security && lhs.active == rhs.active;
+}
+
+bool wifiAccessPointsEqual(
+    const std::vector<Network::WifiAccessPointInfo>& lhs,
+    const std::vector<Network::WifiAccessPointInfo>& rhs)
+{
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (!wifiAccessPointInfoEqual(lhs[i], rhs[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool wifiConnectProgressEqual(
     const std::optional<Network::WifiConnectProgress>& lhs,
     const std::optional<Network::WifiConnectProgress>& rhs)
@@ -170,6 +195,7 @@ bool snapshotsEqual(const NetworkService::Snapshot& lhs, const NetworkService::S
         && wifiConnectOutcomeEqual(lhs.connectOutcome, rhs.connectOutcome)
         && wifiConnectProgressEqual(lhs.connectProgress, rhs.connectProgress)
         && wifiNetworksEqual(lhs.networks, rhs.networks)
+        && wifiAccessPointsEqual(lhs.accessPoints, rhs.accessPoints)
         && localAddressesEqual(lhs.localAddresses, rhs.localAddresses);
 }
 
@@ -992,6 +1018,12 @@ struct NetworkService::Impl {
                 .forceScan = forceScan,
                 .mainContext = mainContext,
             });
+        const auto accessPointsResult = Network::Internal::listAccessPoints(
+            client.get(),
+            Network::Internal::WifiListOptions{
+                .forceScan = false,
+                .mainContext = mainContext,
+            });
 
         if (statusResult.isError()) {
             lastRefreshError = statusResult.errorValue();
@@ -1001,6 +1033,12 @@ struct NetworkService::Impl {
         }
         if (networksResult.isError()) {
             lastRefreshError = networksResult.errorValue();
+            updateScanInProgress(false);
+            LOG_WARN(Network, "NetworkService refresh failed: {}", lastRefreshError);
+            return;
+        }
+        if (accessPointsResult.isError()) {
+            lastRefreshError = accessPointsResult.errorValue();
             updateScanInProgress(false);
             LOG_WARN(Network, "NetworkService refresh failed: {}", lastRefreshError);
             return;
@@ -1015,6 +1053,7 @@ struct NetworkService::Impl {
         const Snapshot refreshedSnapshot{
             .status = statusResult.value(),
             .networks = std::move(refreshedNetworks),
+            .accessPoints = accessPointsResult.value(),
             .localAddresses = collectLocalAddresses(),
             .connectOutcome = connectOutcome,
             .connectProgress = connectProgress,

@@ -105,6 +105,20 @@ OsApi::NetworkSnapshotGet::WifiNetworkInfo toApiWifiNetworkInfo(
     };
 }
 
+OsApi::NetworkSnapshotGet::WifiAccessPointInfo toApiWifiAccessPointInfo(
+    const Network::WifiAccessPointInfo& info)
+{
+    return OsApi::NetworkSnapshotGet::WifiAccessPointInfo{
+        .ssid = info.ssid,
+        .bssid = info.bssid,
+        .signalDbm = info.signalDbm,
+        .frequencyMhz = info.frequencyMhz,
+        .channel = info.channel,
+        .security = info.security,
+        .active = info.active,
+    };
+}
+
 OsApi::NetworkSnapshotGet::WifiStatusInfo toApiWifiStatusInfo(const Network::WifiStatus& status)
 {
     return OsApi::NetworkSnapshotGet::WifiStatusInfo{
@@ -179,6 +193,10 @@ OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::S
     okay.networks.reserve(snapshot.networks.size());
     for (const auto& network : snapshot.networks) {
         okay.networks.push_back(toApiWifiNetworkInfo(network));
+    }
+    okay.accessPoints.reserve(snapshot.accessPoints.size());
+    for (const auto& accessPoint : snapshot.accessPoints) {
+        okay.accessPoints.push_back(toApiWifiAccessPointInfo(accessPoint));
     }
     return okay;
 }
