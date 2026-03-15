@@ -613,6 +613,7 @@ void NetworkDiagnosticsPanel::closePasswordPrompt()
     passwordJoinButton_ = nullptr;
     passwordKeyboard_ = nullptr;
     passwordTextArea_ = nullptr;
+    passwordStatusLabel_ = nullptr;
     passwordVisibilityButton_ = nullptr;
     passwordPromptNetwork_.reset();
     passwordVisible_ = false;
@@ -781,6 +782,13 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_text_font(passwordErrorLabel_, &lv_font_montserrat_12, 0);
     lv_obj_add_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
 
+    passwordStatusLabel_ = lv_label_create(modal);
+    lv_obj_set_width(passwordStatusLabel_, LV_PCT(100));
+    lv_label_set_long_mode(passwordStatusLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(passwordStatusLabel_, lv_color_hex(0x00CED1), 0);
+    lv_obj_set_style_text_font(passwordStatusLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_add_flag(passwordStatusLabel_, LV_OBJ_FLAG_HIDDEN);
+
     passwordKeyboard_ = lv_keyboard_create(modal);
     lv_obj_set_size(passwordKeyboard_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(passwordKeyboard_, 1);
@@ -801,6 +809,7 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     updatePasswordVisibilityButton();
     updatePasswordJoinButton();
     setPasswordPromptError("");
+    setPasswordPromptStatus("", MUTED_TEXT_COLOR);
 }
 
 void NetworkDiagnosticsPanel::refresh(bool forceRefresh)
@@ -929,27 +938,35 @@ void NetworkDiagnosticsPanel::setPasswordPromptBusy(bool busy)
     if (passwordTextArea_) {
         if (busy) {
             lv_obj_add_state(passwordTextArea_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(passwordTextArea_, LV_OPA_50, 0);
         }
         else {
             lv_obj_clear_state(passwordTextArea_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(passwordTextArea_, LV_OPA_COVER, 0);
         }
     }
 
     if (passwordKeyboard_) {
         if (busy) {
             lv_obj_add_state(passwordKeyboard_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_50, 0);
+            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_50, LV_PART_ITEMS);
         }
         else {
             lv_obj_clear_state(passwordKeyboard_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_COVER, 0);
+            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_COVER, LV_PART_ITEMS);
         }
     }
 
     setActionButtonEnabled(passwordCancelButton_, !busy);
     setActionButtonEnabled(passwordVisibilityButton_, !busy);
     if (busy) {
+        setActionButtonText(passwordJoinButton_, "Joining...");
         setActionButtonEnabled(passwordJoinButton_, false);
     }
     else {
+        setActionButtonText(passwordJoinButton_, "Join");
         updatePasswordJoinButton();
     }
 }
@@ -968,6 +985,23 @@ void NetworkDiagnosticsPanel::setPasswordPromptError(const std::string& message)
 
     lv_label_set_text(passwordErrorLabel_, message.c_str());
     lv_obj_clear_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void NetworkDiagnosticsPanel::setPasswordPromptStatus(const std::string& message, uint32_t color)
+{
+    if (!passwordStatusLabel_) {
+        return;
+    }
+
+    if (message.empty()) {
+        lv_label_set_text(passwordStatusLabel_, "");
+        lv_obj_add_flag(passwordStatusLabel_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(passwordStatusLabel_, message.c_str());
+    lv_obj_set_style_text_color(passwordStatusLabel_, lv_color_hex(color), 0);
+    lv_obj_clear_flag(passwordStatusLabel_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void NetworkDiagnosticsPanel::setRefreshButtonEnabled(bool enabled)
@@ -1578,7 +1612,7 @@ bool NetworkDiagnosticsPanel::isActionInProgress() const
 
 void NetworkDiagnosticsPanel::submitPasswordPrompt()
 {
-    if (!passwordPromptNetwork_.has_value() || !passwordTextArea_) {
+    if (!passwordPromptNetwork_.has_value() || !passwordTextArea_ || isActionInProgress()) {
         return;
     }
 
@@ -1590,6 +1624,9 @@ void NetworkDiagnosticsPanel::submitPasswordPrompt()
     }
 
     setPasswordPromptError("");
+    setPasswordPromptStatus(
+        std::string(LV_SYMBOL_REFRESH) + " Connecting to " + passwordPromptNetwork_->ssid + "...",
+        0x00CED1);
     setPasswordPromptBusy(true);
     startAsyncConnect(passwordPromptNetwork_.value(), std::string(passwordText));
 }
@@ -1964,6 +2001,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             setWifiStatusMessage("Wi-Fi connect failed", ERROR_TEXT_COLOR);
             if (passwordPromptConnect) {
                 setPasswordPromptBusy(false);
+                setPasswordPromptStatus("", MUTED_TEXT_COLOR);
                 setPasswordPromptError(connectResult->errorValue());
             }
             if (!networks_.empty()) {

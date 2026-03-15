@@ -67,6 +67,7 @@ private:
     lv_obj_t* passwordJoinButton_ = nullptr;
     lv_obj_t* passwordKeyboard_ = nullptr;
     lv_obj_t* passwordOverlay_ = nullptr;
+    lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
     lv_obj_t* passwordVisibilityButton_ = nullptr;
     lv_obj_t* webUiToggle_ = nullptr;
@@ -158,6 +159,7 @@ private:
     void setLoadingState();
     void setPasswordPromptBusy(bool busy);
     void setPasswordPromptError(const std::string& message);
+    void setPasswordPromptStatus(const std::string& message, uint32_t color);
     void setRefreshButtonEnabled(bool enabled);
     void setViewMode(ViewMode mode);
     void setWebSocketToggleEnabled(bool enabled);
