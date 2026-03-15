@@ -23,6 +23,7 @@ public:
         Network::WifiStatus status;
         std::vector<Network::WifiNetworkInfo> networks;
         std::vector<LocalAddressInfo> localAddresses;
+        std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;
         bool scanInProgress = false;
     };

@@ -142,6 +142,16 @@ OsApi::NetworkSnapshotGet::WifiConnectProgressInfo toApiWifiConnectProgressInfo(
     };
 }
 
+OsApi::NetworkSnapshotGet::WifiConnectOutcomeInfo toApiWifiConnectOutcomeInfo(
+    const Network::WifiConnectOutcome& outcome)
+{
+    return OsApi::NetworkSnapshotGet::WifiConnectOutcomeInfo{
+        .ssid = outcome.ssid,
+        .message = outcome.message,
+        .canceled = outcome.canceled,
+    };
+}
+
 OsApi::NetworkSnapshotGet::LocalAddressInfo toApiLocalAddressInfo(
     const NetworkService::LocalAddressInfo& info)
 {
@@ -156,6 +166,9 @@ OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::S
     OsApi::NetworkSnapshotGet::Okay okay;
     okay.status = toApiWifiStatusInfo(snapshot.status);
     okay.scanInProgress = snapshot.scanInProgress;
+    if (snapshot.connectOutcome.has_value()) {
+        okay.connectOutcome = toApiWifiConnectOutcomeInfo(snapshot.connectOutcome.value());
+    }
     if (snapshot.connectProgress.has_value()) {
         okay.connectProgress = toApiWifiConnectProgressInfo(snapshot.connectProgress.value());
     }

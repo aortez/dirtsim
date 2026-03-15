@@ -55,6 +55,12 @@ struct WifiConnectProgress {
     bool canCancel = true;
 };
 
+struct WifiConnectOutcome {
+    std::string ssid;
+    std::string message;
+    bool canceled = false;
+};
+
 struct WifiDisconnectResult {
     bool success = true;
     std::string ssid;

@@ -114,6 +114,7 @@ private:
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
+        std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;
         bool scanInProgress = false;
     };

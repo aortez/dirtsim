@@ -513,6 +513,16 @@ bool waitForDeviceActivation(
                     return;
                 }
 
+                if (newStateValue == NM_DEVICE_STATE_DISCONNECTED) {
+                    if (ctx->error && ctx->error->empty()) {
+                        *ctx->error = std::string("WiFi activation failed (state=")
+                            + deviceStateToString(newStateValue)
+                            + ", reason=" + deviceStateReasonToString(reasonValue) + ")";
+                    }
+                    g_main_loop_quit(ctx->loop->loop);
+                    return;
+                }
+
                 if (newStateValue == NM_DEVICE_STATE_FAILED
                     || newStateValue == NM_DEVICE_STATE_UNAVAILABLE
                     || newStateValue == NM_DEVICE_STATE_UNMANAGED) {
@@ -1301,6 +1311,78 @@ bool disconnectDevice(
     return context.success;
 }
 
+bool activeConnectionUsesDevice(NMActiveConnection* activeConnection, NMDevice* device)
+{
+    if (!activeConnection || !device) {
+        return false;
+    }
+
+    const GPtrArray* devices = nm_active_connection_get_devices(activeConnection);
+    if (!devices) {
+        return false;
+    }
+
+    for (guint i = 0; i < devices->len; ++i) {
+        if (g_ptr_array_index(devices, i) == device) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool deactivateActiveConnection(
+    NMClient* client,
+    NMActiveConnection* activeConnection,
+    GMainContext* mainContext,
+    std::string& errorMessage)
+{
+    if (!client) {
+        errorMessage = "No WiFi client available";
+        return false;
+    }
+    if (!activeConnection) {
+        errorMessage = "No active WiFi connection available";
+        return false;
+    }
+
+    struct DeactivateContext {
+        AsyncLoop* loop = nullptr;
+        bool success = false;
+        std::string* error = nullptr;
+    };
+
+    AsyncLoopGuard loop(resolveMainContext(client, mainContext), kOperationTimeoutSeconds);
+    DeactivateContext context{ loop.get(), false, &errorMessage };
+
+    {
+        MainContextThreadDefaultGuard contextGuard(resolveMainContext(client, mainContext));
+        nm_client_deactivate_connection_async(
+            client,
+            activeConnection,
+            nullptr,
+            +[](GObject* source, GAsyncResult* result, gpointer userData) {
+                auto* ctx = static_cast<DeactivateContext*>(userData);
+                GError* error = nullptr;
+                ctx->success =
+                    nm_client_deactivate_connection_finish(NM_CLIENT(source), result, &error);
+                if (!ctx->success) {
+                    *ctx->error = formatError(error, "WiFi cancel failed");
+                    g_clear_error(&error);
+                }
+                g_main_loop_quit(ctx->loop->loop);
+            },
+            &context);
+    }
+
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
+        errorMessage = "WiFi cancel timed out";
+    }
+
+    return context.success;
+}
+
 bool deleteRemoteConnection(
     NMClient* client,
     NMRemoteConnection* connection,
@@ -1901,6 +1983,16 @@ Result<std::monostate, std::string> requestConnectCancel(
     NMDeviceWifi* device = findWifiDevice(client);
     if (!device) {
         return Result<std::monostate, std::string>::error("No WiFi device found");
+    }
+
+    NMActiveConnection* activatingConnection = nm_client_get_activating_connection(client);
+    if (activeConnectionUsesDevice(activatingConnection, NM_DEVICE(device))) {
+        std::string cancelError;
+        if (!deactivateActiveConnection(client, activatingConnection, mainContext, cancelError)) {
+            return Result<std::monostate, std::string>::error(cancelError);
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
     std::string disconnectError;

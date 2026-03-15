@@ -171,6 +171,24 @@ inline void from_json(const nlohmann::json& j, WifiConnectProgressInfo& info)
     info = ReflectSerializer::from_json<WifiConnectProgressInfo>(j);
 }
 
+struct WifiConnectOutcomeInfo {
+    std::string ssid;
+    std::string message;
+    bool canceled = false;
+
+    using serialize = zpp::bits::members<3>;
+};
+
+inline void to_json(nlohmann::json& j, const WifiConnectOutcomeInfo& info)
+{
+    j = ReflectSerializer::to_json(info);
+}
+
+inline void from_json(const nlohmann::json& j, WifiConnectOutcomeInfo& info)
+{
+    info = ReflectSerializer::from_json<WifiConnectOutcomeInfo>(j);
+}
+
 struct WifiNetworkInfo {
     std::string ssid;
     WifiNetworkStatus status = WifiNetworkStatus::Saved;
@@ -210,13 +228,14 @@ struct Okay {
     WifiStatusInfo status;
     std::vector<WifiNetworkInfo> networks;
     std::vector<LocalAddressInfo> localAddresses;
+    std::optional<WifiConnectOutcomeInfo> connectOutcome;
     std::optional<WifiConnectProgressInfo> connectProgress;
     bool scanInProgress = false;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 API_STANDARD_TYPES();

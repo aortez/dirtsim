@@ -105,6 +105,17 @@ bool wifiConnectProgressEqual(
     return lhs->ssid == rhs->ssid && lhs->phase == rhs->phase && lhs->canCancel == rhs->canCancel;
 }
 
+bool wifiConnectOutcomeEqual(
+    const std::optional<Network::WifiConnectOutcome>& lhs,
+    const std::optional<Network::WifiConnectOutcome>& rhs)
+{
+    if (!lhs.has_value() || !rhs.has_value()) {
+        return !lhs.has_value() && !rhs.has_value();
+    }
+
+    return lhs->ssid == rhs->ssid && lhs->message == rhs->message && lhs->canceled == rhs->canceled;
+}
+
 bool isScanDerivedStatus(Network::WifiNetworkStatus status)
 {
     return status == Network::WifiNetworkStatus::Available
@@ -156,6 +167,7 @@ bool snapshotsEqual(const NetworkService::Snapshot& lhs, const NetworkService::S
 {
     return lhs.status.connected == rhs.status.connected && lhs.status.ssid == rhs.status.ssid
         && lhs.scanInProgress == rhs.scanInProgress
+        && wifiConnectOutcomeEqual(lhs.connectOutcome, rhs.connectOutcome)
         && wifiConnectProgressEqual(lhs.connectProgress, rhs.connectProgress)
         && wifiNetworksEqual(lhs.networks, rhs.networks)
         && localAddressesEqual(lhs.localAddresses, rhs.localAddresses);
@@ -195,6 +207,14 @@ struct NetworkService::Impl {
         Clock::time_point updatedAt = Clock::now();
     };
 
+    struct ConnectCompletionTask {
+        Impl* self = nullptr;
+        GMainContext* context = nullptr;
+        uint64_t operationId = 0;
+        Result<Network::WifiConnectResult, std::string> result =
+            Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
+    };
+
     struct SignalConnection {
         gpointer instance = nullptr;
         gulong handlerId = 0;
@@ -211,6 +231,8 @@ struct NetworkService::Impl {
 
     std::mutex mutex;
     std::condition_variable stateCondition;
+    std::thread connectThread;
+    uint64_t connectOperationId = 0;
     std::thread workerThread;
     bool running = false;
     bool stopRequested = false;
@@ -227,6 +249,7 @@ struct NetworkService::Impl {
     std::vector<SignalConnection> clientSignals;
     std::vector<SignalConnection> deviceSignals;
     std::optional<CachedSnapshot> cachedSnapshot;
+    std::optional<Network::WifiConnectOutcome> connectOutcome;
     std::optional<Network::WifiConnectProgress> connectProgress;
     bool connectCancelRequested = false;
     std::string lastRefreshError;
@@ -280,6 +303,10 @@ struct NetworkService::Impl {
             loop = mainLoop;
         }
 
+        if (connectThread.joinable()) {
+            connectThread.join();
+        }
+
         if (context && loop) {
             g_main_context_invoke_full(
                 context,
@@ -297,6 +324,7 @@ struct NetworkService::Impl {
         }
 
         cachedSnapshot.reset();
+        connectOutcome.reset();
         connectProgress.reset();
         connectCancelRequested = false;
         lastRefreshError.clear();
@@ -353,6 +381,51 @@ struct NetworkService::Impl {
         });
     }
 
+    void finalizeConnectOperation(
+        const uint64_t operationId, Result<Network::WifiConnectResult, std::string> result)
+    {
+        if (operationId != connectOperationId) {
+            return;
+        }
+
+        if (connectThread.joinable() && std::this_thread::get_id() != connectThread.get_id()) {
+            connectThread.join();
+        }
+
+        const bool canceled = connectCancelRequested;
+        const std::string targetSsid =
+            connectProgress.has_value() ? connectProgress->ssid : std::string{};
+
+        clearConnectProgress();
+        connectCancelRequested = false;
+        refreshSnapshot(false);
+
+        const bool connectedToTarget = !targetSsid.empty() && cachedSnapshot.has_value()
+            && cachedSnapshot->snapshot.status.connected
+            && cachedSnapshot->snapshot.status.ssid == targetSsid;
+        if (canceled && !connectedToTarget) {
+            setConnectOutcome(
+                Network::WifiConnectOutcome{
+                    .ssid = targetSsid,
+                    .message = "WiFi connection canceled",
+                    .canceled = true,
+                });
+            return;
+        }
+
+        if (result.isError()) {
+            setConnectOutcome(
+                Network::WifiConnectOutcome{
+                    .ssid = targetSsid,
+                    .message = result.errorValue(),
+                    .canceled = false,
+                });
+            return;
+        }
+
+        clearConnectOutcome();
+    }
+
     Result<Network::WifiConnectResult, std::string> connectBySsid(
         const std::string& ssid, const std::optional<std::string>& password)
     {
@@ -365,8 +438,16 @@ struct NetworkService::Impl {
                 if (!ensureClient()) {
                     return Result<Network::WifiConnectResult, std::string>::error(lastRefreshError);
                 }
+                if (!mainContext) {
+                    return Result<Network::WifiConnectResult, std::string>::error(
+                        "NetworkService worker unavailable");
+                }
 
                 rebindWifiDevice();
+                if (connectThread.joinable()) {
+                    connectThread.join();
+                }
+                clearConnectOutcome();
                 connectCancelRequested = false;
                 setConnectProgress(
                     Network::WifiConnectProgress{
@@ -374,20 +455,51 @@ struct NetworkService::Impl {
                         .phase = Network::WifiConnectPhase::Starting,
                         .canCancel = true,
                     });
-                const auto result =
-                    Network::Internal::connectBySsid(client.get(), ssid, password, mainContext);
-                const bool canceled = connectCancelRequested;
-                clearConnectProgress();
-                connectCancelRequested = false;
-                refreshSnapshot(false);
-                const bool connectedToTarget = cachedSnapshot.has_value()
-                    && cachedSnapshot->snapshot.status.connected
-                    && cachedSnapshot->snapshot.status.ssid == ssid;
-                if (canceled && !connectedToTarget) {
-                    return Result<Network::WifiConnectResult, std::string>::error(
-                        "WiFi connection canceled");
+
+                const uint64_t operationId = ++connectOperationId;
+                GMainContext* completionContext = g_main_context_ref(mainContext);
+
+                try {
+                    connectThread =
+                        std::thread([this, completionContext, operationId, ssid, password]() {
+                            Network::WifiManager wifiManager;
+                            auto result = wifiManager.connectBySsid(ssid, password);
+
+                            auto* task = new ConnectCompletionTask{
+                                .self = this,
+                                .context = completionContext,
+                                .operationId = operationId,
+                                .result = std::move(result),
+                            };
+
+                            g_main_context_invoke_full(
+                                completionContext,
+                                G_PRIORITY_DEFAULT,
+                                +[](gpointer data) -> gboolean {
+                                    auto* task = static_cast<ConnectCompletionTask*>(data);
+                                    task->self->finalizeConnectOperation(
+                                        task->operationId, std::move(task->result));
+                                    return G_SOURCE_REMOVE;
+                                },
+                                task,
+                                +[](gpointer data) {
+                                    auto* task = static_cast<ConnectCompletionTask*>(data);
+                                    if (task->context) {
+                                        g_main_context_unref(task->context);
+                                        task->context = nullptr;
+                                    }
+                                    delete task;
+                                });
+                        });
                 }
-                return result;
+                catch (const std::system_error& e) {
+                    g_main_context_unref(completionContext);
+                    clearConnectProgress();
+                    return Result<Network::WifiConnectResult, std::string>::error(e.what());
+                }
+
+                return Result<Network::WifiConnectResult, std::string>::okay(
+                    Network::WifiConnectResult{ .success = true, .ssid = ssid });
             });
     }
 
@@ -776,6 +888,16 @@ struct NetworkService::Impl {
         updateCachedSnapshotConnectProgress();
     }
 
+    void clearConnectOutcome()
+    {
+        if (!connectOutcome.has_value()) {
+            return;
+        }
+
+        connectOutcome.reset();
+        updateCachedSnapshotConnectOutcome();
+    }
+
     void setConnectProgress(const Network::WifiConnectProgress& progress)
     {
         if (wifiConnectProgressEqual(
@@ -785,6 +907,17 @@ struct NetworkService::Impl {
 
         connectProgress = progress;
         updateCachedSnapshotConnectProgress();
+    }
+
+    void setConnectOutcome(const Network::WifiConnectOutcome& outcome)
+    {
+        if (wifiConnectOutcomeEqual(
+                connectOutcome, std::optional<Network::WifiConnectOutcome>(outcome))) {
+            return;
+        }
+
+        connectOutcome = outcome;
+        updateCachedSnapshotConnectOutcome();
     }
 
     void updateCachedSnapshotConnectProgress()
@@ -797,6 +930,19 @@ struct NetworkService::Impl {
         }
 
         cachedSnapshot->snapshot.connectProgress = connectProgress;
+        notifySnapshotChanged(cachedSnapshot->snapshot);
+    }
+
+    void updateCachedSnapshotConnectOutcome()
+    {
+        if (!cachedSnapshot.has_value()) {
+            return;
+        }
+        if (wifiConnectOutcomeEqual(cachedSnapshot->snapshot.connectOutcome, connectOutcome)) {
+            return;
+        }
+
+        cachedSnapshot->snapshot.connectOutcome = connectOutcome;
         notifySnapshotChanged(cachedSnapshot->snapshot);
     }
 
@@ -870,6 +1016,7 @@ struct NetworkService::Impl {
             .status = statusResult.value(),
             .networks = std::move(refreshedNetworks),
             .localAddresses = collectLocalAddresses(),
+            .connectOutcome = connectOutcome,
             .connectProgress = connectProgress,
             .scanInProgress = false,
         };
