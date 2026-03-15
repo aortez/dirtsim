@@ -27,7 +27,7 @@ void Idle::onExit(OperatingSystemManager& /*osm*/)
 Any Idle::onEvent(const OsApi::NetworkSnapshotGet::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "NetworkSnapshotGet command received");
-    cwc.sendResponse(osm.getNetworkSnapshot());
+    cwc.sendResponse(osm.getNetworkSnapshot(cwc.command));
     return Idle{};
 }
 

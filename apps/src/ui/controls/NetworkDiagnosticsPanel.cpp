@@ -679,10 +679,10 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     setPasswordPromptError("");
 }
 
-void NetworkDiagnosticsPanel::refresh()
+void NetworkDiagnosticsPanel::refresh(bool forceRefresh)
 {
     setLoadingState();
-    startAsyncRefresh();
+    startAsyncRefresh(forceRefresh);
 }
 
 void NetworkDiagnosticsPanel::setWifiStatusMessage(const std::string& text, uint32_t color)
@@ -900,7 +900,7 @@ void NetworkDiagnosticsPanel::setWebSocketToggleEnabled(bool enabled)
     }
 }
 
-bool NetworkDiagnosticsPanel::startAsyncRefresh()
+bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
 {
     if (!asyncState_) {
         return false;
@@ -919,7 +919,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
     }
 
     auto state = asyncState_;
-    std::thread([state]() {
+    std::thread([state, forceRefresh]() {
         PendingRefreshData data;
         try {
             Network::WebSocketService client;
@@ -935,7 +935,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
                     Result<NetworkAccessStatus, std::string>::error(errorMessage);
             }
             else {
-                OsApi::NetworkSnapshotGet::Command snapshotCmd{};
+                OsApi::NetworkSnapshotGet::Command snapshotCmd{ .forceRefresh = forceRefresh };
                 const auto snapshotResponse =
                     client.sendCommandAndGetResponse<OsApi::NetworkSnapshotGet::Okay>(
                         snapshotCmd, 4000);
@@ -1728,7 +1728,7 @@ void NetworkDiagnosticsPanel::onRefreshClicked(lv_event_t* e)
     NetworkDiagnosticsPanel* self =
         static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
     if (self) {
-        self->refresh();
+        self->refresh(true);
         LOG_INFO(Controls, "Network info refreshed by user");
     }
 }

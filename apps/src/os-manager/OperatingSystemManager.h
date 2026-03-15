@@ -35,6 +35,7 @@ namespace DirtSim {
 namespace OsManager {
 
 class LocalProcessBackend;
+class NetworkService;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
 struct PeerInfo;
@@ -102,7 +103,8 @@ public:
     void processEvents() override;
 
     OsApi::SystemStatus::Okay buildSystemStatus();
-    Result<OsApi::NetworkSnapshotGet::Okay, ApiError> getNetworkSnapshot();
+    Result<OsApi::NetworkSnapshotGet::Okay, ApiError> getNetworkSnapshot(
+        const OsApi::NetworkSnapshotGet::Command& command);
     std::vector<PeerInfo> getPeers() const;
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
@@ -170,6 +172,7 @@ private:
     Dependencies dependencies_;
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
+    std::unique_ptr<NetworkService> networkService_;
     std::unique_ptr<PeerAdvertisement> serverPeerAdvertisement_;
     std::unique_ptr<PeerAdvertisement> uiPeerAdvertisement_;
     std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;

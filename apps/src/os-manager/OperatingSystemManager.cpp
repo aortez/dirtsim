@@ -5,8 +5,8 @@
 #include "core/StateLifecycle.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/JsonProtocol.h"
-#include "core/network/WifiManager.h"
 #include "os-manager/network/CommandDeserializerJson.h"
+#include "os-manager/network/NetworkService.h"
 #include "os-manager/network/PeerAdvertisement.h"
 #include "os-manager/network/PeerDiscovery.h"
 #include "os-manager/ssh/RemoteSshExecutor.h"
@@ -16,7 +16,6 @@
 #include "ui/state-machine/api/StatusGet.h"
 #include "ui/state-machine/api/WebSocketAccessSet.h"
 #include <algorithm>
-#include <arpa/inet.h>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -25,8 +24,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <ifaddrs.h>
-#include <net/if.h>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <pwd.h>
@@ -74,37 +71,6 @@ std::optional<OperatingSystemManager::BackendType> parseBackendType(const std::s
     return std::nullopt;
 }
 
-std::vector<OsApi::NetworkSnapshotGet::LocalAddressInfo> collectLocalAddresses()
-{
-    std::vector<OsApi::NetworkSnapshotGet::LocalAddressInfo> results;
-
-    struct ifaddrs* ifaddr = nullptr;
-    if (getifaddrs(&ifaddr) == -1) {
-        LOG_WARN(Network, "Failed to get network interfaces: {}", std::strerror(errno));
-        return results;
-    }
-
-    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-            continue;
-        }
-        if ((ifa->ifa_flags & IFF_LOOPBACK) != 0 || (ifa->ifa_flags & IFF_UP) == 0) {
-            continue;
-        }
-
-        char addrBuf[INET_ADDRSTRLEN];
-        auto* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
-        if (inet_ntop(AF_INET, &sa->sin_addr, addrBuf, sizeof(addrBuf)) == nullptr) {
-            continue;
-        }
-
-        results.push_back({ .name = ifa->ifa_name, .address = addrBuf });
-    }
-
-    freeifaddrs(ifaddr);
-    return results;
-}
-
 OsApi::NetworkSnapshotGet::WifiNetworkStatus toApiWifiNetworkStatus(
     const Network::WifiNetworkStatus status)
 {
@@ -143,6 +109,15 @@ OsApi::NetworkSnapshotGet::WifiStatusInfo toApiWifiStatusInfo(const Network::Wif
     return OsApi::NetworkSnapshotGet::WifiStatusInfo{
         .connected = status.connected,
         .ssid = status.ssid,
+    };
+}
+
+OsApi::NetworkSnapshotGet::LocalAddressInfo toApiLocalAddressInfo(
+    const NetworkService::LocalAddressInfo& info)
+{
+    return OsApi::NetworkSnapshotGet::LocalAddressInfo{
+        .name = info.name,
+        .address = info.address,
     };
 }
 
@@ -696,6 +671,7 @@ private:
 OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
 {
     initializeDefaultDependencies();
+    networkService_ = std::make_unique<NetworkService>();
     setupWebSocketService();
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
@@ -705,6 +681,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
     : port_(port), backendConfig_(backendConfig)
 {
     initializeDefaultDependencies();
+    networkService_ = std::make_unique<NetworkService>();
     setupWebSocketService();
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
@@ -715,6 +692,7 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
       dependencies_(std::move(mode.dependencies)),
       backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
+    networkService_ = std::make_unique<NetworkService>();
     if (!dependencies_.serviceCommand) {
         dependencies_.serviceCommand = [](const std::string&, const std::string&) {
             return makeMissingDependencyError("serviceCommand");
@@ -782,6 +760,13 @@ OperatingSystemManager::BackendConfig OperatingSystemManager::BackendConfig::fro
 
 Result<std::monostate, std::string> OperatingSystemManager::start()
 {
+    if (networkService_) {
+        const auto networkStartResult = networkService_->start();
+        if (networkStartResult.isError()) {
+            return Result<std::monostate, std::string>::error(networkStartResult.errorValue());
+        }
+    }
+
     if (!enableNetworking_) {
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
@@ -797,6 +782,10 @@ Result<std::monostate, std::string> OperatingSystemManager::start()
 
 void OperatingSystemManager::stop()
 {
+    if (networkService_) {
+        networkService_->stop();
+    }
+
     if (enableNetworking_) {
         wsService_.stopListening();
     }
@@ -1056,27 +1045,28 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatus()
     return status;
 }
 
-Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNetworkSnapshot()
+Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNetworkSnapshot(
+    const OsApi::NetworkSnapshotGet::Command& command)
 {
-    Network::WifiManager wifiManager;
-
-    const auto statusResult = wifiManager.getStatus();
-    if (statusResult.isError()) {
+    if (!networkService_) {
         return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::error(
-            ApiError(statusResult.errorValue()));
+            ApiError("NetworkService is unavailable"));
     }
 
-    const auto networksResult = wifiManager.listNetworks();
-    if (networksResult.isError()) {
+    const auto snapshotResult = networkService_->getSnapshot(command.forceRefresh);
+    if (snapshotResult.isError()) {
         return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::error(
-            ApiError(networksResult.errorValue()));
+            ApiError(snapshotResult.errorValue()));
     }
 
     OsApi::NetworkSnapshotGet::Okay okay;
-    okay.status = toApiWifiStatusInfo(statusResult.value());
-    okay.localAddresses = collectLocalAddresses();
-    okay.networks.reserve(networksResult.value().size());
-    for (const auto& network : networksResult.value()) {
+    okay.status = toApiWifiStatusInfo(snapshotResult.value().status);
+    okay.localAddresses.reserve(snapshotResult.value().localAddresses.size());
+    for (const auto& localAddress : snapshotResult.value().localAddresses) {
+        okay.localAddresses.push_back(toApiLocalAddressInfo(localAddress));
+    }
+    okay.networks.reserve(snapshotResult.value().networks.size());
+    for (const auto& network : snapshotResult.value().networks) {
         okay.networks.push_back(toApiWifiNetworkInfo(network));
     }
 
@@ -1103,8 +1093,12 @@ Result<std::string, ApiError> OperatingSystemManager::runCommandCapture(
 Result<OsApi::WifiConnect::Okay, ApiError> OperatingSystemManager::wifiConnect(
     const OsApi::WifiConnect::Command& command)
 {
-    Network::WifiManager wifiManager;
-    const auto result = wifiManager.connectBySsid(command.ssid, command.password);
+    if (!networkService_) {
+        return Result<OsApi::WifiConnect::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->connectBySsid(command.ssid, command.password);
     if (result.isError()) {
         return Result<OsApi::WifiConnect::Okay, ApiError>::error(ApiError(result.errorValue()));
     }
@@ -1115,8 +1109,12 @@ Result<OsApi::WifiConnect::Okay, ApiError> OperatingSystemManager::wifiConnect(
 Result<OsApi::WifiDisconnect::Okay, ApiError> OperatingSystemManager::wifiDisconnect(
     const OsApi::WifiDisconnect::Command& command)
 {
-    Network::WifiManager wifiManager;
-    const auto result = wifiManager.disconnect(command.ssid);
+    if (!networkService_) {
+        return Result<OsApi::WifiDisconnect::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->disconnect(command.ssid);
     if (result.isError()) {
         return Result<OsApi::WifiDisconnect::Okay, ApiError>::error(ApiError(result.errorValue()));
     }
@@ -1128,8 +1126,12 @@ Result<OsApi::WifiDisconnect::Okay, ApiError> OperatingSystemManager::wifiDiscon
 Result<OsApi::WifiForget::Okay, ApiError> OperatingSystemManager::wifiForget(
     const OsApi::WifiForget::Command& command)
 {
-    Network::WifiManager wifiManager;
-    const auto result = wifiManager.forget(command.ssid);
+    if (!networkService_) {
+        return Result<OsApi::WifiForget::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->forget(command.ssid);
     if (result.isError()) {
         return Result<OsApi::WifiForget::Okay, ApiError>::error(ApiError(result.errorValue()));
     }

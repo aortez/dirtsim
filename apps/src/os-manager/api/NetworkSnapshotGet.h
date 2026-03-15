@@ -123,10 +123,12 @@ inline void from_json(const nlohmann::json& j, WifiNetworkInfo& info)
 struct Okay;
 
 struct Command {
+    bool forceRefresh = false;
+
     API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
-    using serialize = zpp::bits::members<0>;
+    using serialize = zpp::bits::members<1>;
 };
 
 struct Okay {

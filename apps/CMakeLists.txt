@@ -693,6 +693,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp
@@ -808,6 +809,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp

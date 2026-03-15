@@ -42,7 +42,7 @@ public:
      * Call this to update the displayed IP addresses (e.g., if network
      * configuration changes).
      */
-    void refresh();
+    void refresh(bool forceRefresh = false);
     void showWifiView();
 
 private:
@@ -128,7 +128,7 @@ private:
     bool webSocketToggleLocked_ = false;
 
     void createUI();
-    bool startAsyncRefresh();
+    bool startAsyncRefresh(bool forceRefresh);
     void closePasswordPrompt();
     bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
     void openPasswordPrompt(const Network::WifiNetworkInfo& network);
