@@ -26,6 +26,7 @@
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -151,6 +152,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::WifiConnect::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WifiDisconnect::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WifiForget::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiScanRequest::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebSocketAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 

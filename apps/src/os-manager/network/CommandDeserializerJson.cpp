@@ -23,6 +23,7 @@
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
 #include <nlohmann/json.hpp>
 
 namespace DirtSim {
@@ -138,6 +139,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::WifiForget::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::WifiForget::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WifiScanRequest::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WifiScanRequest::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::WebSocketAccessSet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

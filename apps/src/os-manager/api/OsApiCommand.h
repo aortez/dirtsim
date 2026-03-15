@@ -23,6 +23,7 @@
 #include "WifiConnect.h"
 #include "WifiDisconnect.h"
 #include "WifiForget.h"
+#include "WifiScanRequest.h"
 #include <variant>
 
 namespace DirtSim {
@@ -50,6 +51,7 @@ using OsApiCommand = std::variant<
     WifiConnect::Command,
     WifiDisconnect::Command,
     WifiForget::Command,
+    WifiScanRequest::Command,
     WebSocketAccessSet::Command,
     WebUiAccessSet::Command>;
 

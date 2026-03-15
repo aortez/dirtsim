@@ -32,6 +32,7 @@ struct Idle {
     Any onEvent(const OsApi::WifiConnect::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WifiDisconnect::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WifiForget::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiScanRequest::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm);
 

@@ -135,11 +135,12 @@ struct Okay {
     WifiStatusInfo status;
     std::vector<WifiNetworkInfo> networks;
     std::vector<LocalAddressInfo> localAddresses;
+    bool scanInProgress = false;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 API_STANDARD_TYPES();

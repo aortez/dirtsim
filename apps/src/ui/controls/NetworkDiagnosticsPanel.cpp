@@ -1,12 +1,15 @@
 #include "NetworkDiagnosticsPanel.h"
 #include "core/LoggingChannels.h"
+#include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
+#include "os-manager/api/NetworkSnapshotChanged.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <exception>
 #include <optional>
@@ -103,6 +106,8 @@ constexpr uint32_t ERROR_TEXT_COLOR = 0xFF7777;
 constexpr uint32_t MUTED_TEXT_COLOR = 0xB0B0B0;
 constexpr uint32_t NETWORK_ROW_BG_COLOR = 0x1C1C1C;
 constexpr uint32_t NETWORK_ROW_BORDER_COLOR = 0x383838;
+constexpr int NETWORK_SNAPSHOT_TIMEOUT_MS = 12000;
+constexpr const char* OS_MANAGER_ADDRESS = "ws://localhost:9090";
 lv_obj_t* getActionButtonInnerButton(lv_obj_t* container)
 {
     if (!container) {
@@ -248,6 +253,10 @@ NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
 NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
 {
     closePasswordPrompt();
+    if (eventClient_) {
+        eventClient_->disconnect();
+        eventClient_.reset();
+    }
 
     if (refreshTimer_) {
         lv_timer_delete(refreshTimer_);
@@ -423,9 +432,6 @@ void NetworkDiagnosticsPanel::createUI()
     lv_label_set_text(webSocketTokenLabel_, "--");
 
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
-    if (refreshTimer_) {
-        lv_timer_pause(refreshTimer_);
-    }
 
     const auto cachedAccess = getAccessCache();
     if (cachedAccess.webUiEnabled || cachedAccess.webSocketEnabled) {
@@ -440,6 +446,7 @@ void NetworkDiagnosticsPanel::createUI()
     }
 
     setViewMode(viewMode_);
+    startEventStream();
 
     // Initial display update.
     refresh();
@@ -475,6 +482,111 @@ void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
     setVisibility(wifiView_, mode == ViewMode::Wifi);
     setVisibility(lanAccessView_, mode == ViewMode::LanAccess);
     viewMode_ = mode;
+}
+
+bool NetworkDiagnosticsPanel::hasEventStreamConnection() const
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(asyncState_->mutex);
+    return asyncState_->eventStreamConnected;
+}
+
+void NetworkDiagnosticsPanel::startEventStream()
+{
+    if (!asyncState_ || eventClient_) {
+        return;
+    }
+
+    eventClient_ = std::make_shared<Network::WebSocketService>();
+    eventClient_->setClientHello(
+        Network::ClientHello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = false,
+            .wantsEvents = true,
+        });
+
+    const auto state = asyncState_;
+    eventClient_->onConnected([state]() {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->eventStreamConnected = true;
+    });
+    eventClient_->onDisconnected([state]() {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->eventStreamConnected = false;
+        if (state->scanRequestInProgress) {
+            state->pendingScanRequest =
+                Result<std::monostate, std::string>::error("Network event stream disconnected");
+            state->scanRequestInProgress = false;
+        }
+    });
+    eventClient_->onError([state](const std::string& error) {
+        LOG_WARN(Controls, "Network event stream error: {}", error);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->eventStreamConnected = false;
+        if (state->scanRequestInProgress) {
+            state->pendingScanRequest =
+                Result<std::monostate, std::string>::error("Network event stream error: " + error);
+            state->scanRequestInProgress = false;
+        }
+    });
+    eventClient_->onServerCommand(
+        [state](const std::string& messageType, const std::vector<std::byte>& payload) {
+            if (messageType != OsApi::NetworkSnapshotChanged::name()) {
+                LOG_DEBUG(Controls, "Ignoring os-manager push '{}'", messageType);
+                return;
+            }
+
+            try {
+                const auto changed =
+                    Network::deserialize_payload<OsApi::NetworkSnapshotChanged>(payload);
+                PendingRefreshData data;
+                data.statusResult = Result<Network::WifiStatus, std::string>::okay(
+                    toUiWifiStatus(changed.snapshot.status));
+
+                std::vector<Network::WifiNetworkInfo> networks;
+                networks.reserve(changed.snapshot.networks.size());
+                for (const auto& network : changed.snapshot.networks) {
+                    networks.push_back(toUiWifiNetworkInfo(network));
+                }
+                data.listResult = Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
+                    std::move(networks));
+
+                std::vector<NetworkInterfaceInfo> localAddresses;
+                localAddresses.reserve(changed.snapshot.localAddresses.size());
+                for (const auto& info : changed.snapshot.localAddresses) {
+                    localAddresses.push_back(toUiLocalAddressInfo(info));
+                }
+                data.localAddresses = std::move(localAddresses);
+                data.scanInProgress = changed.snapshot.scanInProgress;
+
+                const auto accessCache = getAccessCache();
+                data.accessStatusResult = Result<NetworkAccessStatus, std::string>::okay(
+                    NetworkAccessStatus{
+                        .webUiEnabled = accessCache.webUiEnabled,
+                        .webSocketEnabled = accessCache.webSocketEnabled,
+                        .webSocketToken = accessCache.webSocketToken,
+                    });
+
+                std::lock_guard<std::mutex> lock(state->mutex);
+                state->pendingRefresh = std::move(data);
+                state->scanRequestInProgress = false;
+            }
+            catch (const std::exception& e) {
+                LOG_ERROR(Controls, "Failed to deserialize NetworkSnapshotChanged: {}", e.what());
+            }
+        });
+
+    const auto client = eventClient_;
+    std::thread([client]() {
+        const auto connectResult = client->connect(OS_MANAGER_ADDRESS, 2000);
+        if (connectResult.isError()) {
+            LOG_WARN(
+                Controls, "Failed to connect network event stream: {}", connectResult.errorValue());
+        }
+    }).detach();
 }
 
 void NetworkDiagnosticsPanel::closePasswordPrompt()
@@ -681,6 +793,14 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
 
 void NetworkDiagnosticsPanel::refresh(bool forceRefresh)
 {
+    if (forceRefresh && hasEventStreamConnection()) {
+        scanInProgress_ = true;
+        setWifiStatusMessage("Scanning nearby networks...", MUTED_TEXT_COLOR);
+        setRefreshButtonEnabled(false);
+        startAsyncScanRequest();
+        return;
+    }
+
     setLoadingState();
     startAsyncRefresh(forceRefresh);
 }
@@ -780,7 +900,8 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
 
 void NetworkDiagnosticsPanel::setLoadingState()
 {
-    setWifiStatusMessage("", MUTED_TEXT_COLOR);
+    scanInProgress_ = true;
+    setWifiStatusMessage("Scanning nearby networks...", MUTED_TEXT_COLOR);
 
     if (networksContainer_) {
         lv_obj_clean(networksContainer_);
@@ -914,17 +1035,12 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
         asyncState_->refreshInProgress = true;
     }
 
-    if (refreshTimer_) {
-        lv_timer_resume(refreshTimer_);
-    }
-
     auto state = asyncState_;
     std::thread([state, forceRefresh]() {
         PendingRefreshData data;
         try {
             Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            const auto connectResult = client.connect(address, 2000);
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 const std::string errorMessage =
                     "Failed to connect to os-manager: " + connectResult.errorValue();
@@ -938,7 +1054,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                 OsApi::NetworkSnapshotGet::Command snapshotCmd{ .forceRefresh = forceRefresh };
                 const auto snapshotResponse =
                     client.sendCommandAndGetResponse<OsApi::NetworkSnapshotGet::Okay>(
-                        snapshotCmd, 4000);
+                        snapshotCmd, NETWORK_SNAPSHOT_TIMEOUT_MS);
 
                 OsApi::SystemStatus::Command statusCmd{};
                 const auto accessResponse =
@@ -980,6 +1096,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                             Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
                                 std::move(networks));
                         data.localAddresses = std::move(localAddresses);
+                        data.scanInProgress = snapshotInner.value().scanInProgress;
                     }
                 }
 
@@ -1037,6 +1154,62 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
     return true;
 }
 
+bool NetworkDiagnosticsPanel::startAsyncScanRequest()
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->scanRequestInProgress) {
+            return false;
+        }
+        asyncState_->scanRequestInProgress = true;
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<std::monostate, std::string> result =
+            Result<std::monostate, std::string>::error("WiFi scan request failed");
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<std::monostate, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::WifiScanRequest::Command cmd{};
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::WifiScanRequest::Okay>(cmd, 2000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "WifiScanRequest failed: " + response.errorValue());
+                }
+                else if (response.value().isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "WifiScanRequest failed: " + response.value().errorValue().message);
+                }
+                else {
+                    result = Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<std::monostate, std::string>::error(e.what());
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingScanRequest = std::move(result);
+        state->scanRequestInProgress = state->pendingScanRequest->isValue();
+    }).detach();
+
+    return true;
+}
+
 void NetworkDiagnosticsPanel::startAsyncConnect(
     const Network::WifiNetworkInfo& network, const std::optional<std::string>& password)
 {
@@ -1051,7 +1224,7 @@ void NetworkDiagnosticsPanel::startAsyncConnect(
             Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
         try {
             Network::WebSocketService client;
-            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 result = Result<Network::WifiConnectResult, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1106,7 +1279,7 @@ void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& n
             Result<Network::WifiForgetResult, std::string>::error("WiFi forget failed");
         try {
             Network::WebSocketService client;
-            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 result = Result<Network::WifiForgetResult, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1162,16 +1335,11 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
         asyncState_->webUiUpdateInProgress = true;
     }
 
-    if (refreshTimer_) {
-        lv_timer_resume(refreshTimer_);
-    }
-
     auto state = asyncState_;
     std::thread([state, enabled]() {
         auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
             Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
+            auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 return Result<NetworkAccessStatus, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1205,8 +1373,7 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
 
         try {
             Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
+            auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 result = Result<NetworkAccessStatus, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1270,16 +1437,11 @@ bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
         asyncState_->webSocketUpdateInProgress = true;
     }
 
-    if (refreshTimer_) {
-        lv_timer_resume(refreshTimer_);
-    }
-
     auto state = asyncState_;
     std::thread([state, enabled]() {
         auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
             Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
+            auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 return Result<NetworkAccessStatus, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1313,8 +1475,7 @@ bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
 
         try {
             Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
+            auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
                 result = Result<NetworkAccessStatus, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
@@ -1387,10 +1548,6 @@ bool NetworkDiagnosticsPanel::beginAsyncAction(
             Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
     }
 
-    if (refreshTimer_) {
-        lv_timer_resume(refreshTimer_);
-    }
-
     return true;
 }
 
@@ -1454,6 +1611,11 @@ void NetworkDiagnosticsPanel::updateWifiStatus(
     if (statusResult.isError()) {
         setWifiStatusMessage("Wi-Fi unavailable", ERROR_TEXT_COLOR);
         LOG_WARN(Controls, "WiFi status failed: {}", statusResult.errorValue());
+        return;
+    }
+
+    if (scanInProgress_) {
+        setWifiStatusMessage("Scanning nearby networks...", MUTED_TEXT_COLOR);
         return;
     }
 
@@ -1742,6 +1904,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
+    std::optional<Result<std::monostate, std::string>> scanRequestResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webUiUpdateResult;
 
@@ -1755,6 +1918,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
+
+        scanRequestResult = asyncState_->pendingScanRequest;
+        asyncState_->pendingScanRequest.reset();
 
         webSocketUpdateResult = asyncState_->pendingWebSocketUpdate;
         asyncState_->pendingWebSocketUpdate.reset();
@@ -1785,7 +1951,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             if (passwordPromptConnect) {
                 closePasswordPrompt();
             }
-            refresh();
+            if (!hasEventStreamConnection()) {
+                refresh();
+            }
         }
     }
 
@@ -1801,11 +1969,14 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "WiFi forget completed for {}", forgetResult->value().ssid);
-            refresh();
+            if (!hasEventStreamConnection()) {
+                refresh();
+            }
         }
     }
 
     if (refreshData.has_value()) {
+        scanInProgress_ = refreshData->scanInProgress;
         if (refreshData->localAddresses.has_value()) {
             localAddresses_ = std::move(refreshData->localAddresses.value());
 
@@ -1821,6 +1992,14 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         updateNetworkDisplay(refreshData->listResult);
         updateWebUiStatus(refreshData->accessStatusResult);
         updateWebSocketStatus(refreshData->accessStatusResult);
+    }
+
+    if (scanRequestResult.has_value()) {
+        if (scanRequestResult->isError()) {
+            scanInProgress_ = false;
+            LOG_WARN(Controls, "WiFi scan request failed: {}", scanRequestResult->errorValue());
+            setWifiStatusMessage("Wi-Fi scan failed", ERROR_TEXT_COLOR);
+        }
     }
 
     if (webUiUpdateResult.has_value()) {
@@ -1868,20 +2047,22 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
     bool refreshInProgress = false;
     bool hasPending = false;
+    bool scanRequestInProgress = false;
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         refreshInProgress = asyncState_->refreshInProgress;
+        scanRequestInProgress = asyncState_->scanRequestInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value()
+            || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->webSocketUpdateInProgress
             || asyncState_->webUiUpdateInProgress;
     }
 
-    if (!refreshInProgress && !isActionInProgress() && !hasPending && refreshTimer_) {
-        lv_timer_pause(refreshTimer_);
-        setRefreshButtonEnabled(true);
-    }
+    setRefreshButtonEnabled(
+        !scanInProgress_ && !refreshInProgress && !scanRequestInProgress && !isActionInProgress()
+        && !hasPending);
 }
 
 void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)

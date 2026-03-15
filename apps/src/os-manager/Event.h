@@ -23,6 +23,7 @@
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -59,6 +60,7 @@ public:
         OsApi::WifiConnect::Cwc,
         OsApi::WifiDisconnect::Cwc,
         OsApi::WifiForget::Cwc,
+        OsApi::WifiScanRequest::Cwc,
         OsApi::WebSocketAccessSet::Cwc,
         OsApi::WebUiAccessSet::Cwc>;
 

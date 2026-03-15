@@ -20,6 +20,8 @@
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
+#include "os-manager/network/NetworkService.h"
 #include "os-manager/states/State.h"
 #include "server/api/ApiError.h"
 #include <cstdint>
@@ -35,7 +37,6 @@ namespace DirtSim {
 namespace OsManager {
 
 class LocalProcessBackend;
-class NetworkService;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
 struct PeerInfo;
@@ -118,6 +119,8 @@ public:
     Result<OsApi::WifiDisconnect::Okay, ApiError> wifiDisconnect(
         const OsApi::WifiDisconnect::Command& command);
     Result<OsApi::WifiForget::Okay, ApiError> wifiForget(const OsApi::WifiForget::Command& command);
+    Result<OsApi::WifiScanRequest::Okay, ApiError> wifiScanRequest(
+        const OsApi::WifiScanRequest::Command& command);
     Result<OsApi::WebSocketAccessSet::Okay, ApiError> setWebSocketAccess(bool enabled);
     Result<OsApi::WebUiAccessSet::Okay, ApiError> setWebUiAccess(bool enabled);
     Result<std::monostate, ApiError> startService(const std::string& unitName);
@@ -162,6 +165,7 @@ private:
     void transitionTo(State::Any newState);
     void initializeDefaultDependencies();
     void initializePeerDiscovery();
+    void publishNetworkSnapshotChanged(const NetworkService::Snapshot& snapshot);
 
     uint16_t port_ = 0;
     bool enableNetworking_ = true;

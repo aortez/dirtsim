@@ -7,9 +7,14 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace DirtSim {
+namespace Network {
+class WebSocketService;
+}
+
 namespace Ui {
 
 /**
@@ -98,14 +103,18 @@ private:
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
+        bool scanInProgress = false;
     };
 
     struct AsyncState {
         std::mutex mutex;
+        bool eventStreamConnected = false;
         bool refreshInProgress = false;
+        bool scanRequestInProgress = false;
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
+        std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
         bool webSocketUpdateInProgress = false;
@@ -117,9 +126,11 @@ private:
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::shared_ptr<AsyncState> asyncState_;
+    std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
     bool webUiEnabled_ = false;
     bool passwordVisible_ = false;
+    bool scanInProgress_ = false;
     bool webSocketEnabled_ = false;
     std::optional<Network::WifiNetworkInfo> passwordPromptNetwork_;
     std::string webSocketToken_;
@@ -128,7 +139,10 @@ private:
     bool webSocketToggleLocked_ = false;
 
     void createUI();
+    bool hasEventStreamConnection() const;
+    void startEventStream();
     bool startAsyncRefresh(bool forceRefresh);
+    bool startAsyncScanRequest();
     void closePasswordPrompt();
     bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
     void openPasswordPrompt(const Network::WifiNetworkInfo& network);

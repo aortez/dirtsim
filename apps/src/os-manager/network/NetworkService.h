@@ -3,6 +3,7 @@
 #include "core/Pimpl.h"
 #include "core/Result.h"
 #include "core/network/WifiManager.h"
+#include <functional>
 #include <optional>
 #include <string>
 #include <variant>
@@ -22,7 +23,10 @@ public:
         Network::WifiStatus status;
         std::vector<Network::WifiNetworkInfo> networks;
         std::vector<LocalAddressInfo> localAddresses;
+        bool scanInProgress = false;
     };
+
+    using SnapshotChangedCallback = std::function<void(const Snapshot&)>;
 
     NetworkService();
     ~NetworkService();
@@ -39,6 +43,8 @@ public:
     Result<Network::WifiDisconnectResult, std::string> disconnect(
         const std::optional<std::string>& ssid);
     Result<Network::WifiForgetResult, std::string> forget(const std::string& ssid);
+    Result<std::monostate, std::string> requestScan();
+    void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
 private:
     struct Impl;

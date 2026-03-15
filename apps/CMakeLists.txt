@@ -301,6 +301,7 @@ set(DIRTSIM_CORE_SOURCES
     # Network layer.
     src/core/network/WebSocketService.cpp
     src/core/network/WifiManager.cpp
+    src/core/network/WifiManagerLibNm.cpp
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp

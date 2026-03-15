@@ -173,6 +173,13 @@ Any Idle::onEvent(const OsApi::WifiForget::Cwc& cwc, OperatingSystemManager& osm
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::WifiScanRequest::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiScanRequest command received");
+    cwc.sendResponse(osm.wifiScanRequest(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "WebSocketAccessSet command received");

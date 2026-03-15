@@ -5,6 +5,7 @@
 #include "core/StateLifecycle.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/JsonProtocol.h"
+#include "os-manager/api/NetworkSnapshotChanged.h"
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "os-manager/network/NetworkService.h"
 #include "os-manager/network/PeerAdvertisement.h"
@@ -119,6 +120,22 @@ OsApi::NetworkSnapshotGet::LocalAddressInfo toApiLocalAddressInfo(
         .name = info.name,
         .address = info.address,
     };
+}
+
+OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::Snapshot& snapshot)
+{
+    OsApi::NetworkSnapshotGet::Okay okay;
+    okay.status = toApiWifiStatusInfo(snapshot.status);
+    okay.scanInProgress = snapshot.scanInProgress;
+    okay.localAddresses.reserve(snapshot.localAddresses.size());
+    for (const auto& localAddress : snapshot.localAddresses) {
+        okay.localAddresses.push_back(toApiLocalAddressInfo(localAddress));
+    }
+    okay.networks.reserve(snapshot.networks.size());
+    for (const auto& network : snapshot.networks) {
+        okay.networks.push_back(toApiWifiNetworkInfo(network));
+    }
+    return okay;
 }
 
 OsApi::WifiConnect::Okay toApiWifiConnectOkay(const Network::WifiConnectResult& result)
@@ -673,6 +690,9 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
     setupWebSocketService();
+    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
+        publishNetworkSnapshotChanged(snapshot);
+    });
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
 }
@@ -683,6 +703,9 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
     setupWebSocketService();
+    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
+        publishNetworkSnapshotChanged(snapshot);
+    });
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
 }
@@ -693,6 +716,9 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
       backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
     networkService_ = std::make_unique<NetworkService>();
+    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
+        publishNetworkSnapshotChanged(snapshot);
+    });
     if (!dependencies_.serviceCommand) {
         dependencies_.serviceCommand = [](const std::string&, const std::string&) {
             return makeMissingDependencyError("serviceCommand");
@@ -930,6 +956,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::WifiDisconnect::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WifiForget::Cwc>(
         [this](OsApi::WifiForget::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::WifiScanRequest::Cwc>(
+        [this](OsApi::WifiScanRequest::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WebSocketAccessSet::Cwc>(
         [this](OsApi::WebSocketAccessSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WebUiAccessSet::Cwc>(
@@ -997,6 +1025,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiConnect);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiDisconnect);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiForget);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiScanRequest);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WebSocketAccessSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WebUiAccessSet);
 
@@ -1059,18 +1088,8 @@ Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNet
             ApiError(snapshotResult.errorValue()));
     }
 
-    OsApi::NetworkSnapshotGet::Okay okay;
-    okay.status = toApiWifiStatusInfo(snapshotResult.value().status);
-    okay.localAddresses.reserve(snapshotResult.value().localAddresses.size());
-    for (const auto& localAddress : snapshotResult.value().localAddresses) {
-        okay.localAddresses.push_back(toApiLocalAddressInfo(localAddress));
-    }
-    okay.networks.reserve(snapshotResult.value().networks.size());
-    for (const auto& network : snapshotResult.value().networks) {
-        okay.networks.push_back(toApiWifiNetworkInfo(network));
-    }
-
-    return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::okay(std::move(okay));
+    return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::okay(
+        toApiNetworkSnapshotOkay(snapshotResult.value()));
 }
 
 std::vector<PeerInfo> OperatingSystemManager::getPeers() const
@@ -1137,6 +1156,23 @@ Result<OsApi::WifiForget::Okay, ApiError> OperatingSystemManager::wifiForget(
     }
 
     return Result<OsApi::WifiForget::Okay, ApiError>::okay(toApiWifiForgetOkay(result.value()));
+}
+
+Result<OsApi::WifiScanRequest::Okay, ApiError> OperatingSystemManager::wifiScanRequest(
+    const OsApi::WifiScanRequest::Command& /*command*/)
+{
+    if (!networkService_) {
+        return Result<OsApi::WifiScanRequest::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->requestScan();
+    if (result.isError()) {
+        return Result<OsApi::WifiScanRequest::Okay, ApiError>::error(ApiError(result.errorValue()));
+    }
+
+    return Result<OsApi::WifiScanRequest::Okay, ApiError>::okay(
+        OsApi::WifiScanRequest::Okay{ .accepted = true });
 }
 
 std::filesystem::path OperatingSystemManager::getSshUserHomeDir(const std::string& user) const
@@ -1938,6 +1974,23 @@ Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAc
     okay.enabled = enabled;
     okay.token = webSocketEnabled_ ? webSocketToken_ : "";
     return Result<OsApi::WebUiAccessSet::Okay, ApiError>::okay(std::move(okay));
+}
+
+void OperatingSystemManager::publishNetworkSnapshotChanged(const NetworkService::Snapshot& snapshot)
+{
+    if (!enableNetworking_) {
+        return;
+    }
+
+    const OsApi::NetworkSnapshotChanged event{
+        .snapshot = toApiNetworkSnapshotOkay(snapshot),
+    };
+    const Network::MessageEnvelope envelope{
+        .id = 0,
+        .message_type = std::string(OsApi::NetworkSnapshotChanged::name()),
+        .payload = Network::serialize_payload(event),
+    };
+    wsService_.broadcastBinary(Network::serialize_envelope(envelope));
 }
 
 OperatingSystemManager::DiskStats OperatingSystemManager::getDiskStats(
