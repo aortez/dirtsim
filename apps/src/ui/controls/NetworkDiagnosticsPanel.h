@@ -5,10 +5,12 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -18,6 +20,8 @@ class WebSocketService;
 }
 
 namespace Ui {
+
+class TimeSeriesPlotWidget;
 
 /**
  * @brief Network interface information for display.
@@ -78,6 +82,7 @@ private:
     lv_obj_t* passwordKeyboard_ = nullptr;
     lv_obj_t* networkDetailsOverlay_ = nullptr;
     lv_obj_t* networkDetailsContent_ = nullptr;
+    lv_obj_t* networkDetailsLastScanValueLabel_ = nullptr;
     lv_obj_t* passwordOverlay_ = nullptr;
     lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
@@ -126,10 +131,22 @@ private:
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
         std::optional<std::vector<Network::WifiAccessPointInfo>> accessPoints;
+        std::optional<std::string> activeBssid;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
         std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;
+        std::optional<uint64_t> lastScanAgeMs;
         bool scanInProgress = false;
+    };
+
+    struct SignalHistorySeries {
+        std::string ssid;
+        std::vector<float> samples;
+    };
+
+    struct NetworkDetailsPlotBinding {
+        std::string bssid;
+        std::unique_ptr<TimeSeriesPlotWidget> plot;
     };
 
     struct AsyncState {
@@ -157,21 +174,27 @@ private:
     std::vector<std::unique_ptr<DisconnectContext>> disconnectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::vector<std::unique_ptr<NetworkDetailsContext>> networkDetailsContexts_;
+    std::vector<NetworkDetailsPlotBinding> networkDetailsPlotBindings_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
+    std::optional<std::string> activeBssid_;
     std::optional<std::string> connectAwaitingConfirmationSsid_;
     std::optional<Network::WifiConnectProgress> connectProgress_;
     std::optional<std::chrono::steady_clock::time_point> connectStartedAt_;
     std::array<lv_obj_t*, 4> connectProgressStageBadges_{};
     ConnectOverlayMode connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
     Network::WifiConnectPhase lastConnectPhase_ = Network::WifiConnectPhase::Starting;
+    std::optional<uint64_t> lastScanAgeMs_;
+    std::optional<std::chrono::steady_clock::time_point> lastScanAgeUpdatedAt_;
     std::optional<Network::WifiStatus> latestWifiStatus_;
     bool webUiEnabled_ = false;
     bool connectOverlayHasPasswordEntry_ = false;
     std::optional<Network::WifiNetworkInfo> networkDetailsNetwork_;
     bool passwordVisible_ = false;
     bool scanInProgress_ = false;
+    std::optional<std::chrono::steady_clock::time_point> signalHistoryLastSampleAt_;
+    std::unordered_map<std::string, SignalHistorySeries> signalHistoryByBssid_;
     bool webSocketEnabled_ = false;
     std::optional<Network::WifiNetworkInfo> passwordPromptNetwork_;
     std::string webSocketToken_;
@@ -218,6 +241,9 @@ private:
     void setWebUiToggleEnabled(bool enabled);
     void submitPasswordPrompt();
     void updateCurrentConnectionSummary();
+    void updateDetailsLastScanLabel();
+    void updateDetailsSignalHistoryPlots();
+    void updateSignalHistory(bool forceSample = false);
     void updateNetworkDisplay(
         const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);
     void updateConnectOverlay();
@@ -232,8 +258,12 @@ private:
     bool startAsyncWebSocketAccessSet(bool enabled);
 
     std::string formatAddressSummary() const;
+    std::string formatAddressSummaryMultiline() const;
     std::string formatCurrentConnectionDetails(const Network::WifiNetworkInfo& info) const;
+    std::string formatLastScanAgeText() const;
     std::string formatNetworkDetails(const Network::WifiNetworkInfo& info) const;
+    std::optional<Network::WifiAccessPointInfo> preferredAccessPointForSsid(
+        const std::string& ssid) const;
     void setWifiStatusMessage(const std::string& text, uint32_t color);
 
     static void onRefreshClicked(lv_event_t* e);

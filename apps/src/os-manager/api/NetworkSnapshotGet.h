@@ -4,6 +4,7 @@
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
+#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <stdexcept>
@@ -250,15 +251,17 @@ struct Okay {
     WifiStatusInfo status;
     std::vector<WifiNetworkInfo> networks;
     std::vector<WifiAccessPointInfo> accessPoints;
+    std::optional<std::string> activeBssid;
     std::vector<LocalAddressInfo> localAddresses;
     std::optional<WifiConnectOutcomeInfo> connectOutcome;
     std::optional<WifiConnectProgressInfo> connectProgress;
+    std::optional<uint64_t> lastScanAgeMs;
     bool scanInProgress = false;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<7>;
+    using serialize = zpp::bits::members<9>;
 };
 
 API_STANDARD_TYPES();

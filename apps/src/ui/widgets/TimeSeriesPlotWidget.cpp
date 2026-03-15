@@ -40,6 +40,10 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_label_set_text(titleLabel_, config_.title.c_str());
     lv_obj_set_style_text_color(titleLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(titleLabel_, &lv_font_montserrat_12, 0);
+    if (!config_.showTitle) {
+        lv_obj_add_flag(titleLabel_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(titleLabel_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
 
     chart_ = lv_chart_create(container_);
     lv_obj_set_size(chart_, LV_PCT(100), 0);

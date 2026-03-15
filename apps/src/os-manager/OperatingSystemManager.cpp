@@ -180,6 +180,8 @@ OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::S
     OsApi::NetworkSnapshotGet::Okay okay;
     okay.status = toApiWifiStatusInfo(snapshot.status);
     okay.scanInProgress = snapshot.scanInProgress;
+    okay.activeBssid = snapshot.activeBssid;
+    okay.lastScanAgeMs = snapshot.lastScanAgeMs;
     if (snapshot.connectOutcome.has_value()) {
         okay.connectOutcome = toApiWifiConnectOutcomeInfo(snapshot.connectOutcome.value());
     }

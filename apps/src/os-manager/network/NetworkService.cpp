@@ -191,12 +191,50 @@ std::vector<Network::WifiNetworkInfo> mergePassiveNetworkList(
 bool snapshotsEqual(const NetworkService::Snapshot& lhs, const NetworkService::Snapshot& rhs)
 {
     return lhs.status.connected == rhs.status.connected && lhs.status.ssid == rhs.status.ssid
-        && lhs.scanInProgress == rhs.scanInProgress
+        && lhs.scanInProgress == rhs.scanInProgress && lhs.activeBssid == rhs.activeBssid
         && wifiConnectOutcomeEqual(lhs.connectOutcome, rhs.connectOutcome)
         && wifiConnectProgressEqual(lhs.connectProgress, rhs.connectProgress)
         && wifiNetworksEqual(lhs.networks, rhs.networks)
         && wifiAccessPointsEqual(lhs.accessPoints, rhs.accessPoints)
         && localAddressesEqual(lhs.localAddresses, rhs.localAddresses);
+}
+
+std::optional<std::string> getActiveBssid(NMDeviceWifi* device)
+{
+    if (!device) {
+        return std::nullopt;
+    }
+
+    NMAccessPoint* activeAccessPoint = nm_device_wifi_get_active_access_point(device);
+    if (!activeAccessPoint) {
+        return std::nullopt;
+    }
+
+    const char* bssid = nm_access_point_get_bssid(activeAccessPoint);
+    if (!bssid || bssid[0] == '\0') {
+        return std::nullopt;
+    }
+
+    return std::string(bssid);
+}
+
+std::optional<uint64_t> getLastScanAgeMs(NMDeviceWifi* device)
+{
+    if (!device) {
+        return std::nullopt;
+    }
+
+    const gint64 lastScanMs = nm_device_wifi_get_last_scan(device);
+    if (lastScanMs <= 0) {
+        return std::nullopt;
+    }
+
+    const gint64 nowMs = g_get_monotonic_time() / 1000;
+    if (nowMs <= lastScanMs) {
+        return 0;
+    }
+
+    return static_cast<uint64_t>(nowMs - lastScanMs);
 }
 
 std::optional<Network::WifiConnectPhase> wifiConnectPhaseFromDeviceState(NMDeviceState state)
@@ -1054,9 +1092,11 @@ struct NetworkService::Impl {
             .status = statusResult.value(),
             .networks = std::move(refreshedNetworks),
             .accessPoints = accessPointsResult.value(),
+            .activeBssid = getActiveBssid(wifiDevice),
             .localAddresses = collectLocalAddresses(),
             .connectOutcome = connectOutcome,
             .connectProgress = connectProgress,
+            .lastScanAgeMs = getLastScanAgeMs(wifiDevice),
             .scanInProgress = false,
         };
         const bool changed = !cachedSnapshot.has_value()

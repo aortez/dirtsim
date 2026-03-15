@@ -3,6 +3,7 @@
 #include "core/Pimpl.h"
 #include "core/Result.h"
 #include "core/network/WifiManager.h"
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -23,9 +24,11 @@ public:
         Network::WifiStatus status;
         std::vector<Network::WifiNetworkInfo> networks;
         std::vector<Network::WifiAccessPointInfo> accessPoints;
+        std::optional<std::string> activeBssid;
         std::vector<LocalAddressInfo> localAddresses;
         std::optional<Network::WifiConnectOutcome> connectOutcome;
         std::optional<Network::WifiConnectProgress> connectProgress;
+        std::optional<uint64_t> lastScanAgeMs;
         bool scanInProgress = false;
     };
 

@@ -13,11 +13,13 @@
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include "ui/widgets/TimeSeriesPlotWidget.h"
 #include <algorithm>
 #include <exception>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <thread>
+#include <unordered_set>
 
 namespace DirtSim {
 namespace Ui {
@@ -189,7 +191,13 @@ constexpr int NETWORK_TEXT_INPUT_PAD_VER = 12;
 constexpr int NETWORK_OVERLAY_BUTTON_WIDTH = 108;
 constexpr int NETWORK_PROGRESS_CANCEL_BUTTON_WIDTH = 164;
 constexpr int NETWORK_REFRESH_BUTTON_WIDTH = 224;
+constexpr int NETWORK_DETAILS_SUMMARY_WIDTH = 280;
+constexpr int NETWORK_RADIO_PLOT_HEIGHT = 64;
+constexpr int NETWORK_RADIO_CARD_PADDING = 8;
+constexpr int NETWORK_RADIO_CARD_ROW_PADDING = 4;
+constexpr int NETWORK_RADIOS_CONTENT_ROW_PADDING = 8;
 constexpr int NETWORK_STAGE_BADGE_HEIGHT = 34;
+constexpr int NETWORK_SIGNAL_HISTORY_MAX_SAMPLES = 60;
 constexpr int WIFI_LIST_COLUMN_GROW = 7;
 constexpr int WIFI_SUMMARY_COLUMN_GROW = 4;
 constexpr int WIFI_SUMMARY_MIN_WIDTH = 220;
@@ -290,6 +298,58 @@ bool connectFailureNeedsPasswordPrompt(const std::string& message)
 {
     return message.find("no-secrets") != std::string::npos
         || message.find("Password required") != std::string::npos;
+}
+
+std::string formatDurationAgo(const uint64_t ageMs)
+{
+    const uint64_t ageSeconds = ageMs / 1000;
+    if (ageSeconds < 2) {
+        return "just now";
+    }
+    if (ageSeconds < 60) {
+        return std::to_string(ageSeconds) + "s ago";
+    }
+
+    const uint64_t ageMinutes = ageSeconds / 60;
+    if (ageMinutes < 60) {
+        return std::to_string(ageMinutes) + "m ago";
+    }
+
+    const uint64_t ageHours = ageMinutes / 60;
+    return std::to_string(ageHours) + "h ago";
+}
+
+std::optional<Network::WifiAccessPointInfo> selectPreferredAccessPointForSsid(
+    const std::vector<Network::WifiAccessPointInfo>& accessPoints, const std::string& ssid)
+{
+    std::optional<Network::WifiAccessPointInfo> bestAccessPoint;
+    for (const auto& accessPoint : accessPoints) {
+        if (accessPoint.ssid != ssid) {
+            continue;
+        }
+
+        if (!bestAccessPoint.has_value()) {
+            bestAccessPoint = accessPoint;
+            continue;
+        }
+        if (accessPoint.active != bestAccessPoint->active) {
+            if (accessPoint.active) {
+                bestAccessPoint = accessPoint;
+            }
+            continue;
+        }
+
+        const int accessPointSignal =
+            accessPoint.signalDbm.has_value() ? accessPoint.signalDbm.value() : -200;
+        const int bestSignal =
+            bestAccessPoint->signalDbm.has_value() ? bestAccessPoint->signalDbm.value() : -200;
+        if (accessPointSignal > bestSignal
+            || (accessPointSignal == bestSignal && accessPoint.bssid < bestAccessPoint->bssid)) {
+            bestAccessPoint = accessPoint;
+        }
+    }
+
+    return bestAccessPoint;
 }
 
 void setActionButtonEnabled(lv_obj_t* container, bool enabled)
@@ -627,6 +687,7 @@ void NetworkDiagnosticsPanel::showWifiView()
 
 void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
 {
+    const ViewMode previousMode = viewMode_;
     auto setVisibility = [](lv_obj_t* view, bool visible) {
         if (!view) {
             return;
@@ -645,6 +706,16 @@ void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
     setVisibility(wifiView_, mode == ViewMode::Wifi);
     setVisibility(lanAccessView_, mode == ViewMode::LanAccess);
     viewMode_ = mode;
+    if (mode != ViewMode::Wifi) {
+        signalHistoryByBssid_.clear();
+        signalHistoryLastSampleAt_.reset();
+        return;
+    }
+
+    if (previousMode != ViewMode::Wifi) {
+        signalHistoryLastSampleAt_.reset();
+        updateSignalHistory(true);
+    }
 }
 
 bool NetworkDiagnosticsPanel::hasEventStreamConnection() const
@@ -723,6 +794,7 @@ void NetworkDiagnosticsPanel::startEventStream()
                     accessPoints.push_back(toUiWifiAccessPointInfo(accessPoint));
                 }
                 data.accessPoints = std::move(accessPoints);
+                data.activeBssid = changed.snapshot.activeBssid;
 
                 std::vector<NetworkInterfaceInfo> localAddresses;
                 localAddresses.reserve(changed.snapshot.localAddresses.size());
@@ -738,6 +810,7 @@ void NetworkDiagnosticsPanel::startEventStream()
                     data.connectProgress =
                         toUiWifiConnectProgress(changed.snapshot.connectProgress.value());
                 }
+                data.lastScanAgeMs = changed.snapshot.lastScanAgeMs;
                 data.scanInProgress = changed.snapshot.scanInProgress;
 
                 const auto accessCache = getAccessCache();
@@ -803,7 +876,9 @@ void NetworkDiagnosticsPanel::closeNetworkDetailsOverlay()
     }
 
     networkDetailsContent_ = nullptr;
+    networkDetailsLastScanValueLabel_ = nullptr;
     networkDetailsNetwork_.reset();
+    networkDetailsPlotBindings_.clear();
 }
 
 bool NetworkDiagnosticsPanel::networkRequiresPassword(const Network::WifiNetworkInfo& network) const
@@ -1115,11 +1190,30 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
     closeNetworkDetailsOverlay();
 
     networkDetailsNetwork_ = network;
+    networkDetailsPlotBindings_.clear();
 
     std::vector<Network::WifiAccessPointInfo> matchingAccessPoints;
     for (const auto& accessPoint : accessPoints_) {
         if (accessPoint.ssid == network.ssid) {
             matchingAccessPoints.push_back(accessPoint);
+        }
+    }
+    std::optional<Network::WifiAccessPointInfo> strongestObservedAccessPoint;
+    for (const auto& accessPoint : matchingAccessPoints) {
+        if (!strongestObservedAccessPoint.has_value()) {
+            strongestObservedAccessPoint = accessPoint;
+            continue;
+        }
+
+        const int accessPointSignal =
+            accessPoint.signalDbm.has_value() ? accessPoint.signalDbm.value() : -200;
+        const int strongestSignal = strongestObservedAccessPoint->signalDbm.has_value()
+            ? strongestObservedAccessPoint->signalDbm.value()
+            : -200;
+        if (accessPointSignal > strongestSignal
+            || (accessPointSignal == strongestSignal
+                && accessPoint.bssid < strongestObservedAccessPoint->bssid)) {
+            strongestObservedAccessPoint = accessPoint;
         }
     }
     std::stable_sort(
@@ -1150,68 +1244,122 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
     lv_obj_move_foreground(networkDetailsOverlay_);
 
     lv_obj_t* modal = lv_obj_create(networkDetailsOverlay_);
-    lv_obj_set_size(modal, LV_PCT(76), LV_PCT(100));
-    lv_obj_center(modal);
+    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
+    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
     lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(modal, 1, 0);
-    lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
-    lv_obj_set_style_radius(modal, 10, 0);
+    lv_obj_set_style_border_width(modal, 0, 0);
+    lv_obj_set_style_radius(modal, 0, 0);
     lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
     lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
 
-    networkDetailsContent_ = lv_obj_create(modal);
-    lv_obj_set_size(networkDetailsContent_, LV_PCT(100), 0);
+    lv_obj_t* headerRow = lv_obj_create(modal);
+    lv_obj_set_size(headerRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(headerRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        headerRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(headerRow, 0, 0);
+    lv_obj_set_style_pad_column(headerRow, 12, 0);
+    lv_obj_set_style_bg_opa(headerRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(headerRow, 0, 0);
+    lv_obj_clear_flag(headerRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(headerRow);
+    lv_label_set_text(titleLabel, network.ssid.c_str());
+    lv_obj_set_flex_grow(titleLabel, 1);
+    lv_obj_set_width(titleLabel, 0);
+    lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFDD66), 0);
+
+    lv_obj_t* statusBadge = lv_label_create(headerRow);
+    std::string badgeText;
+    if (network.status == Network::WifiNetworkStatus::Connected) {
+        badgeText = "Connected";
+    }
+    else if (isSavedNetwork(network)) {
+        badgeText = "Saved";
+    }
+    else if (network.status == Network::WifiNetworkStatus::Open) {
+        badgeText = "Open";
+    }
+    else {
+        badgeText = "Available";
+    }
+    lv_label_set_text(statusBadge, badgeText.c_str());
+    lv_obj_set_style_text_font(statusBadge, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(statusBadge, lv_color_hex(MUTED_TEXT_COLOR), 0);
+
+    lv_obj_t* bodyRow = lv_obj_create(modal);
+    lv_obj_set_size(bodyRow, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(bodyRow, 1);
+    lv_obj_set_flex_flow(bodyRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bodyRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(bodyRow, 0, 0);
+    lv_obj_set_style_pad_column(bodyRow, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_bg_opa(bodyRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(bodyRow, 0, 0);
+    lv_obj_clear_flag(bodyRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* summaryColumn = lv_obj_create(bodyRow);
+    lv_obj_set_size(summaryColumn, NETWORK_DETAILS_SUMMARY_WIDTH, LV_PCT(100));
+    lv_obj_set_flex_flow(summaryColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        summaryColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(summaryColumn, 0, 0);
+    lv_obj_set_style_pad_row(summaryColumn, NETWORK_CARD_ROW_PADDING, 0);
+    lv_obj_set_style_bg_opa(summaryColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summaryColumn, 0, 0);
+    lv_obj_clear_flag(summaryColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    networkDetailsContent_ = lv_obj_create(bodyRow);
+    lv_obj_set_size(networkDetailsContent_, 0, LV_PCT(100));
     lv_obj_set_flex_grow(networkDetailsContent_, 1);
     lv_obj_set_flex_flow(networkDetailsContent_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         networkDetailsContent_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(networkDetailsContent_, 0, 0);
-    lv_obj_set_style_pad_row(networkDetailsContent_, NETWORK_CARD_ROW_PADDING, 0);
+    lv_obj_set_style_pad_row(networkDetailsContent_, NETWORK_RADIOS_CONTENT_ROW_PADDING, 0);
     lv_obj_set_style_bg_opa(networkDetailsContent_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(networkDetailsContent_, 0, 0);
     lv_obj_set_scroll_dir(networkDetailsContent_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(networkDetailsContent_, LV_SCROLLBAR_MODE_AUTO);
 
-    lv_obj_t* titleLabel = lv_label_create(networkDetailsContent_);
-    lv_label_set_text(titleLabel, network.ssid.c_str());
-    lv_obj_set_width(titleLabel, LV_PCT(100));
-    lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFDD66), 0);
+    lv_obj_t* summaryCard = lv_obj_create(summaryColumn);
+    lv_obj_set_size(summaryCard, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(summaryCard, 10, 0);
+    lv_obj_set_style_pad_row(summaryCard, 8, 0);
+    lv_obj_set_style_bg_color(summaryCard, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(summaryCard, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(summaryCard, 1, 0);
+    lv_obj_set_style_border_color(summaryCard, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+    lv_obj_set_style_radius(summaryCard, 10, 0);
+    lv_obj_set_flex_flow(summaryCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        summaryCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(summaryCard, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* subtitleLabel = lv_label_create(networkDetailsContent_);
-    std::string subtitleText = isSavedNetwork(network)
-        ? (isOpenSecurity(network.security) ? "Saved open network" : "Saved Wi-Fi network")
-        : (network.status == Network::WifiNetworkStatus::Open ? "Open network"
-                                                              : "Available Wi-Fi network");
-    lv_label_set_text(subtitleLabel, subtitleText.c_str());
-    lv_obj_set_width(subtitleLabel, LV_PCT(100));
-    lv_obj_set_style_text_font(subtitleLabel, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(subtitleLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
-
-    auto addDetailRow = [&](lv_obj_t* parent, const char* labelText, const std::string& valueText) {
+    auto addDetailRow =
+        [&](lv_obj_t* parent, const char* labelText, const std::string& valueText) -> lv_obj_t* {
         lv_obj_t* row = lv_obj_create(parent);
         lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
-        lv_obj_set_style_pad_all(row, 10, 0);
-        lv_obj_set_style_pad_column(row, 12, 0);
-        lv_obj_set_style_bg_color(row, lv_color_hex(ACCESSORY_BG_COLOR), 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(row, 1, 0);
-        lv_obj_set_style_border_color(row, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
-        lv_obj_set_style_radius(row, 10, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_set_style_pad_column(row, 10, 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_radius(row, 0, 0);
         lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t* label = lv_label_create(row);
         lv_label_set_text(label, labelText);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(label, lv_color_hex(HEADER_TEXT_COLOR), 0);
-        lv_obj_set_style_min_width(label, 84, 0);
+        lv_obj_set_style_min_width(label, 88, 0);
 
         lv_obj_t* value = lv_label_create(row);
         lv_label_set_text(value, valueText.c_str());
@@ -1220,47 +1368,196 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
         lv_label_set_long_mode(value, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_font(value, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(value, lv_color_hex(0xFFFFFF), 0);
+
+        return value;
     };
 
-    std::optional<int> detailSignal = network.signalDbm;
-    if (!detailSignal.has_value() && !matchingAccessPoints.empty()) {
+    auto addBssidRow =
+        [&](lv_obj_t* parent, const char* labelText, const std::string& valueText) -> lv_obj_t* {
+        lv_obj_t* value = addDetailRow(parent, labelText, valueText);
+        if (!value) {
+            return nullptr;
+        }
+
+#if LV_FONT_UNSCII_16
+        lv_obj_set_style_text_font(value, &lv_font_unscii_16, 0);
+#endif
+        return value;
+    };
+
+    const auto preferredAccessPoint = preferredAccessPointForSsid(network.ssid);
+    std::optional<std::string> detailActiveBssid;
+    if (preferredAccessPoint.has_value() && preferredAccessPoint->active
+        && !preferredAccessPoint->bssid.empty()) {
+        detailActiveBssid = preferredAccessPoint->bssid;
+    }
+    else if (
+        latestWifiStatus_.has_value() && latestWifiStatus_->connected
+        && latestWifiStatus_->ssid == network.ssid && activeBssid_.has_value()) {
+        detailActiveBssid = activeBssid_;
+    }
+
+    std::optional<Network::WifiAccessPointInfo> detailActiveAccessPoint;
+    if (detailActiveBssid.has_value()) {
+        const auto activeIt = std::find_if(
+            matchingAccessPoints.begin(),
+            matchingAccessPoints.end(),
+            [&](const Network::WifiAccessPointInfo& accessPoint) {
+                return accessPoint.bssid == detailActiveBssid.value();
+            });
+        if (activeIt != matchingAccessPoints.end()) {
+            detailActiveAccessPoint = *activeIt;
+        }
+    }
+    if (!detailActiveAccessPoint.has_value()) {
+        const auto activeIt = std::find_if(
+            matchingAccessPoints.begin(),
+            matchingAccessPoints.end(),
+            [](const Network::WifiAccessPointInfo& accessPoint) { return accessPoint.active; });
+        if (activeIt != matchingAccessPoints.end()) {
+            detailActiveAccessPoint = *activeIt;
+        }
+    }
+
+    std::optional<int> detailSignal;
+    if (network.status == Network::WifiNetworkStatus::Connected
+        && detailActiveAccessPoint.has_value() && detailActiveAccessPoint->signalDbm.has_value()) {
+        detailSignal = detailActiveAccessPoint->signalDbm;
+    }
+    else if (network.signalDbm.has_value()) {
+        detailSignal = network.signalDbm;
+    }
+    else if (!matchingAccessPoints.empty()) {
         detailSignal = matchingAccessPoints.front().signalDbm;
     }
-    if (detailSignal.has_value()) {
-        addDetailRow(
-            networkDetailsContent_, "Signal", std::to_string(detailSignal.value()) + " dBm");
+    addDetailRow(
+        summaryCard,
+        "Signal",
+        detailSignal.has_value() ? std::to_string(detailSignal.value()) + " dBm" : "unknown");
+    addDetailRow(summaryCard, "Security", network.security.empty() ? "unknown" : network.security);
+    networkDetailsLastScanValueLabel_ =
+        addDetailRow(summaryCard, "Last scan", formatLastScanAgeText());
+    if (network.status == Network::WifiNetworkStatus::Connected) {
+        addDetailRow(summaryCard, "Connected", "now");
     }
-    addDetailRow(
-        networkDetailsContent_,
-        "Security",
-        network.security.empty() ? "unknown" : network.security);
-    addDetailRow(
-        networkDetailsContent_,
-        "Last used",
-        network.lastUsedRelative.empty()
-            ? (isSavedNetwork(network) ? std::string("saved") : std::string("not saved"))
-            : network.lastUsedRelative);
+    else if (isSavedNetwork(network)) {
+        addDetailRow(
+            summaryCard,
+            "Last used",
+            network.lastUsedRelative.empty() ? std::string("saved") : network.lastUsedRelative);
+    }
+
+    if (detailActiveBssid.has_value()) {
+        addBssidRow(summaryCard, "Active radio", detailActiveBssid.value());
+    }
+    if (strongestObservedAccessPoint.has_value() && !strongestObservedAccessPoint->bssid.empty()) {
+        const bool strongestDiffers = !detailActiveBssid.has_value()
+            || strongestObservedAccessPoint->bssid != detailActiveBssid.value();
+        if (strongestDiffers) {
+            addBssidRow(summaryCard, "Strongest seen", strongestObservedAccessPoint->bssid);
+        }
+    }
 
     if (network.status == Network::WifiNetworkStatus::Connected && !localAddresses_.empty()) {
-        addDetailRow(networkDetailsContent_, "Addresses", formatAddressSummary());
+        addDetailRow(summaryCard, "Addresses", formatAddressSummaryMultiline());
     }
 
-    if (!matchingAccessPoints.empty()) {
-        lv_obj_t* radiosTitleLabel = lv_label_create(networkDetailsContent_);
-        lv_label_set_text(radiosTitleLabel, "Observed radios");
-        lv_obj_set_width(radiosTitleLabel, LV_PCT(100));
-        lv_obj_set_style_text_font(radiosTitleLabel, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(radiosTitleLabel, lv_color_hex(HEADER_TEXT_COLOR), 0);
+    lv_obj_t* summarySpacer = lv_obj_create(summaryColumn);
+    lv_obj_set_size(summarySpacer, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(summarySpacer, 1);
+    lv_obj_set_style_pad_all(summarySpacer, 0, 0);
+    lv_obj_set_style_bg_opa(summarySpacer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summarySpacer, 0, 0);
+    lv_obj_clear_flag(summarySpacer, LV_OBJ_FLAG_SCROLLABLE);
 
+    const bool actionsEnabled = !isActionInProgress();
+    const int summaryButtonWidth = NETWORK_DETAILS_SUMMARY_WIDTH;
+    const int summaryHalfButtonWidth = (NETWORK_DETAILS_SUMMARY_WIDTH - 8) / 2;
+
+    lv_obj_t* summaryActionsColumn = lv_obj_create(summaryColumn);
+    lv_obj_set_size(summaryActionsColumn, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(summaryActionsColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        summaryActionsColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(summaryActionsColumn, 0, 0);
+    lv_obj_set_style_pad_row(summaryActionsColumn, 8, 0);
+    lv_obj_set_style_bg_opa(summaryActionsColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summaryActionsColumn, 0, 0);
+    lv_obj_clear_flag(summaryActionsColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (isSavedNetwork(network) && !isOpenSecurity(network.security)) {
+        lv_obj_t* updatePasswordButton = LVGLBuilder::actionButton(summaryActionsColumn)
+                                             .text("Update Password")
+                                             .mode(LVGLBuilder::ActionMode::Push)
+                                             .width(summaryButtonWidth)
+                                             .height(NETWORK_ACTION_BUTTON_HEIGHT)
+                                             .callback(onNetworkDetailsUpdatePasswordClicked, this)
+                                             .buildOrLog();
+        setActionButtonEnabled(updatePasswordButton, actionsEnabled);
+    }
+
+    lv_obj_t* summaryActionRow = lv_obj_create(summaryActionsColumn);
+    lv_obj_set_size(summaryActionRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(summaryActionRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        summaryActionRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(summaryActionRow, 0, 0);
+    lv_obj_set_style_pad_column(summaryActionRow, 8, 0);
+    lv_obj_set_style_bg_opa(summaryActionRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summaryActionRow, 0, 0);
+    lv_obj_clear_flag(summaryActionRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (isSavedNetwork(network)) {
+        lv_obj_t* forgetButton = LVGLBuilder::actionButton(summaryActionRow)
+                                     .text("Forget")
+                                     .mode(LVGLBuilder::ActionMode::Push)
+                                     .width(summaryHalfButtonWidth)
+                                     .height(NETWORK_ACTION_BUTTON_HEIGHT)
+                                     .callback(onNetworkDetailsForgetClicked, this)
+                                     .buildOrLog();
+        setActionButtonEnabled(forgetButton, actionsEnabled);
+    }
+
+    LVGLBuilder::actionButton(summaryActionRow)
+        .text("Close")
+        .mode(LVGLBuilder::ActionMode::Push)
+        .width(isSavedNetwork(network) ? summaryHalfButtonWidth : summaryButtonWidth)
+        .height(NETWORK_ACTION_BUTTON_HEIGHT)
+        .callback(onNetworkDetailsCloseClicked, this)
+        .buildOrLog();
+
+    lv_obj_t* radiosTitleLabel = lv_label_create(networkDetailsContent_);
+    lv_label_set_text(radiosTitleLabel, "Observed radios");
+    lv_obj_set_width(radiosTitleLabel, LV_PCT(100));
+    lv_obj_set_style_text_font(radiosTitleLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(radiosTitleLabel, lv_color_hex(HEADER_TEXT_COLOR), 0);
+
+    if (matchingAccessPoints.empty()) {
+        lv_obj_t* emptyLabel = lv_label_create(networkDetailsContent_);
+        lv_label_set_text(emptyLabel, "No radios in the current scan.");
+        lv_obj_set_width(emptyLabel, LV_PCT(100));
+        lv_label_set_long_mode(emptyLabel, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(emptyLabel, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(emptyLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    }
+    else {
         for (const auto& accessPoint : matchingAccessPoints) {
             lv_obj_t* accessPointCard = lv_obj_create(networkDetailsContent_);
             lv_obj_set_size(accessPointCard, LV_PCT(100), LV_SIZE_CONTENT);
-            lv_obj_set_style_pad_all(accessPointCard, 10, 0);
-            lv_obj_set_style_pad_row(accessPointCard, 4, 0);
-            lv_obj_set_style_bg_color(accessPointCard, lv_color_hex(ACCESSORY_BG_COLOR), 0);
+            lv_obj_set_style_pad_all(accessPointCard, NETWORK_RADIO_CARD_PADDING, 0);
+            lv_obj_set_style_pad_row(accessPointCard, NETWORK_RADIO_CARD_ROW_PADDING, 0);
+            lv_obj_set_style_bg_color(
+                accessPointCard,
+                lv_color_hex(accessPoint.active ? 0x202632 : ACCESSORY_BG_COLOR),
+                0);
             lv_obj_set_style_bg_opa(accessPointCard, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(accessPointCard, 1, 0);
-            lv_obj_set_style_border_color(accessPointCard, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+            lv_obj_set_style_border_width(accessPointCard, accessPoint.active ? 2 : 1, 0);
+            lv_obj_set_style_border_color(
+                accessPointCard,
+                lv_color_hex(
+                    accessPoint.active ? CONNECT_STAGE_ACTIVE_BORDER_COLOR
+                                       : ACCESSORY_BORDER_COLOR),
+                0);
             lv_obj_set_style_radius(accessPointCard, 10, 0);
             lv_obj_set_flex_flow(accessPointCard, LV_FLEX_FLOW_COLUMN);
             lv_obj_set_flex_align(
@@ -1285,7 +1582,11 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
             lv_obj_set_flex_grow(bssidLabel, 1);
             lv_obj_set_width(bssidLabel, 0);
             lv_label_set_long_mode(bssidLabel, LV_LABEL_LONG_DOT);
+#if LV_FONT_UNSCII_16
+            lv_obj_set_style_text_font(bssidLabel, &lv_font_unscii_16, 0);
+#else
             lv_obj_set_style_text_font(bssidLabel, &lv_font_montserrat_14, 0);
+#endif
             lv_obj_set_style_text_color(bssidLabel, lv_color_hex(0xFFFFFF), 0);
 
             if (accessPoint.active) {
@@ -1321,49 +1622,35 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
             lv_label_set_long_mode(apDetailsLabel, LV_LABEL_LONG_WRAP);
             lv_obj_set_style_text_font(apDetailsLabel, &lv_font_montserrat_12, 0);
             lv_obj_set_style_text_color(apDetailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+
+            auto historyIt = signalHistoryByBssid_.find(accessPoint.bssid);
+            if (historyIt != signalHistoryByBssid_.end() && !historyIt->second.samples.empty()) {
+                auto plot = std::make_unique<TimeSeriesPlotWidget>(
+                    accessPointCard,
+                    TimeSeriesPlotWidget::Config{
+                        .title = "",
+                        .lineColor =
+                            accessPoint.active ? lv_color_hex(0xFFDD66) : lv_color_hex(0x00CED1),
+                        .defaultMinY = -90.0f,
+                        .defaultMaxY = -20.0f,
+                        .valueScale = 1.0f,
+                        .autoScaleY = false,
+                        .showTitle = false,
+                        .showYAxisRangeLabels = false,
+                    });
+                plot->setSamples(historyIt->second.samples);
+                plot->clearBottomLabels();
+                lv_obj_t* plotContainer = plot->getContainer();
+                lv_obj_set_size(plotContainer, LV_PCT(100), NETWORK_RADIO_PLOT_HEIGHT);
+                lv_obj_set_flex_grow(plotContainer, 0);
+                networkDetailsPlotBindings_.push_back(
+                    NetworkDetailsPlotBinding{
+                        .bssid = accessPoint.bssid,
+                        .plot = std::move(plot),
+                    });
+            }
         }
     }
-
-    lv_obj_t* actionRow = lv_obj_create(modal);
-    lv_obj_set_size(actionRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(actionRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(actionRow, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(actionRow, 0, 0);
-    lv_obj_set_style_pad_column(actionRow, 8, 0);
-    lv_obj_set_style_bg_opa(actionRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(actionRow, 0, 0);
-    lv_obj_clear_flag(actionRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    const bool actionsEnabled = !isActionInProgress();
-    if (isSavedNetwork(network) && !isOpenSecurity(network.security)) {
-        lv_obj_t* updatePasswordButton = LVGLBuilder::actionButton(actionRow)
-                                             .text("Update Password")
-                                             .mode(LVGLBuilder::ActionMode::Push)
-                                             .width(176)
-                                             .height(NETWORK_ACTION_BUTTON_HEIGHT)
-                                             .callback(onNetworkDetailsUpdatePasswordClicked, this)
-                                             .buildOrLog();
-        setActionButtonEnabled(updatePasswordButton, actionsEnabled);
-    }
-
-    if (isSavedNetwork(network)) {
-        lv_obj_t* forgetButton = LVGLBuilder::actionButton(actionRow)
-                                     .text("Forget")
-                                     .mode(LVGLBuilder::ActionMode::Push)
-                                     .width(NETWORK_OVERLAY_BUTTON_WIDTH)
-                                     .height(NETWORK_ACTION_BUTTON_HEIGHT)
-                                     .callback(onNetworkDetailsForgetClicked, this)
-                                     .buildOrLog();
-        setActionButtonEnabled(forgetButton, actionsEnabled);
-    }
-
-    LVGLBuilder::actionButton(actionRow)
-        .text("Close")
-        .mode(LVGLBuilder::ActionMode::Push)
-        .width(NETWORK_OVERLAY_BUTTON_WIDTH)
-        .height(NETWORK_ACTION_BUTTON_HEIGHT)
-        .callback(onNetworkDetailsCloseClicked, this)
-        .buildOrLog();
 }
 
 void NetworkDiagnosticsPanel::openConnectingOverlay(const Network::WifiNetworkInfo& network)
@@ -1954,6 +2241,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                             Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
                                 std::move(networks));
                         data.accessPoints = std::move(accessPoints);
+                        data.activeBssid = snapshotInner.value().activeBssid;
                         data.localAddresses = std::move(localAddresses);
                         if (snapshotInner.value().connectOutcome.has_value()) {
                             data.connectOutcome = toUiWifiConnectOutcome(
@@ -1963,6 +2251,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                             data.connectProgress = toUiWifiConnectProgress(
                                 snapshotInner.value().connectProgress.value());
                         }
+                        data.lastScanAgeMs = snapshotInner.value().lastScanAgeMs;
                         data.scanInProgress = snapshotInner.value().scanInProgress;
                     }
                 }
@@ -2723,6 +3012,17 @@ std::string NetworkDiagnosticsPanel::formatAddressSummary() const
     return joinTextParts(parts, " • ");
 }
 
+std::string NetworkDiagnosticsPanel::formatAddressSummaryMultiline() const
+{
+    std::vector<std::string> parts;
+    parts.reserve(localAddresses_.size());
+    for (const auto& info : localAddresses_) {
+        parts.push_back(info.name + " " + info.address);
+    }
+
+    return joinTextParts(parts, "\n");
+}
+
 std::string NetworkDiagnosticsPanel::formatCurrentConnectionDetails(
     const Network::WifiNetworkInfo& info) const
 {
@@ -2783,6 +3083,105 @@ std::string NetworkDiagnosticsPanel::formatNetworkDetails(
     }
 
     return joinTextParts(parts, " • ");
+}
+
+std::string NetworkDiagnosticsPanel::formatLastScanAgeText() const
+{
+    if (!lastScanAgeMs_.has_value()) {
+        return "unavailable";
+    }
+
+    uint64_t ageMs = lastScanAgeMs_.value();
+    if (lastScanAgeUpdatedAt_.has_value()) {
+        const auto elapsed = std::chrono::steady_clock::now() - lastScanAgeUpdatedAt_.value();
+        ageMs += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+    }
+
+    return formatDurationAgo(ageMs);
+}
+
+std::optional<Network::WifiAccessPointInfo> NetworkDiagnosticsPanel::preferredAccessPointForSsid(
+    const std::string& ssid) const
+{
+    return selectPreferredAccessPointForSsid(accessPoints_, ssid);
+}
+
+void NetworkDiagnosticsPanel::updateDetailsLastScanLabel()
+{
+    if (!networkDetailsLastScanValueLabel_) {
+        return;
+    }
+
+    const std::string lastScanText = formatLastScanAgeText();
+    lv_label_set_text(networkDetailsLastScanValueLabel_, lastScanText.c_str());
+}
+
+void NetworkDiagnosticsPanel::updateDetailsSignalHistoryPlots()
+{
+    for (auto& binding : networkDetailsPlotBindings_) {
+        if (!binding.plot) {
+            continue;
+        }
+
+        const auto historyIt = signalHistoryByBssid_.find(binding.bssid);
+        if (historyIt == signalHistoryByBssid_.end() || historyIt->second.samples.empty()) {
+            binding.plot->clear();
+            binding.plot->clearBottomLabels();
+            continue;
+        }
+
+        binding.plot->setSamples(historyIt->second.samples);
+        binding.plot->clearBottomLabels();
+    }
+}
+
+void NetworkDiagnosticsPanel::updateSignalHistory(bool forceSample)
+{
+    if (viewMode_ != ViewMode::Wifi) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (!forceSample && signalHistoryLastSampleAt_.has_value()
+        && now - signalHistoryLastSampleAt_.value() < std::chrono::seconds(1)) {
+        updateDetailsLastScanLabel();
+        updateDetailsSignalHistoryPlots();
+        return;
+    }
+
+    signalHistoryLastSampleAt_ = now;
+    std::unordered_set<std::string> currentBssids;
+    for (const auto& accessPoint : accessPoints_) {
+        if (!accessPoint.bssid.empty()) {
+            currentBssids.insert(accessPoint.bssid);
+        }
+    }
+
+    for (const auto& accessPoint : accessPoints_) {
+        if (accessPoint.bssid.empty() || !accessPoint.signalDbm.has_value()) {
+            continue;
+        }
+
+        auto& series = signalHistoryByBssid_[accessPoint.bssid];
+        series.ssid = accessPoint.ssid;
+        series.samples.push_back(static_cast<float>(accessPoint.signalDbm.value()));
+        if (series.samples.size() > NETWORK_SIGNAL_HISTORY_MAX_SAMPLES) {
+            series.samples.erase(series.samples.begin());
+        }
+    }
+
+    for (auto it = signalHistoryByBssid_.begin(); it != signalHistoryByBssid_.end();) {
+        if (!currentBssids.contains(it->first)) {
+            it = signalHistoryByBssid_.erase(it);
+            continue;
+        }
+
+        ++it;
+    }
+
+    updateDetailsLastScanLabel();
+    updateDetailsSignalHistoryPlots();
 }
 
 void NetworkDiagnosticsPanel::updateNetworkDisplay(
@@ -2986,6 +3385,14 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         scanInProgress_ = refreshData->scanInProgress;
         const auto connectOutcome = refreshData->connectOutcome;
         setConnectProgress(refreshData->connectProgress);
+        activeBssid_ = refreshData->activeBssid;
+        lastScanAgeMs_ = refreshData->lastScanAgeMs;
+        if (refreshData->lastScanAgeMs.has_value()) {
+            lastScanAgeUpdatedAt_ = std::chrono::steady_clock::now();
+        }
+        else {
+            lastScanAgeUpdatedAt_.reset();
+        }
         if (refreshData->accessPoints.has_value()) {
             accessPoints_ = std::move(refreshData->accessPoints.value());
         }
@@ -3007,6 +3414,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         updateNetworkDisplay(refreshData->listResult);
         updateWebUiStatus(refreshData->accessStatusResult);
         updateWebSocketStatus(refreshData->accessStatusResult);
+        updateSignalHistory(true);
 
         if (networkDetailsOverlay_ && networkDetailsNetwork_.has_value()) {
             const int32_t detailsScrollY =
@@ -3308,6 +3716,7 @@ void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
     }
 
     self->applyPendingUpdates();
+    self->updateSignalHistory();
     self->updateConnectOverlay();
 }
 
