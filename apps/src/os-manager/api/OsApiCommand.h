@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NetworkSnapshotGet.h"
 #include "PeerClientKeyEnsure.h"
 #include "PeersGet.h"
 #include "Reboot.h"
@@ -19,12 +20,16 @@
 #include "UntrustPeer.h"
 #include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
+#include "WifiConnect.h"
+#include "WifiDisconnect.h"
+#include "WifiForget.h"
 #include <variant>
 
 namespace DirtSim {
 namespace OsApi {
 
 using OsApiCommand = std::variant<
+    NetworkSnapshotGet::Command,
     PeerClientKeyEnsure::Command,
     PeersGet::Command,
     RemoteCliRun::Command,
@@ -42,6 +47,9 @@ using OsApiCommand = std::variant<
     TrustBundleGet::Command,
     TrustPeer::Command,
     UntrustPeer::Command,
+    WifiConnect::Command,
+    WifiDisconnect::Command,
+    WifiForget::Command,
     WebSocketAccessSet::Command,
     WebUiAccessSet::Command>;
 

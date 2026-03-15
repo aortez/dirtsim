@@ -1,5 +1,6 @@
 #include "CommandDeserializerJson.h"
 #include "core/LoggingChannels.h"
+#include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
@@ -19,6 +20,9 @@
 #include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
+#include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiDisconnect.h"
+#include "os-manager/api/WifiForget.h"
 #include <nlohmann/json.hpp>
 
 namespace DirtSim {
@@ -51,7 +55,11 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
     LOG_DEBUG(Network, "OsManager: Deserializing command: {}", commandName);
 
     try {
-        if (commandName == OsApi::PeerClientKeyEnsure::Command::name()) {
+        if (commandName == OsApi::NetworkSnapshotGet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::NetworkSnapshotGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::PeerClientKeyEnsure::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::PeerClientKeyEnsure::Command::fromJson(cmd));
         }
@@ -118,6 +126,18 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::UntrustPeer::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::UntrustPeer::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WifiConnect::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WifiConnect::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WifiDisconnect::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WifiDisconnect::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WifiForget::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WifiForget::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::WebSocketAccessSet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

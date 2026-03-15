@@ -45,12 +45,6 @@ public:
     void refresh();
     void showWifiView();
 
-    /**
-     * @brief Get all non-loopback IPv4 addresses on the system.
-     * @return Vector of interface info structs.
-     */
-    static std::vector<NetworkInterfaceInfo> getLocalAddresses();
-
 private:
     enum class ViewMode { LanAccess, Wifi };
 
@@ -103,6 +97,7 @@ private:
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
+        std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
     };
 
     struct AsyncState {
@@ -154,7 +149,6 @@ private:
     void setWebSocketToggleEnabled(bool enabled);
     void setWebUiToggleEnabled(bool enabled);
     void submitPasswordPrompt();
-    void updateAddressDisplay();
     void updateCurrentConnectionSummary();
     void updateNetworkDisplay(
         const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);

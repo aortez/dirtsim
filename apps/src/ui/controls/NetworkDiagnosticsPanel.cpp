@@ -1,14 +1,14 @@
 #include "NetworkDiagnosticsPanel.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
+#include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
+#include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiForget.h"
 #include "ui/ui_builders/LVGLBuilder.h"
-#include <arpa/inet.h>
 #include <exception>
-#include <ifaddrs.h>
-#include <net/if.h>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -36,6 +36,62 @@ void updateAccessCache(const NetworkAccessCache& status)
 {
     std::lock_guard<std::mutex> lock(accessCacheMutex);
     accessCache = status;
+}
+
+NetworkInterfaceInfo toUiLocalAddressInfo(const OsApi::NetworkSnapshotGet::LocalAddressInfo& info)
+{
+    return NetworkInterfaceInfo{ .name = info.name, .address = info.address };
+}
+
+Network::WifiStatus toUiWifiStatus(const OsApi::NetworkSnapshotGet::WifiStatusInfo& info)
+{
+    return Network::WifiStatus{ .connected = info.connected, .ssid = info.ssid };
+}
+
+Network::WifiNetworkStatus toUiWifiNetworkStatus(
+    const OsApi::NetworkSnapshotGet::WifiNetworkStatus status)
+{
+    switch (status) {
+        case OsApi::NetworkSnapshotGet::WifiNetworkStatus::Connected:
+            return Network::WifiNetworkStatus::Connected;
+        case OsApi::NetworkSnapshotGet::WifiNetworkStatus::Saved:
+            return Network::WifiNetworkStatus::Saved;
+        case OsApi::NetworkSnapshotGet::WifiNetworkStatus::Open:
+            return Network::WifiNetworkStatus::Open;
+        case OsApi::NetworkSnapshotGet::WifiNetworkStatus::Available:
+            return Network::WifiNetworkStatus::Available;
+    }
+
+    return Network::WifiNetworkStatus::Saved;
+}
+
+Network::WifiNetworkInfo toUiWifiNetworkInfo(const OsApi::NetworkSnapshotGet::WifiNetworkInfo& info)
+{
+    return Network::WifiNetworkInfo{
+        .ssid = info.ssid,
+        .status = toUiWifiNetworkStatus(info.status),
+        .signalDbm = info.signalDbm,
+        .security = info.security,
+        .autoConnect = info.autoConnect,
+        .hasCredentials = info.hasCredentials,
+        .lastUsedDate = info.lastUsedDate,
+        .lastUsedRelative = info.lastUsedRelative,
+        .connectionId = info.connectionId,
+    };
+}
+
+Network::WifiConnectResult toUiWifiConnectResult(const OsApi::WifiConnect::Okay& result)
+{
+    return Network::WifiConnectResult{ .success = result.success, .ssid = result.ssid };
+}
+
+Network::WifiForgetResult toUiWifiForgetResult(const OsApi::WifiForget::Okay& result)
+{
+    return Network::WifiForgetResult{
+        .success = result.success,
+        .ssid = result.ssid,
+        .removed = result.removed,
+    };
 }
 
 constexpr uint32_t ACCESSORY_BG_COLOR = 0x1A1A1A;
@@ -641,23 +697,8 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
 
 void NetworkDiagnosticsPanel::refresh()
 {
-    updateAddressDisplay();
     setLoadingState();
     startAsyncRefresh();
-}
-
-void NetworkDiagnosticsPanel::updateAddressDisplay()
-{
-    localAddresses_ = getLocalAddresses();
-    updateCurrentConnectionSummary();
-
-    const std::string addressSummary = formatAddressSummary();
-    if (addressSummary.empty()) {
-        LOG_DEBUG(Controls, "No non-loopback IPv4 addresses found.");
-        return;
-    }
-
-    LOG_DEBUG(Controls, "Network addresses updated: {}", addressSummary);
 }
 
 void NetworkDiagnosticsPanel::setWifiStatusMessage(const std::string& text, uint32_t color)
@@ -897,43 +938,88 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
     std::thread([state]() {
         PendingRefreshData data;
         try {
-            Network::WifiManager wifiManager;
-            data.statusResult = wifiManager.getStatus();
-            data.listResult = wifiManager.listNetworks();
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            const auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                const std::string errorMessage =
+                    "Failed to connect to os-manager: " + connectResult.errorValue();
+                data.statusResult = Result<Network::WifiStatus, std::string>::error(errorMessage);
+                data.listResult =
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(errorMessage);
+                data.accessStatusResult =
+                    Result<NetworkAccessStatus, std::string>::error(errorMessage);
+            }
+            else {
+                OsApi::NetworkSnapshotGet::Command snapshotCmd{};
+                const auto snapshotResponse =
+                    client.sendCommandAndGetResponse<OsApi::NetworkSnapshotGet::Okay>(
+                        snapshotCmd, 4000);
 
-            auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
-                Network::WebSocketService client;
-                const std::string address = "ws://localhost:9090";
-                auto connectResult = client.connect(address, 2000);
-                if (connectResult.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "Failed to connect to os-manager: " + connectResult.errorValue());
-                }
-
-                OsApi::SystemStatus::Command cmd{};
-                auto response =
-                    client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(cmd, 2000);
+                OsApi::SystemStatus::Command statusCmd{};
+                const auto accessResponse =
+                    client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(statusCmd, 2000);
                 client.disconnect();
 
-                if (response.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "SystemStatus failed: " + response.errorValue());
+                if (snapshotResponse.isError()) {
+                    data.statusResult = Result<Network::WifiStatus, std::string>::error(
+                        "NetworkSnapshotGet failed: " + snapshotResponse.errorValue());
+                    data.listResult =
+                        Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(
+                            "NetworkSnapshotGet failed: " + snapshotResponse.errorValue());
+                }
+                else {
+                    const auto snapshotInner = snapshotResponse.value();
+                    if (snapshotInner.isError()) {
+                        data.statusResult = Result<Network::WifiStatus, std::string>::error(
+                            "NetworkSnapshotGet failed: " + snapshotInner.errorValue().message);
+                        data.listResult =
+                            Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(
+                                "NetworkSnapshotGet failed: " + snapshotInner.errorValue().message);
+                    }
+                    else {
+                        std::vector<Network::WifiNetworkInfo> networks;
+                        networks.reserve(snapshotInner.value().networks.size());
+                        for (const auto& network : snapshotInner.value().networks) {
+                            networks.push_back(toUiWifiNetworkInfo(network));
+                        }
+
+                        std::vector<NetworkInterfaceInfo> localAddresses;
+                        localAddresses.reserve(snapshotInner.value().localAddresses.size());
+                        for (const auto& addressInfo : snapshotInner.value().localAddresses) {
+                            localAddresses.push_back(toUiLocalAddressInfo(addressInfo));
+                        }
+
+                        data.statusResult = Result<Network::WifiStatus, std::string>::okay(
+                            toUiWifiStatus(snapshotInner.value().status));
+                        data.listResult =
+                            Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
+                                std::move(networks));
+                        data.localAddresses = std::move(localAddresses);
+                    }
                 }
 
-                const auto inner = response.value();
-                if (inner.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "SystemStatus failed: " + inner.errorValue().message);
+                if (accessResponse.isError()) {
+                    data.accessStatusResult = Result<NetworkAccessStatus, std::string>::error(
+                        "SystemStatus failed: " + accessResponse.errorValue());
                 }
+                else {
+                    const auto accessInner = accessResponse.value();
+                    if (accessInner.isError()) {
+                        data.accessStatusResult = Result<NetworkAccessStatus, std::string>::error(
+                            "SystemStatus failed: " + accessInner.errorValue().message);
+                    }
+                    else {
+                        NetworkAccessStatus status;
+                        status.webUiEnabled = accessInner.value().lan_web_ui_enabled;
+                        status.webSocketEnabled = accessInner.value().lan_websocket_enabled;
+                        status.webSocketToken = accessInner.value().lan_websocket_token;
+                        data.accessStatusResult =
+                            Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+                    }
+                }
+            }
 
-                NetworkAccessStatus status;
-                status.webUiEnabled = inner.value().lan_web_ui_enabled;
-                status.webSocketEnabled = inner.value().lan_websocket_enabled;
-                status.webSocketToken = inner.value().lan_websocket_token;
-                return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
-            };
-
-            data.accessStatusResult = fetchAccessStatus();
             if (!data.accessStatusResult.isError()) {
                 NetworkAccessCache cache;
                 cache.webUiEnabled = data.accessStatusResult.value().webUiEnabled;
@@ -980,12 +1066,33 @@ void NetworkDiagnosticsPanel::startAsyncConnect(
         Result<Network::WifiConnectResult, std::string> result =
             Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
         try {
-            Network::WifiManager wifiManager;
-            if (password.has_value()) {
-                result = wifiManager.connectBySsid(networkCopy.ssid, password);
+            Network::WebSocketService client;
+            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            if (connectResult.isError()) {
+                result = Result<Network::WifiConnectResult, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
             }
             else {
-                result = wifiManager.connect(networkCopy);
+                OsApi::WifiConnect::Command cmd{ .ssid = networkCopy.ssid, .password = password };
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::WifiConnect::Okay>(cmd, 25000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<Network::WifiConnectResult, std::string>::error(
+                        "WifiConnect failed: " + response.errorValue());
+                }
+                else {
+                    const auto inner = response.value();
+                    if (inner.isError()) {
+                        result = Result<Network::WifiConnectResult, std::string>::error(
+                            "WifiConnect failed: " + inner.errorValue().message);
+                    }
+                    else {
+                        result = Result<Network::WifiConnectResult, std::string>::okay(
+                            toUiWifiConnectResult(inner.value()));
+                    }
+                }
             }
         }
         catch (const std::exception& e) {
@@ -1014,8 +1121,34 @@ void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& n
         Result<Network::WifiForgetResult, std::string> result =
             Result<Network::WifiForgetResult, std::string>::error("WiFi forget failed");
         try {
-            Network::WifiManager wifiManager;
-            result = wifiManager.forget(networkCopy.ssid);
+            Network::WebSocketService client;
+            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            if (connectResult.isError()) {
+                result = Result<Network::WifiForgetResult, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::WifiForget::Command cmd{ .ssid = networkCopy.ssid };
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::WifiForget::Okay>(cmd, 25000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<Network::WifiForgetResult, std::string>::error(
+                        "WifiForget failed: " + response.errorValue());
+                }
+                else {
+                    const auto inner = response.value();
+                    if (inner.isError()) {
+                        result = Result<Network::WifiForgetResult, std::string>::error(
+                            "WifiForget failed: " + inner.errorValue().message);
+                    }
+                    else {
+                        result = Result<Network::WifiForgetResult, std::string>::okay(
+                            toUiWifiForgetResult(inner.value()));
+                    }
+                }
+            }
         }
         catch (const std::exception& e) {
             LOG_WARN(Controls, "WiFi forget exception: {}", e.what());
@@ -1602,49 +1735,6 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     }
 }
 
-std::vector<NetworkInterfaceInfo> NetworkDiagnosticsPanel::getLocalAddresses()
-{
-    std::vector<NetworkInterfaceInfo> result;
-
-    struct ifaddrs* ifaddr = nullptr;
-    if (getifaddrs(&ifaddr) == -1) {
-        LOG_WARN(Controls, "Failed to get network interfaces: {}", strerror(errno));
-        return result;
-    }
-
-    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == nullptr) {
-            continue;
-        }
-
-        // Only interested in IPv4.
-        if (ifa->ifa_addr->sa_family != AF_INET) {
-            continue;
-        }
-
-        // Skip loopback interfaces.
-        if ((ifa->ifa_flags & IFF_LOOPBACK) != 0) {
-            continue;
-        }
-
-        // Skip interfaces that are down.
-        if ((ifa->ifa_flags & IFF_UP) == 0) {
-            continue;
-        }
-
-        // Get the address string.
-        char addrBuf[INET_ADDRSTRLEN];
-        struct sockaddr_in* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
-        if (inet_ntop(AF_INET, &sa->sin_addr, addrBuf, sizeof(addrBuf)) != nullptr) {
-            result.push_back({ ifa->ifa_name, addrBuf });
-            LOG_DEBUG(Controls, "Found interface {}: {}", ifa->ifa_name, addrBuf);
-        }
-    }
-
-    freeifaddrs(ifaddr);
-    return result;
-}
-
 void NetworkDiagnosticsPanel::onRefreshClicked(lv_event_t* e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
@@ -1732,6 +1822,17 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     if (refreshData.has_value()) {
+        if (refreshData->localAddresses.has_value()) {
+            localAddresses_ = std::move(refreshData->localAddresses.value());
+
+            const std::string addressSummary = formatAddressSummary();
+            if (addressSummary.empty()) {
+                LOG_DEBUG(Controls, "No non-loopback IPv4 addresses found.");
+            }
+            else {
+                LOG_DEBUG(Controls, "Network addresses updated: {}", addressSummary);
+            }
+        }
         updateWifiStatus(refreshData->statusResult);
         updateNetworkDisplay(refreshData->listResult);
         updateWebUiStatus(refreshData->accessStatusResult);
