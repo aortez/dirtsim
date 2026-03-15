@@ -107,6 +107,9 @@ constexpr uint32_t MUTED_TEXT_COLOR = 0xB0B0B0;
 constexpr uint32_t NETWORK_ROW_BG_COLOR = 0x1C1C1C;
 constexpr uint32_t NETWORK_ROW_BORDER_COLOR = 0x383838;
 constexpr int NETWORK_SNAPSHOT_TIMEOUT_MS = 12000;
+constexpr int WIFI_LIST_COLUMN_GROW = 7;
+constexpr int WIFI_SUMMARY_COLUMN_GROW = 4;
+constexpr int WIFI_SUMMARY_MIN_WIDTH = 220;
 constexpr const char* OS_MANAGER_ADDRESS = "ws://localhost:9090";
 lv_obj_t* getActionButtonInnerButton(lv_obj_t* container)
 {
@@ -297,10 +300,10 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_t* wifiCard = lv_obj_create(wifiView_);
     lv_obj_set_size(wifiCard, LV_PCT(100), 0);
     lv_obj_set_flex_grow(wifiCard, 1);
-    lv_obj_set_flex_flow(wifiCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_flow(wifiCard, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(wifiCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(wifiCard, 12, 0);
-    lv_obj_set_style_pad_row(wifiCard, 10, 0);
+    lv_obj_set_style_pad_column(wifiCard, 14, 0);
     lv_obj_set_style_bg_color(wifiCard, lv_color_hex(CARD_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(wifiCard, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(wifiCard, 1, 0);
@@ -308,40 +311,37 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_radius(wifiCard, 10, 0);
     lv_obj_clear_flag(wifiCard, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* wifiHeaderRow = lv_obj_create(wifiCard);
-    lv_obj_set_size(wifiHeaderRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(wifiHeaderRow, LV_FLEX_FLOW_ROW);
+    lv_obj_t* wifiSummaryColumn = lv_obj_create(wifiCard);
+    lv_obj_set_size(wifiSummaryColumn, 0, LV_PCT(100));
+    lv_obj_set_flex_grow(wifiSummaryColumn, WIFI_SUMMARY_COLUMN_GROW);
+    lv_obj_set_style_min_width(wifiSummaryColumn, WIFI_SUMMARY_MIN_WIDTH, 0);
+    lv_obj_set_flex_flow(wifiSummaryColumn, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        wifiHeaderRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(wifiHeaderRow, 0, 0);
-    lv_obj_set_style_pad_column(wifiHeaderRow, 12, 0);
-    lv_obj_set_style_bg_opa(wifiHeaderRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(wifiHeaderRow, 0, 0);
-    lv_obj_clear_flag(wifiHeaderRow, LV_OBJ_FLAG_SCROLLABLE);
+        wifiSummaryColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(wifiSummaryColumn, 0, 0);
+    lv_obj_set_style_pad_row(wifiSummaryColumn, 10, 0);
+    lv_obj_set_style_bg_opa(wifiSummaryColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wifiSummaryColumn, 0, 0);
+    lv_obj_clear_flag(wifiSummaryColumn, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* wifiTitleLabel = lv_label_create(wifiHeaderRow);
-    lv_label_set_text(wifiTitleLabel, "Wi-Fi");
-    lv_obj_set_style_text_font(wifiTitleLabel, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(wifiTitleLabel, lv_color_hex(HEADER_TEXT_COLOR), 0);
-
-    refreshButton_ = LVGLBuilder::actionButton(wifiHeaderRow)
+    refreshButton_ = LVGLBuilder::actionButton(wifiSummaryColumn)
                          .text("Refresh")
                          .icon(LV_SYMBOL_REFRESH)
                          .mode(LVGLBuilder::ActionMode::Push)
                          .layoutRow()
-                         .width(188)
+                         .width(204)
                          .height(48)
                          .callback(onRefreshClicked, this)
                          .buildOrLog();
 
-    wifiStatusLabel_ = lv_label_create(wifiCard);
+    wifiStatusLabel_ = lv_label_create(wifiSummaryColumn);
     lv_obj_set_style_text_font(wifiStatusLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(wifiStatusLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
     lv_obj_set_width(wifiStatusLabel_, LV_PCT(100));
     lv_label_set_long_mode(wifiStatusLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_add_flag(wifiStatusLabel_, LV_OBJ_FLAG_HIDDEN);
 
-    currentNetworkContainer_ = lv_obj_create(wifiCard);
+    currentNetworkContainer_ = lv_obj_create(wifiSummaryColumn);
     lv_obj_set_size(currentNetworkContainer_, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(currentNetworkContainer_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
@@ -357,13 +357,25 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_clear_flag(currentNetworkContainer_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(currentNetworkContainer_, LV_OBJ_FLAG_HIDDEN);
 
-    networksTitleLabel_ = lv_label_create(wifiCard);
+    lv_obj_t* wifiListColumn = lv_obj_create(wifiCard);
+    lv_obj_set_size(wifiListColumn, 0, LV_PCT(100));
+    lv_obj_set_flex_grow(wifiListColumn, WIFI_LIST_COLUMN_GROW);
+    lv_obj_set_flex_flow(wifiListColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        wifiListColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(wifiListColumn, 0, 0);
+    lv_obj_set_style_pad_row(wifiListColumn, 10, 0);
+    lv_obj_set_style_bg_opa(wifiListColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wifiListColumn, 0, 0);
+    lv_obj_clear_flag(wifiListColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    networksTitleLabel_ = lv_label_create(wifiListColumn);
     lv_label_set_text(networksTitleLabel_, "Networks");
     lv_obj_set_style_text_font(networksTitleLabel_, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(networksTitleLabel_, lv_color_hex(HEADER_TEXT_COLOR), 0);
     lv_obj_set_width(networksTitleLabel_, LV_PCT(100));
 
-    networksContainer_ = lv_obj_create(wifiCard);
+    networksContainer_ = lv_obj_create(wifiListColumn);
     lv_obj_set_size(networksContainer_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(networksContainer_, 1);
     lv_obj_set_flex_flow(networksContainer_, LV_FLEX_FLOW_COLUMN);
@@ -849,22 +861,10 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
     lv_label_set_text(networksTitleLabel_, "Available networks");
     lv_obj_clear_flag(currentNetworkContainer_, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t* summaryHeader = lv_obj_create(currentNetworkContainer_);
-    lv_obj_set_size(summaryHeader, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(summaryHeader, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        summaryHeader, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(summaryHeader, 0, 0);
-    lv_obj_set_style_pad_column(summaryHeader, 10, 0);
-    lv_obj_set_style_bg_opa(summaryHeader, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(summaryHeader, 0, 0);
-    lv_obj_clear_flag(summaryHeader, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* titleLabel = lv_label_create(summaryHeader);
+    lv_obj_t* titleLabel = lv_label_create(currentNetworkContainer_);
     const std::string titleText = "Connected to " + connectedNetwork->ssid;
     lv_label_set_text(titleLabel, titleText.c_str());
-    lv_obj_set_width(titleLabel, 0);
-    lv_obj_set_flex_grow(titleLabel, 1);
+    lv_obj_set_width(titleLabel, LV_PCT(100));
     lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00FF7F), 0);
@@ -872,6 +872,14 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
     const bool isForgetting =
         actionState_.kind == AsyncActionKind::Forget && connectedNetwork->ssid == actionState_.ssid;
     const bool actionsDisabled = isActionInProgress();
+    lv_obj_t* detailsLabel = lv_label_create(currentNetworkContainer_);
+    const std::string detailsText = formatCurrentConnectionDetails(*connectedNetwork);
+    lv_label_set_text(detailsLabel, detailsText.c_str());
+    lv_obj_set_width(detailsLabel, LV_PCT(100));
+    lv_label_set_long_mode(detailsLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(detailsLabel, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(detailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
+
     if (!connectedNetwork->connectionId.empty()) {
         auto forgetContext = std::make_unique<ForgetContext>();
         forgetContext->panel = this;
@@ -879,7 +887,17 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
         forgetContexts_.push_back(std::move(forgetContext));
         ForgetContext* forgetContextPtr = forgetContexts_.back().get();
 
-        lv_obj_t* forgetButton = LVGLBuilder::actionButton(summaryHeader)
+        lv_obj_t* actionRow = lv_obj_create(currentNetworkContainer_);
+        lv_obj_set_size(actionRow, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(actionRow, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(
+            actionRow, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_all(actionRow, 0, 0);
+        lv_obj_set_style_bg_opa(actionRow, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(actionRow, 0, 0);
+        lv_obj_clear_flag(actionRow, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* forgetButton = LVGLBuilder::actionButton(actionRow)
                                      .text(isForgetting ? "Forgetting" : "Forget")
                                      .mode(LVGLBuilder::ActionMode::Push)
                                      .width(96)
@@ -888,14 +906,6 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
                                      .buildOrLog();
         setActionButtonEnabled(forgetButton, !actionsDisabled);
     }
-
-    lv_obj_t* detailsLabel = lv_label_create(currentNetworkContainer_);
-    const std::string detailsText = formatCurrentConnectionDetails(*connectedNetwork);
-    lv_label_set_text(detailsLabel, detailsText.c_str());
-    lv_obj_set_width(detailsLabel, LV_PCT(100));
-    lv_label_set_long_mode(detailsLabel, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(detailsLabel, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(detailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
 }
 
 void NetworkDiagnosticsPanel::setLoadingState()
@@ -1722,16 +1732,31 @@ std::string NetworkDiagnosticsPanel::formatCurrentConnectionDetails(
 
     parts.push_back(info.security.empty() ? "unknown" : info.security);
 
-    const std::string addressSummary = formatAddressSummary();
-    if (!addressSummary.empty()) {
-        parts.push_back(addressSummary);
+    std::vector<std::string> lines;
+    if (!parts.empty()) {
+        lines.push_back(joinTextParts(parts, " • "));
     }
+
+    auto appendAddressLines = [this, &lines](bool wifiFirst) {
+        for (const auto& info : localAddresses_) {
+            const bool isWifiAddress =
+                info.name.rfind("wl", 0) == 0 || info.name.rfind("wifi", 0) == 0;
+            if (isWifiAddress != wifiFirst) {
+                continue;
+            }
+
+            lines.push_back(info.name + " " + info.address);
+        }
+    };
+
+    appendAddressLines(true);
+    appendAddressLines(false);
 
     if (!info.lastUsedRelative.empty() && info.lastUsedRelative != "not saved") {
-        parts.push_back("used " + info.lastUsedRelative);
+        lines.push_back("used " + info.lastUsedRelative);
     }
 
-    return joinTextParts(parts, " • ");
+    return joinTextParts(lines, "\n");
 }
 
 std::string NetworkDiagnosticsPanel::formatNetworkDetails(
