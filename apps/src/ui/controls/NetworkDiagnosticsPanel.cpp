@@ -264,22 +264,6 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_pad_row(container_, 16, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* titleRow = lv_obj_create(container_);
-    lv_obj_set_size(titleRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(titleRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        titleRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(titleRow, 0, 0);
-    lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(titleRow, 0, 0);
-    lv_obj_clear_flag(titleRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Title.
-    lv_obj_t* title = lv_label_create(titleRow);
-    lv_label_set_text(title, "Network");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-
     pagesContainer_ = lv_obj_create(container_);
     lv_obj_set_size(pagesContainer_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(pagesContainer_, 1);
