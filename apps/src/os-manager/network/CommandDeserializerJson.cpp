@@ -21,6 +21,7 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
@@ -127,6 +128,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::UntrustPeer::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::UntrustPeer::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WifiConnectCancel::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WifiConnectCancel::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::WifiConnect::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

@@ -1891,6 +1891,26 @@ Result<WifiConnectResult, std::string> connectBySsid(
         WifiConnectResult{ .success = true, .ssid = ssid });
 }
 
+Result<std::monostate, std::string> requestConnectCancel(
+    NMClient* client, GMainContext* mainContext)
+{
+    if (!client) {
+        return Result<std::monostate, std::string>::error("No WiFi client available");
+    }
+
+    NMDeviceWifi* device = findWifiDevice(client);
+    if (!device) {
+        return Result<std::monostate, std::string>::error("No WiFi device found");
+    }
+
+    std::string disconnectError;
+    if (!disconnectDevice(client, NM_DEVICE(device), mainContext, disconnectError)) {
+        return Result<std::monostate, std::string>::error(disconnectError);
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 Result<WifiDisconnectResult, std::string> disconnect(
     NMClient* client, const std::optional<std::string>& ssid, GMainContext* mainContext)
 {

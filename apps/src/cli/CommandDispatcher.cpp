@@ -24,6 +24,7 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
@@ -149,6 +150,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::TrustBundleGet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::TrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::UntrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiConnectCancel::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WifiConnect::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WifiDisconnect::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WifiForget::Cwc>(osHandlers_, osExampleHandlers_);

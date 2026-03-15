@@ -8,6 +8,7 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -88,6 +89,35 @@ Network::WifiConnectResult toUiWifiConnectResult(const OsApi::WifiConnect::Okay&
     return Network::WifiConnectResult{ .success = result.success, .ssid = result.ssid };
 }
 
+Network::WifiConnectPhase toUiWifiConnectPhase(
+    const OsApi::NetworkSnapshotGet::WifiConnectPhase phase)
+{
+    switch (phase) {
+        case OsApi::NetworkSnapshotGet::WifiConnectPhase::Starting:
+            return Network::WifiConnectPhase::Starting;
+        case OsApi::NetworkSnapshotGet::WifiConnectPhase::Associating:
+            return Network::WifiConnectPhase::Associating;
+        case OsApi::NetworkSnapshotGet::WifiConnectPhase::Authenticating:
+            return Network::WifiConnectPhase::Authenticating;
+        case OsApi::NetworkSnapshotGet::WifiConnectPhase::GettingAddress:
+            return Network::WifiConnectPhase::GettingAddress;
+        case OsApi::NetworkSnapshotGet::WifiConnectPhase::Canceling:
+            return Network::WifiConnectPhase::Canceling;
+    }
+
+    return Network::WifiConnectPhase::Starting;
+}
+
+Network::WifiConnectProgress toUiWifiConnectProgress(
+    const OsApi::NetworkSnapshotGet::WifiConnectProgressInfo& info)
+{
+    return Network::WifiConnectProgress{
+        .ssid = info.ssid,
+        .phase = toUiWifiConnectPhase(info.phase),
+        .canCancel = info.canCancel,
+    };
+}
+
 Network::WifiForgetResult toUiWifiForgetResult(const OsApi::WifiForget::Okay& result)
 {
     return Network::WifiForgetResult{
@@ -106,11 +136,55 @@ constexpr uint32_t ERROR_TEXT_COLOR = 0xFF7777;
 constexpr uint32_t MUTED_TEXT_COLOR = 0xB0B0B0;
 constexpr uint32_t NETWORK_ROW_BG_COLOR = 0x1C1C1C;
 constexpr uint32_t NETWORK_ROW_BORDER_COLOR = 0x383838;
+constexpr uint32_t CONNECT_STAGE_ACTIVE_BG_COLOR = 0xFFDD66;
+constexpr uint32_t CONNECT_STAGE_ACTIVE_BORDER_COLOR = 0xFFDD66;
+constexpr uint32_t CONNECT_STAGE_ACTIVE_TEXT_COLOR = 0x101010;
+constexpr uint32_t CONNECT_STAGE_COMPLETE_BG_COLOR = 0x21484F;
+constexpr uint32_t CONNECT_STAGE_COMPLETE_BORDER_COLOR = 0x3C7E88;
+constexpr uint32_t CONNECT_STAGE_COMPLETE_TEXT_COLOR = 0xE4F9FF;
+constexpr uint32_t CONNECT_STAGE_PENDING_BG_COLOR = 0x202020;
+constexpr uint32_t CONNECT_STAGE_PENDING_BORDER_COLOR = 0x454545;
+constexpr uint32_t CONNECT_STAGE_PENDING_TEXT_COLOR = 0x808080;
 constexpr int NETWORK_SNAPSHOT_TIMEOUT_MS = 12000;
+constexpr int NETWORK_ACTION_BUTTON_HEIGHT = 72;
+constexpr int NETWORK_CARD_PADDING = 16;
+constexpr int NETWORK_CARD_ROW_PADDING = 12;
+constexpr int NETWORK_ROW_BUTTON_WIDTH = 116;
+constexpr int NETWORK_ROW_PADDING = 12;
+constexpr int NETWORK_SUMMARY_BUTTON_WIDTH = 112;
+constexpr int NETWORK_TEXT_INPUT_HEIGHT = 72;
+constexpr int NETWORK_TEXT_INPUT_PAD_HOR = 8;
+constexpr int NETWORK_TEXT_INPUT_PAD_VER = 12;
+constexpr int NETWORK_OVERLAY_BUTTON_WIDTH = 108;
+constexpr int NETWORK_PROGRESS_CANCEL_BUTTON_WIDTH = 164;
+constexpr int NETWORK_REFRESH_BUTTON_WIDTH = 224;
+constexpr int NETWORK_STAGE_BADGE_HEIGHT = 34;
 constexpr int WIFI_LIST_COLUMN_GROW = 7;
 constexpr int WIFI_SUMMARY_COLUMN_GROW = 4;
 constexpr int WIFI_SUMMARY_MIN_WIDTH = 220;
 constexpr const char* OS_MANAGER_ADDRESS = "ws://localhost:9090";
+
+const std::array<const char*, 4> kConnectStageTitles = {
+    "1 Join", "2 Associate", "3 Auth", "4 Address"
+};
+
+size_t connectPhaseStageIndex(const Network::WifiConnectPhase phase)
+{
+    switch (phase) {
+        case Network::WifiConnectPhase::Starting:
+            return 0;
+        case Network::WifiConnectPhase::Associating:
+            return 1;
+        case Network::WifiConnectPhase::Authenticating:
+            return 2;
+        case Network::WifiConnectPhase::GettingAddress:
+            return 3;
+        case Network::WifiConnectPhase::Canceling:
+            return 3;
+    }
+
+    return 0;
+}
 lv_obj_t* getActionButtonInnerButton(lv_obj_t* container)
 {
     if (!container) {
@@ -302,8 +376,8 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_flex_grow(wifiCard, 1);
     lv_obj_set_flex_flow(wifiCard, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(wifiCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(wifiCard, 12, 0);
-    lv_obj_set_style_pad_column(wifiCard, 14, 0);
+    lv_obj_set_style_pad_all(wifiCard, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_pad_column(wifiCard, NETWORK_CARD_PADDING, 0);
     lv_obj_set_style_bg_color(wifiCard, lv_color_hex(CARD_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(wifiCard, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(wifiCard, 1, 0);
@@ -319,7 +393,7 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_flex_align(
         wifiSummaryColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(wifiSummaryColumn, 0, 0);
-    lv_obj_set_style_pad_row(wifiSummaryColumn, 10, 0);
+    lv_obj_set_style_pad_row(wifiSummaryColumn, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_style_bg_opa(wifiSummaryColumn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wifiSummaryColumn, 0, 0);
     lv_obj_clear_flag(wifiSummaryColumn, LV_OBJ_FLAG_SCROLLABLE);
@@ -329,8 +403,8 @@ void NetworkDiagnosticsPanel::createUI()
                          .icon(LV_SYMBOL_REFRESH)
                          .mode(LVGLBuilder::ActionMode::Push)
                          .layoutRow()
-                         .width(204)
-                         .height(48)
+                         .width(NETWORK_REFRESH_BUTTON_WIDTH)
+                         .height(NETWORK_ACTION_BUTTON_HEIGHT)
                          .callback(onRefreshClicked, this)
                          .buildOrLog();
 
@@ -346,8 +420,8 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_flex_flow(currentNetworkContainer_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         currentNetworkContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(currentNetworkContainer_, 12, 0);
-    lv_obj_set_style_pad_row(currentNetworkContainer_, 8, 0);
+    lv_obj_set_style_pad_all(currentNetworkContainer_, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_pad_row(currentNetworkContainer_, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_style_bg_color(currentNetworkContainer_, lv_color_hex(ACCESSORY_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(currentNetworkContainer_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(currentNetworkContainer_, 1, 0);
@@ -364,7 +438,7 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_flex_align(
         wifiListColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(wifiListColumn, 0, 0);
-    lv_obj_set_style_pad_row(wifiListColumn, 10, 0);
+    lv_obj_set_style_pad_row(wifiListColumn, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_style_bg_opa(wifiListColumn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wifiListColumn, 0, 0);
     lv_obj_clear_flag(wifiListColumn, LV_OBJ_FLAG_SCROLLABLE);
@@ -382,7 +456,7 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_flex_align(
         networksContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(networksContainer_, 0, 0);
-    lv_obj_set_style_pad_row(networksContainer_, 10, 0);
+    lv_obj_set_style_pad_row(networksContainer_, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_style_bg_opa(networksContainer_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(networksContainer_, 0, 0);
     lv_obj_set_scroll_dir(networksContainer_, LV_DIR_VER);
@@ -572,6 +646,10 @@ void NetworkDiagnosticsPanel::startEventStream()
                     localAddresses.push_back(toUiLocalAddressInfo(info));
                 }
                 data.localAddresses = std::move(localAddresses);
+                if (changed.snapshot.connectProgress.has_value()) {
+                    data.connectProgress =
+                        toUiWifiConnectProgress(changed.snapshot.connectProgress.value());
+                }
                 data.scanInProgress = changed.snapshot.scanInProgress;
 
                 const auto accessCache = getAccessCache();
@@ -609,14 +687,24 @@ void NetworkDiagnosticsPanel::closePasswordPrompt()
     }
 
     passwordCancelButton_ = nullptr;
+    connectProgressCancelButton_ = nullptr;
+    connectProgressContainer_ = nullptr;
+    connectProgressDetailLabel_ = nullptr;
+    connectProgressPhaseLabel_ = nullptr;
+    connectProgressStagesRow_ = nullptr;
+    connectProgressTitleLabel_ = nullptr;
     passwordErrorLabel_ = nullptr;
+    passwordFormContainer_ = nullptr;
     passwordJoinButton_ = nullptr;
     passwordKeyboard_ = nullptr;
     passwordTextArea_ = nullptr;
     passwordStatusLabel_ = nullptr;
     passwordVisibilityButton_ = nullptr;
     passwordPromptNetwork_.reset();
+    connectOverlayHasPasswordEntry_ = false;
+    connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
     passwordVisible_ = false;
+    connectProgressStageBadges_.fill(nullptr);
 }
 
 bool NetworkDiagnosticsPanel::networkRequiresPassword(const Network::WifiNetworkInfo& network) const
@@ -637,6 +725,8 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     closePasswordPrompt();
 
     passwordPromptNetwork_ = network;
+    connectOverlayHasPasswordEntry_ = true;
+    connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
     passwordVisible_ = false;
 
     passwordOverlay_ = lv_obj_create(lv_layer_top());
@@ -657,8 +747,8 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_border_width(modal, 1, 0);
     lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
     lv_obj_set_style_radius(modal, 0, 0);
-    lv_obj_set_style_pad_all(modal, 10, 0);
-    lv_obj_set_style_pad_row(modal, 8, 0);
+    lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
     lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
@@ -717,10 +807,22 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_text_color(securityLabel, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(securityLabel, &lv_font_montserrat_12, 0);
 
-    lv_obj_t* passwordRow = lv_obj_create(modal);
+    passwordFormContainer_ = lv_obj_create(modal);
+    lv_obj_set_size(passwordFormContainer_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(passwordFormContainer_, 1);
+    lv_obj_set_flex_flow(passwordFormContainer_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        passwordFormContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(passwordFormContainer_, 0, 0);
+    lv_obj_set_style_pad_row(passwordFormContainer_, 8, 0);
+    lv_obj_set_style_bg_opa(passwordFormContainer_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(passwordFormContainer_, 0, 0);
+    lv_obj_clear_flag(passwordFormContainer_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* passwordRow = lv_obj_create(passwordFormContainer_);
     lv_obj_set_size(passwordRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(passwordRow, 6, 0);
-    lv_obj_set_style_pad_column(passwordRow, 6, 0);
+    lv_obj_set_style_pad_all(passwordRow, 8, 0);
+    lv_obj_set_style_pad_column(passwordRow, 8, 0);
     lv_obj_set_style_bg_color(passwordRow, lv_color_hex(ACCESSORY_BG_COLOR), 0);
     lv_obj_set_style_bg_opa(passwordRow, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(passwordRow, 1, 0);
@@ -732,7 +834,7 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_clear_flag(passwordRow, LV_OBJ_FLAG_SCROLLABLE);
 
     passwordTextArea_ = lv_textarea_create(passwordRow);
-    lv_obj_set_size(passwordTextArea_, 0, 48);
+    lv_obj_set_size(passwordTextArea_, 0, NETWORK_TEXT_INPUT_HEIGHT);
     lv_obj_set_flex_grow(passwordTextArea_, 1);
     lv_textarea_set_one_line(passwordTextArea_, true);
     lv_textarea_set_max_length(passwordTextArea_, 64);
@@ -742,8 +844,8 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     lv_obj_set_style_bg_opa(passwordTextArea_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(passwordTextArea_, 0, 0);
     lv_obj_set_style_outline_width(passwordTextArea_, 0, 0);
-    lv_obj_set_style_pad_hor(passwordTextArea_, 6, 0);
-    lv_obj_set_style_pad_ver(passwordTextArea_, 8, 0);
+    lv_obj_set_style_pad_hor(passwordTextArea_, NETWORK_TEXT_INPUT_PAD_HOR, 0);
+    lv_obj_set_style_pad_ver(passwordTextArea_, NETWORK_TEXT_INPUT_PAD_VER, 0);
     lv_obj_set_style_text_color(passwordTextArea_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(passwordTextArea_, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(
@@ -754,42 +856,42 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     passwordVisibilityButton_ = LVGLBuilder::actionButton(passwordRow)
                                     .text("Show")
                                     .mode(LVGLBuilder::ActionMode::Push)
-                                    .width(88)
-                                    .height(48)
+                                    .width(96)
+                                    .height(NETWORK_ACTION_BUTTON_HEIGHT)
                                     .callback(onPasswordVisibilityClicked, this)
                                     .buildOrLog();
 
     passwordJoinButton_ = LVGLBuilder::actionButton(passwordRow)
                               .text("Join")
                               .mode(LVGLBuilder::ActionMode::Push)
-                              .width(92)
-                              .height(48)
+                              .width(NETWORK_OVERLAY_BUTTON_WIDTH)
+                              .height(NETWORK_ACTION_BUTTON_HEIGHT)
                               .callback(onPasswordJoinClicked, this)
                               .buildOrLog();
 
     passwordCancelButton_ = LVGLBuilder::actionButton(passwordRow)
                                 .text("Cancel")
                                 .mode(LVGLBuilder::ActionMode::Push)
-                                .width(92)
-                                .height(48)
+                                .width(NETWORK_OVERLAY_BUTTON_WIDTH)
+                                .height(NETWORK_ACTION_BUTTON_HEIGHT)
                                 .callback(onPasswordCancelClicked, this)
                                 .buildOrLog();
 
-    passwordErrorLabel_ = lv_label_create(modal);
+    passwordErrorLabel_ = lv_label_create(passwordFormContainer_);
     lv_obj_set_width(passwordErrorLabel_, LV_PCT(100));
     lv_label_set_long_mode(passwordErrorLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(passwordErrorLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
     lv_obj_set_style_text_font(passwordErrorLabel_, &lv_font_montserrat_12, 0);
     lv_obj_add_flag(passwordErrorLabel_, LV_OBJ_FLAG_HIDDEN);
 
-    passwordStatusLabel_ = lv_label_create(modal);
+    passwordStatusLabel_ = lv_label_create(passwordFormContainer_);
     lv_obj_set_width(passwordStatusLabel_, LV_PCT(100));
     lv_label_set_long_mode(passwordStatusLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(passwordStatusLabel_, lv_color_hex(0x00CED1), 0);
     lv_obj_set_style_text_font(passwordStatusLabel_, &lv_font_montserrat_12, 0);
     lv_obj_add_flag(passwordStatusLabel_, LV_OBJ_FLAG_HIDDEN);
 
-    passwordKeyboard_ = lv_keyboard_create(modal);
+    passwordKeyboard_ = lv_keyboard_create(passwordFormContainer_);
     lv_obj_set_size(passwordKeyboard_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(passwordKeyboard_, 1);
     lv_obj_set_style_bg_color(passwordKeyboard_, lv_color_hex(CARD_BG_COLOR), 0);
@@ -803,13 +905,117 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
         passwordKeyboard_, lv_color_hex(ACCESSORY_BORDER_COLOR), LV_PART_ITEMS);
     lv_obj_set_style_text_color(passwordKeyboard_, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
     lv_obj_set_style_text_font(passwordKeyboard_, &lv_font_montserrat_18, LV_PART_ITEMS);
+    const auto keyboardPressedSelector = static_cast<lv_style_selector_t>(LV_PART_ITEMS)
+        | static_cast<lv_style_selector_t>(LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(
+        passwordKeyboard_, lv_color_hex(CONNECT_STAGE_ACTIVE_BG_COLOR), keyboardPressedSelector);
+    lv_obj_set_style_border_color(
+        passwordKeyboard_, lv_color_hex(CONNECT_STAGE_ACTIVE_BG_COLOR), keyboardPressedSelector);
+    lv_obj_set_style_text_color(
+        passwordKeyboard_, lv_color_hex(CONNECT_STAGE_ACTIVE_TEXT_COLOR), keyboardPressedSelector);
+    lv_obj_set_style_shadow_width(passwordKeyboard_, 8, keyboardPressedSelector);
+    lv_obj_set_style_shadow_color(
+        passwordKeyboard_, lv_color_hex(CONNECT_STAGE_ACTIVE_BG_COLOR), keyboardPressedSelector);
+    lv_obj_set_style_shadow_opa(passwordKeyboard_, LV_OPA_30, keyboardPressedSelector);
     lv_obj_add_event_cb(passwordKeyboard_, onPasswordKeyboardEvent, LV_EVENT_ALL, this);
     lv_keyboard_set_textarea(passwordKeyboard_, passwordTextArea_);
+    lv_keyboard_set_popovers(passwordKeyboard_, true);
+
+    connectProgressContainer_ = lv_obj_create(modal);
+    lv_obj_set_size(connectProgressContainer_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(connectProgressContainer_, 1);
+    lv_obj_set_flex_flow(connectProgressContainer_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        connectProgressContainer_,
+        LV_FLEX_ALIGN_CENTER,
+        LV_FLEX_ALIGN_CENTER,
+        LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(connectProgressContainer_, 20, 0);
+    lv_obj_set_style_pad_row(connectProgressContainer_, 16, 0);
+    lv_obj_set_style_bg_opa(connectProgressContainer_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(connectProgressContainer_, 0, 0);
+    lv_obj_clear_flag(connectProgressContainer_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* connectProgressIconLabel = lv_label_create(connectProgressContainer_);
+    lv_label_set_text(connectProgressIconLabel, LV_SYMBOL_REFRESH);
+    lv_obj_set_style_text_font(connectProgressIconLabel, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(connectProgressIconLabel, lv_color_hex(0xFFDD66), 0);
+
+    connectProgressTitleLabel_ = lv_label_create(connectProgressContainer_);
+    lv_obj_set_width(connectProgressTitleLabel_, LV_PCT(100));
+    lv_label_set_long_mode(connectProgressTitleLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(connectProgressTitleLabel_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(connectProgressTitleLabel_, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_color(connectProgressTitleLabel_, lv_color_hex(0xFFFFFF), 0);
+
+    connectProgressPhaseLabel_ = lv_label_create(connectProgressContainer_);
+    lv_obj_set_width(connectProgressPhaseLabel_, LV_PCT(100));
+    lv_label_set_long_mode(connectProgressPhaseLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(connectProgressPhaseLabel_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(connectProgressPhaseLabel_, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(connectProgressPhaseLabel_, lv_color_hex(0x00CED1), 0);
+
+    connectProgressStagesRow_ = lv_obj_create(connectProgressContainer_);
+    lv_obj_set_size(connectProgressStagesRow_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(connectProgressStagesRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        connectProgressStagesRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(connectProgressStagesRow_, 0, 0);
+    lv_obj_set_style_pad_column(connectProgressStagesRow_, 8, 0);
+    lv_obj_set_style_bg_opa(connectProgressStagesRow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(connectProgressStagesRow_, 0, 0);
+    lv_obj_clear_flag(connectProgressStagesRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (size_t i = 0; i < connectProgressStageBadges_.size(); ++i) {
+        lv_obj_t* badge = lv_obj_create(connectProgressStagesRow_);
+        lv_obj_set_size(badge, 0, NETWORK_STAGE_BADGE_HEIGHT);
+        lv_obj_set_flex_grow(badge, 1);
+        lv_obj_set_style_pad_hor(badge, 8, 0);
+        lv_obj_set_style_pad_ver(badge, 6, 0);
+        lv_obj_set_style_radius(badge, 999, 0);
+        lv_obj_set_style_border_width(badge, 1, 0);
+        lv_obj_set_style_border_color(badge, lv_color_hex(ACCESSORY_BORDER_COLOR), 0);
+        lv_obj_set_style_bg_color(badge, lv_color_hex(CONNECT_STAGE_PENDING_BG_COLOR), 0);
+        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* badgeLabel = lv_label_create(badge);
+        lv_label_set_text(badgeLabel, kConnectStageTitles[i]);
+        lv_obj_center(badgeLabel);
+        lv_obj_set_style_text_font(badgeLabel, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(badgeLabel, lv_color_hex(CONNECT_STAGE_PENDING_TEXT_COLOR), 0);
+
+        connectProgressStageBadges_[i] = badge;
+    }
+
+    connectProgressDetailLabel_ = lv_label_create(connectProgressContainer_);
+    lv_obj_set_width(connectProgressDetailLabel_, LV_PCT(100));
+    lv_label_set_long_mode(connectProgressDetailLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(connectProgressDetailLabel_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(connectProgressDetailLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(connectProgressDetailLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
+
+    connectProgressCancelButton_ = LVGLBuilder::actionButton(connectProgressContainer_)
+                                       .text("Cancel")
+                                       .mode(LVGLBuilder::ActionMode::Push)
+                                       .width(NETWORK_PROGRESS_CANCEL_BUTTON_WIDTH)
+                                       .height(NETWORK_ACTION_BUTTON_HEIGHT)
+                                       .callback(onConnectProgressCancelClicked, this)
+                                       .buildOrLog();
 
     updatePasswordVisibilityButton();
     updatePasswordJoinButton();
     setPasswordPromptError("");
     setPasswordPromptStatus("", MUTED_TEXT_COLOR);
+    setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
+}
+
+void NetworkDiagnosticsPanel::openConnectingOverlay(const Network::WifiNetworkInfo& network)
+{
+    openPasswordPrompt(network);
+    connectOverlayHasPasswordEntry_ = false;
+    setConnectOverlayMode(ConnectOverlayMode::Connecting);
+    updateConnectOverlay();
 }
 
 void NetworkDiagnosticsPanel::refresh(bool forceRefresh)
@@ -909,8 +1115,8 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
         lv_obj_t* forgetButton = LVGLBuilder::actionButton(actionRow)
                                      .text(isForgetting ? "Forgetting" : "Forget")
                                      .mode(LVGLBuilder::ActionMode::Push)
-                                     .width(96)
-                                     .height(40)
+                                     .width(NETWORK_SUMMARY_BUTTON_WIDTH)
+                                     .height(NETWORK_ACTION_BUTTON_HEIGHT)
                                      .callback(onForgetClicked, forgetContextPtr)
                                      .buildOrLog();
         setActionButtonEnabled(forgetButton, !actionsDisabled);
@@ -933,41 +1139,225 @@ void NetworkDiagnosticsPanel::setLoadingState()
     setRefreshButtonEnabled(false);
 }
 
-void NetworkDiagnosticsPanel::setPasswordPromptBusy(bool busy)
+std::string NetworkDiagnosticsPanel::formatConnectPhaseText() const
 {
-    if (passwordTextArea_) {
-        if (busy) {
-            lv_obj_add_state(passwordTextArea_, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(passwordTextArea_, LV_OPA_50, 0);
+    if (connectAwaitingConfirmationSsid_.has_value() && !connectProgress_.has_value()) {
+        return "Finalizing connection";
+    }
+
+    const auto phase = connectProgress_.has_value() ? connectProgress_->phase
+                                                    : Network::WifiConnectPhase::Starting;
+    switch (phase) {
+        case Network::WifiConnectPhase::Starting:
+            return "Joining network";
+        case Network::WifiConnectPhase::Associating:
+            return "Associating with network";
+        case Network::WifiConnectPhase::Authenticating:
+            return "Checking password";
+        case Network::WifiConnectPhase::GettingAddress:
+            return "Getting address";
+        case Network::WifiConnectPhase::Canceling:
+            return "Canceling connection";
+    }
+
+    return "Joining network";
+}
+
+std::string NetworkDiagnosticsPanel::formatAnimatedConnectPhaseText() const
+{
+    const std::string baseText = formatConnectPhaseText();
+    if (!connectStartedAt_.has_value()) {
+        return baseText + "...";
+    }
+
+    const auto elapsed = std::chrono::steady_clock::now() - connectStartedAt_.value();
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    const int dotCount = static_cast<int>((elapsedMs / 450) % 3) + 1;
+    return baseText + std::string(static_cast<size_t>(dotCount), '.');
+}
+
+std::string NetworkDiagnosticsPanel::formatConnectElapsedText() const
+{
+    if (!connectStartedAt_.has_value()) {
+        return "";
+    }
+
+    const auto elapsed = std::chrono::steady_clock::now() - connectStartedAt_.value();
+    const auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+    return "Elapsed " + std::to_string(elapsedSeconds) + "s";
+}
+
+std::string NetworkDiagnosticsPanel::formatConnectStatusMessage() const
+{
+    const std::string ssid = connectAwaitingConfirmationSsid_.has_value()
+        ? connectAwaitingConfirmationSsid_.value()
+        : (connectProgress_.has_value()
+               ? connectProgress_->ssid
+               : (actionState_.ssid.empty() ? std::string{} : actionState_.ssid));
+    if (ssid.empty()) {
+        return formatAnimatedConnectPhaseText();
+    }
+
+    return "Connecting to " + ssid + " - " + formatAnimatedConnectPhaseText();
+}
+
+bool NetworkDiagnosticsPanel::isConnectedToSsid(const std::string& ssid) const
+{
+    return latestWifiStatus_.has_value() && latestWifiStatus_->connected
+        && latestWifiStatus_->ssid == ssid;
+}
+
+void NetworkDiagnosticsPanel::setConnectOverlayMode(const ConnectOverlayMode mode)
+{
+    connectOverlayMode_ = mode;
+
+    if (passwordFormContainer_) {
+        if (mode == ConnectOverlayMode::PasswordEntry && connectOverlayHasPasswordEntry_) {
+            lv_obj_clear_flag(passwordFormContainer_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
-            lv_obj_clear_state(passwordTextArea_, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(passwordTextArea_, LV_OPA_COVER, 0);
+            lv_obj_add_flag(passwordFormContainer_, LV_OBJ_FLAG_HIDDEN);
         }
     }
 
-    if (passwordKeyboard_) {
-        if (busy) {
-            lv_obj_add_state(passwordKeyboard_, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_50, 0);
-            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_50, LV_PART_ITEMS);
+    if (connectProgressContainer_) {
+        if (mode == ConnectOverlayMode::Connecting) {
+            lv_obj_clear_flag(connectProgressContainer_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
-            lv_obj_clear_state(passwordKeyboard_, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_COVER, 0);
-            lv_obj_set_style_opa(passwordKeyboard_, LV_OPA_COVER, LV_PART_ITEMS);
+            lv_obj_add_flag(connectProgressContainer_, LV_OBJ_FLAG_HIDDEN);
         }
     }
+}
 
-    setActionButtonEnabled(passwordCancelButton_, !busy);
-    setActionButtonEnabled(passwordVisibilityButton_, !busy);
-    if (busy) {
-        setActionButtonText(passwordJoinButton_, "Joining...");
-        setActionButtonEnabled(passwordJoinButton_, false);
+void NetworkDiagnosticsPanel::setConnectProgress(
+    const std::optional<Network::WifiConnectProgress>& progress)
+{
+    if (progress.has_value()) {
+        if (!connectStartedAt_.has_value()) {
+            connectStartedAt_ = std::chrono::steady_clock::now();
+        }
+        if (progress->phase != Network::WifiConnectPhase::Canceling) {
+            lastConnectPhase_ = progress->phase;
+        }
     }
     else {
-        setActionButtonText(passwordJoinButton_, "Join");
-        updatePasswordJoinButton();
+        if (!connectAwaitingConfirmationSsid_.has_value()) {
+            connectStartedAt_.reset();
+            lastConnectPhase_ = Network::WifiConnectPhase::Starting;
+        }
+    }
+
+    connectProgress_ = progress;
+    updateConnectOverlay();
+}
+
+void NetworkDiagnosticsPanel::updateConnectPhaseBadges()
+{
+    const auto phase = connectProgress_.has_value()
+            && connectProgress_->phase != Network::WifiConnectPhase::Canceling
+        ? connectProgress_->phase
+        : lastConnectPhase_;
+    const size_t activeStageIndex = connectPhaseStageIndex(phase);
+
+    for (size_t i = 0; i < connectProgressStageBadges_.size(); ++i) {
+        lv_obj_t* badge = connectProgressStageBadges_[i];
+        if (!badge) {
+            continue;
+        }
+
+        lv_obj_t* badgeLabel = lv_obj_get_child(badge, 0);
+        if (!badgeLabel) {
+            continue;
+        }
+
+        uint32_t backgroundColor = CONNECT_STAGE_PENDING_BG_COLOR;
+        uint32_t borderColor = CONNECT_STAGE_PENDING_BORDER_COLOR;
+        uint32_t textColor = CONNECT_STAGE_PENDING_TEXT_COLOR;
+
+        if (i < activeStageIndex) {
+            backgroundColor = CONNECT_STAGE_COMPLETE_BG_COLOR;
+            borderColor = CONNECT_STAGE_COMPLETE_BORDER_COLOR;
+            textColor = CONNECT_STAGE_COMPLETE_TEXT_COLOR;
+        }
+        else if (i == activeStageIndex) {
+            backgroundColor = CONNECT_STAGE_ACTIVE_BG_COLOR;
+            borderColor = CONNECT_STAGE_ACTIVE_BORDER_COLOR;
+            textColor = CONNECT_STAGE_ACTIVE_TEXT_COLOR;
+        }
+
+        lv_obj_set_style_bg_color(badge, lv_color_hex(backgroundColor), 0);
+        lv_obj_set_style_border_color(badge, lv_color_hex(borderColor), 0);
+        lv_obj_set_style_text_color(badgeLabel, lv_color_hex(textColor), 0);
+    }
+}
+
+void NetworkDiagnosticsPanel::updateConnectOverlay()
+{
+    if (!passwordOverlay_ || !passwordPromptNetwork_.has_value()) {
+        return;
+    }
+    if (connectOverlayMode_ != ConnectOverlayMode::Connecting || !connectProgressTitleLabel_
+        || !connectProgressPhaseLabel_ || !connectProgressDetailLabel_) {
+        return;
+    }
+
+    const std::string ssid = connectAwaitingConfirmationSsid_.has_value()
+        ? connectAwaitingConfirmationSsid_.value()
+        : (connectProgress_.has_value() ? connectProgress_->ssid : passwordPromptNetwork_->ssid);
+    const std::string titleText = "Connecting to " + ssid;
+    lv_label_set_text(connectProgressTitleLabel_, titleText.c_str());
+
+    const std::string phaseText = formatAnimatedConnectPhaseText();
+    lv_label_set_text(connectProgressPhaseLabel_, phaseText.c_str());
+    updateConnectPhaseBadges();
+
+    const std::string elapsedText = formatConnectElapsedText();
+    const std::string detailText = connectAwaitingConfirmationSsid_.has_value()
+        ? (elapsedText.empty() ? "Waiting for connection confirmation"
+                               : "Waiting for connection confirmation • " + elapsedText)
+        : elapsedText;
+    lv_label_set_text(connectProgressDetailLabel_, detailText.c_str());
+
+    if (connectProgressCancelButton_) {
+        if (connectAwaitingConfirmationSsid_.has_value()) {
+            lv_obj_add_flag(connectProgressCancelButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_clear_flag(connectProgressCancelButton_, LV_OBJ_FLAG_HIDDEN);
+            const bool canCancel =
+                connectProgress_.has_value() ? connectProgress_->canCancel : true;
+            setActionButtonEnabled(connectProgressCancelButton_, canCancel);
+            setActionButtonText(connectProgressCancelButton_, canCancel ? "Cancel" : "Canceling");
+        }
+    }
+}
+
+void NetworkDiagnosticsPanel::finalizeConfirmedConnect()
+{
+    if (!connectAwaitingConfirmationSsid_.has_value()) {
+        return;
+    }
+
+    const std::string confirmedSsid = connectAwaitingConfirmationSsid_.value();
+    LOG_INFO(Controls, "WiFi connect confirmed for {}", confirmedSsid);
+
+    connectAwaitingConfirmationSsid_.reset();
+    if (passwordOverlay_) {
+        closePasswordPrompt();
+    }
+
+    endAsyncAction(AsyncActionKind::Connect);
+    setConnectProgress(std::nullopt);
+    updateWifiStatus(
+        Result<Network::WifiStatus, std::string>::okay(
+            Network::WifiStatus{
+                .connected = true,
+                .ssid = confirmedSsid,
+            }));
+    if (!networks_.empty()) {
+        updateNetworkDisplay(
+            Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
     }
 }
 
@@ -1140,6 +1530,10 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                             Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
                                 std::move(networks));
                         data.localAddresses = std::move(localAddresses);
+                        if (snapshotInner.value().connectProgress.has_value()) {
+                            data.connectProgress = toUiWifiConnectProgress(
+                                snapshotInner.value().connectProgress.value());
+                        }
                         data.scanInProgress = snapshotInner.value().scanInProgress;
                     }
                 }
@@ -1248,18 +1642,18 @@ bool NetworkDiagnosticsPanel::startAsyncScanRequest()
 
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingScanRequest = std::move(result);
-        state->scanRequestInProgress = state->pendingScanRequest->isValue();
+        state->scanRequestInProgress = false;
     }).detach();
 
     return true;
 }
 
-void NetworkDiagnosticsPanel::startAsyncConnect(
+bool NetworkDiagnosticsPanel::startAsyncConnect(
     const Network::WifiNetworkInfo& network, const std::optional<std::string>& password)
 {
     Network::WifiNetworkInfo networkCopy = network;
     if (!beginAsyncAction(AsyncActionKind::Connect, networkCopy, "Connecting to")) {
-        return;
+        return false;
     }
 
     auto state = asyncState_;
@@ -1308,6 +1702,64 @@ void NetworkDiagnosticsPanel::startAsyncConnect(
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingConnect = result;
     }).detach();
+
+    return true;
+}
+
+bool NetworkDiagnosticsPanel::startAsyncConnectCancel()
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->connectCancelInProgress) {
+            return false;
+        }
+        asyncState_->connectCancelInProgress = true;
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<std::monostate, std::string> result =
+            Result<std::monostate, std::string>::error("WiFi connect cancel failed");
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<std::monostate, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::WifiConnectCancel::Command cmd{};
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::WifiConnectCancel::Okay>(cmd, 5000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "WifiConnectCancel failed: " + response.errorValue());
+                }
+                else if (response.value().isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "WifiConnectCancel failed: " + response.value().errorValue().message);
+                }
+                else {
+                    result = Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<std::monostate, std::string>::error(e.what());
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingConnectCancel = std::move(result);
+        state->connectCancelInProgress = false;
+    }).detach();
+
+    return true;
 }
 
 void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& network)
@@ -1578,6 +2030,10 @@ bool NetworkDiagnosticsPanel::beginAsyncAction(
 
     actionState_.kind = kind;
     actionState_.ssid = network.ssid;
+    if (kind == AsyncActionKind::Connect) {
+        connectStartedAt_ = std::chrono::steady_clock::now();
+        lastConnectPhase_ = Network::WifiConnectPhase::Starting;
+    }
 
     std::string text = verb;
     if (!network.ssid.empty()) {
@@ -1599,6 +2055,10 @@ void NetworkDiagnosticsPanel::endAsyncAction(AsyncActionKind kind)
 {
     if (actionState_.kind != kind) {
         return;
+    }
+
+    if (kind == AsyncActionKind::Connect) {
+        connectStartedAt_.reset();
     }
 
     actionState_.kind = AsyncActionKind::None;
@@ -1624,11 +2084,13 @@ void NetworkDiagnosticsPanel::submitPasswordPrompt()
     }
 
     setPasswordPromptError("");
-    setPasswordPromptStatus(
-        std::string(LV_SYMBOL_REFRESH) + " Connecting to " + passwordPromptNetwork_->ssid + "...",
-        0x00CED1);
-    setPasswordPromptBusy(true);
-    startAsyncConnect(passwordPromptNetwork_.value(), std::string(passwordText));
+    if (!startAsyncConnect(passwordPromptNetwork_.value(), std::string(passwordText))) {
+        return;
+    }
+
+    setPasswordPromptStatus("", MUTED_TEXT_COLOR);
+    setConnectOverlayMode(ConnectOverlayMode::Connecting);
+    updateConnectOverlay();
 }
 
 void NetworkDiagnosticsPanel::updatePasswordJoinButton()
@@ -1655,6 +2117,18 @@ void NetworkDiagnosticsPanel::updatePasswordVisibilityButton()
 void NetworkDiagnosticsPanel::updateWifiStatus(
     const Result<Network::WifiStatus, std::string>& statusResult)
 {
+    if (statusResult.isError()) {
+        latestWifiStatus_.reset();
+    }
+    else {
+        latestWifiStatus_ = statusResult.value();
+    }
+
+    if (connectProgress_.has_value() || connectAwaitingConfirmationSsid_.has_value()) {
+        setWifiStatusMessage(formatConnectStatusMessage(), 0x00CED1);
+        return;
+    }
+
     if (statusResult.isError()) {
         setWifiStatusMessage("Wi-Fi unavailable", ERROR_TEXT_COLOR);
         LOG_WARN(Controls, "WiFi status failed: {}", statusResult.errorValue());
@@ -1862,8 +2336,8 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
         lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_all(row, 8, 0);
-        lv_obj_set_style_pad_column(row, 8, 0);
+        lv_obj_set_style_pad_all(row, NETWORK_ROW_PADDING, 0);
+        lv_obj_set_style_pad_column(row, NETWORK_ROW_PADDING, 0);
         lv_obj_set_style_bg_color(row, lv_color_hex(NETWORK_ROW_BG_COLOR), 0);
         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(row, 1, 0);
@@ -1926,8 +2400,8 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         lv_obj_t* buttonContainer = LVGLBuilder::actionButton(row)
                                         .text(buttonText.c_str())
                                         .mode(LVGLBuilder::ActionMode::Push)
-                                        .width(92)
-                                        .height(40)
+                                        .width(NETWORK_ROW_BUTTON_WIDTH)
+                                        .height(NETWORK_ACTION_BUTTON_HEIGHT)
                                         .callback(onConnectClicked, contextPtr)
                                         .buildOrLog();
         setActionButtonEnabled(buttonContainer, !actionsDisabled);
@@ -1964,6 +2438,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
+    std::optional<Result<std::monostate, std::string>> connectCancelResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<std::monostate, std::string>> scanRequestResult;
@@ -1974,6 +2449,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         connectResult = asyncState_->pendingConnect;
         asyncState_->pendingConnect.reset();
+
+        connectCancelResult = asyncState_->pendingConnectCancel;
+        asyncState_->pendingConnectCancel.reset();
 
         forgetResult = asyncState_->pendingForget;
         asyncState_->pendingForget.reset();
@@ -1991,18 +2469,67 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         asyncState_->pendingWebUiUpdate.reset();
     }
 
+    if (refreshData.has_value()) {
+        scanInProgress_ = refreshData->scanInProgress;
+        setConnectProgress(refreshData->connectProgress);
+        if (refreshData->localAddresses.has_value()) {
+            localAddresses_ = std::move(refreshData->localAddresses.value());
+
+            const std::string addressSummary = formatAddressSummary();
+            if (addressSummary.empty()) {
+                LOG_DEBUG(Controls, "No non-loopback IPv4 addresses found.");
+            }
+            else {
+                LOG_DEBUG(Controls, "Network addresses updated: {}", addressSummary);
+            }
+        }
+        updateWifiStatus(refreshData->statusResult);
+        updateNetworkDisplay(refreshData->listResult);
+        updateWebUiStatus(refreshData->accessStatusResult);
+        updateWebSocketStatus(refreshData->accessStatusResult);
+
+        if (connectAwaitingConfirmationSsid_.has_value()
+            && isConnectedToSsid(connectAwaitingConfirmationSsid_.value())) {
+            finalizeConfirmedConnect();
+        }
+    }
+
+    if (connectCancelResult.has_value() && connectCancelResult->isError()) {
+        LOG_WARN(Controls, "WiFi connect cancel failed: {}", connectCancelResult->errorValue());
+        setWifiStatusMessage("Wi-Fi cancel failed", ERROR_TEXT_COLOR);
+        updateConnectOverlay();
+    }
+
     if (connectResult.has_value()) {
-        const bool passwordPromptConnect = passwordPromptNetwork_.has_value()
+        const bool overlayConnect = passwordPromptNetwork_.has_value()
             && actionState_.kind == AsyncActionKind::Connect
             && actionState_.ssid == passwordPromptNetwork_->ssid;
-        endAsyncAction(AsyncActionKind::Connect);
+        const bool canceled =
+            connectResult->isError() && connectResult->errorValue() == "WiFi connection canceled";
+        const std::string connectSsid = actionState_.ssid;
         if (connectResult->isError()) {
-            LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
-            setWifiStatusMessage("Wi-Fi connect failed", ERROR_TEXT_COLOR);
-            if (passwordPromptConnect) {
-                setPasswordPromptBusy(false);
-                setPasswordPromptStatus("", MUTED_TEXT_COLOR);
-                setPasswordPromptError(connectResult->errorValue());
+            connectAwaitingConfirmationSsid_.reset();
+            endAsyncAction(AsyncActionKind::Connect);
+            setConnectProgress(std::nullopt);
+            if (canceled) {
+                LOG_INFO(Controls, "WiFi connect canceled for {}", connectSsid);
+            }
+            else {
+                LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
+            }
+            setWifiStatusMessage(
+                canceled ? "Wi-Fi connection canceled" : "Wi-Fi connect failed",
+                canceled ? MUTED_TEXT_COLOR : ERROR_TEXT_COLOR);
+            if (overlayConnect) {
+                if (connectOverlayHasPasswordEntry_) {
+                    setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
+                    setPasswordPromptStatus("", MUTED_TEXT_COLOR);
+                    setPasswordPromptError(canceled ? "" : connectResult->errorValue());
+                    updatePasswordJoinButton();
+                }
+                else {
+                    closePasswordPrompt();
+                }
             }
             if (!networks_.empty()) {
                 updateNetworkDisplay(
@@ -2011,11 +2538,23 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "WiFi connect requested for {}", connectResult->value().ssid);
-            if (passwordPromptConnect) {
-                closePasswordPrompt();
+            connectAwaitingConfirmationSsid_ = connectResult->value().ssid;
+            lastConnectPhase_ = Network::WifiConnectPhase::GettingAddress;
+            setConnectProgress(std::nullopt);
+
+            if (isConnectedToSsid(connectAwaitingConfirmationSsid_.value())) {
+                finalizeConfirmedConnect();
             }
-            if (!hasEventStreamConnection()) {
-                refresh();
+            else {
+                if (!networks_.empty()) {
+                    updateNetworkDisplay(
+                        Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
+                            networks_));
+                }
+                updateConnectOverlay();
+                if (!hasEventStreamConnection()) {
+                    refresh();
+                }
             }
         }
     }
@@ -2032,29 +2571,14 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "WiFi forget completed for {}", forgetResult->value().ssid);
+            if (!networks_.empty()) {
+                updateNetworkDisplay(
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+            }
             if (!hasEventStreamConnection()) {
                 refresh();
             }
         }
-    }
-
-    if (refreshData.has_value()) {
-        scanInProgress_ = refreshData->scanInProgress;
-        if (refreshData->localAddresses.has_value()) {
-            localAddresses_ = std::move(refreshData->localAddresses.value());
-
-            const std::string addressSummary = formatAddressSummary();
-            if (addressSummary.empty()) {
-                LOG_DEBUG(Controls, "No non-loopback IPv4 addresses found.");
-            }
-            else {
-                LOG_DEBUG(Controls, "Network addresses updated: {}", addressSummary);
-            }
-        }
-        updateWifiStatus(refreshData->statusResult);
-        updateNetworkDisplay(refreshData->listResult);
-        updateWebUiStatus(refreshData->accessStatusResult);
-        updateWebSocketStatus(refreshData->accessStatusResult);
     }
 
     if (scanRequestResult.has_value()) {
@@ -2110,22 +2634,25 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
     bool refreshInProgress = false;
     bool hasPending = false;
+    bool connectCancelInProgress = false;
     bool scanRequestInProgress = false;
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        connectCancelInProgress = asyncState_->connectCancelInProgress;
         refreshInProgress = asyncState_->refreshInProgress;
         scanRequestInProgress = asyncState_->scanRequestInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
+            || asyncState_->pendingConnectCancel.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value()
             || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
-            || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->webSocketUpdateInProgress
-            || asyncState_->webUiUpdateInProgress;
+            || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->connectCancelInProgress
+            || asyncState_->webSocketUpdateInProgress || asyncState_->webUiUpdateInProgress;
     }
 
     setRefreshButtonEnabled(
-        !scanInProgress_ && !refreshInProgress && !scanRequestInProgress && !isActionInProgress()
-        && !hasPending);
+        !scanInProgress_ && !refreshInProgress && !scanRequestInProgress && !connectCancelInProgress
+        && !isActionInProgress() && !hasPending);
 }
 
 void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
@@ -2136,6 +2663,7 @@ void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
     }
 
     self->applyPendingUpdates();
+    self->updateConnectOverlay();
 }
 
 void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)
@@ -2159,7 +2687,10 @@ void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)
         return;
     }
 
-    ctx->panel->startAsyncConnect(network);
+    ctx->panel->openConnectingOverlay(network);
+    if (!ctx->panel->startAsyncConnect(network)) {
+        ctx->panel->closePasswordPrompt();
+    }
 }
 
 void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
@@ -2206,6 +2737,23 @@ void NetworkDiagnosticsPanel::onPasswordJoinClicked(lv_event_t* e)
     }
 
     self->submitPasswordPrompt();
+}
+
+void NetworkDiagnosticsPanel::onConnectProgressCancelClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    if (self->startAsyncConnectCancel() && self->connectProgressCancelButton_) {
+        setActionButtonEnabled(self->connectProgressCancelButton_, false);
+        setActionButtonText(self->connectProgressCancelButton_, "Canceling");
+    }
 }
 
 void NetworkDiagnosticsPanel::onPasswordKeyboardEvent(lv_event_t* e)

@@ -21,6 +21,7 @@
 #include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
 #include "WifiConnect.h"
+#include "WifiConnectCancel.h"
 #include "WifiDisconnect.h"
 #include "WifiForget.h"
 #include "WifiScanRequest.h"
@@ -48,6 +49,7 @@ using OsApiCommand = std::variant<
     TrustBundleGet::Command,
     TrustPeer::Command,
     UntrustPeer::Command,
+    WifiConnectCancel::Command,
     WifiConnect::Command,
     WifiDisconnect::Command,
     WifiForget::Command,

@@ -152,6 +152,13 @@ Any Idle::onEvent(const OsApi::UntrustPeer::Cwc& cwc, OperatingSystemManager& os
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::WifiConnectCancel::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiConnectCancel command received");
+    cwc.sendResponse(osm.wifiConnectCancel(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::WifiConnect::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "WifiConnect command received");

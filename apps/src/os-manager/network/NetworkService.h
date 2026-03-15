@@ -23,6 +23,7 @@ public:
         Network::WifiStatus status;
         std::vector<Network::WifiNetworkInfo> networks;
         std::vector<LocalAddressInfo> localAddresses;
+        std::optional<Network::WifiConnectProgress> connectProgress;
         bool scanInProgress = false;
     };
 
@@ -38,6 +39,7 @@ public:
     void stop();
 
     Result<Snapshot, std::string> getSnapshot(bool forceRefresh);
+    Result<std::monostate, std::string> cancelConnect();
     Result<Network::WifiConnectResult, std::string> connectBySsid(
         const std::string& ssid, const std::optional<std::string>& password);
     Result<Network::WifiDisconnectResult, std::string> disconnect(

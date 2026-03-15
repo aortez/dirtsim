@@ -18,6 +18,13 @@ namespace NetworkSnapshotGet {
 DEFINE_API_NAME(NetworkSnapshotGet);
 
 enum class WifiNetworkStatus { Connected = 0, Saved, Open, Available };
+enum class WifiConnectPhase {
+    Starting = 0,
+    Associating,
+    Authenticating,
+    GettingAddress,
+    Canceling
+};
 
 inline void to_json(nlohmann::json& j, const WifiNetworkStatus& status)
 {
@@ -62,6 +69,56 @@ inline void from_json(const nlohmann::json& j, WifiNetworkStatus& status)
     throw std::runtime_error("Invalid WifiNetworkStatus: " + text);
 }
 
+inline void to_json(nlohmann::json& j, const WifiConnectPhase& phase)
+{
+    switch (phase) {
+        case WifiConnectPhase::Starting:
+            j = "Starting";
+            return;
+        case WifiConnectPhase::Associating:
+            j = "Associating";
+            return;
+        case WifiConnectPhase::Authenticating:
+            j = "Authenticating";
+            return;
+        case WifiConnectPhase::GettingAddress:
+            j = "GettingAddress";
+            return;
+        case WifiConnectPhase::Canceling:
+            j = "Canceling";
+            return;
+    }
+
+    throw std::runtime_error("Unhandled WifiConnectPhase");
+}
+
+inline void from_json(const nlohmann::json& j, WifiConnectPhase& phase)
+{
+    const std::string text = j.get<std::string>();
+    if (text == "Starting") {
+        phase = WifiConnectPhase::Starting;
+        return;
+    }
+    if (text == "Associating") {
+        phase = WifiConnectPhase::Associating;
+        return;
+    }
+    if (text == "Authenticating") {
+        phase = WifiConnectPhase::Authenticating;
+        return;
+    }
+    if (text == "GettingAddress") {
+        phase = WifiConnectPhase::GettingAddress;
+        return;
+    }
+    if (text == "Canceling") {
+        phase = WifiConnectPhase::Canceling;
+        return;
+    }
+
+    throw std::runtime_error("Invalid WifiConnectPhase: " + text);
+}
+
 struct LocalAddressInfo {
     std::string name;
     std::string address;
@@ -94,6 +151,24 @@ inline void to_json(nlohmann::json& j, const WifiStatusInfo& info)
 inline void from_json(const nlohmann::json& j, WifiStatusInfo& info)
 {
     info = ReflectSerializer::from_json<WifiStatusInfo>(j);
+}
+
+struct WifiConnectProgressInfo {
+    std::string ssid;
+    WifiConnectPhase phase = WifiConnectPhase::Starting;
+    bool canCancel = true;
+
+    using serialize = zpp::bits::members<3>;
+};
+
+inline void to_json(nlohmann::json& j, const WifiConnectProgressInfo& info)
+{
+    j = ReflectSerializer::to_json(info);
+}
+
+inline void from_json(const nlohmann::json& j, WifiConnectProgressInfo& info)
+{
+    info = ReflectSerializer::from_json<WifiConnectProgressInfo>(j);
 }
 
 struct WifiNetworkInfo {
@@ -135,12 +210,13 @@ struct Okay {
     WifiStatusInfo status;
     std::vector<WifiNetworkInfo> networks;
     std::vector<LocalAddressInfo> localAddresses;
+    std::optional<WifiConnectProgressInfo> connectProgress;
     bool scanInProgress = false;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 API_STANDARD_TYPES();

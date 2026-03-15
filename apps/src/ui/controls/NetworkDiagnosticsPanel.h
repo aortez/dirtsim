@@ -2,6 +2,8 @@
 
 #include "core/network/WifiManager.h"
 #include "lvgl/lvgl.h"
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -52,8 +54,15 @@ public:
 
 private:
     enum class ViewMode { LanAccess, Wifi };
+    enum class ConnectOverlayMode { PasswordEntry, Connecting };
 
     lv_obj_t* container_;
+    lv_obj_t* connectProgressCancelButton_ = nullptr;
+    lv_obj_t* connectProgressContainer_ = nullptr;
+    lv_obj_t* connectProgressDetailLabel_ = nullptr;
+    lv_obj_t* connectProgressPhaseLabel_ = nullptr;
+    lv_obj_t* connectProgressStagesRow_ = nullptr;
+    lv_obj_t* connectProgressTitleLabel_ = nullptr;
     lv_obj_t* currentNetworkContainer_ = nullptr;
     lv_obj_t* lanAccessView_ = nullptr;
     lv_obj_t* networksTitleLabel_ = nullptr;
@@ -64,6 +73,7 @@ private:
     lv_obj_t* networksContainer_ = nullptr;
     lv_obj_t* passwordCancelButton_ = nullptr;
     lv_obj_t* passwordErrorLabel_ = nullptr;
+    lv_obj_t* passwordFormContainer_ = nullptr;
     lv_obj_t* passwordJoinButton_ = nullptr;
     lv_obj_t* passwordKeyboard_ = nullptr;
     lv_obj_t* passwordOverlay_ = nullptr;
@@ -104,6 +114,7 @@ private:
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
+        std::optional<Network::WifiConnectProgress> connectProgress;
         bool scanInProgress = false;
     };
 
@@ -113,11 +124,13 @@ private:
         bool refreshInProgress = false;
         bool scanRequestInProgress = false;
         std::optional<PendingRefreshData> pendingRefresh;
+        std::optional<Result<std::monostate, std::string>> pendingConnectCancel;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
+        bool connectCancelInProgress = false;
         bool webSocketUpdateInProgress = false;
         bool webUiUpdateInProgress = false;
     };
@@ -129,7 +142,15 @@ private:
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
+    std::optional<std::string> connectAwaitingConfirmationSsid_;
+    std::optional<Network::WifiConnectProgress> connectProgress_;
+    std::optional<std::chrono::steady_clock::time_point> connectStartedAt_;
+    std::array<lv_obj_t*, 4> connectProgressStageBadges_{};
+    ConnectOverlayMode connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
+    Network::WifiConnectPhase lastConnectPhase_ = Network::WifiConnectPhase::Starting;
+    std::optional<Network::WifiStatus> latestWifiStatus_;
     bool webUiEnabled_ = false;
+    bool connectOverlayHasPasswordEntry_ = false;
     bool passwordVisible_ = false;
     bool scanInProgress_ = false;
     bool webSocketEnabled_ = false;
@@ -144,20 +165,29 @@ private:
     void startEventStream();
     bool startAsyncRefresh(bool forceRefresh);
     bool startAsyncScanRequest();
-    void closePasswordPrompt();
-    bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
-    void openPasswordPrompt(const Network::WifiNetworkInfo& network);
-    void startAsyncConnect(
+    bool startAsyncConnect(
         const Network::WifiNetworkInfo& network,
         const std::optional<std::string>& password = std::nullopt);
+    bool startAsyncConnectCancel();
+    void closePasswordPrompt();
+    bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
+    void openConnectingOverlay(const Network::WifiNetworkInfo& network);
+    void openPasswordPrompt(const Network::WifiNetworkInfo& network);
     void startAsyncForget(const Network::WifiNetworkInfo& network);
     bool beginAsyncAction(
         AsyncActionKind kind, const Network::WifiNetworkInfo& network, const std::string& verb);
     void endAsyncAction(AsyncActionKind kind);
     bool isActionInProgress() const;
     void applyPendingUpdates();
+    std::string formatAnimatedConnectPhaseText() const;
+    std::string formatConnectElapsedText() const;
+    std::string formatConnectPhaseText() const;
+    std::string formatConnectStatusMessage() const;
+    void finalizeConfirmedConnect();
+    bool isConnectedToSsid(const std::string& ssid) const;
     void setLoadingState();
-    void setPasswordPromptBusy(bool busy);
+    void setConnectOverlayMode(ConnectOverlayMode mode);
+    void setConnectProgress(const std::optional<Network::WifiConnectProgress>& progress);
     void setPasswordPromptError(const std::string& message);
     void setPasswordPromptStatus(const std::string& message, uint32_t color);
     void setRefreshButtonEnabled(bool enabled);
@@ -168,6 +198,8 @@ private:
     void updateCurrentConnectionSummary();
     void updateNetworkDisplay(
         const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);
+    void updateConnectOverlay();
+    void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
@@ -185,6 +217,7 @@ private:
     static void onRefreshClicked(lv_event_t* e);
     static void onRefreshTimer(lv_timer_t* timer);
     static void onConnectClicked(lv_event_t* e);
+    static void onConnectProgressCancelClicked(lv_event_t* e);
     static void onForgetClicked(lv_event_t* e);
     static void onPasswordCancelClicked(lv_event_t* e);
     static void onPasswordJoinClicked(lv_event_t* e);

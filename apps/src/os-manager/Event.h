@@ -21,6 +21,7 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
@@ -57,6 +58,7 @@ public:
         OsApi::TrustBundleGet::Cwc,
         OsApi::TrustPeer::Cwc,
         OsApi::UntrustPeer::Cwc,
+        OsApi::WifiConnectCancel::Cwc,
         OsApi::WifiConnect::Cwc,
         OsApi::WifiDisconnect::Cwc,
         OsApi::WifiForget::Cwc,

@@ -113,6 +113,35 @@ OsApi::NetworkSnapshotGet::WifiStatusInfo toApiWifiStatusInfo(const Network::Wif
     };
 }
 
+OsApi::NetworkSnapshotGet::WifiConnectPhase toApiWifiConnectPhase(
+    const Network::WifiConnectPhase phase)
+{
+    switch (phase) {
+        case Network::WifiConnectPhase::Starting:
+            return OsApi::NetworkSnapshotGet::WifiConnectPhase::Starting;
+        case Network::WifiConnectPhase::Associating:
+            return OsApi::NetworkSnapshotGet::WifiConnectPhase::Associating;
+        case Network::WifiConnectPhase::Authenticating:
+            return OsApi::NetworkSnapshotGet::WifiConnectPhase::Authenticating;
+        case Network::WifiConnectPhase::GettingAddress:
+            return OsApi::NetworkSnapshotGet::WifiConnectPhase::GettingAddress;
+        case Network::WifiConnectPhase::Canceling:
+            return OsApi::NetworkSnapshotGet::WifiConnectPhase::Canceling;
+    }
+
+    return OsApi::NetworkSnapshotGet::WifiConnectPhase::Starting;
+}
+
+OsApi::NetworkSnapshotGet::WifiConnectProgressInfo toApiWifiConnectProgressInfo(
+    const Network::WifiConnectProgress& progress)
+{
+    return OsApi::NetworkSnapshotGet::WifiConnectProgressInfo{
+        .ssid = progress.ssid,
+        .phase = toApiWifiConnectPhase(progress.phase),
+        .canCancel = progress.canCancel,
+    };
+}
+
 OsApi::NetworkSnapshotGet::LocalAddressInfo toApiLocalAddressInfo(
     const NetworkService::LocalAddressInfo& info)
 {
@@ -127,6 +156,9 @@ OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::S
     OsApi::NetworkSnapshotGet::Okay okay;
     okay.status = toApiWifiStatusInfo(snapshot.status);
     okay.scanInProgress = snapshot.scanInProgress;
+    if (snapshot.connectProgress.has_value()) {
+        okay.connectProgress = toApiWifiConnectProgressInfo(snapshot.connectProgress.value());
+    }
     okay.localAddresses.reserve(snapshot.localAddresses.size());
     for (const auto& localAddress : snapshot.localAddresses) {
         okay.localAddresses.push_back(toApiLocalAddressInfo(localAddress));
@@ -950,6 +982,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::TrustPeer::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::UntrustPeer::Cwc>(
         [this](OsApi::UntrustPeer::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::WifiConnectCancel::Cwc>(
+        [this](OsApi::WifiConnectCancel::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WifiConnect::Cwc>(
         [this](OsApi::WifiConnect::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WifiDisconnect::Cwc>(
@@ -1022,6 +1056,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_WITH_RESP(OsApi::TrustBundleGet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::TrustPeer);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::UntrustPeer);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiConnectCancel);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiConnect);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiDisconnect);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WifiForget);
@@ -1123,6 +1158,24 @@ Result<OsApi::WifiConnect::Okay, ApiError> OperatingSystemManager::wifiConnect(
     }
 
     return Result<OsApi::WifiConnect::Okay, ApiError>::okay(toApiWifiConnectOkay(result.value()));
+}
+
+Result<OsApi::WifiConnectCancel::Okay, ApiError> OperatingSystemManager::wifiConnectCancel(
+    const OsApi::WifiConnectCancel::Command& /*command*/)
+{
+    if (!networkService_) {
+        return Result<OsApi::WifiConnectCancel::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->cancelConnect();
+    if (result.isError()) {
+        return Result<OsApi::WifiConnectCancel::Okay, ApiError>::error(
+            ApiError(result.errorValue()));
+    }
+
+    return Result<OsApi::WifiConnectCancel::Okay, ApiError>::okay(
+        OsApi::WifiConnectCancel::Okay{ .accepted = true });
 }
 
 Result<OsApi::WifiDisconnect::Okay, ApiError> OperatingSystemManager::wifiDisconnect(

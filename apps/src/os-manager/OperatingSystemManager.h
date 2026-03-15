@@ -18,6 +18,7 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
@@ -114,6 +115,8 @@ public:
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
         const OsApi::UntrustPeer::Command& command);
+    Result<OsApi::WifiConnectCancel::Okay, ApiError> wifiConnectCancel(
+        const OsApi::WifiConnectCancel::Command& command);
     Result<OsApi::WifiConnect::Okay, ApiError> wifiConnect(
         const OsApi::WifiConnect::Command& command);
     Result<OsApi::WifiDisconnect::Okay, ApiError> wifiDisconnect(

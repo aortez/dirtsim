@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace DirtSim {
@@ -45,6 +46,9 @@ Result<WifiConnectResult, std::string> connectBySsid(
     const std::string& ssid,
     const std::optional<std::string>& password = std::nullopt,
     GMainContext* mainContext = nullptr);
+
+Result<std::monostate, std::string> requestConnectCancel(
+    NMClient* client, GMainContext* mainContext = nullptr);
 
 Result<WifiDisconnectResult, std::string> disconnect(
     NMClient* client,
