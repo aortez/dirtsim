@@ -91,12 +91,17 @@ private:
         size_t index = 0;
     };
 
+    struct DisconnectContext {
+        NetworkDiagnosticsPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
     struct ForgetContext {
         NetworkDiagnosticsPanel* panel = nullptr;
         size_t index = 0;
     };
 
-    enum class AsyncActionKind { None, Connect, Forget };
+    enum class AsyncActionKind { None, Connect, Disconnect, Forget };
 
     struct AsyncActionState {
         AsyncActionKind kind = AsyncActionKind::None;
@@ -127,6 +132,7 @@ private:
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<std::monostate, std::string>> pendingConnectCancel;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
+        std::optional<Result<Network::WifiDisconnectResult, std::string>> pendingDisconnect;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
@@ -139,6 +145,7 @@ private:
     std::vector<NetworkInterfaceInfo> localAddresses_;
     std::vector<Network::WifiNetworkInfo> networks_;
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
+    std::vector<std::unique_ptr<DisconnectContext>> disconnectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
@@ -170,6 +177,7 @@ private:
         const Network::WifiNetworkInfo& network,
         const std::optional<std::string>& password = std::nullopt);
     bool startAsyncConnectCancel();
+    void startAsyncDisconnect(const Network::WifiNetworkInfo& network);
     void closePasswordPrompt();
     bool networkRequiresPassword(const Network::WifiNetworkInfo& network) const;
     void openConnectingOverlay(const Network::WifiNetworkInfo& network);
@@ -219,6 +227,7 @@ private:
     static void onRefreshTimer(lv_timer_t* timer);
     static void onConnectClicked(lv_event_t* e);
     static void onConnectProgressCancelClicked(lv_event_t* e);
+    static void onDisconnectClicked(lv_event_t* e);
     static void onForgetClicked(lv_event_t* e);
     static void onPasswordCancelClicked(lv_event_t* e);
     static void onPasswordJoinClicked(lv_event_t* e);

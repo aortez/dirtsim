@@ -9,6 +9,7 @@
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/api/WifiConnect.h"
 #include "os-manager/api/WifiConnectCancel.h"
+#include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -89,6 +90,11 @@ Network::WifiConnectResult toUiWifiConnectResult(const OsApi::WifiConnect::Okay&
     return Network::WifiConnectResult{ .success = result.success, .ssid = result.ssid };
 }
 
+Network::WifiDisconnectResult toUiWifiDisconnectResult(const OsApi::WifiDisconnect::Okay& result)
+{
+    return Network::WifiDisconnectResult{ .success = result.success, .ssid = result.ssid };
+}
+
 Network::WifiConnectPhase toUiWifiConnectPhase(
     const OsApi::NetworkSnapshotGet::WifiConnectPhase phase)
 {
@@ -161,7 +167,7 @@ constexpr int NETWORK_CARD_PADDING = 16;
 constexpr int NETWORK_CARD_ROW_PADDING = 12;
 constexpr int NETWORK_ROW_BUTTON_WIDTH = 116;
 constexpr int NETWORK_ROW_PADDING = 12;
-constexpr int NETWORK_SUMMARY_BUTTON_WIDTH = 112;
+constexpr int NETWORK_SUMMARY_BUTTON_WIDTH = 90;
 constexpr int NETWORK_TEXT_INPUT_HEIGHT = 72;
 constexpr int NETWORK_TEXT_INPUT_PAD_HOR = 8;
 constexpr int NETWORK_TEXT_INPUT_PAD_VER = 12;
@@ -1104,6 +1110,8 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00FF7F), 0);
 
+    const bool isDisconnecting = actionState_.kind == AsyncActionKind::Disconnect
+        && connectedNetwork->ssid == actionState_.ssid;
     const bool isForgetting =
         actionState_.kind == AsyncActionKind::Forget && connectedNetwork->ssid == actionState_.ssid;
     const bool actionsDisabled = isActionInProgress();
@@ -1116,6 +1124,12 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
     lv_obj_set_style_text_color(detailsLabel, lv_color_hex(MUTED_TEXT_COLOR), 0);
 
     if (!connectedNetwork->connectionId.empty()) {
+        auto disconnectContext = std::make_unique<DisconnectContext>();
+        disconnectContext->panel = this;
+        disconnectContext->index = connectedIndex;
+        disconnectContexts_.push_back(std::move(disconnectContext));
+        DisconnectContext* disconnectContextPtr = disconnectContexts_.back().get();
+
         auto forgetContext = std::make_unique<ForgetContext>();
         forgetContext->panel = this;
         forgetContext->index = connectedIndex;
@@ -1128,9 +1142,19 @@ void NetworkDiagnosticsPanel::updateCurrentConnectionSummary()
         lv_obj_set_flex_align(
             actionRow, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_all(actionRow, 0, 0);
+        lv_obj_set_style_pad_column(actionRow, 8, 0);
         lv_obj_set_style_bg_opa(actionRow, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(actionRow, 0, 0);
         lv_obj_clear_flag(actionRow, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t* disconnectButton = LVGLBuilder::actionButton(actionRow)
+                                         .text(isDisconnecting ? "Disconnecting" : "Disconnect")
+                                         .mode(LVGLBuilder::ActionMode::Push)
+                                         .width(NETWORK_SUMMARY_BUTTON_WIDTH)
+                                         .height(NETWORK_ACTION_BUTTON_HEIGHT)
+                                         .callback(onDisconnectClicked, disconnectContextPtr)
+                                         .buildOrLog();
+        setActionButtonEnabled(disconnectButton, !actionsDisabled);
 
         lv_obj_t* forgetButton = LVGLBuilder::actionButton(actionRow)
                                      .text(isForgetting ? "Forgetting" : "Forget")
@@ -1788,6 +1812,62 @@ bool NetworkDiagnosticsPanel::startAsyncConnectCancel()
     return true;
 }
 
+void NetworkDiagnosticsPanel::startAsyncDisconnect(const Network::WifiNetworkInfo& network)
+{
+    Network::WifiNetworkInfo networkCopy = network;
+    if (!beginAsyncAction(AsyncActionKind::Disconnect, networkCopy, "Disconnecting from")) {
+        return;
+    }
+
+    auto state = asyncState_;
+    std::thread([state, networkCopy]() {
+        Result<Network::WifiDisconnectResult, std::string> result =
+            Result<Network::WifiDisconnectResult, std::string>::error("WiFi disconnect failed");
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<Network::WifiDisconnectResult, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::WifiDisconnect::Command cmd{ .ssid = networkCopy.ssid };
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::WifiDisconnect::Okay>(cmd, 25000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<Network::WifiDisconnectResult, std::string>::error(
+                        "WifiDisconnect failed: " + response.errorValue());
+                }
+                else {
+                    const auto inner = response.value();
+                    if (inner.isError()) {
+                        result = Result<Network::WifiDisconnectResult, std::string>::error(
+                            "WifiDisconnect failed: " + inner.errorValue().message);
+                    }
+                    else {
+                        result = Result<Network::WifiDisconnectResult, std::string>::okay(
+                            toUiWifiDisconnectResult(inner.value()));
+                    }
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "WiFi disconnect exception: {}", e.what());
+            result = Result<Network::WifiDisconnectResult, std::string>::error(e.what());
+        }
+        catch (...) {
+            LOG_WARN(Controls, "WiFi disconnect exception: unknown");
+            result =
+                Result<Network::WifiDisconnectResult, std::string>::error("WiFi disconnect failed");
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingDisconnect = result;
+    }).detach();
+}
+
 void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& network)
 {
     Network::WifiNetworkInfo networkCopy = network;
@@ -2331,6 +2411,7 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     lv_obj_clean(networksContainer_);
     networks_.clear();
     connectContexts_.clear();
+    disconnectContexts_.clear();
     forgetContexts_.clear();
 
     if (listResult.isError()) {
@@ -2464,6 +2545,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
+    std::optional<Result<Network::WifiDisconnectResult, std::string>> disconnectResult;
     std::optional<Result<std::monostate, std::string>> connectCancelResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
@@ -2475,6 +2557,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         connectResult = asyncState_->pendingConnect;
         asyncState_->pendingConnect.reset();
+
+        disconnectResult = asyncState_->pendingDisconnect;
+        asyncState_->pendingDisconnect.reset();
 
         connectCancelResult = asyncState_->pendingConnectCancel;
         asyncState_->pendingConnectCancel.reset();
@@ -2651,6 +2736,46 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
     }
 
+    if (disconnectResult.has_value()) {
+        endAsyncAction(AsyncActionKind::Disconnect);
+        if (disconnectResult->isError()) {
+            LOG_WARN(Controls, "WiFi disconnect failed: {}", disconnectResult->errorValue());
+            setWifiStatusMessage("Wi-Fi disconnect failed", ERROR_TEXT_COLOR);
+            if (!networks_.empty()) {
+                updateNetworkDisplay(
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+            }
+        }
+        else {
+            const std::string disconnectedSsid = disconnectResult->value().ssid;
+            LOG_INFO(Controls, "WiFi disconnect completed for {}", disconnectedSsid);
+            latestWifiStatus_ = Network::WifiStatus{ .connected = false, .ssid = "" };
+            for (auto& network : networks_) {
+                if (network.ssid != disconnectedSsid
+                    || network.status != Network::WifiNetworkStatus::Connected) {
+                    continue;
+                }
+
+                network.status = network.connectionId.empty()
+                    ? (isOpenSecurity(network.security) ? Network::WifiNetworkStatus::Open
+                                                        : Network::WifiNetworkStatus::Available)
+                    : Network::WifiNetworkStatus::Saved;
+                break;
+            }
+
+            updateWifiStatus(
+                Result<Network::WifiStatus, std::string>::okay(
+                    Network::WifiStatus{ .connected = false, .ssid = "" }));
+            if (!networks_.empty()) {
+                updateNetworkDisplay(
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+            }
+            if (!hasEventStreamConnection()) {
+                refresh();
+            }
+        }
+    }
+
     if (forgetResult.has_value()) {
         endAsyncAction(AsyncActionKind::Forget);
         if (forgetResult->isError()) {
@@ -2735,8 +2860,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         scanRequestInProgress = asyncState_->scanRequestInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnectCancel.has_value()
-            || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value()
-            || asyncState_->pendingScanRequest.has_value()
+            || asyncState_->pendingConnect.has_value() || asyncState_->pendingDisconnect.has_value()
+            || asyncState_->pendingForget.has_value() || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->connectCancelInProgress
             || asyncState_->webSocketUpdateInProgress || asyncState_->webUiUpdateInProgress;
@@ -2801,6 +2926,24 @@ void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
     }
 
     ctx->panel->startAsyncForget(ctx->panel->networks_[ctx->index]);
+}
+
+void NetworkDiagnosticsPanel::onDisconnectClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    DisconnectContext* ctx = static_cast<DisconnectContext*>(lv_event_get_user_data(e));
+    if (!ctx || !ctx->panel) {
+        return;
+    }
+
+    if (ctx->index >= ctx->panel->networks_.size()) {
+        return;
+    }
+
+    ctx->panel->startAsyncDisconnect(ctx->panel->networks_[ctx->index]);
 }
 
 void NetworkDiagnosticsPanel::onPasswordCancelClicked(lv_event_t* e)
