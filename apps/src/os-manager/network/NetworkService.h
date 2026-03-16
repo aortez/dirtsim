@@ -51,6 +51,7 @@ public:
         const std::optional<std::string>& ssid);
     Result<Network::WifiForgetResult, std::string> forget(const std::string& ssid);
     Result<std::monostate, std::string> requestScan();
+    Result<std::monostate, std::string> setDiagnosticsMode(bool active);
     void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
 private:

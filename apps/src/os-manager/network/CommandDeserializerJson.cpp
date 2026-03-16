@@ -1,5 +1,6 @@
 #include "CommandDeserializerJson.h"
 #include "core/LoggingChannels.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
@@ -57,7 +58,11 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
     LOG_DEBUG(Network, "OsManager: Deserializing command: {}", commandName);
 
     try {
-        if (commandName == OsApi::NetworkSnapshotGet::Command::name()) {
+        if (commandName == OsApi::NetworkDiagnosticsModeSet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::NetworkDiagnosticsModeSet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::NetworkSnapshotGet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::NetworkSnapshotGet::Command::fromJson(cmd));
         }

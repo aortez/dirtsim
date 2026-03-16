@@ -22,6 +22,7 @@ class WebSocketService;
 namespace Ui {
 
 class TimeSeriesPlotWidget;
+class UserSettingsManager;
 
 /**
  * @brief Network interface information for display.
@@ -43,7 +44,7 @@ public:
      * @brief Construct the network diagnostics panel.
      * @param container Parent LVGL container to build UI in.
      */
-    explicit NetworkDiagnosticsPanel(lv_obj_t* container);
+    explicit NetworkDiagnosticsPanel(lv_obj_t* container, UserSettingsManager& userSettingsManager);
     ~NetworkDiagnosticsPanel();
 
     void showLanAccessView();
@@ -87,11 +88,13 @@ private:
     lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
     lv_obj_t* passwordVisibilityButton_ = nullptr;
+    lv_obj_t* liveScanToggle_ = nullptr;
     lv_obj_t* webUiToggle_ = nullptr;
     lv_obj_t* webSocketToggle_ = nullptr;
     lv_obj_t* webSocketTokenTitleLabel_ = nullptr;
     lv_obj_t* webSocketTokenLabel_ = nullptr;
     lv_timer_t* refreshTimer_ = nullptr;
+    UserSettingsManager* userSettingsManager_ = nullptr;
 
     struct ConnectContext {
         NetworkDiagnosticsPanel* panel = nullptr;
@@ -158,11 +161,13 @@ private:
         std::optional<Result<std::monostate, std::string>> pendingConnectCancel;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
         std::optional<Result<Network::WifiDisconnectResult, std::string>> pendingDisconnect;
+        std::optional<Result<bool, std::string>> pendingDiagnosticsModeUpdate;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
         bool connectCancelInProgress = false;
+        bool diagnosticsModeUpdateInProgress = false;
         bool webSocketUpdateInProgress = false;
         bool webUiUpdateInProgress = false;
     };
@@ -188,6 +193,7 @@ private:
     std::optional<uint64_t> lastScanAgeMs_;
     std::optional<std::chrono::steady_clock::time_point> lastScanAgeUpdatedAt_;
     std::optional<Network::WifiStatus> latestWifiStatus_;
+    bool liveScanEnabled_ = false;
     bool webUiEnabled_ = false;
     bool connectOverlayHasPasswordEntry_ = false;
     std::optional<Network::WifiNetworkInfo> networkDetailsNetwork_;
@@ -199,6 +205,7 @@ private:
     std::optional<Network::WifiNetworkInfo> passwordPromptNetwork_;
     std::string webSocketToken_;
     ViewMode viewMode_ = ViewMode::Wifi;
+    bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
 
@@ -237,6 +244,7 @@ private:
     void setPasswordPromptStatus(const std::string& message, uint32_t color);
     void setRefreshButtonEnabled(bool enabled);
     void setViewMode(ViewMode mode);
+    void setLiveScanToggleEnabled(bool enabled);
     void setWebSocketToggleEnabled(bool enabled);
     void setWebUiToggleEnabled(bool enabled);
     void submitPasswordPrompt();
@@ -254,6 +262,7 @@ private:
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWebSocketTokenLabel();
     void updateWebUiStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
+    bool startAsyncDiagnosticsModeSet(bool enabled);
     bool startAsyncWebUiAccessSet(bool enabled);
     bool startAsyncWebSocketAccessSet(bool enabled);
 
@@ -281,6 +290,7 @@ private:
     static void onPasswordKeyboardEvent(lv_event_t* e);
     static void onPasswordTextAreaEvent(lv_event_t* e);
     static void onPasswordVisibilityClicked(lv_event_t* e);
+    static void onLiveScanToggleChanged(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);
     static void onWebUiToggleChanged(lv_event_t* e);
 };

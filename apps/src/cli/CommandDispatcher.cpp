@@ -3,6 +3,7 @@
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
@@ -132,6 +133,7 @@ CommandDispatcher::CommandDispatcher()
 
     spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
 
+    registerCommand<OsApi::NetworkDiagnosticsModeSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::NetworkSnapshotGet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::PeerClientKeyEnsure::Cwc>(osHandlers_, osExampleHandlers_);

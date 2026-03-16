@@ -21,6 +21,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 constexpr auto kPeriodicRefreshInterval = std::chrono::seconds(15);
+constexpr auto kDiagnosticsRefreshInterval = std::chrono::seconds(5);
 
 std::vector<NetworkService::LocalAddressInfo> collectLocalAddresses()
 {
@@ -304,8 +305,10 @@ struct NetworkService::Impl {
     std::string startError;
     GMainContext* mainContext = nullptr;
     GMainLoop* mainLoop = nullptr;
+    guint diagnosticsRefreshSourceId = 0;
     guint periodicRefreshSourceId = 0;
     guint scheduledRefreshSourceId = 0;
+    bool diagnosticsModeActive = false;
     bool refreshScheduled = false;
     bool refreshForceScan = false;
     Network::Internal::GObjectPtr<NMClient> client;
@@ -612,6 +615,18 @@ struct NetworkService::Impl {
         });
     }
 
+    Result<std::monostate, std::string> setDiagnosticsMode(bool active)
+    {
+        return invokeOnWorker<Result<std::monostate, std::string>>([this, active]() {
+            diagnosticsModeActive = active;
+            updateDiagnosticsRefreshSource();
+            if (active) {
+                scheduleRefresh(true);
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        });
+    }
+
     void setSnapshotChangedCallback(SnapshotChangedCallback callback)
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -732,6 +747,41 @@ struct NetworkService::Impl {
         return sourceId;
     }
 
+    guint attachDiagnosticsRefresh()
+    {
+        GSource* source = g_timeout_source_new_seconds(
+            static_cast<guint>(
+                std::chrono::duration_cast<std::chrono::seconds>(kDiagnosticsRefreshInterval)
+                    .count()));
+        g_source_set_callback(
+            source,
+            +[](gpointer userData) -> gboolean {
+                auto* self = static_cast<Impl*>(userData);
+                self->scheduleRefresh(true);
+                return G_SOURCE_CONTINUE;
+            },
+            this,
+            nullptr);
+        const guint sourceId = g_source_attach(source, mainContext);
+        g_source_unref(source);
+        return sourceId;
+    }
+
+    void updateDiagnosticsRefreshSource()
+    {
+        if (diagnosticsModeActive) {
+            if (diagnosticsRefreshSourceId == 0 && mainContext) {
+                diagnosticsRefreshSourceId = attachDiagnosticsRefresh();
+            }
+            return;
+        }
+
+        if (diagnosticsRefreshSourceId != 0) {
+            g_source_remove(diagnosticsRefreshSourceId);
+            diagnosticsRefreshSourceId = 0;
+        }
+    }
+
     void cleanupWorkerState()
     {
         disconnectSignals(deviceSignals);
@@ -740,6 +790,10 @@ struct NetworkService::Impl {
         if (scheduledRefreshSourceId != 0) {
             g_source_remove(scheduledRefreshSourceId);
             scheduledRefreshSourceId = 0;
+        }
+        if (diagnosticsRefreshSourceId != 0) {
+            g_source_remove(diagnosticsRefreshSourceId);
+            diagnosticsRefreshSourceId = 0;
         }
         if (periodicRefreshSourceId != 0) {
             g_source_remove(periodicRefreshSourceId);
@@ -1184,6 +1238,11 @@ Result<Network::WifiDisconnectResult, std::string> NetworkService::disconnect(
 Result<Network::WifiForgetResult, std::string> NetworkService::forget(const std::string& ssid)
 {
     return pImpl_->forget(ssid);
+}
+
+Result<std::monostate, std::string> NetworkService::setDiagnosticsMode(bool active)
+{
+    return pImpl_->setDiagnosticsMode(active);
 }
 
 Result<std::monostate, std::string> NetworkService::requestScan()

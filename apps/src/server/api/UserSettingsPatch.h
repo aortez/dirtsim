@@ -31,6 +31,7 @@ struct Command {
     std::optional<MutationConfig> mutationConfig = std::nullopt;
     std::optional<TrainingResumePolicy> trainingResumePolicy = std::nullopt;
     std::optional<UiTrainingConfig> uiTraining = std::nullopt;
+    std::optional<bool> networkLiveScanPreferred = std::nullopt;
 
     API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
@@ -43,10 +44,10 @@ struct Command {
             && !startMenuIdleAction.has_value() && !startMenuIdleTimeoutMs.has_value()
             && !trainingSpec.has_value() && !evolutionConfig.has_value()
             && !mutationConfig.has_value() && !trainingResumePolicy.has_value()
-            && !uiTraining.has_value();
+            && !uiTraining.has_value() && !networkLiveScanPreferred.has_value();
     }
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 struct Okay {

@@ -5,6 +5,7 @@
 #include "core/StateLifecycle.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/JsonProtocol.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotChanged.h"
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "os-manager/network/NetworkService.h"
@@ -981,6 +982,8 @@ void OperatingSystemManager::setupWebSocketService()
 
     wsService_.registerHandler<OsApi::NetworkSnapshotGet::Cwc>(
         [this](OsApi::NetworkSnapshotGet::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::NetworkDiagnosticsModeSet::Cwc>(
+        [this](OsApi::NetworkDiagnosticsModeSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::PeerClientKeyEnsure::Cwc>(
         [this](OsApi::PeerClientKeyEnsure::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::PeersGet::Cwc>(
@@ -1081,6 +1084,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::StopAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopUi);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::NetworkDiagnosticsModeSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::NetworkSnapshotGet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::PeerClientKeyEnsure);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::PeersGet);
@@ -1158,6 +1162,24 @@ Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNet
 
     return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::okay(
         toApiNetworkSnapshotOkay(snapshotResult.value()));
+}
+
+Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::
+    setNetworkDiagnosticsMode(const OsApi::NetworkDiagnosticsModeSet::Command& command)
+{
+    if (!networkService_) {
+        return Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError>::error(
+            ApiError("NetworkService is unavailable"));
+    }
+
+    const auto result = networkService_->setDiagnosticsMode(command.active);
+    if (result.isError()) {
+        return Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError>::error(
+            ApiError(result.errorValue()));
+    }
+
+    return Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError>::okay(
+        OsApi::NetworkDiagnosticsModeSet::Okay{ .active = command.active });
 }
 
 std::vector<PeerInfo> OperatingSystemManager::getPeers() const

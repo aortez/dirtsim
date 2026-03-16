@@ -33,7 +33,8 @@ void Network::onEnter(StateMachine& sm)
     lv_obj_clear_flag(contentRoot_, LV_OBJ_FLAG_SCROLLABLE);
 
     activeSubviewIcon_ = IconId::NETWORK;
-    networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(contentRoot_);
+    networkPanel_ =
+        std::make_unique<NetworkDiagnosticsPanel>(contentRoot_, sm.getUserSettingsManager());
     if (networkPanel_) {
         networkPanel_->showWifiView();
     }

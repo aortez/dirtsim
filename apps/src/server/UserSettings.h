@@ -41,8 +41,9 @@ struct UserSettings {
     MutationConfig mutationConfig;
     TrainingResumePolicy trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
     UiTrainingConfig uiTraining;
+    bool networkLiveScanPreferred = false;
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 void from_json(const nlohmann::json& j, UiTrainingConfig& settings);

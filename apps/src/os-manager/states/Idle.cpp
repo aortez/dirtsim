@@ -24,6 +24,13 @@ void Idle::onExit(OperatingSystemManager& /*osm*/)
     LOG_INFO(State, "Exiting Idle state");
 }
 
+Any Idle::onEvent(const OsApi::NetworkDiagnosticsModeSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "NetworkDiagnosticsModeSet command received");
+    cwc.sendResponse(osm.setNetworkDiagnosticsMode(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::NetworkSnapshotGet::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "NetworkSnapshotGet command received");

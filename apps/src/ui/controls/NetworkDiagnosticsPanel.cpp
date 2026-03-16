@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotChanged.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
@@ -12,6 +13,8 @@
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
+#include "server/api/UserSettingsPatch.h"
+#include "ui/UserSettingsManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include "ui/widgets/TimeSeriesPlotWidget.h"
 #include <algorithm>
@@ -44,6 +47,48 @@ void updateAccessCache(const NetworkAccessCache& status)
 {
     std::lock_guard<std::mutex> lock(accessCacheMutex);
     accessCache = status;
+}
+
+void setNetworkDiagnosticsModeAsync(const bool active)
+{
+    std::thread([active]() {
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            if (connectResult.isError()) {
+                LOG_WARN(
+                    Controls,
+                    "Failed to connect to os-manager for diagnostics mode update: {}",
+                    connectResult.errorValue());
+                return;
+            }
+
+            OsApi::NetworkDiagnosticsModeSet::Command cmd{ .active = active };
+            const auto response =
+                client.sendCommandAndGetResponse<OsApi::NetworkDiagnosticsModeSet::Okay>(cmd, 2000);
+            client.disconnect();
+
+            if (response.isError()) {
+                LOG_WARN(
+                    Controls,
+                    "NetworkDiagnosticsModeSet transport failed: {}",
+                    response.errorValue());
+                return;
+            }
+            if (response.value().isError()) {
+                LOG_WARN(
+                    Controls,
+                    "NetworkDiagnosticsModeSet failed: {}",
+                    response.value().errorValue().message);
+                return;
+            }
+
+            LOG_INFO(Controls, "Network diagnostics mode {}.", active ? "enabled" : "disabled");
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "Network diagnostics mode update failed: {}", e.what());
+        }
+    }).detach();
 }
 
 NetworkInterfaceInfo toUiLocalAddressInfo(const OsApi::NetworkSnapshotGet::LocalAddressInfo& info)
@@ -458,15 +503,21 @@ std::string joinTextParts(const std::vector<std::string>& parts, const char* sep
 }
 } // namespace
 
-NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
-    : container_(container), asyncState_(std::make_shared<AsyncState>())
+NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(
+    lv_obj_t* container, UserSettingsManager& userSettingsManager)
+    : container_(container),
+      userSettingsManager_(&userSettingsManager),
+      asyncState_(std::make_shared<AsyncState>()),
+      liveScanEnabled_(userSettingsManager.get().networkLiveScanPreferred)
 {
     createUI();
+    setNetworkDiagnosticsModeAsync(liveScanEnabled_);
     LOG_INFO(Controls, "NetworkDiagnosticsPanel created");
 }
 
 NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
 {
+    setNetworkDiagnosticsModeAsync(false);
     closeNetworkDetailsOverlay();
     closePasswordPrompt();
     if (eventClient_) {
@@ -653,6 +704,25 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_width(webSocketTokenLabel_, LV_PCT(100));
     lv_label_set_long_mode(webSocketTokenLabel_, LV_LABEL_LONG_WRAP);
     lv_label_set_text(webSocketTokenLabel_, "--");
+
+    lv_obj_t* diagnosticsCard = createSectionCard(lanAccessView_, "Diagnostics");
+
+    lv_obj_t* diagnosticsHint = lv_label_create(diagnosticsCard);
+    lv_label_set_text(
+        diagnosticsHint, "Automatically enable live Wi-Fi rescans while this menu is open.");
+    lv_obj_set_style_text_font(diagnosticsHint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(diagnosticsHint, lv_color_hex(MUTED_TEXT_COLOR), 0);
+    lv_label_set_long_mode(diagnosticsHint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(diagnosticsHint, LV_PCT(100));
+
+    liveScanToggle_ = LVGLBuilder::labeledSwitch(diagnosticsCard)
+                          .label("Live scan in Network menu")
+                          .initialState(liveScanEnabled_)
+                          .width(LV_PCT(100))
+                          .height(72)
+                          .callback(onLiveScanToggleChanged, this)
+                          .buildOrLog();
+    styleSwitchRow(liveScanToggle_);
 
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
 
@@ -2139,6 +2209,27 @@ void NetworkDiagnosticsPanel::setWebUiToggleEnabled(bool enabled)
     }
 }
 
+void NetworkDiagnosticsPanel::setLiveScanToggleEnabled(bool enabled)
+{
+    if (!liveScanToggle_) {
+        return;
+    }
+
+    lv_obj_t* container = lv_obj_get_parent(liveScanToggle_);
+    if (enabled) {
+        lv_obj_clear_state(liveScanToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_clear_state(container, LV_STATE_DISABLED);
+        }
+    }
+    else {
+        lv_obj_add_state(liveScanToggle_, LV_STATE_DISABLED);
+        if (container) {
+            lv_obj_add_state(container, LV_STATE_DISABLED);
+        }
+    }
+}
+
 void NetworkDiagnosticsPanel::setWebSocketToggleEnabled(bool enabled)
 {
     if (!webSocketToggle_) {
@@ -2158,6 +2249,70 @@ void NetworkDiagnosticsPanel::setWebSocketToggleEnabled(bool enabled)
             lv_obj_add_state(container, LV_STATE_DISABLED);
         }
     }
+}
+
+bool NetworkDiagnosticsPanel::startAsyncDiagnosticsModeSet(bool enabled)
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->diagnosticsModeUpdateInProgress) {
+            return false;
+        }
+        asyncState_->diagnosticsModeUpdateInProgress = true;
+    }
+
+    auto state = asyncState_;
+    std::thread([state, enabled]() {
+        Result<bool, std::string> result =
+            Result<bool, std::string>::error("Network diagnostics mode update failed");
+
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<bool, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::NetworkDiagnosticsModeSet::Command cmd{ .active = enabled };
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::NetworkDiagnosticsModeSet::Okay>(
+                        cmd, 2000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<bool, std::string>::error(
+                        "NetworkDiagnosticsModeSet failed: " + response.errorValue());
+                }
+                else {
+                    const auto inner = response.value();
+                    if (inner.isError()) {
+                        result = Result<bool, std::string>::error(
+                            "NetworkDiagnosticsModeSet failed: " + inner.errorValue().message);
+                    }
+                    else {
+                        result = Result<bool, std::string>::okay(inner.value().active);
+                    }
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<bool, std::string>::error(e.what());
+        }
+        catch (...) {
+            result = Result<bool, std::string>::error("Network diagnostics mode update failed");
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingDiagnosticsModeUpdate = std::move(result);
+        state->diagnosticsModeUpdateInProgress = false;
+    }).detach();
+
+    return true;
 }
 
 bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
@@ -3348,6 +3503,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
     std::optional<Result<Network::WifiDisconnectResult, std::string>> disconnectResult;
     std::optional<Result<std::monostate, std::string>> connectCancelResult;
+    std::optional<Result<bool, std::string>> diagnosticsModeUpdateResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<std::monostate, std::string>> scanRequestResult;
@@ -3364,6 +3520,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         connectCancelResult = asyncState_->pendingConnectCancel;
         asyncState_->pendingConnectCancel.reset();
+
+        diagnosticsModeUpdateResult = asyncState_->pendingDiagnosticsModeUpdate;
+        asyncState_->pendingDiagnosticsModeUpdate.reset();
 
         forgetResult = asyncState_->pendingForget;
         asyncState_->pendingForget.reset();
@@ -3500,6 +3659,39 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         LOG_WARN(Controls, "WiFi connect cancel failed: {}", connectCancelResult->errorValue());
         setWifiStatusMessage("Wi-Fi cancel failed", ERROR_TEXT_COLOR);
         updateConnectOverlay();
+    }
+
+    if (diagnosticsModeUpdateResult.has_value()) {
+        setLiveScanToggleEnabled(true);
+        if (diagnosticsModeUpdateResult->isError()) {
+            LOG_WARN(
+                Controls,
+                "Network diagnostics mode update failed: {}",
+                diagnosticsModeUpdateResult->errorValue());
+            if (liveScanToggle_) {
+                liveScanToggleLocked_ = true;
+                if (liveScanEnabled_) {
+                    lv_obj_add_state(liveScanToggle_, LV_STATE_CHECKED);
+                }
+                else {
+                    lv_obj_clear_state(liveScanToggle_, LV_STATE_CHECKED);
+                }
+                liveScanToggleLocked_ = false;
+            }
+        }
+        else {
+            liveScanEnabled_ = diagnosticsModeUpdateResult->value();
+            if (liveScanToggle_) {
+                liveScanToggleLocked_ = true;
+                if (liveScanEnabled_) {
+                    lv_obj_add_state(liveScanToggle_, LV_STATE_CHECKED);
+                }
+                else {
+                    lv_obj_clear_state(liveScanToggle_, LV_STATE_CHECKED);
+                }
+                liveScanToggleLocked_ = false;
+            }
+        }
     }
 
     if (connectResult.has_value()) {
@@ -3688,24 +3880,28 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     bool refreshInProgress = false;
     bool hasPending = false;
     bool connectCancelInProgress = false;
+    bool diagnosticsModeUpdateInProgress = false;
     bool scanRequestInProgress = false;
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         connectCancelInProgress = asyncState_->connectCancelInProgress;
+        diagnosticsModeUpdateInProgress = asyncState_->diagnosticsModeUpdateInProgress;
         refreshInProgress = asyncState_->refreshInProgress;
         scanRequestInProgress = asyncState_->scanRequestInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnectCancel.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingDisconnect.has_value()
+            || asyncState_->pendingDiagnosticsModeUpdate.has_value()
             || asyncState_->pendingForget.has_value() || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->connectCancelInProgress
+            || asyncState_->diagnosticsModeUpdateInProgress
             || asyncState_->webSocketUpdateInProgress || asyncState_->webUiUpdateInProgress;
     }
 
     setRefreshButtonEnabled(
         !scanInProgress_ && !refreshInProgress && !scanRequestInProgress && !connectCancelInProgress
-        && !isActionInProgress() && !hasPending);
+        && !diagnosticsModeUpdateInProgress && !isActionInProgress() && !hasPending);
 }
 
 void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
@@ -3952,6 +4148,42 @@ void NetworkDiagnosticsPanel::onPasswordVisibilityClicked(lv_event_t* e)
 
     self->passwordVisible_ = !self->passwordVisible_;
     self->updatePasswordVisibilityButton();
+}
+
+void NetworkDiagnosticsPanel::onLiveScanToggleChanged(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self || self->liveScanToggleLocked_) {
+        return;
+    }
+
+    if (!self->liveScanToggle_) {
+        return;
+    }
+
+    const bool enabled = lv_obj_has_state(self->liveScanToggle_, LV_STATE_CHECKED);
+    if (self->userSettingsManager_) {
+        Api::UserSettingsPatch::Command patchCmd{ .networkLiveScanPreferred = enabled };
+        self->userSettingsManager_->patchOrAssert(patchCmd, 1000);
+        self->liveScanEnabled_ = self->userSettingsManager_->get().networkLiveScanPreferred;
+    }
+
+    self->setLiveScanToggleEnabled(false);
+    if (!self->startAsyncDiagnosticsModeSet(self->liveScanEnabled_)) {
+        self->setLiveScanToggleEnabled(true);
+        self->liveScanToggleLocked_ = true;
+        if (self->liveScanEnabled_) {
+            lv_obj_add_state(self->liveScanToggle_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(self->liveScanToggle_, LV_STATE_CHECKED);
+        }
+        self->liveScanToggleLocked_ = false;
+    }
 }
 
 void NetworkDiagnosticsPanel::onWebSocketToggleChanged(lv_event_t* e)

@@ -11,6 +11,7 @@ struct Idle {
     void onEnter(OperatingSystemManager& osm);
     void onExit(OperatingSystemManager& osm);
 
+    Any onEvent(const OsApi::NetworkDiagnosticsModeSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::NetworkSnapshotGet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeerClientKeyEnsure::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm);

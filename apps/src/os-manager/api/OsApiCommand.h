@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NetworkDiagnosticsModeSet.h"
 #include "NetworkSnapshotGet.h"
 #include "PeerClientKeyEnsure.h"
 #include "PeersGet.h"
@@ -31,6 +32,7 @@ namespace DirtSim {
 namespace OsApi {
 
 using OsApiCommand = std::variant<
+    NetworkDiagnosticsModeSet::Command,
     NetworkSnapshotGet::Command,
     PeerClientKeyEnsure::Command,
     PeersGet::Command,

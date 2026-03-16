@@ -8,6 +8,7 @@
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
 #include "os-manager/PeerTrust.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
@@ -105,6 +106,8 @@ public:
     void processEvents() override;
 
     OsApi::SystemStatus::Okay buildSystemStatus();
+    Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> setNetworkDiagnosticsMode(
+        const OsApi::NetworkDiagnosticsModeSet::Command& command);
     Result<OsApi::NetworkSnapshotGet::Okay, ApiError> getNetworkSnapshot(
         const OsApi::NetworkSnapshotGet::Command& command);
     std::vector<PeerInfo> getPeers() const;

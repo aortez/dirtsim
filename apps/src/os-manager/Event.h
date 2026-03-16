@@ -1,5 +1,6 @@
 #pragma once
 
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
@@ -40,6 +41,7 @@ concept HasEventName = requires {
 class Event {
 public:
     using Variant = std::variant<
+        OsApi::NetworkDiagnosticsModeSet::Cwc,
         OsApi::NetworkSnapshotGet::Cwc,
         OsApi::PeerClientKeyEnsure::Cwc,
         OsApi::PeersGet::Cwc,
