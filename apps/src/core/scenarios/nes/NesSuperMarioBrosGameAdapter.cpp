@@ -53,6 +53,10 @@ std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeSmbSpecialSenses(
     senses[11] = normalizeSmbSigned(static_cast<double>(state.secondNearestEnemyDx), 255.0);
     senses[12] = normalizeSmbSigned(static_cast<double>(state.secondNearestEnemyDy), 240.0);
     senses[13] = state.enemyPresent ? 1.0 : 0.0;
+    senses[14] = state.secondEnemyPresent ? 1.0 : 0.0;
+    senses[15] = normalizeSmb(static_cast<double>(state.world), 7.0);
+    senses[16] = normalizeSmb(static_cast<double>(state.level), 3.0);
+    senses[17] = static_cast<double>(state.movementX);
 
     return senses;
 }
@@ -63,6 +67,7 @@ public:
     {
         paletteClusterer_.reset(runtimeRomId);
         advancedFrameCount_ = 0;
+        cachedFacingX_ = 0.0f;
         evaluator_.reset();
         cachedSpecialSenses_.fill(0.0);
         setupFailureLogged_ = false;
@@ -91,6 +96,7 @@ public:
         }
 
         advancedFrameCount_ += input.advancedFrames;
+        cachedFacingX_ = 0.0f;
         cachedSpecialSenses_.fill(0.0);
 
         NesGameAdapterFrameOutput output;
@@ -134,6 +140,7 @@ public:
         }
 
         if (state.phase == SmbPhase::Gameplay) {
+            cachedFacingX_ = state.facingX;
             cachedSpecialSenses_ = makeSmbSpecialSenses(state);
         }
 
@@ -151,7 +158,11 @@ public:
     DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
     {
         return makeNesDuckSensoryData(
-            paletteClusterer_, input.paletteFrame, input.deltaTimeSeconds, cachedSpecialSenses_);
+            paletteClusterer_,
+            input.paletteFrame,
+            input.deltaTimeSeconds,
+            cachedSpecialSenses_,
+            cachedFacingX_);
     }
 
 private:
@@ -160,6 +171,7 @@ private:
     NesSuperMarioBrosEvaluator evaluator_;
     uint64_t advancedFrameCount_ = 0;
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
+    float cachedFacingX_ = 0.0f;
     bool setupFailureLogged_ = false;
 };
 

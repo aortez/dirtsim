@@ -13,6 +13,8 @@ using namespace DirtSim;
 
 namespace {
 constexpr size_t kEnemySlotCount = 5;
+constexpr size_t kSmbFacingDirectionAddr = 0x0033;
+constexpr size_t kSmbMovementDirectionAddr = 0x0045;
 constexpr std::array<size_t, kEnemySlotCount> kEnemyActiveAddrs = {
     0x000F, 0x0010, 0x0011, 0x0012, 0x0013
 };
@@ -75,6 +77,7 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     uint8_t playerYScreen,
     uint8_t powerupState,
     uint8_t playerState,
+    uint8_t playerFloatState,
     uint8_t lives,
     uint8_t gameEngine)
 {
@@ -84,6 +87,7 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
 
     snapshot.cpuRam[0x0770] = gameEngine;
     snapshot.cpuRam[0x000E] = playerState;
+    snapshot.cpuRam[0x001D] = playerFloatState;
     snapshot.cpuRam[0x0086] = playerXScreen;
     snapshot.cpuRam[0x006D] = playerXPage;
     snapshot.cpuRam[0x075A] = lives;
@@ -200,7 +204,20 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     adapter->reset("smb");
 
     SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+        1,
+        2,
+        0x03,
+        0x80,
+        25,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        0x01,
+        3,
+        1);
+    snapshot.cpuRam[kSmbFacingDirectionAddr] = 1u;
+    snapshot.cpuRam[kSmbMovementDirectionAddr] = 1u;
     setEnemySlot(snapshot, 0, 1, 6, 0x03, 0x90, 110);
     setEnemySlot(snapshot, 1, 1, 6, 0x03, 0x50, 100);
 
@@ -222,6 +239,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
 
     const uint16_t absoluteX = (static_cast<uint16_t>(0x03) << 8) | 0x80;
 
+    EXPECT_NEAR(sensory.facing_x, 1.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[0], (1.0 * 4.0 + 2.0) / 32.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[1], static_cast<double>(absoluteX) / 4096.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[2], 1.0 * 25.0 / 40.0, 1e-6);
@@ -236,10 +254,113 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     EXPECT_NEAR(sensory.special_senses[11], -48.0 / 255.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[12], -20.0 / 240.0, 1e-6);
     EXPECT_NEAR(sensory.special_senses[13], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[14], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[15], 1.0 / 7.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[16], 2.0 / 3.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[17], 1.0, 1e-6);
 
-    for (int i = 14; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
+    for (int i = 18; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         EXPECT_EQ(sensory.special_senses[i], 0.0) << "slot " << i << " should be zero";
     }
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesLeftFacingFromRam)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x01, 0x20, 0, 0, 120, 0, 0x08, 0x00, 3, 1);
+    snapshot.cpuRam[kSmbFacingDirectionAddr] = 2u;
+    snapshot.cpuRam[kSmbMovementDirectionAddr] = 2u;
+
+    const NesGameAdapterFrameInput frameInput{
+        .advancedFrames = 400,
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .memorySnapshot = snapshot,
+    };
+    (void)adapter->evaluateFrame(frameInput);
+
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .lastGameState = std::nullopt,
+        .deltaTimeSeconds = 0.016,
+    };
+    const DuckSensoryData sensory = adapter->makeDuckSensoryData(sensoryInput);
+
+    EXPECT_NEAR(sensory.facing_x, -1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[17], -1.0, 1e-6);
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterSeparatesFacingFromMovementDirection)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x01, 0x20, 0, 0, 120, 0, 0x08, 0x00, 3, 1);
+    snapshot.cpuRam[kSmbFacingDirectionAddr] = 1u;
+    snapshot.cpuRam[kSmbMovementDirectionAddr] = 2u;
+
+    const NesGameAdapterFrameInput frameInput{
+        .advancedFrames = 400,
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .memorySnapshot = snapshot,
+    };
+    (void)adapter->evaluateFrame(frameInput);
+
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .lastGameState = std::nullopt,
+        .deltaTimeSeconds = 0.016,
+    };
+    const DuckSensoryData sensory = adapter->makeDuckSensoryData(sensoryInput);
+
+    EXPECT_NEAR(sensory.facing_x, 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[17], -1.0, 1e-6);
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterMarksMissingSecondEnemyExplicitly)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x01, 0x20, 0, 0, 120, 0, 0x08, 0x00, 3, 1);
+    snapshot.cpuRam[kSmbMovementDirectionAddr] = 0u;
+    setEnemySlot(snapshot, 0, 1, 6, 0x01, 0x50, 118);
+
+    const NesGameAdapterFrameInput frameInput{
+        .advancedFrames = 400,
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .memorySnapshot = snapshot,
+    };
+    (void)adapter->evaluateFrame(frameInput);
+
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .lastGameState = std::nullopt,
+        .deltaTimeSeconds = 0.016,
+    };
+    const DuckSensoryData sensory = adapter->makeDuckSensoryData(sensoryInput);
+
+    EXPECT_NEAR(sensory.facing_x, 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[13], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[14], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[15], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[16], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[17], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[11], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[12], 0.0, 1e-6);
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterPressesStartOnlyOnceDuringSetup)
@@ -249,7 +370,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterPressesStartOnlyOnceD
     adapter->reset("smb");
 
     const SmolnesRuntime::MemorySnapshot nonGameplaySnapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 3, 0);
+        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x00, 3, 0);
 
     size_t startPressCount = 0u;
     std::optional<uint8_t> lastGameState = std::nullopt;
@@ -284,7 +405,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterStopsSetupInputsAfter
     adapter->reset("smb");
 
     const SmolnesRuntime::MemorySnapshot gameplaySnapshot =
-        makeSmbSnapshot(0, 0, 0x01, 0x80, 0, 0, 120, 0, 0x08, 3, 1);
+        makeSmbSnapshot(0, 0, 0x01, 0x80, 0, 0, 120, 0, 0x08, 0x00, 3, 1);
 
     const NesGameAdapterFrameOutput gameplayOutput = adapter->evaluateFrame(
         {
@@ -312,7 +433,7 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterEndsEvalIfGameplayNev
     adapter->reset("smb");
 
     const SmolnesRuntime::MemorySnapshot nonGameplaySnapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 3, 0);
+        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x00, 3, 0);
 
     NesGameAdapterFrameOutput output;
     for (int i = 0; i < 500; ++i) {
@@ -341,7 +462,18 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesDebugState)
     adapter->reset("smb");
 
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 2, 3, 1);
+        1,
+        2,
+        0x03,
+        0x80,
+        25,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        0x01,
+        3,
+        1);
 
     const NesGameAdapterFrameOutput output = adapter->evaluateFrame(
         {
