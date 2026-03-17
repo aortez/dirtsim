@@ -47,7 +47,8 @@ std::optional<NesControllerTelemetry> makeLiveTelemetry(
     uint64_t sequenceId,
     uint64_t observedTimestampNs,
     uint64_t requestTimestampNs,
-    uint64_t latchTimestampNs)
+    uint64_t latchTimestampNs,
+    std::optional<uint64_t> controllerAppliedFrameId = std::nullopt)
 {
     return NesControllerTelemetry{
         .aRaw = (controllerMask & SMOLNES_RUNTIME_BUTTON_A) != 0 ? 1.0f : 0.0f,
@@ -58,7 +59,7 @@ std::optional<NesControllerTelemetry> makeLiveTelemetry(
         .resolvedControllerMask = controllerMask,
         .controllerSource = NesGameAdapterControllerSource::LiveInput,
         .controllerSourceFrameIndex = 0u,
-        .controllerAppliedFrameId = 0u,
+        .controllerAppliedFrameId = controllerAppliedFrameId,
         .controllerObservedTimestampNs = observedTimestampNs,
         .controllerLatchTimestampNs = latchTimestampNs,
         .controllerRequestTimestampNs = requestTimestampNs,
@@ -364,4 +365,25 @@ TEST(NesSuperMarioBrosResponseProbeTest, CarriesFirstGameInputCopiedFrameIntoLat
     EXPECT_EQ(response->kind, NesSuperMarioBrosResponseKind::MoveRight);
     EXPECT_EQ(response->context, NesSuperMarioBrosResponseContext::GroundedStart);
     EXPECT_EQ(response->gameInputCopiedFrameId, 301u);
+}
+
+TEST(NesSuperMarioBrosResponseProbeTest, PreservesTelemetryAppliedFrameIdWhenResponseArrivesLater)
+{
+    NesSuperMarioBrosResponseProbe probe;
+
+    EXPECT_FALSE(probe
+                     .observeFrame(
+                         300u,
+                         makeSmbSnapshot(0x08u, 0x00u, 1u, 1u, 0x00u, 0x20u, 0u, 0u, 120u),
+                         std::nullopt)
+                     .has_value());
+
+    const auto response = probe.observeFrame(
+        305u,
+        makeSmbSnapshot(0x08u, 0x00u, 1u, 1u, 0x00u, 0x21u, 16u, 0u, 120u),
+        makeLiveTelemetry(SMOLNES_RUNTIME_BUTTON_RIGHT, 6u, 6900u, 7000u, 8000u, 301u));
+
+    ASSERT_TRUE(response.has_value());
+    EXPECT_EQ(response->controllerAppliedFrameId, 301u);
+    EXPECT_EQ(response->responseFrameId, 305u);
 }

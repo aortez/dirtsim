@@ -81,43 +81,6 @@ std::optional<NesControllerTelemetry> buildLiveControllerTelemetry(
     };
 }
 
-struct LiveFrameCopyResult {
-    std::optional<NesControllerTelemetry> controllerTelemetry = std::nullopt;
-    std::optional<ScenarioVideoFrame> scenarioVideoFrame = std::nullopt;
-};
-
-LiveFrameCopyResult copyLiveFrameAndTelemetry(const SmolnesRuntime& runtime)
-{
-    constexpr uint32_t maxAttempts = 3;
-
-    for (uint32_t attempt = 0; attempt < maxAttempts; ++attempt) {
-        auto frame = runtime.copyLatestFrame();
-        if (!frame.has_value()) {
-            return LiveFrameCopyResult{};
-        }
-
-        const auto snapshot = runtime.copyControllerSnapshot();
-        if (!snapshot.has_value()) {
-            return LiveFrameCopyResult{
-                .controllerTelemetry = std::nullopt,
-                .scenarioVideoFrame = std::move(frame),
-            };
-        }
-
-        if (snapshot->latestFrameId == frame->frame_id) {
-            return LiveFrameCopyResult{
-                .controllerTelemetry = buildLiveControllerTelemetry(snapshot.value()),
-                .scenarioVideoFrame = std::move(frame),
-            };
-        }
-    }
-
-    return LiveFrameCopyResult{
-        .controllerTelemetry = std::nullopt,
-        .scenarioVideoFrame = runtime.copyLatestFrame(),
-    };
-}
-
 } // namespace
 
 NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(Scenario::EnumType scenarioId)
@@ -342,19 +305,29 @@ NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
     if (stepResult.advancedFrames > 0) {
         {
             ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
-            const LiveFrameCopyResult liveFrameCopy = copyLiveFrameAndTelemetry(*runtime_);
-            stepResult.controllerTelemetry = liveFrameCopy.controllerTelemetry;
-            stepResult.scenarioVideoFrame = liveFrameCopy.scenarioVideoFrame;
+            const auto liveSnapshot = runtime_->copyLiveSnapshot();
+            if (liveSnapshot.has_value()) {
+                stepResult.controllerTelemetry = liveSnapshot->controllerSnapshot.has_value()
+                    ? buildLiveControllerTelemetry(liveSnapshot->controllerSnapshot.value())
+                    : std::nullopt;
+                stepResult.scenarioVideoFrame = liveSnapshot->videoFrame;
+                stepResult.paletteFrame = liveSnapshot->paletteFrame;
+                stepResult.memorySnapshot = liveSnapshot->memorySnapshot;
+                if (liveSnapshot->videoFrame.frame_id > stepResult.renderedFramesAfter) {
+                    stepResult.renderedFramesAfter = liveSnapshot->videoFrame.frame_id;
+                    stepResult.advancedFrames =
+                        stepResult.renderedFramesAfter - stepResult.renderedFramesBefore;
+                }
+            }
         }
-        stepResult.paletteFrame = runtime_->copyLatestPaletteFrame();
-        stepResult.memorySnapshot = runtime_->copyMemorySnapshot();
         lastControllerTelemetry_ = stepResult.controllerTelemetry;
         if (smbResponseProbeEnabled_ && scenarioId_ == Scenario::EnumType::NesSuperMarioBros
             && stepResult.memorySnapshot.has_value()) {
+            const uint64_t probeFrameId = stepResult.memorySnapshot->frameId > 0
+                ? stepResult.memorySnapshot->frameId
+                : stepResult.renderedFramesAfter;
             stepResult.smbResponseTelemetry = smbResponseProbe_.observeFrame(
-                stepResult.renderedFramesAfter,
-                stepResult.memorySnapshot.value(),
-                stepResult.controllerTelemetry);
+                probeFrameId, stepResult.memorySnapshot.value(), stepResult.controllerTelemetry);
         }
     }
     lastSmbResponseTelemetry_ = stepResult.smbResponseTelemetry;

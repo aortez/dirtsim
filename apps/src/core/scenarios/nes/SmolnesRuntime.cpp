@@ -139,6 +139,57 @@ std::optional<NesPaletteFrame> SmolnesRuntime::copyLatestPaletteFrame() const
     return frame;
 }
 
+std::optional<SmolnesRuntime::LiveSnapshot> SmolnesRuntime::copyLiveSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    LiveSnapshot snapshot;
+    snapshot.videoFrame.width = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_WIDTH);
+    snapshot.videoFrame.height = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_HEIGHT);
+    if (snapshot.videoFrame.pixels.size() != SMOLNES_RUNTIME_FRAME_BYTES) {
+        snapshot.videoFrame.pixels.resize(SMOLNES_RUNTIME_FRAME_BYTES);
+    }
+
+    snapshot.paletteFrame.width = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_WIDTH);
+    snapshot.paletteFrame.height = static_cast<uint16_t>(SMOLNES_RUNTIME_FRAME_HEIGHT);
+    if (snapshot.paletteFrame.indices.size() != SMOLNES_RUNTIME_PALETTE_FRAME_BYTES) {
+        snapshot.paletteFrame.indices.resize(SMOLNES_RUNTIME_PALETTE_FRAME_BYTES);
+    }
+
+    SmolnesRuntimeControllerSnapshot rawControllerSnapshot{};
+    uint64_t frameId = 0;
+    if (!smolnesRuntimeCopyLiveSnapshot(
+            runtimeHandle_,
+            reinterpret_cast<uint8_t*>(snapshot.videoFrame.pixels.data()),
+            static_cast<uint32_t>(snapshot.videoFrame.pixels.size()),
+            snapshot.paletteFrame.indices.data(),
+            static_cast<uint32_t>(snapshot.paletteFrame.indices.size()),
+            snapshot.memorySnapshot.cpuRam.data(),
+            SMOLNES_RUNTIME_CPU_RAM_BYTES,
+            snapshot.memorySnapshot.prgRam.data(),
+            SMOLNES_RUNTIME_PRG_RAM_BYTES,
+            &frameId,
+            &rawControllerSnapshot)) {
+        return std::nullopt;
+    }
+
+    snapshot.videoFrame.frame_id = frameId;
+    snapshot.paletteFrame.frameId = frameId;
+    snapshot.memorySnapshot.frameId = frameId;
+    snapshot.controllerSnapshot = ControllerSnapshot{
+        .latestFrameId = rawControllerSnapshot.latest_frame_id,
+        .controller1AppliedFrameId = rawControllerSnapshot.controller1_applied_frame_id,
+        .controller1ObservedTimestampNs = rawControllerSnapshot.controller1_observed_timestamp_ns,
+        .controller1LatchTimestampNs = rawControllerSnapshot.controller1_latch_timestamp_ns,
+        .controller1RequestTimestampNs = rawControllerSnapshot.controller1_request_timestamp_ns,
+        .controller1SequenceId = rawControllerSnapshot.controller1_sequence_id,
+        .controller1State = rawControllerSnapshot.controller1_state,
+    };
+    return snapshot;
+}
+
 std::optional<SmolnesRuntime::ControllerSnapshot> SmolnesRuntime::copyControllerSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {
@@ -168,12 +219,13 @@ std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot
     }
 
     MemorySnapshot snapshot{};
-    if (!smolnesRuntimeCopyCpuRam(
-            runtimeHandle_, snapshot.cpuRam.data(), SMOLNES_RUNTIME_CPU_RAM_BYTES)) {
-        return std::nullopt;
-    }
-    if (!smolnesRuntimeCopyPrgRam(
-            runtimeHandle_, snapshot.prgRam.data(), SMOLNES_RUNTIME_PRG_RAM_BYTES)) {
+    if (!smolnesRuntimeCopyMemorySnapshot(
+            runtimeHandle_,
+            snapshot.cpuRam.data(),
+            SMOLNES_RUNTIME_CPU_RAM_BYTES,
+            snapshot.prgRam.data(),
+            SMOLNES_RUNTIME_PRG_RAM_BYTES,
+            &snapshot.frameId)) {
         return std::nullopt;
     }
     return snapshot;

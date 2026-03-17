@@ -76,6 +76,7 @@ struct SmolnesRuntimeHandle {
     uint64_t pendingController1SequenceId;
     uint64_t latchedController1ObservedTimestampNs;
     uint64_t latchedController1LatchTimestampNs;
+    uint64_t latchedController1AppliedFrameId;
     uint64_t latchedController1RequestTimestampNs;
     uint64_t latchedController1SequenceId;
     uint64_t latestFrameController1AppliedFrameId;
@@ -520,12 +521,17 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
         recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
     }
     runtime->waitingForInitialFrameRequest = false;
-    runtime->latchedController1State = runtime->pendingController1State;
-    runtime->latchedController1ObservedTimestampNs = runtime->pendingController1ObservedTimestampNs;
-    runtime->latchedController1RequestTimestampNs = runtime->pendingController1RequestTimestampNs;
-    runtime->latchedController1SequenceId = runtime->pendingController1SequenceId;
-    runtime->latchedController1LatchTimestampNs =
-        (runtime->latchedController1SequenceId == 0) ? 0 : monotonicNowNs();
+    if (runtime->pendingController1SequenceId != runtime->latchedController1SequenceId) {
+        runtime->latchedController1State = runtime->pendingController1State;
+        runtime->latchedController1ObservedTimestampNs =
+            runtime->pendingController1ObservedTimestampNs;
+        runtime->latchedController1RequestTimestampNs = runtime->pendingController1RequestTimestampNs;
+        runtime->latchedController1SequenceId = runtime->pendingController1SequenceId;
+        runtime->latchedController1AppliedFrameId =
+            (runtime->latchedController1SequenceId == 0) ? 0 : (runtime->renderedFrames + 1);
+        runtime->latchedController1LatchTimestampNs =
+            (runtime->latchedController1SequenceId == 0) ? 0 : monotonicNowNs();
+    }
     latchThreadKeyboardStateFromRuntime(runtime);
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gFrameExecutionStartMs = monotonicNowMs();
@@ -714,7 +720,8 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             refreshMemorySnapshotLocked(runtime);
             ++runtime->renderedFrames;
             runtime->latestFrameId = runtime->renderedFrames;
-            runtime->latestFrameController1AppliedFrameId = runtime->latestFrameId;
+            runtime->latestFrameController1AppliedFrameId =
+                runtime->latchedController1AppliedFrameId;
             runtime->latestFrameController1ObservedTimestampNs =
                 runtime->latchedController1ObservedTimestampNs;
             runtime->latestFrameController1LatchTimestampNs =
@@ -757,7 +764,8 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             refreshMemorySnapshotLocked(runtime);
             ++runtime->renderedFrames;
             runtime->latestFrameId = runtime->renderedFrames;
-            runtime->latestFrameController1AppliedFrameId = runtime->latestFrameId;
+            runtime->latestFrameController1AppliedFrameId =
+                runtime->latchedController1AppliedFrameId;
             runtime->latestFrameController1ObservedTimestampNs =
                 runtime->latchedController1ObservedTimestampNs;
             runtime->latestFrameController1LatchTimestampNs =
@@ -1014,6 +1022,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->pendingController1SequenceId = 0;
     runtime->latchedController1ObservedTimestampNs = 0;
     runtime->latchedController1LatchTimestampNs = 0;
+    runtime->latchedController1AppliedFrameId = 0;
     runtime->latchedController1RequestTimestampNs = 0;
     runtime->latchedController1SequenceId = 0;
     runtime->latestFrameController1AppliedFrameId = 0;
@@ -1248,6 +1257,37 @@ bool smolnesRuntimeCopyCpuRam(
     return true;
 }
 
+bool smolnesRuntimeCopyMemorySnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId)
+{
+    if (runtime == NULL || cpuRamBuffer == NULL || prgRamBuffer == NULL
+        || cpuRamBufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES
+        || prgRamBufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(cpuRamBuffer, mutableRuntime->cpuRamSnapshot, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    memcpy(prgRamBuffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    if (frameId != NULL) {
+        *frameId = mutableRuntime->latestFrameId;
+    }
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
 bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
@@ -1336,6 +1376,58 @@ bool smolnesRuntimeCopyControllerSnapshot(
         mutableRuntime->latestFrameController1RequestTimestampNs;
     snapshotOut->controller1_sequence_id = mutableRuntime->latestFrameController1SequenceId;
     snapshotOut->controller1_state = mutableRuntime->latestFrameController1State;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyLiveSnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* frameBuffer,
+    uint32_t frameBufferSize,
+    uint8_t* paletteBuffer,
+    uint32_t paletteBufferSize,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId,
+    SmolnesRuntimeControllerSnapshot* controllerSnapshotOut)
+{
+    if (runtime == NULL || frameBuffer == NULL || paletteBuffer == NULL || cpuRamBuffer == NULL
+        || prgRamBuffer == NULL || controllerSnapshotOut == NULL
+        || frameBufferSize < SMOLNES_RUNTIME_FRAME_BYTES
+        || paletteBufferSize < SMOLNES_RUNTIME_PALETTE_FRAME_BYTES
+        || cpuRamBufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES
+        || prgRamBufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasLatestFrame
+        || !mutableRuntime->hasLatestPaletteFrame || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(frameBuffer, mutableRuntime->latestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
+    memcpy(paletteBuffer, mutableRuntime->latestPaletteFrame, SMOLNES_RUNTIME_PALETTE_FRAME_BYTES);
+    memcpy(cpuRamBuffer, mutableRuntime->cpuRamSnapshot, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    memcpy(prgRamBuffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    if (frameId != NULL) {
+        *frameId = mutableRuntime->latestFrameId;
+    }
+    controllerSnapshotOut->latest_frame_id = mutableRuntime->latestFrameId;
+    controllerSnapshotOut->controller1_applied_frame_id =
+        mutableRuntime->latestFrameController1AppliedFrameId;
+    controllerSnapshotOut->controller1_observed_timestamp_ns =
+        mutableRuntime->latestFrameController1ObservedTimestampNs;
+    controllerSnapshotOut->controller1_latch_timestamp_ns =
+        mutableRuntime->latestFrameController1LatchTimestampNs;
+    controllerSnapshotOut->controller1_request_timestamp_ns =
+        mutableRuntime->latestFrameController1RequestTimestampNs;
+    controllerSnapshotOut->controller1_sequence_id = mutableRuntime->latestFrameController1SequenceId;
+    controllerSnapshotOut->controller1_state = mutableRuntime->latestFrameController1State;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }

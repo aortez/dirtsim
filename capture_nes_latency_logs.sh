@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-SUMMARY_PATTERN='Live NES frame delay config updated|Live NES frame delay config applied|NES frame delay pacing|Live input latency|SMB response latency|NES jump setup|NES turn jump outcome|NES jump chord probe|NES jump chord mismatch|Start lateness|Period overrun|Transport delay|Queue delay|Display latency|Frame interval|Frames to SMB input mask|Observed -> SMB input mask|Latch -> SMB input mask|SMB input mask -> response detect|Observed -> request|Observed -> latch|Observed -> display|Request -> latch|Request -> display|Latch -> display|Observed -> response detect|Observed -> response display|Response detect -> display|Frames after latch'
+SUMMARY_PATTERN='Live NES frame delay config updated|Live NES frame delay config applied|NES frame delay pacing|Live input latency|SMB response latency|UI frame staging|Breakdown:|NES jump setup|NES turn jump outcome|NES jump chord probe|NES jump chord mismatch|Start lateness|Period overrun|Transport delay|Queue delay|Display latency|Frame interval|Frames to SMB input mask|Observed -> SMB input mask|Latch -> SMB input mask|SMB input mask -> response detect|Observed -> request|Observed -> latch|Observed -> display|Request -> latch|Request -> display|Latch -> display|Observed -> response detect|Observed -> response display|Response detect -> display|Frames after latch|Handled phase|Receive -> UI apply|UI apply -> timer start|Timer start -> flush'
 DEFAULT_HOST="dirtsim2.local"
 OUTPUT_DIR="${TMPDIR:-/tmp}/dirtsim-latency"
 

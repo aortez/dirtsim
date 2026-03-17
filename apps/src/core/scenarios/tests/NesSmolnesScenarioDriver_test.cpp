@@ -29,8 +29,13 @@ public:
         }
         renderedFrameCount_ += frameCount;
         controllerSnapshot_.latestFrameId = renderedFrameCount_;
-        controllerSnapshot_.controller1AppliedFrameId = renderedFrameCount_;
-        controllerSnapshot_.controller1LatchTimestampNs = 2000u + renderedFrameCount_;
+        if (controllerSnapshot_.controller1SequenceId != latchedControllerSequenceId_) {
+            latchedControllerSequenceId_ = controllerSnapshot_.controller1SequenceId;
+            latchedControllerAppliedFrameId_ = renderedFrameCount_;
+            latchedControllerLatchTimestampNs_ = 2000u + renderedFrameCount_;
+        }
+        controllerSnapshot_.controller1AppliedFrameId = latchedControllerAppliedFrameId_;
+        controllerSnapshot_.controller1LatchTimestampNs = latchedControllerLatchTimestampNs_;
         return true;
     }
 
@@ -75,9 +80,13 @@ public:
     {
         const auto it = frameMemorySnapshots_.find(renderedFrameCount_);
         if (it != frameMemorySnapshots_.end()) {
-            return it->second;
+            MemorySnapshot snapshot = it->second;
+            snapshot.frameId = renderedFrameCount_;
+            return snapshot;
         }
-        return defaultMemorySnapshot_;
+        MemorySnapshot snapshot = defaultMemorySnapshot_;
+        snapshot.frameId = renderedFrameCount_;
+        return snapshot;
     }
 
     std::optional<ProfilingSnapshot> copyProfilingSnapshot() const override
@@ -88,6 +97,25 @@ public:
     std::optional<ControllerSnapshot> copyControllerSnapshot() const override
     {
         return controllerSnapshot_;
+    }
+
+    std::optional<LiveSnapshot> copyLiveSnapshot() const override
+    {
+        auto scenarioVideoFrame = copyLatestFrame();
+        auto paletteFrame = copyLatestPaletteFrame();
+        auto memorySnapshot = copyMemorySnapshot();
+        auto controllerSnapshot = copyControllerSnapshot();
+        if (!scenarioVideoFrame.has_value() || !paletteFrame.has_value()
+            || !memorySnapshot.has_value()) {
+            return std::nullopt;
+        }
+
+        return LiveSnapshot{
+            .controllerSnapshot = controllerSnapshot,
+            .memorySnapshot = memorySnapshot.value(),
+            .paletteFrame = paletteFrame.value(),
+            .videoFrame = scenarioVideoFrame.value(),
+        };
     }
 
     void setApuSampleCallback(SmolnesApuSampleCallback /*callback*/, void* /*userdata*/) override {}
@@ -128,6 +156,9 @@ private:
     bool running_ = false;
     int runFramesCalls_ = 0;
     uint8_t lastControllerMask_ = 0;
+    uint64_t latchedControllerAppliedFrameId_ = 0;
+    uint64_t latchedControllerLatchTimestampNs_ = 0;
+    uint64_t latchedControllerSequenceId_ = 0;
     uint64_t nextControllerSequenceId_ = 1;
     uint64_t renderedFrameCount_ = 0;
     ControllerSnapshot controllerSnapshot_{};
@@ -274,6 +305,44 @@ TEST(NesSmolnesScenarioDriverTest, TickClearsScenarioFrameAfterRuntimeFailure)
 
     EXPECT_FALSE(scenarioVideoFrame.has_value());
     EXPECT_FALSE(driver.isRuntimeRunning());
+}
+
+TEST(NesSmolnesScenarioDriverTest, StepPreservesLiveInputOriginAcrossHeldFrames)
+{
+    FakeSmolnesRuntime* runtime = nullptr;
+    const std::filesystem::path romPath = writeFakeRom();
+
+    NesSmolnesScenarioDriver driver(
+        Scenario::EnumType::NesSuperMarioBros,
+        NesSmolnesScenarioDriver::RuntimeConfig{
+            .runtimeFactory =
+                [&runtime]() {
+                    auto fakeRuntime = std::make_unique<FakeSmolnesRuntime>();
+                    runtime = fakeRuntime.get();
+                    return fakeRuntime;
+                },
+        });
+
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath.string();
+    ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
+    ASSERT_FALSE(driver.setup().isError());
+    ASSERT_NE(runtime, nullptr);
+
+    Timers timers;
+    const auto firstStep = driver.step(timers, SMOLNES_RUNTIME_BUTTON_RIGHT);
+    ASSERT_TRUE(firstStep.controllerTelemetry.has_value());
+    EXPECT_EQ(firstStep.controllerTelemetry->controllerSequenceId, 1u);
+    EXPECT_EQ(firstStep.controllerTelemetry->controllerAppliedFrameId, 1u);
+    EXPECT_EQ(firstStep.controllerTelemetry->controllerLatchTimestampNs, 2001u);
+
+    const auto secondStep = driver.step(timers, SMOLNES_RUNTIME_BUTTON_RIGHT);
+    ASSERT_TRUE(secondStep.controllerTelemetry.has_value());
+    EXPECT_EQ(secondStep.controllerTelemetry->controllerSequenceId, 1u);
+    EXPECT_EQ(secondStep.controllerTelemetry->controllerAppliedFrameId, 1u);
+    EXPECT_EQ(secondStep.controllerTelemetry->controllerLatchTimestampNs, 2001u);
 }
 
 TEST(NesSmolnesScenarioDriverTest, StepCapturesSmbResponseTelemetryWhenProbeEnabled)

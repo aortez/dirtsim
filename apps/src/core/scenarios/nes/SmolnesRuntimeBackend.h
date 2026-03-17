@@ -91,6 +91,13 @@ bool smolnesRuntimeCopyLatestFrame(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
 bool smolnesRuntimeCopyLatestPaletteIndices(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
+bool smolnesRuntimeCopyMemorySnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId);
 bool smolnesRuntimeCopyCpuRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyPrgRam(
@@ -99,6 +106,18 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut);
 bool smolnesRuntimeCopyControllerSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesRuntimeControllerSnapshot* snapshotOut);
+bool smolnesRuntimeCopyLiveSnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* frameBuffer,
+    uint32_t frameBufferSize,
+    uint8_t* paletteBuffer,
+    uint32_t paletteBufferSize,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId,
+    SmolnesRuntimeControllerSnapshot* controllerSnapshotOut);
 bool smolnesRuntimeCopyApuSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSamples(

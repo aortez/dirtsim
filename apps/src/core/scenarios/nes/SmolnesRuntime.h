@@ -19,6 +19,7 @@ enum class SmolnesRuntimePacingMode : uint8_t {
 class SmolnesRuntime {
 public:
     struct MemorySnapshot {
+        uint64_t frameId = 0;
         std::array<uint8_t, SMOLNES_RUNTIME_CPU_RAM_BYTES> cpuRam{};
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
     };
@@ -62,6 +63,13 @@ public:
         uint8_t controller1State = 0;
     };
 
+    struct LiveSnapshot {
+        std::optional<ControllerSnapshot> controllerSnapshot = std::nullopt;
+        MemorySnapshot memorySnapshot{};
+        NesPaletteFrame paletteFrame;
+        ScenarioVideoFrame videoFrame;
+    };
+
     SmolnesRuntime();
     virtual ~SmolnesRuntime();
 
@@ -80,6 +88,7 @@ public:
     virtual bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     virtual std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     virtual std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    virtual std::optional<LiveSnapshot> copyLiveSnapshot() const;
     virtual std::optional<ControllerSnapshot> copyControllerSnapshot() const;
     struct ApuSnapshot {
         bool pulse1Enabled = false;

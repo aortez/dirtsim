@@ -383,6 +383,11 @@ std::optional<NesSuperMarioBrosResponseTelemetry> NesSuperMarioBrosResponseProbe
         && controllerTelemetry->controllerRequestTimestampNs.has_value()
         && controllerTelemetry->controllerLatchTimestampNs.has_value()) {
         const uint64_t controllerSequenceId = controllerTelemetry->controllerSequenceId.value();
+        uint64_t controllerAppliedFrameId =
+            controllerTelemetry->controllerAppliedFrameId.value_or(frameId);
+        if (controllerAppliedFrameId == 0) {
+            controllerAppliedFrameId = frameId;
+        }
         const uint8_t controllerMask = controllerTelemetry->resolvedControllerMask;
         if (controllerSequenceId != lastControllerSequenceId_) {
             const uint8_t addedMask = controllerMask & static_cast<uint8_t>(~lastControllerMask_);
@@ -394,7 +399,7 @@ std::optional<NesSuperMarioBrosResponseTelemetry> NesSuperMarioBrosResponseProbe
                             .kind = NesSuperMarioBrosResponseKind::Jump,
                             .context = classifyJumpContext(lastState_.value()),
                             .controllerSequenceId = controllerSequenceId,
-                            .controllerAppliedFrameId = frameId,
+                            .controllerAppliedFrameId = controllerAppliedFrameId,
                             .controllerObservedTimestampNs =
                                 controllerTelemetry->controllerObservedTimestampNs.value_or(0),
                             .controllerRequestTimestampNs =
@@ -418,7 +423,7 @@ std::optional<NesSuperMarioBrosResponseTelemetry> NesSuperMarioBrosResponseProbe
                             .kind = NesSuperMarioBrosResponseKind::Duck,
                             .context = NesSuperMarioBrosResponseContext::GroundedDuck,
                             .controllerSequenceId = controllerSequenceId,
-                            .controllerAppliedFrameId = frameId,
+                            .controllerAppliedFrameId = controllerAppliedFrameId,
                             .controllerObservedTimestampNs =
                                 controllerTelemetry->controllerObservedTimestampNs.value_or(0),
                             .controllerRequestTimestampNs =
@@ -446,7 +451,7 @@ std::optional<NesSuperMarioBrosResponseTelemetry> NesSuperMarioBrosResponseProbe
                                 .kind = NesSuperMarioBrosResponseKind::MoveLeft,
                                 .context = context.value(),
                                 .controllerSequenceId = controllerSequenceId,
-                                .controllerAppliedFrameId = frameId,
+                                .controllerAppliedFrameId = controllerAppliedFrameId,
                                 .controllerObservedTimestampNs =
                                     controllerTelemetry->controllerObservedTimestampNs.value_or(0),
                                 .controllerRequestTimestampNs =
@@ -475,7 +480,7 @@ std::optional<NesSuperMarioBrosResponseTelemetry> NesSuperMarioBrosResponseProbe
                             .kind = NesSuperMarioBrosResponseKind::MoveRight,
                             .context = context.value(),
                             .controllerSequenceId = controllerSequenceId,
-                            .controllerAppliedFrameId = frameId,
+                            .controllerAppliedFrameId = controllerAppliedFrameId,
                             .controllerObservedTimestampNs =
                                 controllerTelemetry->controllerObservedTimestampNs.value_or(0),
                             .controllerRequestTimestampNs =
