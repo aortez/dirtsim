@@ -1,6 +1,8 @@
 #include "NetworkDiagnosticsPanel.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
+#include "os-manager/api/ScannerModeEnter.h"
+#include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
@@ -37,6 +39,34 @@ void updateAccessCache(const NetworkAccessCache& status)
     std::lock_guard<std::mutex> lock(accessCacheMutex);
     accessCache = status;
 }
+
+Result<OsApi::SystemStatus::Okay, std::string> fetchSystemStatus()
+{
+    Network::WebSocketService client;
+    const std::string address = "ws://localhost:9090";
+    auto connectResult = client.connect(address, 2000);
+    if (connectResult.isError()) {
+        return Result<OsApi::SystemStatus::Okay, std::string>::error(
+            "Failed to connect to os-manager: " + connectResult.errorValue());
+    }
+
+    OsApi::SystemStatus::Command cmd{};
+    auto response = client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(cmd, 2000);
+    client.disconnect();
+
+    if (response.isError()) {
+        return Result<OsApi::SystemStatus::Okay, std::string>::error(
+            "SystemStatus failed: " + response.errorValue());
+    }
+
+    const auto inner = response.value();
+    if (inner.isError()) {
+        return Result<OsApi::SystemStatus::Okay, std::string>::error(
+            "SystemStatus failed: " + inner.errorValue().message);
+    }
+
+    return Result<OsApi::SystemStatus::Okay, std::string>::okay(inner.value());
+}
 } // namespace
 
 NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
@@ -55,8 +85,38 @@ NetworkDiagnosticsPanel::~NetworkDiagnosticsPanel()
     LOG_INFO(Controls, "NetworkDiagnosticsPanel destroyed");
 }
 
+void NetworkDiagnosticsPanel::showNetworkView()
+{
+    viewMode_ = ViewMode::Network;
+    if (networkView_) {
+        lv_obj_clear_flag(networkView_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (scannerView_) {
+        lv_obj_add_flag(scannerView_, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateScannerControls();
+}
+
+void NetworkDiagnosticsPanel::showScannerView()
+{
+    viewMode_ = ViewMode::Scanner;
+    if (networkView_) {
+        lv_obj_add_flag(networkView_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (scannerView_) {
+        lv_obj_clear_flag(scannerView_, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateScannerControls();
+}
+
 void NetworkDiagnosticsPanel::createUI()
 {
+    lv_obj_set_layout(container_, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(container_, 16, 0);
+
     // Title.
     lv_obj_t* title = lv_label_create(container_);
     lv_label_set_text(title, "Network");
@@ -64,7 +124,15 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_width(title, LV_PCT(100));
 
-    lv_obj_t* contentRow = lv_obj_create(container_);
+    networkView_ = lv_obj_create(container_);
+    lv_obj_set_size(networkView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(networkView_, 1);
+    lv_obj_set_style_pad_all(networkView_, 0, 0);
+    lv_obj_set_style_bg_opa(networkView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(networkView_, 0, 0);
+    lv_obj_clear_flag(networkView_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* contentRow = lv_obj_create(networkView_);
     lv_obj_set_size(contentRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(contentRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
@@ -189,6 +257,77 @@ void NetworkDiagnosticsPanel::createUI()
         lv_obj_set_style_pad_top(refreshButton_, 16, 0);
     }
 
+    scannerView_ = lv_obj_create(container_);
+    lv_obj_set_size(scannerView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(scannerView_, 1);
+    lv_obj_set_flex_flow(scannerView_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        scannerView_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(scannerView_, 0, 0);
+    lv_obj_set_style_pad_left(scannerView_, IconRail::RAIL_WIDTH + 8, 0);
+    lv_obj_set_style_pad_right(scannerView_, 16, 0);
+    lv_obj_set_style_pad_row(scannerView_, 12, 0);
+    lv_obj_set_style_bg_opa(scannerView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scannerView_, 0, 0);
+    lv_obj_clear_flag(scannerView_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* scannerTitle = lv_label_create(scannerView_);
+    lv_label_set_text(scannerTitle, "Scanner");
+    lv_obj_set_style_text_font(scannerTitle, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(scannerTitle, lv_color_hex(0xFFD166), 0);
+
+    scannerStatusLabel_ = lv_label_create(scannerView_);
+    lv_obj_set_width(scannerStatusLabel_, LV_PCT(100));
+    lv_label_set_long_mode(scannerStatusLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(scannerStatusLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(scannerStatusLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(scannerStatusLabel_, "Scanner status unavailable.");
+
+    scannerHintLabel_ = lv_label_create(scannerView_);
+    lv_obj_set_width(scannerHintLabel_, LV_PCT(100));
+    lv_label_set_long_mode(scannerHintLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(scannerHintLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(scannerHintLabel_, lv_color_hex(0xAAAAAA), 0);
+    lv_label_set_text(
+        scannerHintLabel_,
+        "Scanner mode is exclusive. While active, wlan0 leaves NetworkManager and normal Wi-Fi "
+        "connections are unavailable.");
+
+    lv_obj_t* scannerButtonRow = lv_obj_create(scannerView_);
+    lv_obj_set_size(scannerButtonRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(scannerButtonRow, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(
+        scannerButtonRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(scannerButtonRow, 0, 0);
+    lv_obj_set_style_pad_column(scannerButtonRow, 12, 0);
+    lv_obj_set_style_pad_row(scannerButtonRow, 12, 0);
+    lv_obj_set_style_bg_opa(scannerButtonRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scannerButtonRow, 0, 0);
+
+    scannerRefreshButton_ = LVGLBuilder::actionButton(scannerButtonRow)
+                                .text("Refresh Status")
+                                .icon(LV_SYMBOL_REFRESH)
+                                .mode(LVGLBuilder::ActionMode::Push)
+                                .width(220)
+                                .callback(onRefreshClicked, this)
+                                .buildOrLog();
+
+    scannerEnterButton_ = LVGLBuilder::actionButton(scannerButtonRow)
+                              .text("Enter Scanner Mode")
+                              .mode(LVGLBuilder::ActionMode::Push)
+                              .width(260)
+                              .callback(onScannerEnterClicked, this)
+                              .buildOrLog();
+
+    scannerExitButton_ = LVGLBuilder::actionButton(scannerButtonRow)
+                             .text("Return to Wi-Fi")
+                             .mode(LVGLBuilder::ActionMode::Push)
+                             .width(220)
+                             .callback(onScannerExitClicked, this)
+                             .buildOrLog();
+
+    lv_obj_add_flag(scannerView_, LV_OBJ_FLAG_HIDDEN);
+
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
     if (refreshTimer_) {
         lv_timer_pause(refreshTimer_);
@@ -205,6 +344,9 @@ void NetworkDiagnosticsPanel::createUI()
         updateWebUiStatus(statusResult);
         updateWebSocketStatus(statusResult);
     }
+
+    updateScannerControls();
+    showNetworkView();
 
     // Initial display update.
     refresh();
@@ -242,18 +384,28 @@ void NetworkDiagnosticsPanel::updateAddressDisplay()
 void NetworkDiagnosticsPanel::setLoadingState()
 {
     if (wifiStatusLabel_) {
-        lv_label_set_text(wifiStatusLabel_, "WiFi: checking...");
+        lv_label_set_text(
+            wifiStatusLabel_,
+            scannerModeActive_ ? "WiFi: scanner mode active" : "WiFi: checking...");
+    }
+
+    if (scannerStatusLabel_) {
+        lv_label_set_text(scannerStatusLabel_, "Refreshing scanner status...");
     }
 
     if (networksContainer_) {
         lv_obj_clean(networksContainer_);
         lv_obj_t* label = lv_label_create(networksContainer_);
-        lv_label_set_text(label, "Scanning networks...");
+        lv_label_set_text(
+            label,
+            scannerModeActive_ ? "Wi-Fi controls are unavailable while scanner mode is active."
+                               : "Scanning networks...");
         lv_obj_set_style_text_color(label, lv_color_hex(0xAAAAAA), 0);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
     }
 
     setRefreshButtonEnabled(false);
+    setScannerRefreshButtonEnabled(false);
 }
 
 void NetworkDiagnosticsPanel::setRefreshButtonEnabled(bool enabled)
@@ -263,6 +415,25 @@ void NetworkDiagnosticsPanel::setRefreshButtonEnabled(bool enabled)
     }
 
     lv_obj_t* button = lv_obj_get_child(refreshButton_, 0);
+    if (!button) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_state(button, LV_STATE_DISABLED);
+    }
+    else {
+        lv_obj_add_state(button, LV_STATE_DISABLED);
+    }
+}
+
+void NetworkDiagnosticsPanel::setScannerRefreshButtonEnabled(bool enabled)
+{
+    if (!scannerRefreshButton_) {
+        return;
+    }
+
+    lv_obj_t* button = lv_obj_get_child(scannerRefreshButton_, 0);
     if (!button) {
         return;
     }
@@ -325,49 +496,44 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
     std::thread([state]() {
         PendingRefreshData data;
         try {
-            Network::WifiManager wifiManager;
-            data.statusResult = wifiManager.getStatus();
-            data.listResult = wifiManager.listNetworks();
-
-            auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
-                Network::WebSocketService client;
-                const std::string address = "ws://localhost:9090";
-                auto connectResult = client.connect(address, 2000);
-                if (connectResult.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "Failed to connect to os-manager: " + connectResult.errorValue());
-                }
-
-                OsApi::SystemStatus::Command cmd{};
-                auto response =
-                    client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(cmd, 2000);
-                client.disconnect();
-
-                if (response.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "SystemStatus failed: " + response.errorValue());
-                }
-
-                const auto inner = response.value();
-                if (inner.isError()) {
-                    return Result<NetworkAccessStatus, std::string>::error(
-                        "SystemStatus failed: " + inner.errorValue().message);
-                }
-
+            auto systemStatusResult = fetchSystemStatus();
+            if (systemStatusResult.isError()) {
+                data.accessStatusResult = Result<NetworkAccessStatus, std::string>::error(
+                    systemStatusResult.errorValue());
+            }
+            else {
+                const auto& systemStatus = systemStatusResult.value();
                 NetworkAccessStatus status;
-                status.webUiEnabled = inner.value().lan_web_ui_enabled;
-                status.webSocketEnabled = inner.value().lan_websocket_enabled;
-                status.webSocketToken = inner.value().lan_websocket_token;
-                return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
-            };
+                status.webUiEnabled = systemStatus.lan_web_ui_enabled;
+                status.webSocketEnabled = systemStatus.lan_websocket_enabled;
+                status.webSocketToken = systemStatus.lan_websocket_token;
+                status.scannerModeAvailable = systemStatus.scanner_mode_available;
+                status.scannerModeActive = systemStatus.scanner_mode_active;
+                status.scannerModeDetail = systemStatus.scanner_mode_detail;
+                data.accessStatusResult =
+                    Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+            }
 
-            data.accessStatusResult = fetchAccessStatus();
             if (!data.accessStatusResult.isError()) {
                 NetworkAccessCache cache;
                 cache.webUiEnabled = data.accessStatusResult.value().webUiEnabled;
                 cache.webSocketEnabled = data.accessStatusResult.value().webSocketEnabled;
                 cache.webSocketToken = data.accessStatusResult.value().webSocketToken;
                 updateAccessCache(cache);
+            }
+
+            const bool scannerModeActive = !data.accessStatusResult.isError()
+                && data.accessStatusResult.value().scannerModeActive;
+            if (!scannerModeActive) {
+                Network::WifiManager wifiManager;
+                data.statusResult = wifiManager.getStatus();
+                data.listResult = wifiManager.listNetworks();
+            }
+            else {
+                data.statusResult =
+                    Result<Network::WifiStatus, std::string>::error("Scanner mode active");
+                data.listResult = Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(
+                    "Scanner mode active");
             }
         }
         catch (const std::exception& e) {
@@ -453,6 +619,152 @@ void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& n
     }).detach();
 }
 
+bool NetworkDiagnosticsPanel::startAsyncScannerEnter()
+{
+    if (!asyncState_ || isActionInProgress()) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->scannerEnterInProgress || asyncState_->scannerExitInProgress) {
+            return false;
+        }
+        asyncState_->scannerEnterInProgress = true;
+    }
+
+    scannerActionInProgress_ = true;
+    if (scannerStatusLabel_) {
+        lv_label_set_text(scannerStatusLabel_, "Entering scanner mode...");
+    }
+    updateScannerControls();
+    setRefreshButtonEnabled(false);
+    setScannerRefreshButtonEnabled(false);
+
+    if (refreshTimer_) {
+        lv_timer_resume(refreshTimer_);
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<std::monostate, std::string> result =
+            Result<std::monostate, std::string>::error("Scanner mode enter failed");
+
+        try {
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                result = Result<std::monostate, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::ScannerModeEnter::Command cmd{};
+                auto response =
+                    client.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(cmd, 10000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "ScannerModeEnter failed: " + response.errorValue());
+                }
+                else if (response.value().isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        response.value().errorValue().message);
+                }
+                else {
+                    result = Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<std::monostate, std::string>::error(e.what());
+        }
+        catch (...) {
+            result = Result<std::monostate, std::string>::error("Scanner mode enter failed");
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingScannerEnter = result;
+        state->scannerEnterInProgress = false;
+    }).detach();
+
+    return true;
+}
+
+bool NetworkDiagnosticsPanel::startAsyncScannerExit()
+{
+    if (!asyncState_ || isActionInProgress()) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->scannerEnterInProgress || asyncState_->scannerExitInProgress) {
+            return false;
+        }
+        asyncState_->scannerExitInProgress = true;
+    }
+
+    scannerActionInProgress_ = true;
+    if (scannerStatusLabel_) {
+        lv_label_set_text(scannerStatusLabel_, "Restoring normal Wi-Fi...");
+    }
+    updateScannerControls();
+    setRefreshButtonEnabled(false);
+    setScannerRefreshButtonEnabled(false);
+
+    if (refreshTimer_) {
+        lv_timer_resume(refreshTimer_);
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<std::monostate, std::string> result =
+            Result<std::monostate, std::string>::error("Scanner mode exit failed");
+
+        try {
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                result = Result<std::monostate, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::ScannerModeExit::Command cmd{};
+                auto response =
+                    client.sendCommandAndGetResponse<OsApi::ScannerModeExit::Okay>(cmd, 10000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        "ScannerModeExit failed: " + response.errorValue());
+                }
+                else if (response.value().isError()) {
+                    result = Result<std::monostate, std::string>::error(
+                        response.value().errorValue().message);
+                }
+                else {
+                    result = Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<std::monostate, std::string>::error(e.what());
+        }
+        catch (...) {
+            result = Result<std::monostate, std::string>::error("Scanner mode exit failed");
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingScannerExit = result;
+        state->scannerExitInProgress = false;
+    }).detach();
+
+    return true;
+}
+
 bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
 {
     if (!asyncState_) {
@@ -473,38 +785,6 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
 
     auto state = asyncState_;
     std::thread([state, enabled]() {
-        auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
-            Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
-            if (connectResult.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "Failed to connect to os-manager: " + connectResult.errorValue());
-            }
-
-            OsApi::SystemStatus::Command statusCmd{};
-            auto statusResponse =
-                client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(statusCmd, 2000);
-            client.disconnect();
-
-            if (statusResponse.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "SystemStatus failed: " + statusResponse.errorValue());
-            }
-
-            const auto inner = statusResponse.value();
-            if (inner.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "SystemStatus failed: " + inner.errorValue().message);
-            }
-
-            NetworkAccessStatus status;
-            status.webUiEnabled = inner.value().lan_web_ui_enabled;
-            status.webSocketEnabled = inner.value().lan_websocket_enabled;
-            status.webSocketToken = inner.value().lan_websocket_token;
-            return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
-        };
-
         Result<NetworkAccessStatus, std::string> result =
             Result<NetworkAccessStatus, std::string>::error("Unknown error");
 
@@ -533,7 +813,26 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
                             "WebUiAccessSet failed: " + inner.errorValue().message);
                     }
                     else {
-                        result = fetchAccessStatus();
+                        auto systemStatusResult = fetchSystemStatus();
+                        if (systemStatusResult.isError()) {
+                            result = Result<NetworkAccessStatus, std::string>::error(
+                                systemStatusResult.errorValue());
+                        }
+                        else {
+                            NetworkAccessStatus status;
+                            status.webUiEnabled = systemStatusResult.value().lan_web_ui_enabled;
+                            status.webSocketEnabled =
+                                systemStatusResult.value().lan_websocket_enabled;
+                            status.webSocketToken = systemStatusResult.value().lan_websocket_token;
+                            status.scannerModeAvailable =
+                                systemStatusResult.value().scanner_mode_available;
+                            status.scannerModeActive =
+                                systemStatusResult.value().scanner_mode_active;
+                            status.scannerModeDetail =
+                                systemStatusResult.value().scanner_mode_detail;
+                            result =
+                                Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+                        }
                     }
                 }
             }
@@ -581,38 +880,6 @@ bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
 
     auto state = asyncState_;
     std::thread([state, enabled]() {
-        auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
-            Network::WebSocketService client;
-            const std::string address = "ws://localhost:9090";
-            auto connectResult = client.connect(address, 2000);
-            if (connectResult.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "Failed to connect to os-manager: " + connectResult.errorValue());
-            }
-
-            OsApi::SystemStatus::Command statusCmd{};
-            auto statusResponse =
-                client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(statusCmd, 2000);
-            client.disconnect();
-
-            if (statusResponse.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "SystemStatus failed: " + statusResponse.errorValue());
-            }
-
-            const auto inner = statusResponse.value();
-            if (inner.isError()) {
-                return Result<NetworkAccessStatus, std::string>::error(
-                    "SystemStatus failed: " + inner.errorValue().message);
-            }
-
-            NetworkAccessStatus status;
-            status.webUiEnabled = inner.value().lan_web_ui_enabled;
-            status.webSocketEnabled = inner.value().lan_websocket_enabled;
-            status.webSocketToken = inner.value().lan_websocket_token;
-            return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
-        };
-
         Result<NetworkAccessStatus, std::string> result =
             Result<NetworkAccessStatus, std::string>::error("Unknown error");
 
@@ -641,7 +908,26 @@ bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
                             "WebSocketAccessSet failed: " + inner.errorValue().message);
                     }
                     else {
-                        result = fetchAccessStatus();
+                        auto systemStatusResult = fetchSystemStatus();
+                        if (systemStatusResult.isError()) {
+                            result = Result<NetworkAccessStatus, std::string>::error(
+                                systemStatusResult.errorValue());
+                        }
+                        else {
+                            NetworkAccessStatus status;
+                            status.webUiEnabled = systemStatusResult.value().lan_web_ui_enabled;
+                            status.webSocketEnabled =
+                                systemStatusResult.value().lan_websocket_enabled;
+                            status.webSocketToken = systemStatusResult.value().lan_websocket_token;
+                            status.scannerModeAvailable =
+                                systemStatusResult.value().scanner_mode_available;
+                            status.scannerModeActive =
+                                systemStatusResult.value().scanner_mode_active;
+                            status.scannerModeDetail =
+                                systemStatusResult.value().scanner_mode_detail;
+                            result =
+                                Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+                        }
                     }
                 }
             }
@@ -697,6 +983,8 @@ bool NetworkDiagnosticsPanel::beginAsyncAction(
         lv_timer_resume(refreshTimer_);
     }
 
+    updateScannerControls();
+
     return true;
 }
 
@@ -708,17 +996,23 @@ void NetworkDiagnosticsPanel::endAsyncAction(AsyncActionKind kind)
 
     actionState_.kind = AsyncActionKind::None;
     actionState_.ssid.clear();
+    updateScannerControls();
 }
 
 bool NetworkDiagnosticsPanel::isActionInProgress() const
 {
-    return actionState_.kind != AsyncActionKind::None;
+    return actionState_.kind != AsyncActionKind::None || scannerActionInProgress_;
 }
 
 void NetworkDiagnosticsPanel::updateWifiStatus(
     const Result<Network::WifiStatus, std::string>& statusResult)
 {
     if (!wifiStatusLabel_) {
+        return;
+    }
+
+    if (scannerModeActive_) {
+        lv_label_set_text(wifiStatusLabel_, "WiFi: scanner mode active");
         return;
     }
 
@@ -793,6 +1087,85 @@ void NetworkDiagnosticsPanel::updateWebSocketStatus(
     updateWebSocketTokenLabel();
 }
 
+void NetworkDiagnosticsPanel::updateScannerStatus(
+    const Result<NetworkAccessStatus, std::string>& statusResult)
+{
+    if (statusResult.isError()) {
+        scannerModeAvailable_ = false;
+        scannerModeActive_ = false;
+        scannerModeDetail_ = statusResult.errorValue();
+
+        if (scannerStatusLabel_) {
+            const std::string text = "Scanner status unavailable.\n" + scannerModeDetail_;
+            lv_label_set_text(scannerStatusLabel_, text.c_str());
+        }
+        updateScannerControls();
+        return;
+    }
+
+    const auto& status = statusResult.value();
+    scannerModeAvailable_ = status.scannerModeAvailable;
+    scannerModeActive_ = status.scannerModeActive;
+    scannerModeDetail_ = status.scannerModeDetail;
+
+    if (scannerStatusLabel_) {
+        std::string text;
+        if (scannerModeActive_) {
+            text = "Scanner mode active.\n";
+        }
+        else if (scannerModeAvailable_) {
+            text = "Scanner mode ready.\n";
+        }
+        else {
+            text = "Scanner mode unavailable.\n";
+        }
+        text += scannerModeDetail_;
+        lv_label_set_text(scannerStatusLabel_, text.c_str());
+    }
+
+    updateScannerControls();
+}
+
+void NetworkDiagnosticsPanel::updateScannerControls()
+{
+    auto setButtonEnabled = [](lv_obj_t* container, bool enabled) {
+        if (!container) {
+            return;
+        }
+
+        lv_obj_t* button = lv_obj_get_child(container, 0);
+        if (!button) {
+            return;
+        }
+
+        if (enabled) {
+            lv_obj_clear_state(button, LV_STATE_DISABLED);
+        }
+        else {
+            lv_obj_add_state(button, LV_STATE_DISABLED);
+        }
+    };
+
+    setButtonEnabled(
+        scannerEnterButton_, !isActionInProgress() && scannerModeAvailable_ && !scannerModeActive_);
+    setButtonEnabled(scannerExitButton_, !isActionInProgress() && scannerModeActive_);
+
+    if (scannerHintLabel_) {
+        if (scannerModeActive_) {
+            lv_label_set_text(
+                scannerHintLabel_,
+                "wlan0 is dedicated to monitoring while scanner mode is active. Return to Wi-Fi "
+                "when you are done surveying.");
+        }
+        else {
+            lv_label_set_text(
+                scannerHintLabel_,
+                "Scanner mode is exclusive. While active, wlan0 leaves NetworkManager and "
+                "normal Wi-Fi connections are unavailable.");
+        }
+    }
+}
+
 void NetworkDiagnosticsPanel::updateWebSocketTokenLabel()
 {
     if (!webSocketTokenTitleLabel_ || !webSocketTokenLabel_) {
@@ -849,6 +1222,14 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     networks_.clear();
     connectContexts_.clear();
     forgetContexts_.clear();
+
+    if (scannerModeActive_) {
+        lv_obj_t* label = lv_label_create(networksContainer_);
+        lv_label_set_text(label, "Scanner mode active.\nReturn to Wi-Fi to manage connections.");
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFD166), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+        return;
+    }
 
     if (listResult.isError()) {
         std::string text = "WiFi unavailable: " + listResult.errorValue();
@@ -1053,6 +1434,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
+    std::optional<Result<std::monostate, std::string>> scannerEnterResult;
+    std::optional<Result<std::monostate, std::string>> scannerExitResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webUiUpdateResult;
@@ -1064,6 +1447,12 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         forgetResult = asyncState_->pendingForget;
         asyncState_->pendingForget.reset();
+
+        scannerEnterResult = asyncState_->pendingScannerEnter;
+        asyncState_->pendingScannerEnter.reset();
+
+        scannerExitResult = asyncState_->pendingScannerExit;
+        asyncState_->pendingScannerExit.reset();
 
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
@@ -1111,7 +1500,42 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
     }
 
+    if (scannerEnterResult.has_value()) {
+        scannerActionInProgress_ = false;
+        if (scannerEnterResult->isError()) {
+            LOG_WARN(Controls, "Scanner mode enter failed: {}", scannerEnterResult->errorValue());
+            if (scannerStatusLabel_) {
+                const std::string text =
+                    "Failed to enter scanner mode.\n" + scannerEnterResult->errorValue();
+                lv_label_set_text(scannerStatusLabel_, text.c_str());
+            }
+            updateScannerControls();
+        }
+        else {
+            LOG_INFO(Controls, "Scanner mode entered");
+            refresh();
+        }
+    }
+
+    if (scannerExitResult.has_value()) {
+        scannerActionInProgress_ = false;
+        if (scannerExitResult->isError()) {
+            LOG_WARN(Controls, "Scanner mode exit failed: {}", scannerExitResult->errorValue());
+            if (scannerStatusLabel_) {
+                const std::string text =
+                    "Failed to return to Wi-Fi.\n" + scannerExitResult->errorValue();
+                lv_label_set_text(scannerStatusLabel_, text.c_str());
+            }
+            updateScannerControls();
+        }
+        else {
+            LOG_INFO(Controls, "Scanner mode exited");
+            refresh();
+        }
+    }
+
     if (refreshData.has_value()) {
+        updateScannerStatus(refreshData->accessStatusResult);
         updateWifiStatus(refreshData->statusResult);
         updateNetworkDisplay(refreshData->listResult);
         updateWebUiStatus(refreshData->accessStatusResult);
@@ -1168,14 +1592,18 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         refreshInProgress = asyncState_->refreshInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value()
+            || asyncState_->pendingScannerEnter.has_value()
+            || asyncState_->pendingScannerExit.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->webSocketUpdateInProgress
-            || asyncState_->webUiUpdateInProgress;
+            || asyncState_->webUiUpdateInProgress || asyncState_->scannerEnterInProgress
+            || asyncState_->scannerExitInProgress;
     }
 
     if (!refreshInProgress && !isActionInProgress() && !hasPending && refreshTimer_) {
         lv_timer_pause(refreshTimer_);
         setRefreshButtonEnabled(true);
+        setScannerRefreshButtonEnabled(true);
     }
 }
 
@@ -1223,6 +1651,34 @@ void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
     }
 
     ctx->panel->startAsyncForget(ctx->panel->networks_[ctx->index]);
+}
+
+void NetworkDiagnosticsPanel::onScannerEnterClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->startAsyncScannerEnter();
+}
+
+void NetworkDiagnosticsPanel::onScannerExitClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->startAsyncScannerExit();
 }
 
 void NetworkDiagnosticsPanel::onWebSocketToggleChanged(lv_event_t* e)

@@ -42,7 +42,7 @@ void Network::onEnter(StateMachine& sm)
     iconRail->setVisible(true);
     iconRail->setLayout(RailLayout::SingleColumn);
     iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftBottomSquare());
-    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK });
+    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK, IconId::SCANNER });
     iconRail->selectIcon(IconId::NETWORK);
 }
 
@@ -83,6 +83,18 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     if (evt.selectedId == IconId::NETWORK) {
+        if (networkPanel_) {
+            networkPanel_->showNetworkView();
+            networkPanel_->refresh();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.selectedId == IconId::SCANNER) {
+        if (networkPanel_) {
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
+        }
         return std::move(*this);
     }
 

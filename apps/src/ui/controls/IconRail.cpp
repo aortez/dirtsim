@@ -38,11 +38,12 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
         { IconId::GENOME_BROWSER, IconFont::DNA, "Genome Browser", 0x40E0D0 }, // Turquoise.
         { IconId::TRAINING_RESULTS, IconFont::FILE_CABINET, "Training Results", 0xFFD700 }, // Gold.
-        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },      // Dark turquoise.
-        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },    // Orange.
-        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },       // Silver.
-        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 }, // Light green.
-        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },    // Lime green.
+        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },       // Dark turquoise.
+        { IconId::SCANNER, IconFont::MICROSCOPE, "Scanner", 0xFFD166 }, // Warm yellow.
+        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },     // Orange.
+        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },        // Silver.
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },  // Light green.
+        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },     // Lime green.
     };
 
     createIcons(parent);
