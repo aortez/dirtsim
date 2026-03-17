@@ -195,6 +195,14 @@ void StateMachine::setupWebSocketService()
     ws.registerHandler<UiApi::MouseMove::Cwc>(
         [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkConnectCancelPress::Cwc>(
+        [this](UiApi::NetworkConnectCancelPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkConnectPress::Cwc>(
+        [this](UiApi::NetworkConnectPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkDiagnosticsGet::Cwc>(
+        [this](UiApi::NetworkDiagnosticsGet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkPasswordSubmit::Cwc>(
+        [this](UiApi::NetworkPasswordSubmit::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
@@ -269,6 +277,10 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseDown);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseMove);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseUp);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkConnectCancelPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkConnectPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkDiagnosticsGet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkPasswordSubmit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::PixelRendererToggle);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::RenderModeSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::ScreenGrab);
@@ -462,8 +474,15 @@ bool StateMachine::isAutoShrinkBlocked() const
 
     return std::visit(
         [](const auto& state) -> bool {
+            if constexpr (requires { state.blocksAutoShrink(); }) {
+                if (state.blocksAutoShrink()) {
+                    return true;
+                }
+            }
             if constexpr (requires { state.isTrainingResultModalVisible(); }) {
-                return state.isTrainingResultModalVisible();
+                if (state.isTrainingResultModalVisible()) {
+                    return true;
+                }
             }
             return false;
         },

@@ -11,6 +11,8 @@ struct Idle {
     void onEnter(OperatingSystemManager& osm);
     void onExit(OperatingSystemManager& osm);
 
+    Any onEvent(const OsApi::NetworkDiagnosticsModeSet::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::NetworkSnapshotGet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeerClientKeyEnsure::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RemoteCliRun::Cwc& cwc, OperatingSystemManager& osm);
@@ -30,6 +32,11 @@ struct Idle {
     Any onEvent(const OsApi::TrustBundleGet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::TrustPeer::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::UntrustPeer::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiConnectCancel::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiConnect::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiDisconnect::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiForget::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WifiScanRequest::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm);
 
