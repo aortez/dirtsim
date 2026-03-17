@@ -8,7 +8,14 @@
 namespace DirtSim {
 namespace Network {
 
-enum class WifiNetworkStatus { Connected = 0, Saved, Open };
+enum class WifiNetworkStatus { Connected = 0, Saved, Open, Available };
+enum class WifiConnectPhase {
+    Starting = 0,
+    Associating,
+    Authenticating,
+    GettingAddress,
+    Canceling
+};
 
 struct WifiNetworkInfo {
     std::string ssid;
@@ -40,6 +47,18 @@ struct WifiStatus {
 struct WifiConnectResult {
     bool success = true;
     std::string ssid;
+};
+
+struct WifiConnectProgress {
+    std::string ssid;
+    WifiConnectPhase phase = WifiConnectPhase::Starting;
+    bool canCancel = true;
+};
+
+struct WifiConnectOutcome {
+    std::string ssid;
+    std::string message;
+    bool canceled = false;
 };
 
 struct WifiDisconnectResult {

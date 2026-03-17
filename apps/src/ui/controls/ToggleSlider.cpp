@@ -133,6 +133,7 @@ ToggleSlider::ToggleSlider(
 
     updateValueLabel();
     updateSliderColors();
+    updateTextColors();
 }
 
 ToggleSlider::~ToggleSlider()
@@ -224,6 +225,8 @@ void ToggleSlider::createWidgets()
 
     // Create container for the whole control group.
     constexpr int containerHeight = Style::SWITCH_HEIGHT + Style::GAP + Style::SLIDER_KNOB_SIZE + 8;
+    const lv_style_selector_t checkedIndicatorSelector = static_cast<lv_style_selector_t>(
+        static_cast<unsigned>(LV_PART_INDICATOR) | static_cast<unsigned>(LV_STATE_CHECKED));
     container_ = lv_obj_create(parent_);
     lv_obj_set_size(container_, Style::CONTROL_WIDTH, containerHeight);
     lv_obj_set_style_pad_all(container_, Style::GAP, 0);
@@ -231,8 +234,7 @@ void ToggleSlider::createWidgets()
     lv_obj_set_style_radius(container_, Style::RADIUS, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Blue background to match LabeledSwitch theme.
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
 
     // Store pointer to this instance for callbacks.
@@ -249,6 +251,14 @@ void ToggleSlider::createWidgets()
     switch_ = lv_switch_create(container_);
     lv_obj_align(switch_, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(
+        switch_, lv_color_hex(Style::SWITCH_ACTIVE_COLOR), checkedIndicatorSelector);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(switch_, 0, LV_PART_KNOB);
     lv_obj_add_event_cb(switch_, onSwitchChanged, LV_EVENT_VALUE_CHANGED, this);
 
     // Create slider (below label/switch).
@@ -265,6 +275,11 @@ void ToggleSlider::createWidgets()
     // Round the track ends.
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(slider_, 0, LV_PART_KNOB);
 
     lv_obj_add_event_cb(slider_, onSliderChanged, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_add_event_cb(slider_, onSliderPressed, LV_EVENT_PRESSED, this);
@@ -317,6 +332,7 @@ void ToggleSlider::setEnabled(bool enabled)
 
     updateValueLabel();
     updateSliderColors();
+    updateTextColors();
 }
 
 int ToggleSlider::getValue() const
@@ -345,13 +361,24 @@ void ToggleSlider::updateValueLabel()
 void ToggleSlider::updateSliderColors()
 {
     if (isEnabled()) {
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+        lv_obj_set_style_bg_color(
+            slider_, lv_color_hex(LVGLBuilder::Style::SLIDER_ACTIVE_COLOR), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            slider_, lv_color_hex(LVGLBuilder::Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
     }
     else {
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_KNOB);
+        lv_obj_set_style_bg_color(
+            slider_, lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            slider_, lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR), LV_PART_KNOB);
     }
+}
+
+void ToggleSlider::updateTextColors()
+{
+    const uint32_t textColor = isEnabled() ? 0xFFFFFF : LVGLBuilder::Style::TEXT_DISABLED_COLOR;
+    lv_obj_set_style_text_color(label_, lv_color_hex(textColor), 0);
+    lv_obj_set_style_text_color(valueLabel_, lv_color_hex(textColor), 0);
 }
 
 // --- Static Callbacks ---
@@ -381,6 +408,7 @@ void ToggleSlider::onSwitchChanged(lv_event_t* e)
 
     self->updateValueLabel();
     self->updateSliderColors();
+    self->updateTextColors();
 
     // Call user callback.
     if (self->toggleCallback_) {
@@ -419,6 +447,7 @@ void ToggleSlider::onSliderPressed(lv_event_t* e)
         lv_slider_set_value(self->slider_, valueToRestore, LV_ANIM_OFF);
         self->updateValueLabel();
         self->updateSliderColors();
+        self->updateTextColors();
 
         // Call user callback.
         if (self->toggleCallback_) {

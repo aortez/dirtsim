@@ -80,6 +80,9 @@ void UserSettingsManager::patchOrAssert(const Api::UserSettingsPatch::Command& p
     if (patch.uiTraining.has_value()) {
         settings_.uiTraining = *patch.uiTraining;
     }
+    if (patch.networkLiveScanPreferred.has_value()) {
+        settings_.networkLiveScanPreferred = *patch.networkLiveScanPreferred;
+    }
 
     const auto result =
         wsService_->sendCommandAndGetResponse<Api::UserSettingsPatch::Okay>(patch, timeoutMs);
