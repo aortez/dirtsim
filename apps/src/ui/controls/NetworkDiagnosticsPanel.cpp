@@ -36,6 +36,7 @@ struct NetworkAccessCache {
 
 std::mutex accessCacheMutex;
 NetworkAccessCache accessCache;
+constexpr int OS_MANAGER_CONNECT_TIMEOUT_MS = 35000;
 
 NetworkAccessCache getAccessCache()
 {
@@ -47,6 +48,12 @@ void updateAccessCache(const NetworkAccessCache& status)
 {
     std::lock_guard<std::mutex> lock(accessCacheMutex);
     accessCache = status;
+}
+
+bool isConnectFinalizing(const std::optional<Network::WifiConnectProgress>& progress)
+{
+    return progress.has_value() && !progress->canCancel
+        && progress->phase != Network::WifiConnectPhase::Canceling;
 }
 
 void setNetworkDiagnosticsModeAsync(const bool active)
@@ -1914,7 +1921,8 @@ void NetworkDiagnosticsPanel::setLoadingState()
 
 std::string NetworkDiagnosticsPanel::formatConnectPhaseText() const
 {
-    if (connectAwaitingConfirmationSsid_.has_value() && !connectProgress_.has_value()) {
+    if ((connectAwaitingConfirmationSsid_.has_value() && !connectProgress_.has_value())
+        || isConnectFinalizing(connectProgress_)) {
         return "Finalizing connection";
     }
 
@@ -2095,7 +2103,7 @@ void NetworkDiagnosticsPanel::updateConnectOverlay()
     lv_label_set_text(connectProgressDetailLabel_, detailText.c_str());
 
     if (connectProgressCancelButton_) {
-        if (awaitingConfirmationOnly) {
+        if (awaitingConfirmationOnly || isConnectFinalizing(connectProgress_)) {
             lv_obj_add_flag(connectProgressCancelButton_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
@@ -2542,8 +2550,8 @@ bool NetworkDiagnosticsPanel::startAsyncConnect(
             }
             else {
                 OsApi::WifiConnect::Command cmd{ .ssid = networkCopy.ssid, .password = password };
-                const auto response =
-                    client.sendCommandAndGetResponse<OsApi::WifiConnect::Okay>(cmd, 25000);
+                const auto response = client.sendCommandAndGetResponse<OsApi::WifiConnect::Okay>(
+                    cmd, OS_MANAGER_CONNECT_TIMEOUT_MS);
                 client.disconnect();
 
                 if (response.isError()) {
@@ -3611,10 +3619,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
                     LOG_INFO(Controls, "WiFi connect canceled for {}", connectOutcome->ssid);
                 }
                 else {
-                    LOG_WARN(
-                        Controls,
-                        "WiFi connect failed after request accepted: {}",
-                        connectOutcome->message);
+                    LOG_WARN(Controls, "WiFi connect failed: {}", connectOutcome->message);
                 }
                 setWifiStatusMessage(
                     connectOutcome->canceled ? "Wi-Fi connection canceled" : "Wi-Fi connect failed",
@@ -3695,71 +3700,64 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     if (connectResult.has_value()) {
-        const bool overlayConnect = passwordPromptNetwork_.has_value()
-            && actionState_.kind == AsyncActionKind::Connect
-            && actionState_.ssid == passwordPromptNetwork_->ssid;
-        const bool canceled =
-            connectResult->isError() && connectResult->errorValue() == "WiFi connection canceled";
-        const bool needsPasswordPrompt = connectResult->isError() && !canceled && overlayConnect
-            && !connectOverlayHasPasswordEntry_
-            && connectFailureNeedsPasswordPrompt(connectResult->errorValue());
-        const std::string connectSsid = actionState_.ssid;
-        if (connectResult->isError()) {
-            connectAwaitingConfirmationSsid_.reset();
-            endAsyncAction(AsyncActionKind::Connect);
-            setConnectProgress(std::nullopt);
-            if (canceled) {
-                LOG_INFO(Controls, "WiFi connect canceled for {}", connectSsid);
-            }
-            else {
-                LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
-            }
-            setWifiStatusMessage(
-                canceled ? "Wi-Fi connection canceled" : "Wi-Fi connect failed",
-                canceled ? MUTED_TEXT_COLOR : ERROR_TEXT_COLOR);
-            if (overlayConnect) {
-                if (needsPasswordPrompt) {
-                    connectOverlayHasPasswordEntry_ = true;
-                    setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
-                    setPasswordPromptStatus("", MUTED_TEXT_COLOR);
-                    setPasswordPromptError("Password required.");
-                    if (passwordTextArea_) {
-                        lv_textarea_set_text(passwordTextArea_, "");
-                    }
-                    updatePasswordJoinButton();
-                }
-                else if (connectOverlayHasPasswordEntry_) {
-                    setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
-                    setPasswordPromptStatus("", MUTED_TEXT_COLOR);
-                    setPasswordPromptError(canceled ? "" : connectResult->errorValue());
-                    updatePasswordJoinButton();
-                }
-                else {
-                    closePasswordPrompt();
-                }
-            }
-            if (!networks_.empty()) {
-                updateNetworkDisplay(
-                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
-            }
+        if (connectResult->isError() && actionState_.kind != AsyncActionKind::Connect) {
+            LOG_DEBUG(Controls, "Ignoring already handled WiFi connect result.");
         }
         else {
-            LOG_INFO(Controls, "WiFi connect requested for {}", connectResult->value().ssid);
-            connectAwaitingConfirmationSsid_ = connectResult->value().ssid;
-            if (!connectProgress_.has_value()
-                && isConnectedToSsid(connectAwaitingConfirmationSsid_.value())) {
-                finalizeConfirmedConnect();
-            }
-            else {
+            const bool overlayConnect = passwordPromptNetwork_.has_value()
+                && actionState_.kind == AsyncActionKind::Connect
+                && actionState_.ssid == passwordPromptNetwork_->ssid;
+            const bool canceled = connectResult->isError()
+                && connectResult->errorValue() == "WiFi connection canceled";
+            const bool needsPasswordPrompt = connectResult->isError() && !canceled && overlayConnect
+                && !connectOverlayHasPasswordEntry_
+                && connectFailureNeedsPasswordPrompt(connectResult->errorValue());
+            const std::string connectSsid = actionState_.ssid;
+            if (connectResult->isError()) {
+                connectAwaitingConfirmationSsid_.reset();
+                endAsyncAction(AsyncActionKind::Connect);
+                setConnectProgress(std::nullopt);
+                if (canceled) {
+                    LOG_INFO(Controls, "WiFi connect canceled for {}", connectSsid);
+                }
+                else {
+                    LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
+                }
+                setWifiStatusMessage(
+                    canceled ? "Wi-Fi connection canceled" : "Wi-Fi connect failed",
+                    canceled ? MUTED_TEXT_COLOR : ERROR_TEXT_COLOR);
+                if (overlayConnect) {
+                    if (needsPasswordPrompt) {
+                        connectOverlayHasPasswordEntry_ = true;
+                        setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
+                        setPasswordPromptStatus("", MUTED_TEXT_COLOR);
+                        setPasswordPromptError("Password required.");
+                        if (passwordTextArea_) {
+                            lv_textarea_set_text(passwordTextArea_, "");
+                        }
+                        updatePasswordJoinButton();
+                    }
+                    else if (connectOverlayHasPasswordEntry_) {
+                        setConnectOverlayMode(ConnectOverlayMode::PasswordEntry);
+                        setPasswordPromptStatus("", MUTED_TEXT_COLOR);
+                        setPasswordPromptError(canceled ? "" : connectResult->errorValue());
+                        updatePasswordJoinButton();
+                    }
+                    else {
+                        closePasswordPrompt();
+                    }
+                }
                 if (!networks_.empty()) {
                     updateNetworkDisplay(
                         Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(
                             networks_));
                 }
-                updateConnectOverlay();
-                if (!hasEventStreamConnection()) {
-                    refresh();
-                }
+            }
+            else {
+                LOG_INFO(Controls, "WiFi connect completed for {}", connectResult->value().ssid);
+                connectAwaitingConfirmationSsid_ = connectResult->value().ssid;
+                finalizeConfirmedConnect();
+                refresh();
             }
         }
     }

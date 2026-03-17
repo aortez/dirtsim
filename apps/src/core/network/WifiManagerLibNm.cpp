@@ -426,6 +426,29 @@ const char* deviceStateToString(NMDeviceState state)
     return "unknown";
 }
 
+bool isCancelableWifiDeviceState(const NMDeviceState state)
+{
+    switch (state) {
+        case NM_DEVICE_STATE_PREPARE:
+        case NM_DEVICE_STATE_CONFIG:
+        case NM_DEVICE_STATE_NEED_AUTH:
+        case NM_DEVICE_STATE_IP_CONFIG:
+        case NM_DEVICE_STATE_IP_CHECK:
+        case NM_DEVICE_STATE_SECONDARIES:
+            return true;
+        case NM_DEVICE_STATE_UNKNOWN:
+        case NM_DEVICE_STATE_UNMANAGED:
+        case NM_DEVICE_STATE_UNAVAILABLE:
+        case NM_DEVICE_STATE_DISCONNECTED:
+        case NM_DEVICE_STATE_DEACTIVATING:
+        case NM_DEVICE_STATE_FAILED:
+        case NM_DEVICE_STATE_ACTIVATED:
+            return false;
+    }
+
+    return false;
+}
+
 std::string deviceStateReasonToString(NMDeviceStateReason reason)
 {
     GEnumClass* enumClass = static_cast<GEnumClass*>(g_type_class_ref(NM_TYPE_DEVICE_STATE_REASON));
@@ -1993,6 +2016,15 @@ Result<std::monostate, std::string> requestConnectCancel(
         }
 
         return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    const NMDeviceState deviceState = nm_device_get_state(NM_DEVICE(device));
+    if (deviceState == NM_DEVICE_STATE_ACTIVATED) {
+        LOG_INFO(Network, "Ignoring WiFi cancel request because the device is already activated.");
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+    if (!isCancelableWifiDeviceState(deviceState)) {
+        return Result<std::monostate, std::string>::error("No WiFi connect in progress");
     }
 
     std::string disconnectError;

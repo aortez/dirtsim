@@ -264,20 +264,17 @@ std::optional<Network::WifiConnectPhase> wifiConnectPhaseFromDeviceState(NMDevic
     return std::nullopt;
 }
 
+bool wifiConnectCanCancelForDeviceState(const NMDeviceState state)
+{
+    return state != NM_DEVICE_STATE_ACTIVATED;
+}
+
 } // namespace
 
 struct NetworkService::Impl {
     struct CachedSnapshot {
         Snapshot snapshot;
         Clock::time_point updatedAt = Clock::now();
-    };
-
-    struct ConnectCompletionTask {
-        Impl* self = nullptr;
-        GMainContext* context = nullptr;
-        uint64_t operationId = 0;
-        Result<Network::WifiConnectResult, std::string> result =
-            Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
     };
 
     struct SignalConnection {
@@ -422,6 +419,10 @@ struct NetworkService::Impl {
             if (!connectProgress.has_value()) {
                 return Result<std::monostate, std::string>::error("No WiFi connect in progress");
             }
+            if (!connectProgress->canCancel) {
+                return Result<std::monostate, std::string>::error(
+                    "WiFi connect can no longer be canceled");
+            }
             if (!ensureClient()) {
                 return Result<std::monostate, std::string>::error(lastRefreshError);
             }
@@ -448,15 +449,12 @@ struct NetworkService::Impl {
         });
     }
 
-    void finalizeConnectOperation(
+    Result<Network::WifiConnectResult, std::string> finalizeConnectOperation(
         const uint64_t operationId, Result<Network::WifiConnectResult, std::string> result)
     {
         if (operationId != connectOperationId) {
-            return;
-        }
-
-        if (connectThread.joinable() && std::this_thread::get_id() != connectThread.get_id()) {
-            connectThread.join();
+            return Result<Network::WifiConnectResult, std::string>::error(
+                "WiFi connect superseded by a newer request");
         }
 
         const bool canceled = connectCancelRequested;
@@ -477,7 +475,8 @@ struct NetworkService::Impl {
                     .message = "WiFi connection canceled",
                     .canceled = true,
                 });
-            return;
+            return Result<Network::WifiConnectResult, std::string>::error(
+                "WiFi connection canceled");
         }
 
         if (result.isError()) {
@@ -487,27 +486,33 @@ struct NetworkService::Impl {
                     .message = result.errorValue(),
                     .canceled = false,
                 });
-            return;
+            return Result<Network::WifiConnectResult, std::string>::error(result.errorValue());
         }
 
         clearConnectOutcome();
+        return result;
     }
 
     Result<Network::WifiConnectResult, std::string> connectBySsid(
         const std::string& ssid, const std::optional<std::string>& password)
     {
-        return invokeOnWorker<Result<Network::WifiConnectResult, std::string>>(
-            [this, ssid, password]() {
+        if (workerThread.joinable() && std::this_thread::get_id() == workerThread.get_id()) {
+            return Result<Network::WifiConnectResult, std::string>::error(
+                "WiFi connect cannot block the NetworkService worker");
+        }
+
+        auto completionPromise =
+            std::make_shared<std::promise<Result<Network::WifiConnectResult, std::string>>>();
+        auto completionFuture = completionPromise->get_future();
+
+        const auto setupResult = invokeOnWorker<Result<std::monostate, std::string>>(
+            [this, ssid, password, completionPromise]() {
                 if (connectProgress.has_value()) {
-                    return Result<Network::WifiConnectResult, std::string>::error(
+                    return Result<std::monostate, std::string>::error(
                         "WiFi connect already in progress");
                 }
                 if (!ensureClient()) {
-                    return Result<Network::WifiConnectResult, std::string>::error(lastRefreshError);
-                }
-                if (!mainContext) {
-                    return Result<Network::WifiConnectResult, std::string>::error(
-                        "NetworkService worker unavailable");
+                    return Result<std::monostate, std::string>::error(lastRefreshError);
                 }
 
                 rebindWifiDevice();
@@ -524,50 +529,72 @@ struct NetworkService::Impl {
                     });
 
                 const uint64_t operationId = ++connectOperationId;
-                GMainContext* completionContext = g_main_context_ref(mainContext);
 
                 try {
                     connectThread =
-                        std::thread([this, completionContext, operationId, ssid, password]() {
-                            Network::WifiManager wifiManager;
-                            auto result = wifiManager.connectBySsid(ssid, password);
-
-                            auto* task = new ConnectCompletionTask{
-                                .self = this,
-                                .context = completionContext,
-                                .operationId = operationId,
-                                .result = std::move(result),
+                        std::thread([this, completionPromise, operationId, ssid, password]() {
+                            auto finishConnect = [this, completionPromise, operationId](
+                                                     Result<Network::WifiConnectResult, std::string>
+                                                         connectResult) mutable {
+                                const auto finalResult =
+                                    invokeOnWorker<Result<Network::WifiConnectResult, std::string>>(
+                                        [this,
+                                         operationId,
+                                         connectResult = std::move(connectResult)]() mutable {
+                                            return finalizeConnectOperation(
+                                                operationId, std::move(connectResult));
+                                        });
+                                completionPromise->set_value(std::move(finalResult));
                             };
 
-                            g_main_context_invoke_full(
-                                completionContext,
-                                G_PRIORITY_DEFAULT,
-                                +[](gpointer data) -> gboolean {
-                                    auto* task = static_cast<ConnectCompletionTask*>(data);
-                                    task->self->finalizeConnectOperation(
-                                        task->operationId, std::move(task->result));
-                                    return G_SOURCE_REMOVE;
-                                },
-                                task,
-                                +[](gpointer data) {
-                                    auto* task = static_cast<ConnectCompletionTask*>(data);
-                                    if (task->context) {
-                                        g_main_context_unref(task->context);
-                                        task->context = nullptr;
-                                    }
-                                    delete task;
-                                });
+                            try {
+                                Network::WifiManager wifiManager;
+                                finishConnect(wifiManager.connectBySsid(ssid, password));
+                            }
+                            catch (const std::exception& e) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        e.what()));
+                            }
+                            catch (...) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        "Unhandled WiFi connect exception"));
+                            }
                         });
                 }
                 catch (const std::system_error& e) {
-                    g_main_context_unref(completionContext);
                     clearConnectProgress();
-                    return Result<Network::WifiConnectResult, std::string>::error(e.what());
+                    return Result<std::monostate, std::string>::error(e.what());
                 }
 
-                return Result<Network::WifiConnectResult, std::string>::okay(
-                    Network::WifiConnectResult{ .success = true, .ssid = ssid });
+                return Result<std::monostate, std::string>::okay(std::monostate{});
             });
+
+        if (setupResult.isError()) {
+            return Result<Network::WifiConnectResult, std::string>::error(setupResult.errorValue());
+        }
+
+        auto joinConnectThread = [this]() {
+            if (connectThread.joinable() && std::this_thread::get_id() != connectThread.get_id()) {
+                connectThread.join();
+            }
+        };
+
+        try {
+            auto result = completionFuture.get();
+            joinConnectThread();
+            return result;
+        }
+        catch (const std::exception& e) {
+            joinConnectThread();
+            return Result<Network::WifiConnectResult, std::string>::error(e.what());
+        }
+        catch (...) {
+            joinConnectThread();
+            return Result<Network::WifiConnectResult, std::string>::error(
+                "WiFi connect completion unavailable");
+        }
     }
 
     Result<Network::WifiDisconnectResult, std::string> disconnect(
@@ -954,12 +981,13 @@ struct NetworkService::Impl {
         if (!phase.has_value()) {
             return;
         }
-        if (connectProgress->phase == phase.value()) {
+        const bool canCancel = wifiConnectCanCancelForDeviceState(state);
+        if (connectProgress->phase == phase.value() && connectProgress->canCancel == canCancel) {
             return;
         }
 
         connectProgress->phase = phase.value();
-        connectProgress->canCancel = phase.value() != Network::WifiConnectPhase::Canceling;
+        connectProgress->canCancel = canCancel;
         updateCachedSnapshotConnectProgress();
     }
 
