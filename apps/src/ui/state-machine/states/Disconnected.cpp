@@ -440,9 +440,11 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                                .stepCount = static_cast<uint64_t>(renderMsg.timestep),
                                .isPaused = false,
                                .timestamp = now,
+                               .serverSendTimestampNs = fullMsg.server_send_timestamp_ns,
                                .scenario_id = fullMsg.scenario_id,
                                .scenario_config = fullMsg.scenario_config,
                                .nesControllerTelemetry = fullMsg.nes_controller_telemetry,
+                               .nesSmbResponseTelemetry = fullMsg.nes_smb_response_telemetry,
                                .scenarioVideoFrame = renderMsg.scenario_video_frame };
 
             sm.queueEvent(evt);

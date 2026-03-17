@@ -58,6 +58,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::GenomeSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GravitySet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::NesApuGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::NesFrameDelaySet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::NesInputSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);

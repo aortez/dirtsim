@@ -55,6 +55,14 @@ void SmolnesRuntime::setController1State(uint8_t buttonMask)
     smolnesRuntimeSetController1State(runtimeHandle_, buttonMask);
 }
 
+void SmolnesRuntime::setController1StateObserved(uint8_t buttonMask, uint64_t observedTimestampNs)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetController1StateObserved(runtimeHandle_, buttonMask, observedTimestampNs);
+}
+
 bool SmolnesRuntime::isHealthy() const
 {
     if (runtimeHandle_ == nullptr) {
@@ -129,6 +137,28 @@ std::optional<NesPaletteFrame> SmolnesRuntime::copyLatestPaletteFrame() const
     }
 
     return frame;
+}
+
+std::optional<SmolnesRuntime::ControllerSnapshot> SmolnesRuntime::copyControllerSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    SmolnesRuntimeControllerSnapshot raw{};
+    if (!smolnesRuntimeCopyControllerSnapshot(runtimeHandle_, &raw)) {
+        return std::nullopt;
+    }
+
+    return ControllerSnapshot{
+        .latestFrameId = raw.latest_frame_id,
+        .controller1AppliedFrameId = raw.controller1_applied_frame_id,
+        .controller1ObservedTimestampNs = raw.controller1_observed_timestamp_ns,
+        .controller1LatchTimestampNs = raw.controller1_latch_timestamp_ns,
+        .controller1RequestTimestampNs = raw.controller1_request_timestamp_ns,
+        .controller1SequenceId = raw.controller1_sequence_id,
+        .controller1State = raw.controller1_state,
+    };
 }
 
 std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot() const

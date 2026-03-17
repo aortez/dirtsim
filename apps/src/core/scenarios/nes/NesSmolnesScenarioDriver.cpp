@@ -37,6 +37,87 @@ uint32_t getMaxEpisodeFrames(const NesConfigT& config)
     return config.maxEpisodeFrames;
 }
 
+float axisValueFromMask(uint8_t mask, uint8_t negativeMask, uint8_t positiveMask)
+{
+    const bool negativePressed = (mask & negativeMask) != 0;
+    const bool positivePressed = (mask & positiveMask) != 0;
+    if (negativePressed == positivePressed) {
+        return 0.0f;
+    }
+    return positivePressed ? 1.0f : -1.0f;
+}
+
+float buttonValueFromMask(uint8_t mask, uint8_t buttonMask)
+{
+    return (mask & buttonMask) != 0 ? 1.0f : 0.0f;
+}
+
+std::optional<NesControllerTelemetry> buildLiveControllerTelemetry(
+    const SmolnesRuntime::ControllerSnapshot& snapshot)
+{
+    if (snapshot.controller1AppliedFrameId == 0 || snapshot.controller1SequenceId == 0
+        || snapshot.controller1RequestTimestampNs == 0
+        || snapshot.controller1LatchTimestampNs == 0) {
+        return std::nullopt;
+    }
+
+    const uint8_t mask = snapshot.controller1State;
+    return NesControllerTelemetry{
+        .aRaw = buttonValueFromMask(mask, SMOLNES_RUNTIME_BUTTON_A),
+        .bRaw = buttonValueFromMask(mask, SMOLNES_RUNTIME_BUTTON_B),
+        .xRaw = axisValueFromMask(mask, SMOLNES_RUNTIME_BUTTON_LEFT, SMOLNES_RUNTIME_BUTTON_RIGHT),
+        .yRaw = axisValueFromMask(mask, SMOLNES_RUNTIME_BUTTON_UP, SMOLNES_RUNTIME_BUTTON_DOWN),
+        .inferredControllerMask = mask,
+        .resolvedControllerMask = mask,
+        .controllerSource = NesGameAdapterControllerSource::LiveInput,
+        .controllerSourceFrameIndex = snapshot.controller1AppliedFrameId,
+        .controllerAppliedFrameId = snapshot.controller1AppliedFrameId,
+        .controllerObservedTimestampNs = snapshot.controller1ObservedTimestampNs > 0
+            ? std::optional<uint64_t>(snapshot.controller1ObservedTimestampNs)
+            : std::nullopt,
+        .controllerLatchTimestampNs = snapshot.controller1LatchTimestampNs,
+        .controllerRequestTimestampNs = snapshot.controller1RequestTimestampNs,
+        .controllerSequenceId = snapshot.controller1SequenceId,
+    };
+}
+
+struct LiveFrameCopyResult {
+    std::optional<NesControllerTelemetry> controllerTelemetry = std::nullopt;
+    std::optional<ScenarioVideoFrame> scenarioVideoFrame = std::nullopt;
+};
+
+LiveFrameCopyResult copyLiveFrameAndTelemetry(const SmolnesRuntime& runtime)
+{
+    constexpr uint32_t maxAttempts = 3;
+
+    for (uint32_t attempt = 0; attempt < maxAttempts; ++attempt) {
+        auto frame = runtime.copyLatestFrame();
+        if (!frame.has_value()) {
+            return LiveFrameCopyResult{};
+        }
+
+        const auto snapshot = runtime.copyControllerSnapshot();
+        if (!snapshot.has_value()) {
+            return LiveFrameCopyResult{
+                .controllerTelemetry = std::nullopt,
+                .scenarioVideoFrame = std::move(frame),
+            };
+        }
+
+        if (snapshot->latestFrameId == frame->frame_id) {
+            return LiveFrameCopyResult{
+                .controllerTelemetry = buildLiveControllerTelemetry(snapshot.value()),
+                .scenarioVideoFrame = std::move(frame),
+            };
+        }
+    }
+
+    return LiveFrameCopyResult{
+        .controllerTelemetry = std::nullopt,
+        .scenarioVideoFrame = runtime.copyLatestFrame(),
+    };
+}
+
 } // namespace
 
 NesSmolnesScenarioDriver::NesSmolnesScenarioDriver(Scenario::EnumType scenarioId)
@@ -76,6 +157,9 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
 {
     stopRuntime();
     controller1State_ = 0;
+    lastControllerTelemetry_.reset();
+    lastSmbResponseTelemetry_.reset();
+    smbResponseProbe_.reset();
     runtimeResolvedRomId_.clear();
     lastRuntimeProfilingSnapshot_.reset();
 
@@ -126,9 +210,9 @@ Result<std::monostate, std::string> NesSmolnesScenarioDriver::setup()
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
+    applyRuntimePacingMode();
 
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
@@ -149,6 +233,7 @@ NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
     Timers& timers, uint8_t buttonMask)
 {
     controller1State_ = buttonMask;
+    lastSmbResponseTelemetry_.reset();
 
     StepResult stepResult;
     stepResult.controllerMask = controller1State_;
@@ -257,11 +342,22 @@ NesSmolnesScenarioDriver::StepResult NesSmolnesScenarioDriver::step(
     if (stepResult.advancedFrames > 0) {
         {
             ScopeTimer copyFrameTimer(timers, "nes_runtime_copy_latest_frame");
-            stepResult.scenarioVideoFrame = runtime_->copyLatestFrame();
+            const LiveFrameCopyResult liveFrameCopy = copyLiveFrameAndTelemetry(*runtime_);
+            stepResult.controllerTelemetry = liveFrameCopy.controllerTelemetry;
+            stepResult.scenarioVideoFrame = liveFrameCopy.scenarioVideoFrame;
         }
         stepResult.paletteFrame = runtime_->copyLatestPaletteFrame();
         stepResult.memorySnapshot = runtime_->copyMemorySnapshot();
+        lastControllerTelemetry_ = stepResult.controllerTelemetry;
+        if (smbResponseProbeEnabled_ && scenarioId_ == Scenario::EnumType::NesSuperMarioBros
+            && stepResult.memorySnapshot.has_value()) {
+            stepResult.smbResponseTelemetry = smbResponseProbe_.observeFrame(
+                stepResult.renderedFramesAfter,
+                stepResult.memorySnapshot.value(),
+                stepResult.controllerTelemetry);
+        }
     }
+    lastSmbResponseTelemetry_ = stepResult.smbResponseTelemetry;
 
     updateRuntimeProfilingTimers(timers);
     stepResult.runtimeHealthy = runtime_ && runtime_->isHealthy();
@@ -363,11 +459,31 @@ std::string NesSmolnesScenarioDriver::getRuntimeLastError() const
     return runtime_->getLastError();
 }
 
+std::optional<NesControllerTelemetry> NesSmolnesScenarioDriver::getLastControllerTelemetry() const
+{
+    return lastControllerTelemetry_;
+}
+
+std::optional<NesSuperMarioBrosResponseTelemetry> NesSmolnesScenarioDriver::
+    getLastSmbResponseTelemetry() const
+{
+    return lastSmbResponseTelemetry_;
+}
+
 void NesSmolnesScenarioDriver::setController1State(uint8_t buttonMask)
 {
     controller1State_ = buttonMask;
     if (runtime_ && runtime_->isRunning()) {
         runtime_->setController1State(controller1State_);
+    }
+}
+
+void NesSmolnesScenarioDriver::setLiveController1State(
+    uint8_t buttonMask, uint64_t observedTimestampNs)
+{
+    controller1State_ = buttonMask;
+    if (runtime_ && runtime_->isRunning()) {
+        runtime_->setController1StateObserved(controller1State_, observedTimestampNs);
     }
 }
 
@@ -382,16 +498,15 @@ void NesSmolnesScenarioDriver::setAudioPlaybackEnabled(bool enabled)
         }
         else {
             runtime_->setApuSampleCallback(nesApuSampleCallback, audioPlayer_.get());
-            runtime_->setPacingMode(SmolnesRuntimePacingMode::Realtime);
         }
     }
     if (!enabled) {
         if (runtime_) {
-            runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
             runtime_->setApuSampleCallback(nullptr, nullptr);
         }
         audioPlayer_.reset();
     }
+    applyRuntimePacingMode();
 }
 
 void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
@@ -399,6 +514,36 @@ void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
     if (audioPlayer_) {
         audioPlayer_->setVolumePercent(percent);
     }
+}
+
+void NesSmolnesScenarioDriver::setLiveServerPacingEnabled(bool enabled)
+{
+    if (liveServerPacingEnabled_ == enabled) {
+        return;
+    }
+    liveServerPacingEnabled_ = enabled;
+    applyRuntimePacingMode();
+}
+
+void NesSmolnesScenarioDriver::setSmbResponseProbeEnabled(bool enabled)
+{
+    smbResponseProbeEnabled_ = enabled;
+    if (!smbResponseProbeEnabled_) {
+        lastSmbResponseTelemetry_.reset();
+        smbResponseProbe_.reset();
+    }
+}
+
+void NesSmolnesScenarioDriver::applyRuntimePacingMode()
+{
+    if (!runtime_ || !runtime_->isRunning()) {
+        return;
+    }
+
+    const bool useRealtimePacing = audioPlayer_ && !liveServerPacingEnabled_;
+    runtime_->setPacingMode(
+        useRealtimePacing ? SmolnesRuntimePacingMode::Realtime
+                          : SmolnesRuntimePacingMode::Lockstep);
 }
 
 void NesSmolnesScenarioDriver::stopRuntime()
@@ -409,7 +554,10 @@ void NesSmolnesScenarioDriver::stopRuntime()
     runtime_->setPacingMode(SmolnesRuntimePacingMode::Lockstep);
     runtime_->stop();
     audioPlayer_.reset();
+    lastControllerTelemetry_.reset();
+    lastSmbResponseTelemetry_.reset();
     lastRuntimeProfilingSnapshot_.reset();
+    smbResponseProbe_.reset();
 }
 
 void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)

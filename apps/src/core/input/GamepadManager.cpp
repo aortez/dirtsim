@@ -1,7 +1,31 @@
 #include "GamepadManager.h"
+
+#include <chrono>
+
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
+
+namespace {
+
+uint64_t steadyClockNowNs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count());
+}
+
+bool didStateChange(const GamepadState& previous, const GamepadState& current)
+{
+    return previous.stick_x != current.stick_x || previous.stick_y != current.stick_y
+        || previous.dpad_x != current.dpad_x || previous.dpad_y != current.dpad_y
+        || previous.button_a != current.button_a || previous.button_b != current.button_b
+        || previous.button_x != current.button_x || previous.button_y != current.button_y
+        || previous.button_back != current.button_back
+        || previous.button_start != current.button_start || previous.connected != current.connected;
+}
+
+} // namespace
 
 GamepadManager::GamepadManager()
 {
@@ -190,28 +214,37 @@ void GamepadManager::handleControllerRemoved(SDL_JoystickID joystick_id)
 void GamepadManager::updateDeviceState(Device& device)
 {
     SDL_GameController* c = device.controller;
-    GamepadState& state = device.state;
+    const GamepadState previousState = device.state;
+    GamepadState nextState = previousState;
+    nextState.connected = true;
+    nextState.lastSampleTimestampNs = steadyClockNowNs();
 
     // Left stick (normalized to -1.0 to 1.0).
-    state.stick_x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
-    state.stick_y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+    nextState.stick_x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+    nextState.stick_y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
 
     // D-pad (digital, so -1, 0, or 1).
-    bool dpad_left = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-    bool dpad_right = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-    bool dpad_up = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_UP);
-    bool dpad_down = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+    const bool dpadLeft = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+    const bool dpadRight = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+    const bool dpadUp = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_UP);
+    const bool dpadDown = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
 
-    state.dpad_x = (dpad_right ? 1.0f : 0.0f) - (dpad_left ? 1.0f : 0.0f);
-    state.dpad_y = (dpad_down ? 1.0f : 0.0f) - (dpad_up ? 1.0f : 0.0f);
+    nextState.dpad_x = (dpadRight ? 1.0f : 0.0f) - (dpadLeft ? 1.0f : 0.0f);
+    nextState.dpad_y = (dpadDown ? 1.0f : 0.0f) - (dpadUp ? 1.0f : 0.0f);
 
     // Buttons.
-    state.button_a = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A);
-    state.button_b = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B);
-    state.button_x = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_X);
-    state.button_y = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_Y);
-    state.button_back = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_BACK);
-    state.button_start = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_START);
+    nextState.button_a = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A);
+    nextState.button_b = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B);
+    nextState.button_x = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_X);
+    nextState.button_y = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_Y);
+    nextState.button_back = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_BACK);
+    nextState.button_start = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_START);
+
+    if (didStateChange(previousState, nextState)) {
+        nextState.lastObservedChangeTimestampNs = nextState.lastSampleTimestampNs;
+    }
+
+    device.state = nextState;
 }
 
 } // namespace DirtSim

@@ -39,6 +39,16 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t memory_snapshot_copy_calls;
 } SmolnesRuntimeProfilingSnapshot;
 
+typedef struct SmolnesRuntimeControllerSnapshot {
+    uint64_t latest_frame_id;
+    uint64_t controller1_applied_frame_id;
+    uint64_t controller1_observed_timestamp_ns;
+    uint64_t controller1_latch_timestamp_ns;
+    uint64_t controller1_request_timestamp_ns;
+    uint64_t controller1_sequence_id;
+    uint8_t controller1_state;
+} SmolnesRuntimeControllerSnapshot;
+
 typedef enum SmolnesRuntimePacingModeValue {
     SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP = 0,
     SMOLNES_RUNTIME_PACING_MODE_REALTIME = 1,
@@ -75,6 +85,8 @@ bool smolnesRuntimeIsHealthy(const SmolnesRuntimeHandle* runtime);
 bool smolnesRuntimeIsRunning(const SmolnesRuntimeHandle* runtime);
 uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime);
 void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask);
+void smolnesRuntimeSetController1StateObserved(
+    SmolnesRuntimeHandle* runtime, uint8_t buttonMask, uint64_t observedTimestampNs);
 bool smolnesRuntimeCopyLatestFrame(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
 bool smolnesRuntimeCopyLatestPaletteIndices(
@@ -85,6 +97,8 @@ bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyProfilingSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut);
+bool smolnesRuntimeCopyControllerSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeControllerSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSamples(

@@ -140,7 +140,7 @@ foreach(BACKEND_NAME "SDL" "LINUX_DRM" "LINUX_FBDEV" "X11" "WAYLAND" "OPENGLES")
 
 endforeach()
 
-# Uncomment if the program needs debugging
+# Uncomment if the program needs debugging.
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -ggdb")
 
 set(CMAKE_C_STANDARD 99) # LVGL officially supports C99 and above
@@ -182,7 +182,7 @@ if (LV_USE_WAYLAND)
     list(APPEND PKG_CONFIG_LIB ${WAYLAND_CURSOR_LIBRARIES})
     list(APPEND PKG_CONFIG_LIB ${XKBCOMMON_LIBRARIES})
 
-    # Wayland protocols
+    # Wayland protocols.
     pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.25)
     pkg_get_variable(WAYLAND_PROTOCOLS_BASE wayland-protocols pkgdatadir)
 
@@ -208,7 +208,7 @@ endif()
 
 if (LV_USE_LINUX_FBDEV)
 
-    # FBDEV has no dependencies
+    # FBDEV has no dependencies.
     message("Including FBDEV support")
     list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/fbdev.cpp)
 
@@ -432,6 +432,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
     src/core/scenarios/nes/NesSuperMarioBrosEvaluator.cpp
     src/core/scenarios/nes/NesSuperMarioBrosRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosResponseProbe.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.cpp
     src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
@@ -789,6 +791,7 @@ add_executable(dirtsim-tests
     src/server/tests/UserSettings_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp
+    src/ui/state-machine/tests/StateSimRunning_test.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
@@ -877,6 +880,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosResponseProbe_test.cpp
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp

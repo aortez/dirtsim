@@ -9,6 +9,7 @@
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/ClockConfig.h"
 #include "core/scenarios/nes/NesControllerTelemetry.h"
+#include "core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.h"
 #include "server/api/TrainingBestSnapshot.h"
 
 #include <filesystem>
@@ -99,8 +100,10 @@ public:
 
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
+    double getNesFrameDelayMs() const;
     UserSettings& getUserSettings();
     const UserSettings& getUserSettings() const;
+    bool isNesFrameDelayEnabled() const;
 
     void storeTrainingResult(const Api::TrainingResult& result);
 
@@ -110,7 +113,9 @@ public:
         Scenario::EnumType scenario_id,
         const ScenarioConfig& scenario_config,
         const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
-        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+        const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry =
+            std::nullopt);
 
     void broadcastCommand(const std::string& messageType);
     void broadcastEventData(const std::string& messageType, const std::vector<std::byte>& payload);

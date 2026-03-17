@@ -4,6 +4,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
 #include "core/scenarios/nes/NesControllerTelemetry.h"
+#include "core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.h"
 
 #include <chrono>
 #include <cstdint>
@@ -18,11 +19,13 @@ struct UiUpdateEvent {
     uint64_t stepCount = 0;
     bool isPaused = false;
     std::chrono::steady_clock::time_point timestamp;
+    uint64_t serverSendTimestampNs = 0;
 
     // Scenario metadata (sent alongside world data).
     Scenario::EnumType scenario_id = Scenario::EnumType::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
     std::optional<NesControllerTelemetry> nesControllerTelemetry = std::nullopt;
+    std::optional<NesSuperMarioBrosResponseTelemetry> nesSmbResponseTelemetry = std::nullopt;
 
     // Standalone video frame for NES scenarios (not part of WorldData).
     std::optional<ScenarioVideoFrame> scenarioVideoFrame;
