@@ -40,12 +40,45 @@ struct NetworkInterfaceInfo {
  */
 class NetworkDiagnosticsPanel {
 public:
+    struct AutomationConnectProgress {
+        std::string phase;
+        std::string ssid;
+        bool canCancel = true;
+    };
+
+    struct AutomationNetworkInfo {
+        std::string ssid;
+        std::string status;
+        bool requiresPassword = false;
+    };
+
+    struct AutomationState {
+        std::optional<AutomationConnectProgress> connectProgress;
+        std::optional<std::string> connectedSsid;
+        std::optional<std::string> connectTargetSsid;
+        std::optional<std::string> passwordPromptTargetSsid;
+        std::string passwordError;
+        std::vector<AutomationNetworkInfo> networks;
+        std::string viewMode;
+        std::string wifiStatusMessage;
+        bool connectCancelEnabled = false;
+        bool connectCancelVisible = false;
+        bool connectOverlayVisible = false;
+        bool passwordPromptVisible = false;
+        bool passwordSubmitEnabled = false;
+    };
+
     /**
      * @brief Construct the network diagnostics panel.
      * @param container Parent LVGL container to build UI in.
      */
     explicit NetworkDiagnosticsPanel(lv_obj_t* container, UserSettingsManager& userSettingsManager);
     ~NetworkDiagnosticsPanel();
+
+    Result<AutomationState, std::string> getAutomationState();
+    Result<std::monostate, std::string> pressAutomationConnect(const std::string& ssid);
+    Result<std::monostate, std::string> pressAutomationConnectCancel();
+    Result<std::monostate, std::string> submitAutomationPassword(const std::string& password);
 
     void showLanAccessView();
     /**
@@ -248,6 +281,7 @@ private:
     void setWebSocketToggleEnabled(bool enabled);
     void setWebUiToggleEnabled(bool enabled);
     void submitPasswordPrompt();
+    std::optional<size_t> findNetworkIndexBySsid(const std::string& ssid) const;
     void updateCurrentConnectionSummary();
     void updateDetailsLastScanLabel();
     void updateDetailsSignalHistoryPlots();

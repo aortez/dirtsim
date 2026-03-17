@@ -56,6 +56,55 @@ bool isConnectFinalizing(const std::optional<Network::WifiConnectProgress>& prog
         && progress->phase != Network::WifiConnectPhase::Canceling;
 }
 
+std::string toAutomationPhaseText(const Network::WifiConnectPhase phase)
+{
+    switch (phase) {
+        case Network::WifiConnectPhase::Starting:
+            return "Starting";
+        case Network::WifiConnectPhase::Associating:
+            return "Associating";
+        case Network::WifiConnectPhase::Authenticating:
+            return "Authenticating";
+        case Network::WifiConnectPhase::GettingAddress:
+            return "GettingAddress";
+        case Network::WifiConnectPhase::Canceling:
+            return "Canceling";
+    }
+
+    return "Starting";
+}
+
+std::string toAutomationStatusText(const Network::WifiNetworkStatus status)
+{
+    switch (status) {
+        case Network::WifiNetworkStatus::Connected:
+            return "Connected";
+        case Network::WifiNetworkStatus::Saved:
+            return "Saved";
+        case Network::WifiNetworkStatus::Open:
+            return "Open";
+        case Network::WifiNetworkStatus::Available:
+            return "Available";
+    }
+
+    return "Saved";
+}
+
+std::string toAutomationViewModeText(const bool wifiView)
+{
+    return wifiView ? "Wifi" : "LanAccess";
+}
+
+std::string labelText(lv_obj_t* label)
+{
+    if (!label) {
+        return "";
+    }
+
+    const char* text = lv_label_get_text(label);
+    return text ? std::string(text) : "";
+}
+
 void setNetworkDiagnosticsModeAsync(const bool active)
 {
     std::thread([active]() {
@@ -752,6 +801,131 @@ void NetworkDiagnosticsPanel::createUI()
     refresh();
 }
 
+Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnosticsPanel::
+    getAutomationState()
+{
+    applyPendingUpdates();
+
+    AutomationState state;
+    state.viewMode = toAutomationViewModeText(viewMode_ == ViewMode::Wifi);
+    state.wifiStatusMessage = labelText(wifiStatusLabel_);
+    state.connectedSsid = latestWifiStatus_.has_value() && latestWifiStatus_->connected
+        ? std::optional<std::string>(latestWifiStatus_->ssid)
+        : std::nullopt;
+    state.connectTargetSsid = connectAwaitingConfirmationSsid_.has_value()
+        ? connectAwaitingConfirmationSsid_
+        : (!actionState_.ssid.empty() ? std::optional<std::string>(actionState_.ssid)
+                                      : std::nullopt);
+    state.passwordPromptTargetSsid = passwordPromptNetwork_.has_value()
+        ? std::optional<std::string>(passwordPromptNetwork_->ssid)
+        : std::nullopt;
+    state.passwordError = labelText(passwordErrorLabel_);
+    state.passwordPromptVisible =
+        passwordOverlay_ && !lv_obj_has_flag(passwordOverlay_, LV_OBJ_FLAG_HIDDEN);
+    state.connectOverlayVisible =
+        state.passwordPromptVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
+    state.passwordSubmitEnabled = passwordJoinButton_
+        && !lv_obj_has_state(getActionButtonInnerButton(passwordJoinButton_), LV_STATE_DISABLED);
+
+    if (connectProgress_.has_value()) {
+        state.connectProgress = AutomationConnectProgress{
+            .phase = toAutomationPhaseText(connectProgress_->phase),
+            .ssid = connectProgress_->ssid,
+            .canCancel = connectProgress_->canCancel,
+        };
+    }
+
+    if (connectProgressCancelButton_) {
+        const lv_obj_t* innerButton = getActionButtonInnerButton(connectProgressCancelButton_);
+        state.connectCancelVisible =
+            !lv_obj_has_flag(connectProgressCancelButton_, LV_OBJ_FLAG_HIDDEN);
+        state.connectCancelEnabled =
+            innerButton && !lv_obj_has_state(const_cast<lv_obj_t*>(innerButton), LV_STATE_DISABLED);
+    }
+
+    state.networks.reserve(networks_.size());
+    for (const auto& network : networks_) {
+        state.networks.push_back(
+            AutomationNetworkInfo{
+                .ssid = network.ssid,
+                .status = toAutomationStatusText(network.status),
+                .requiresPassword = networkRequiresPassword(network),
+            });
+    }
+
+    return Result<AutomationState, std::string>::okay(state);
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::pressAutomationConnect(
+    const std::string& ssid)
+{
+    applyPendingUpdates();
+    if (viewMode_ != ViewMode::Wifi) {
+        return Result<std::monostate, std::string>::error("WiFi view is not active");
+    }
+    if (isActionInProgress()) {
+        return Result<std::monostate, std::string>::error("Another network action is in progress");
+    }
+
+    const auto index = findNetworkIndexBySsid(ssid);
+    if (!index.has_value()) {
+        return Result<std::monostate, std::string>::error("Network not found: " + ssid);
+    }
+
+    const auto& network = networks_[index.value()];
+    if (networkRequiresPassword(network)) {
+        openPasswordPrompt(network);
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    openConnectingOverlay(network);
+    if (!startAsyncConnect(network)) {
+        closePasswordPrompt();
+        return Result<std::monostate, std::string>::error("Failed to start WiFi connect");
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::pressAutomationConnectCancel()
+{
+    applyPendingUpdates();
+    if (!connectProgressCancelButton_
+        || lv_obj_has_flag(connectProgressCancelButton_, LV_OBJ_FLAG_HIDDEN)) {
+        return Result<std::monostate, std::string>::error("Connect cancel is not available");
+    }
+
+    lv_obj_t* innerButton = getActionButtonInnerButton(connectProgressCancelButton_);
+    if (!innerButton || lv_obj_has_state(innerButton, LV_STATE_DISABLED)) {
+        return Result<std::monostate, std::string>::error("Connect cancel is disabled");
+    }
+
+    if (!startAsyncConnectCancel()) {
+        return Result<std::monostate, std::string>::error("Failed to start WiFi connect cancel");
+    }
+
+    setActionButtonEnabled(connectProgressCancelButton_, false);
+    setActionButtonText(connectProgressCancelButton_, "Canceling");
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::submitAutomationPassword(
+    const std::string& password)
+{
+    applyPendingUpdates();
+    if (!passwordPromptNetwork_.has_value() || !passwordTextArea_) {
+        return Result<std::monostate, std::string>::error("Password prompt is not open");
+    }
+    if (isActionInProgress()) {
+        return Result<std::monostate, std::string>::error("Another network action is in progress");
+    }
+
+    lv_textarea_set_text(passwordTextArea_, password.c_str());
+    updatePasswordJoinButton();
+    submitPasswordPrompt();
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 void NetworkDiagnosticsPanel::showLanAccessView()
 {
     setViewMode(ViewMode::LanAccess);
@@ -760,6 +934,19 @@ void NetworkDiagnosticsPanel::showLanAccessView()
 void NetworkDiagnosticsPanel::showWifiView()
 {
     setViewMode(ViewMode::Wifi);
+}
+
+std::optional<size_t> NetworkDiagnosticsPanel::findNetworkIndexBySsid(const std::string& ssid) const
+{
+    const auto it = std::find_if(
+        networks_.begin(), networks_.end(), [&](const Network::WifiNetworkInfo& network) {
+            return network.ssid == ssid;
+        });
+    if (it == networks_.end()) {
+        return std::nullopt;
+    }
+
+    return static_cast<size_t>(std::distance(networks_.begin(), it));
 }
 
 void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)

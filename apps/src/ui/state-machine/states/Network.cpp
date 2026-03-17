@@ -8,6 +8,47 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
+namespace {
+
+UiApi::NetworkDiagnosticsGet::Okay toAutomationOkay(
+    const NetworkDiagnosticsPanel::AutomationState& state)
+{
+    UiApi::NetworkDiagnosticsGet::Okay okay{
+        .connect_cancel_enabled = state.connectCancelEnabled,
+        .connect_cancel_visible = state.connectCancelVisible,
+        .connect_overlay_visible = state.connectOverlayVisible,
+        .password_prompt_visible = state.passwordPromptVisible,
+        .password_submit_enabled = state.passwordSubmitEnabled,
+        .connect_progress = std::nullopt,
+        .connected_ssid = state.connectedSsid,
+        .connect_target_ssid = state.connectTargetSsid,
+        .password_prompt_target_ssid = state.passwordPromptTargetSsid,
+        .password_error = state.passwordError,
+        .networks = {},
+        .view_mode = state.viewMode,
+        .wifi_status_message = state.wifiStatusMessage,
+    };
+    if (state.connectProgress.has_value()) {
+        okay.connect_progress = UiApi::NetworkDiagnosticsGet::ConnectProgressInfo{
+            .phase = state.connectProgress->phase,
+            .ssid = state.connectProgress->ssid,
+            .can_cancel = state.connectProgress->canCancel,
+        };
+    }
+    okay.networks.reserve(state.networks.size());
+    for (const auto& network : state.networks) {
+        okay.networks.push_back(
+            UiApi::NetworkDiagnosticsGet::NetworkInfo{
+                .ssid = network.ssid,
+                .status = network.status,
+                .requires_password = network.requiresPassword,
+            });
+    }
+    return okay;
+}
+
+} // namespace
+
 void Network::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Network state");
@@ -139,6 +180,90 @@ State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine&
 {
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
+}
+
+State::Any Network::onEvent(const UiApi::NetworkConnectCancelPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectCancelPress::Response::error(
+                ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationConnectCancel();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectCancelPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkConnectCancelPress::Response::okay(
+            UiApi::NetworkConnectCancelPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkConnectPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectPress::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationConnect(cwc.command.ssid);
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkConnectPress::Response::okay(
+            UiApi::NetworkConnectPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkDiagnosticsGet::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->getAutomationState();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkDiagnosticsGet::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkDiagnosticsGet::Response::okay(toAutomationOkay(result.value())));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkPasswordSubmit::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->submitAutomationPassword(cwc.command.password);
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkPasswordSubmit::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkPasswordSubmit::Response::okay(
+            UiApi::NetworkPasswordSubmit::Okay{ .accepted = true }));
+    return std::move(*this);
 }
 
 State::Any Network::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)

@@ -29,6 +29,10 @@
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
+#include "ui/state-machine/api/NetworkConnectCancelPress.h"
+#include "ui/state-machine/api/NetworkConnectPress.h"
+#include "ui/state-machine/api/NetworkDiagnosticsGet.h"
+#include "ui/state-machine/api/NetworkPasswordSubmit.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -111,6 +115,10 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkConnectCancelPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkConnectPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkDiagnosticsGet::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkPasswordSubmit::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
