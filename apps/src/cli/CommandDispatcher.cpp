@@ -105,7 +105,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);
-    registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::SimPause::Cwc>(uiHandlers_, uiExampleHandlers_);

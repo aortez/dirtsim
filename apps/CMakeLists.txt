@@ -550,7 +550,6 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/MouseMove.cpp
     src/ui/state-machine/api/MouseUp.cpp
     src/ui/state-machine/api/PlantSeed.cpp
-    src/ui/state-machine/api/PixelRendererToggle.cpp
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
     src/ui/state-machine/api/SimPause.cpp

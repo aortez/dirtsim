@@ -11,7 +11,6 @@
 #include "MouseDown.h"
 #include "MouseMove.h"
 #include "MouseUp.h"
-#include "PixelRendererToggle.h"
 #include "PlantSeed.h"
 #include "RenderModeSelect.h"
 #include "ScreenGrab.h"
@@ -53,7 +52,6 @@ using UiApiCommand = std::variant<
     UiApi::MouseMove::Command,
     UiApi::MouseUp::Command,
     UiApi::PlantSeed::Command,
-    UiApi::PixelRendererToggle::Command,
     UiApi::RenderModeSelect::Command,
     UiApi::ScreenGrab::Command,
     UiApi::SimPause::Command,
