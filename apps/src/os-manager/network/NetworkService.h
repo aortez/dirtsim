@@ -15,6 +15,9 @@ namespace OsManager {
 
 class NetworkService {
 public:
+    using ConnectCompletionCallback =
+        std::function<void(Result<Network::WifiConnectResult, std::string>)>;
+
     struct LocalAddressInfo {
         std::string name;
         std::string address;
@@ -45,6 +48,10 @@ public:
 
     Result<Snapshot, std::string> getSnapshot(bool forceRefresh);
     Result<std::monostate, std::string> cancelConnect();
+    Result<std::monostate, std::string> connectBySsidAsync(
+        const std::string& ssid,
+        const std::optional<std::string>& password,
+        ConnectCompletionCallback callback);
     Result<Network::WifiConnectResult, std::string> connectBySsid(
         const std::string& ssid, const std::optional<std::string>& password);
     Result<Network::WifiDisconnectResult, std::string> disconnect(

@@ -120,6 +120,7 @@ public:
         const OsApi::UntrustPeer::Command& command);
     Result<OsApi::WifiConnectCancel::Okay, ApiError> wifiConnectCancel(
         const OsApi::WifiConnectCancel::Command& command);
+    void wifiConnectAsync(OsApi::WifiConnect::Cwc cwc);
     Result<OsApi::WifiConnect::Okay, ApiError> wifiConnect(
         const OsApi::WifiConnect::Command& command);
     Result<OsApi::WifiDisconnect::Okay, ApiError> wifiDisconnect(

@@ -272,6 +272,8 @@ bool wifiConnectCanCancelForDeviceState(const NMDeviceState state)
 } // namespace
 
 struct NetworkService::Impl {
+    using ConnectCompletionCallback = NetworkService::ConnectCompletionCallback;
+
     struct CachedSnapshot {
         Snapshot snapshot;
         Clock::time_point updatedAt = Clock::now();
@@ -493,20 +495,13 @@ struct NetworkService::Impl {
         return result;
     }
 
-    Result<Network::WifiConnectResult, std::string> connectBySsid(
-        const std::string& ssid, const std::optional<std::string>& password)
+    Result<std::monostate, std::string> connectBySsidAsync(
+        const std::string& ssid,
+        const std::optional<std::string>& password,
+        ConnectCompletionCallback completionCallback)
     {
-        if (workerThread.joinable() && std::this_thread::get_id() == workerThread.get_id()) {
-            return Result<Network::WifiConnectResult, std::string>::error(
-                "WiFi connect cannot block the NetworkService worker");
-        }
-
-        auto completionPromise =
-            std::make_shared<std::promise<Result<Network::WifiConnectResult, std::string>>>();
-        auto completionFuture = completionPromise->get_future();
-
-        const auto setupResult = invokeOnWorker<Result<std::monostate, std::string>>(
-            [this, ssid, password, completionPromise]() {
+        return invokeOnWorker<Result<std::monostate, std::string>>(
+            [this, ssid, password, completionCallback = std::move(completionCallback)]() mutable {
                 if (connectProgress.has_value()) {
                     return Result<std::monostate, std::string>::error(
                         "WiFi connect already in progress");
@@ -531,11 +526,15 @@ struct NetworkService::Impl {
                 const uint64_t operationId = ++connectOperationId;
 
                 try {
-                    connectThread =
-                        std::thread([this, completionPromise, operationId, ssid, password]() {
-                            auto finishConnect = [this, completionPromise, operationId](
-                                                     Result<Network::WifiConnectResult, std::string>
-                                                         connectResult) mutable {
+                    connectThread = std::thread([this,
+                                                 completionCallback = std::move(completionCallback),
+                                                 operationId,
+                                                 ssid,
+                                                 password]() mutable {
+                        auto finishConnect =
+                            [this, completionCallback = std::move(completionCallback), operationId](
+                                Result<Network::WifiConnectResult, std::string>
+                                    connectResult) mutable {
                                 const auto finalResult =
                                     invokeOnWorker<Result<Network::WifiConnectResult, std::string>>(
                                         [this,
@@ -544,24 +543,25 @@ struct NetworkService::Impl {
                                             return finalizeConnectOperation(
                                                 operationId, std::move(connectResult));
                                         });
-                                completionPromise->set_value(std::move(finalResult));
+                                if (completionCallback) {
+                                    completionCallback(finalResult);
+                                }
                             };
 
-                            try {
-                                Network::WifiManager wifiManager;
-                                finishConnect(wifiManager.connectBySsid(ssid, password));
-                            }
-                            catch (const std::exception& e) {
-                                finishConnect(
-                                    Result<Network::WifiConnectResult, std::string>::error(
-                                        e.what()));
-                            }
-                            catch (...) {
-                                finishConnect(
-                                    Result<Network::WifiConnectResult, std::string>::error(
-                                        "Unhandled WiFi connect exception"));
-                            }
-                        });
+                        try {
+                            Network::WifiManager wifiManager;
+                            finishConnect(wifiManager.connectBySsid(ssid, password));
+                        }
+                        catch (const std::exception& e) {
+                            finishConnect(
+                                Result<Network::WifiConnectResult, std::string>::error(e.what()));
+                        }
+                        catch (...) {
+                            finishConnect(
+                                Result<Network::WifiConnectResult, std::string>::error(
+                                    "Unhandled WiFi connect exception"));
+                        }
+                    });
                 }
                 catch (const std::system_error& e) {
                     clearConnectProgress();
@@ -569,6 +569,26 @@ struct NetworkService::Impl {
                 }
 
                 return Result<std::monostate, std::string>::okay(std::monostate{});
+            });
+    }
+
+    Result<Network::WifiConnectResult, std::string> connectBySsid(
+        const std::string& ssid, const std::optional<std::string>& password)
+    {
+        if (workerThread.joinable() && std::this_thread::get_id() == workerThread.get_id()) {
+            return Result<Network::WifiConnectResult, std::string>::error(
+                "WiFi connect cannot block the NetworkService worker");
+        }
+
+        auto completionPromise =
+            std::make_shared<std::promise<Result<Network::WifiConnectResult, std::string>>>();
+        auto completionFuture = completionPromise->get_future();
+
+        const auto setupResult = connectBySsidAsync(
+            ssid,
+            password,
+            [completionPromise](Result<Network::WifiConnectResult, std::string> result) {
+                completionPromise->set_value(result);
             });
 
         if (setupResult.isError()) {
@@ -1249,6 +1269,14 @@ Result<NetworkService::Snapshot, std::string> NetworkService::getSnapshot(bool f
 Result<std::monostate, std::string> NetworkService::cancelConnect()
 {
     return pImpl_->cancelConnect();
+}
+
+Result<std::monostate, std::string> NetworkService::connectBySsidAsync(
+    const std::string& ssid,
+    const std::optional<std::string>& password,
+    ConnectCompletionCallback callback)
+{
+    return pImpl_->connectBySsidAsync(ssid, password, std::move(callback));
 }
 
 Result<Network::WifiConnectResult, std::string> NetworkService::connectBySsid(

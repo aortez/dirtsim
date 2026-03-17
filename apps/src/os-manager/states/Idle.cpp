@@ -169,7 +169,7 @@ Any Idle::onEvent(const OsApi::WifiConnectCancel::Cwc& cwc, OperatingSystemManag
 Any Idle::onEvent(const OsApi::WifiConnect::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "WifiConnect command received");
-    cwc.sendResponse(osm.wifiConnect(cwc.command));
+    osm.wifiConnectAsync(cwc);
     return Idle{};
 }
 

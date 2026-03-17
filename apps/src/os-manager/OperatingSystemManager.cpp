@@ -1215,6 +1215,36 @@ Result<OsApi::WifiConnect::Okay, ApiError> OperatingSystemManager::wifiConnect(
     return Result<OsApi::WifiConnect::Okay, ApiError>::okay(toApiWifiConnectOkay(result.value()));
 }
 
+void OperatingSystemManager::wifiConnectAsync(OsApi::WifiConnect::Cwc cwc)
+{
+    if (!networkService_) {
+        cwc.sendResponse(
+            Result<OsApi::WifiConnect::Okay, ApiError>::error(
+                ApiError("NetworkService is unavailable")));
+        return;
+    }
+
+    const auto startResult = networkService_->connectBySsidAsync(
+        cwc.command.ssid,
+        cwc.command.password,
+        [cwc = std::move(cwc)](Result<Network::WifiConnectResult, std::string> result) mutable {
+            if (result.isError()) {
+                cwc.sendResponse(
+                    Result<OsApi::WifiConnect::Okay, ApiError>::error(
+                        ApiError(result.errorValue())));
+                return;
+            }
+
+            cwc.sendResponse(
+                Result<OsApi::WifiConnect::Okay, ApiError>::okay(
+                    toApiWifiConnectOkay(result.value())));
+        });
+    if (startResult.isError()) {
+        cwc.sendResponse(
+            Result<OsApi::WifiConnect::Okay, ApiError>::error(ApiError(startResult.errorValue())));
+    }
+}
+
 Result<OsApi::WifiConnectCancel::Okay, ApiError> OperatingSystemManager::wifiConnectCancel(
     const OsApi::WifiConnectCancel::Command& /*command*/)
 {
