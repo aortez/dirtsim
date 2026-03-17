@@ -30,6 +30,22 @@ T fromJsonStrict(const nlohmann::json& j, const char* typeName)
     return ReflectSerializer::from_json<T>(j);
 }
 
+void mergeMissingFields(nlohmann::json& target, const nlohmann::json& defaults)
+{
+    if (!target.is_object() || !defaults.is_object()) {
+        return;
+    }
+
+    for (const auto& defaultEntry : defaults.items()) {
+        if (!target.contains(defaultEntry.key())) {
+            target[defaultEntry.key()] = defaultEntry.value();
+            continue;
+        }
+
+        mergeMissingFields(target[defaultEntry.key()], defaultEntry.value());
+    }
+}
+
 } // namespace
 
 void from_json(const nlohmann::json& j, UiTrainingConfig& settings)
@@ -42,9 +58,25 @@ void to_json(nlohmann::json& j, const UiTrainingConfig& settings)
     j = ReflectSerializer::to_json(settings);
 }
 
+void from_json(const nlohmann::json& j, NesSessionSettings& settings)
+{
+    settings = fromJsonStrict<NesSessionSettings>(j, "NesSessionSettings");
+}
+
+void to_json(nlohmann::json& j, const NesSessionSettings& settings)
+{
+    j = ReflectSerializer::to_json(settings);
+}
+
 void from_json(const nlohmann::json& j, UserSettings& settings)
 {
-    settings = fromJsonStrict<UserSettings>(j, "UserSettings");
+    if (!j.is_object()) {
+        throw std::runtime_error("UserSettings must be a JSON object");
+    }
+
+    nlohmann::json merged = j;
+    mergeMissingFields(merged, ReflectSerializer::to_json(UserSettings{}));
+    settings = fromJsonStrict<UserSettings>(merged, "UserSettings");
 }
 
 void to_json(nlohmann::json& j, const UserSettings& settings)

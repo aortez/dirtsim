@@ -3,6 +3,7 @@
 #include "core/scenarios/ClockTimezone.h"
 #include "server/Event.h"
 #include "server/UserSettings.h"
+#include "server/api/NesFrameDelaySet.h"
 #include "server/api/TrainingResult.h"
 #include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsReset.h"
@@ -17,6 +18,8 @@ using namespace DirtSim::Server;
 using namespace DirtSim::Server::Tests;
 
 namespace {
+
+constexpr double kMaxPersistedNesFrameDelayMs = 1000.0 / 60.0988 - 0.001;
 
 UserSettings readUserSettingsFromDisk(const std::filesystem::path& path)
 {
@@ -39,6 +42,8 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
 
     const UserSettings& inMemory = fixture.stateMachine->getUserSettings();
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_FALSE(inMemory.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
@@ -46,10 +51,48 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+}
+
+TEST(UserSettingsTest, LegacySettingsWithoutNesSessionSettingsLoadDefaultsForNewField)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-legacy-nes-settings");
+    fixture.stateMachine.reset();
+
+    UserSettings legacySettings;
+    legacySettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
+    legacySettings.volumePercent = 42;
+
+    nlohmann::json json = legacySettings;
+    json.erase("nesSessionSettings");
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    std::ofstream file(settingsPath);
+    ASSERT_TRUE(file.is_open());
+    file << json.dump(2) << "\n";
+    file.close();
+
+    auto mockWs = std::make_unique<MockWebSocketService>();
+    fixture.mockWebSocketService = mockWs.get();
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingResult>(std::monostate{});
+    fixture.stateMachine = std::make_unique<StateMachine>(std::move(mockWs), fixture.testDataDir);
+
+    const UserSettings& loadedSettings = fixture.stateMachine->getUserSettings();
+    EXPECT_EQ(loadedSettings.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_EQ(loadedSettings.volumePercent, 42);
+    EXPECT_FALSE(loadedSettings.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(loadedSettings.nesSessionSettings.frameDelayMs, 0.0);
+
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_EQ(fromDisk.volumePercent, 42);
+    EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
 }
 
 TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
@@ -104,6 +147,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
 
     UserSettings requestedSettings{};
     requestedSettings.clockScenarioConfig.timezone = static_cast<Config::ClockTimezone>(255);
+    requestedSettings.nesSessionSettings.frameDelayEnabled = true;
+    requestedSettings.nesSessionSettings.frameDelayMs = 999.0;
     requestedSettings.volumePercent = 999;
     requestedSettings.defaultScenario = Scenario::EnumType::Clock;
     requestedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -130,6 +175,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     ASSERT_TRUE(response.isValue());
     EXPECT_EQ(
         response.value().settings.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_TRUE(response.value().settings.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(
+        response.value().settings.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
@@ -145,6 +193,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
@@ -163,6 +213,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
 
     UserSettings changedSettings{};
     changedSettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
+    changedSettings.nesSessionSettings.frameDelayEnabled = true;
+    changedSettings.nesSessionSettings.frameDelayMs = 4.2;
     changedSettings.volumePercent = 65;
     changedSettings.defaultScenario = Scenario::EnumType::Clock;
     changedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -187,6 +239,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     ASSERT_TRUE(response.isValue());
     EXPECT_EQ(
         response.value().settings.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_FALSE(response.value().settings.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(response.value().settings.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 60000);
@@ -195,6 +249,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
+    EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -207,6 +263,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
 
     UserSettings baseSettings = fixture.stateMachine->getUserSettings();
     baseSettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
+    baseSettings.nesSessionSettings.frameDelayEnabled = true;
+    baseSettings.nesSessionSettings.frameDelayMs = 4.2;
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
     baseSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
@@ -242,6 +300,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
 
     const UserSettings& inMemory = response.value().settings;
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 4.2);
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
@@ -252,6 +312,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 4.2);
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
@@ -280,4 +342,33 @@ TEST(UserSettingsTest, UserSettingsPatchRejectsEmptyCommand)
     if (response.isError()) {
         EXPECT_EQ(response.errorValue().message, "No fields provided to patch");
     }
+}
+
+TEST(UserSettingsTest, NesFrameDelaySetPersistsIntoUserSettingsAndLiveState)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-nes-frame-delay-set");
+
+    bool callbackInvoked = false;
+    Api::NesFrameDelaySet::Response response;
+    Api::NesFrameDelaySet::Command command{ .enabled = true, .frame_delay_ms = 3.5 };
+    Api::NesFrameDelaySet::Cwc cwc(command, [&](Api::NesFrameDelaySet::Response&& result) {
+        callbackInvoked = true;
+        response = std::move(result);
+    });
+
+    fixture.stateMachine->handleEvent(Event{ cwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+    EXPECT_TRUE(response.value().enabled);
+    EXPECT_DOUBLE_EQ(response.value().frame_delay_ms, 3.5);
+    EXPECT_TRUE(fixture.stateMachine->isNesFrameDelayEnabled());
+    EXPECT_DOUBLE_EQ(fixture.stateMachine->getNesFrameDelayMs(), 3.5);
+    EXPECT_TRUE(fixture.stateMachine->getUserSettings().nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fixture.stateMachine->getUserSettings().nesSessionSettings.frameDelayMs, 3.5);
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 3.5);
 }

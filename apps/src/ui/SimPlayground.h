@@ -19,6 +19,7 @@ typedef struct _lv_event_t lv_event_t;
 namespace DirtSim {
 
 struct PhysicsSettings;
+struct UserSettings;
 
 namespace Network {
 class WebSocketServiceInterface;
@@ -28,6 +29,7 @@ namespace Ui {
 
 class UiComponentManager;
 class CoreControls;
+class NesSettingsPanel;
 class ScenarioPanel;
 class PhysicsPanel;
 class CellRenderer;
@@ -50,7 +52,7 @@ class VideoSurface;
  * Panel content is created lazily when icons are selected:
  * - Core: Quit, stats, debug, render mode
  * - Scenario: Scenario dropdown + scenario-specific controls
- * - Physics: All physics controls in collapsible sections (General, Pressure, Forces, etc.)
+ * - World Settings: GridWorld physics controls or NesWorld runtime settings
  * - Tree: Toggles neural grid visibility (no panel)
  */
 class SimPlayground {
@@ -94,6 +96,7 @@ public:
     void renderNeuralGrid(const WorldData& data);
 
     void updatePhysicsPanels(const PhysicsSettings& settings);
+    void updateUserSettings(const UserSettings& settings);
 
     struct ScreenshotData {
         std::vector<uint8_t> pixels; // ARGB8888 pixel data.
@@ -124,6 +127,7 @@ private:
 
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;
+    std::unique_ptr<NesSettingsPanel> nesSettingsPanel_;
     std::unique_ptr<ScenarioPanel> scenarioPanel_;
     std::unique_ptr<PhysicsPanel> physicsPanel_;
 
@@ -135,6 +139,7 @@ private:
 
     // Current scenario config (to detect changes).
     ScenarioConfig currentScenarioConfig_;
+    bool currentScenarioIsNesWorld_ = false;
 
     // Current frame limit.
     int currentMaxFrameMs_ = 16;
@@ -151,7 +156,8 @@ private:
 
     void createScenarioPanel(lv_obj_t* container);
 
-    void createPhysicsPanel(lv_obj_t* container);
+    void createWorldSettingsPanel(lv_obj_t* container);
+    void rebuildActivePanel();
 
     void showPanelContent(IconId panelId);
 

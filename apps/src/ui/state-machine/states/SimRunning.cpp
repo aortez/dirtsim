@@ -649,6 +649,13 @@ State::Any SimRunning::onEvent(const PhysicsSettingsReceivedEvent& evt, StateMac
     return std::move(*this);
 }
 
+State::Any SimRunning::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& /*sm*/)
+{
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->updateUserSettings(evt.settings);
+    return std::move(*this);
+}
+
 State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
 {
     LOG_DEBUG(State, "Received world update (step {}) via push", evt.stepCount);

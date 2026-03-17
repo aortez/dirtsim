@@ -53,6 +53,9 @@ void UserSettingsManager::patchOrAssert(const Api::UserSettingsPatch::Command& p
     if (patch.treeGerminationScenarioConfig.has_value()) {
         settings_.treeGerminationScenarioConfig = *patch.treeGerminationScenarioConfig;
     }
+    if (patch.nesSessionSettings.has_value()) {
+        settings_.nesSessionSettings = *patch.nesSessionSettings;
+    }
     if (patch.volumePercent.has_value()) {
         settings_.volumePercent = *patch.volumePercent;
     }
