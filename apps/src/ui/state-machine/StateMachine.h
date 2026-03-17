@@ -28,6 +28,15 @@ class WebSocketServiceInterface;
 } // namespace Network
 
 namespace Ui {
+
+enum class DisplayLoopPhase : uint8_t {
+    Unknown = 0,
+    ProcessEventsBeforeRender = 1,
+    TimerHandler = 2,
+    ProcessEventsAfterRender = 3,
+    WaitingForEvents = 4,
+};
+
 class RemoteInputDevice;
 class UiComponentManager;
 class WebRtcStreamer;
@@ -68,6 +77,11 @@ public:
     std::string getCurrentStateName() const override;
 
     void processEvents() override;
+
+    void setDisplayLoopPhase(DisplayLoopPhase phase);
+    DisplayLoopPhase getDisplayLoopPhase() const;
+    void notifyDisplayTimerHandlerStart(std::chrono::steady_clock::time_point startTime);
+    void notifyDisplayFlush(std::chrono::steady_clock::time_point flushTime);
 
     // Wait up to `timeout` for new events (replaces blind usleep in run loops).
     bool waitForEvents(std::chrono::milliseconds timeout);
@@ -135,6 +149,7 @@ private:
     bool startMenuIdleActionTriggered_ = false;
     int synthVolumePercent_ = 20;
     bool audioVolumeWarningLogged_ = false;
+    DisplayLoopPhase displayLoopPhase_ = DisplayLoopPhase::Unknown;
 
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();

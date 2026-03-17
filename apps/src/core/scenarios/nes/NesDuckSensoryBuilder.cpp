@@ -82,7 +82,8 @@ DuckSensoryData makeNesDuckSensoryData(
     const NesPaletteClusterer& clusterer,
     const NesPaletteFrame* frame,
     double deltaTimeSeconds,
-    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
+    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
+    float facingX)
 {
     DuckSensoryData sensory{};
     sensory.delta_time_seconds = deltaTimeSeconds;
@@ -90,7 +91,7 @@ DuckSensoryData makeNesDuckSensoryData(
         sensory = makeNesDuckSensoryDataFromPaletteFrame(clusterer, *frame, deltaTimeSeconds);
     }
 
-    sensory.facing_x = 0.0f;
+    sensory.facing_x = facingX;
     sensory.special_senses = specialSenses;
     return sensory;
 }

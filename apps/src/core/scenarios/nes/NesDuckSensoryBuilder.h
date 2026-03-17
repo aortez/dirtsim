@@ -13,6 +13,7 @@ DuckSensoryData makeNesDuckSensoryData(
     const NesPaletteClusterer& clusterer,
     const NesPaletteFrame* frame,
     double deltaTimeSeconds,
-    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses);
+    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
+    float facingX = 0.0f);
 
 } // namespace DirtSim

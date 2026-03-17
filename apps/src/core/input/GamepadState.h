@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace DirtSim {
 
 /**
@@ -19,6 +21,8 @@ struct GamepadState {
     bool button_back = false;  // Back/Select button (reset).
     bool button_start = false; // Start button (spawn duck).
     bool connected = false;    // Whether this gamepad is currently connected.
+    uint64_t lastSampleTimestampNs = 0;
+    uint64_t lastObservedChangeTimestampNs = 0;
 };
 
 } // namespace DirtSim

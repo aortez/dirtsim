@@ -8,6 +8,8 @@ using namespace DirtSim;
 namespace {
 
 constexpr size_t kEnemySlotCount = 5;
+constexpr size_t kFacingDirectionAddr = 0x0033;
+constexpr size_t kMovementDirectionAddr = 0x0045;
 constexpr std::array<size_t, kEnemySlotCount> kEnemyActiveAddrs = {
     0x000F, 0x0010, 0x0011, 0x0012, 0x0013
 };
@@ -34,6 +36,7 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
     uint8_t playerYScreen,
     uint8_t powerupState,
     uint8_t playerState,
+    uint8_t playerFloatState,
     uint8_t lives,
     uint8_t gameEngine)
 {
@@ -43,6 +46,7 @@ SmolnesRuntime::MemorySnapshot makeSmbSnapshot(
 
     snapshot.cpuRam[0x0770] = gameEngine;
     snapshot.cpuRam[0x000E] = playerState;
+    snapshot.cpuRam[0x001D] = playerFloatState;
     snapshot.cpuRam[0x0086] = playerXScreen;
     snapshot.cpuRam[0x006D] = playerXPage;
     snapshot.cpuRam[0x075A] = lives;
@@ -78,7 +82,18 @@ void setEnemySlot(
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
 {
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        1, 2, 0x03, 0x80, 25, static_cast<uint8_t>(static_cast<int8_t>(-40)), 120, 2, 0x08, 3, 1);
+        1,
+        2,
+        0x03,
+        0x80,
+        25,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        0x00,
+        3,
+        1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -97,10 +112,21 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     EXPECT_EQ(state.lives, 3u);
 }
 
-TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsAirborneGameplayStatesAsAlive)
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractUsesFloatStateForAirborne)
 {
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        0, 0, 0x00, 0x20, static_cast<uint8_t>(static_cast<int8_t>(-5)), 0, 100, 1, 0x02, 2, 1);
+        0,
+        0,
+        0x00,
+        0x20,
+        static_cast<uint8_t>(static_cast<int8_t>(-5)),
+        0,
+        100,
+        1,
+        0x08,
+        0x01,
+        2,
+        1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -113,10 +139,35 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsAirborneGameplayStatesAsAli
     EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
 }
 
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesFacingAndMovementDirections)
+{
+    SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 1);
+    snapshot.cpuRam[kFacingDirectionAddr] = 1u;
+    snapshot.cpuRam[kMovementDirectionAddr] = 2u;
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_FLOAT_EQ(state.facingX, 1.0f);
+    EXPECT_FLOAT_EQ(state.movementX, -1.0f);
+}
+
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
 {
     const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
-        0, 0, 0x00, 0x20, static_cast<uint8_t>(static_cast<int8_t>(-5)), 0, 100, 1, 0x0B, 0, 1);
+        0,
+        0,
+        0x00,
+        0x20,
+        static_cast<uint8_t>(static_cast<int8_t>(-5)),
+        0,
+        100,
+        1,
+        0x0B,
+        0x00,
+        0,
+        1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -129,10 +180,34 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
     EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
 }
 
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsPlayerDiesState)
+{
+    const SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        0,
+        0,
+        0x00,
+        0x20,
+        static_cast<uint8_t>(static_cast<int8_t>(-5)),
+        0,
+        100,
+        1,
+        0x06,
+        0x00,
+        2,
+        1);
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Dying);
+    EXPECT_FALSE(state.airborne);
+}
+
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsReloadScreenStateAsDead)
 {
     const SmolnesRuntime::MemorySnapshot snapshot =
-        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 1, 1);
+        makeSmbSnapshot(0, 0, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x00, 1, 1);
 
     NesSuperMarioBrosRamExtractor extractor;
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
@@ -145,10 +220,23 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsReloadScreenStateAsDead)
     EXPECT_DOUBLE_EQ(state.verticalSpeedNormalized, 0.0);
 }
 
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsNonDeathPlayerModesAsAlive)
+{
+    const SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x09, 0x00, 3, 1);
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
+    EXPECT_FALSE(state.airborne);
+}
+
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractTracksNearestAndSecondNearestEnemies)
 {
     SmolnesRuntime::MemorySnapshot snapshot =
-        makeSmbSnapshot(1, 0, 0x03, 0x80, 0, 0, 120, 0, 0x08, 3, 1);
+        makeSmbSnapshot(1, 0, 0x03, 0x80, 0, 0, 120, 0, 0x08, 0x00, 3, 1);
     setEnemySlot(snapshot, 0, 1, 6, 0x03, 0xF0, 118);
     setEnemySlot(snapshot, 1, 1, 6, 0x03, 0x90, 110);
     setEnemySlot(snapshot, 2, 1, 6, 0x03, 0x50, 100);

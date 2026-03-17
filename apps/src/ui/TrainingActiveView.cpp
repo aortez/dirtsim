@@ -60,6 +60,8 @@ std::string nesControllerSourceLabelBuild(NesGameAdapterControllerSource source)
             return "POLICY";
         case NesGameAdapterControllerSource::ScriptedSetup:
             return "SCRIPT";
+        case NesGameAdapterControllerSource::LiveInput:
+            return "LIVE";
     }
     return "POLICY";
 }
@@ -871,6 +873,11 @@ void TrainingActiveView::updateNesVideoOverlay(
         lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x3F2032), 0);
         lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xFFD6E6), 0);
+    }
+    else if (value.controllerSource == NesGameAdapterControllerSource::LiveInput) {
+        lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x1B2747), 0);
+        lv_obj_set_style_bg_opa(overlay.sourceBadge, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(overlay.sourceBadge, lv_color_hex(0xBFD8FF), 0);
     }
     else {
         lv_obj_set_style_bg_color(overlay.sourceBadge, lv_color_hex(0x173629), 0);

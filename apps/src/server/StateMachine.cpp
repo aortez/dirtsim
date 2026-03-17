@@ -82,6 +82,7 @@ std::filesystem::path getDefaultDataDir()
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
+constexpr double kNtscNesFramePeriodMs = 1000.0 / 60.0988;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -100,6 +101,13 @@ std::filesystem::path getUserSettingsTempPath(const std::filesystem::path& fileP
     tempPath += ".";
     tempPath += std::to_string(now);
     return tempPath;
+}
+
+uint64_t steadyClockNowNs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count());
 }
 
 bool persistUserSettingsToDisk(
@@ -632,6 +640,8 @@ struct StateMachine::Impl {
     ScenarioRegistry scenarioRegistry_;
     std::filesystem::path userSettingsPath_;
     UserSettings userSettings_;
+    bool nesFrameDelayEnabled_ = false;
+    double nesFrameDelayMs_ = 0.0;
     SystemMetrics systemMetrics_;
     Timers timers_;
     std::unique_ptr<HttpServer> httpServer_;
@@ -1092,6 +1102,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesApuGet::Cwc>(
         [this](Api::NesApuGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::NesFrameDelaySet::Cwc>(
+        [this](Api::NesFrameDelaySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesInputSet::Cwc>(
         [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
@@ -1210,6 +1222,11 @@ const GenomeRepository& StateMachine::getGenomeRepository() const
     return pImpl->genomeRepository_;
 }
 
+double StateMachine::getNesFrameDelayMs() const
+{
+    return pImpl->nesFrameDelayMs_;
+}
+
 UserSettings& StateMachine::getUserSettings()
 {
     return pImpl->userSettings_;
@@ -1218,6 +1235,11 @@ UserSettings& StateMachine::getUserSettings()
 const UserSettings& StateMachine::getUserSettings() const
 {
     return pImpl->userSettings_;
+}
+
+bool StateMachine::isNesFrameDelayEnabled() const
+{
+    return pImpl->nesFrameDelayEnabled_;
 }
 
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
@@ -1283,9 +1305,11 @@ void StateMachine::mainLoopRun()
             totalEventProcessMs += eventProcessMs;
             totalTickMs += tickMs;
 
-            // Apply frame rate limiting if configured.
+            // Let live NES frame-delay pacing own cadence without the generic frame limiter.
             double sleepMs = 0.0;
-            if (simRunning.frameLimit > 0) {
+            const bool useExternalFrameLimiter =
+                !(simRunning.session.isNesSession() && simRunning.nesFrameDelayScheduler.enabled);
+            if (useExternalFrameLimiter && simRunning.frameLimit > 0) {
                 auto elapsedMs =
                     std::chrono::duration_cast<std::chrono::milliseconds>(frameEnd - frameStart)
                         .count();
@@ -1734,6 +1758,32 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
+    if (std::holds_alternative<Api::NesFrameDelaySet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::NesFrameDelaySet::Cwc>(event.getVariant());
+        if (cwc.command.frame_delay_ms < 0.0
+            || cwc.command.frame_delay_ms >= kNtscNesFramePeriodMs) {
+            cwc.sendResponse(
+                Api::NesFrameDelaySet::Response::error(
+                    ApiError("frame_delay_ms must be >= 0 and less than one NES frame")));
+            return;
+        }
+
+        pImpl->nesFrameDelayEnabled_ = cwc.command.enabled;
+        pImpl->nesFrameDelayMs_ = cwc.command.frame_delay_ms;
+        LOG_INFO(
+            State,
+            "Live NES frame delay config updated: enabled={} frame_delay_ms={:.2f}",
+            pImpl->nesFrameDelayEnabled_,
+            pImpl->nesFrameDelayMs_);
+
+        Api::NesFrameDelaySet::Okay response{
+            .enabled = pImpl->nesFrameDelayEnabled_,
+            .frame_delay_ms = pImpl->nesFrameDelayMs_,
+        };
+        cwc.sendResponse(Api::NesFrameDelaySet::Response::okay(std::move(response)));
+        return;
+    }
+
     if (std::holds_alternative<Api::UserSettingsPatch::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::UserSettingsPatch::Cwc>(event.getVariant());
 
@@ -1982,7 +2032,8 @@ void StateMachine::broadcastRenderMessage(
     Scenario::EnumType scenario_id,
     const ScenarioConfig& scenario_config,
     const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
-    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry)
 {
     if (pImpl->subscribedClients_.empty()) {
         spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
@@ -2036,6 +2087,8 @@ void StateMachine::broadcastRenderMessage(
         fullMsg.scenario_id = scenario_id;
         fullMsg.scenario_config = scenario_config;
         fullMsg.nes_controller_telemetry = nesControllerTelemetry;
+        fullMsg.nes_smb_response_telemetry = nesSmbResponseTelemetry;
+        fullMsg.server_send_timestamp_ns = steadyClockNowNs();
 
         Network::MessageEnvelope& envelope = pImpl->renderEnvelopeScratch_;
         envelope.id = 0;

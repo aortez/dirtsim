@@ -18,6 +18,7 @@
 #include "GenomeSet.h"
 #include "GravitySet.h"
 #include "NesApuGet.h"
+#include "NesFrameDelaySet.h"
 #include "NesInputSet.h"
 #include "PerfStatsGet.h"
 #include "PhysicsSettingsGet.h"
@@ -93,6 +94,7 @@ using ApiCommand = std::variant<
     Api::GenomeSet::Command,
     Api::GravitySet::Command,
     Api::NesApuGet::Command,
+    Api::NesFrameDelaySet::Command,
     Api::NesInputSet::Command,
     Api::PerfStatsGet::Command,
     Api::PhysicsSettingsGet::Command,

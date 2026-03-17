@@ -113,6 +113,7 @@ static void run_loop_wayland(DirtSim::Ui::StateMachine& sm)
 
         // Process UI state machine events.
         auto eventsStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsBeforeRender);
         sm.processEvents();
         double eventsMs = std::chrono::duration<double, std::milli>(
                               DirtSim::Ui::LoopTimingStats::Clock::now() - eventsStart)
@@ -123,13 +124,17 @@ static void run_loop_wayland(DirtSim::Ui::StateMachine& sm)
 
         // Process LVGL timer events.
         auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::TimerHandler);
+        sm.notifyDisplayTimerHandlerStart(timerStart);
         completed = lv_wayland_timer_handler();
         double timerMs = std::chrono::duration<double, std::milli>(
                              DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
                              .count();
+        sm.notifyDisplayFlush(DirtSim::Ui::LoopTimingStats::Clock::now());
 
         if (completed) {
             /* Wait to avoid busy-looping and consuming 100% CPU. */
+            sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::WaitingForEvents);
             usleep(1000);
         }
 

@@ -281,6 +281,8 @@ std::string formatControllerSource(const std::optional<NesGameAdapterControllerS
             return "InferredPolicy";
         case NesGameAdapterControllerSource::ScriptedSetup:
             return "ScriptedSetup";
+        case NesGameAdapterControllerSource::LiveInput:
+            return "LiveInput";
     }
 
     return "Unknown";
