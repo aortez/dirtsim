@@ -1224,9 +1224,10 @@ void OperatingSystemManager::wifiConnectAsync(OsApi::WifiConnect::Cwc cwc)
         return;
     }
 
+    const auto command = cwc.command;
     const auto startResult = networkService_->connectBySsidAsync(
-        cwc.command.ssid,
-        cwc.command.password,
+        command.ssid,
+        command.password,
         [cwc = std::move(cwc)](Result<Network::WifiConnectResult, std::string> result) mutable {
             if (result.isError()) {
                 cwc.sendResponse(
