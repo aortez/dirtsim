@@ -377,6 +377,38 @@ void StateMachine::processEvents()
     eventProcessor.processEventsFromQueue(*this);
 }
 
+void StateMachine::setDisplayLoopPhase(DisplayLoopPhase phase)
+{
+    displayLoopPhase_ = phase;
+}
+
+DisplayLoopPhase StateMachine::getDisplayLoopPhase() const
+{
+    return displayLoopPhase_;
+}
+
+void StateMachine::notifyDisplayTimerHandlerStart(std::chrono::steady_clock::time_point startTime)
+{
+    std::visit(
+        [startTime](auto&& state) {
+            if constexpr (requires { state.onDisplayTimerHandlerStart(startTime); }) {
+                state.onDisplayTimerHandlerStart(startTime);
+            }
+        },
+        fsmState.getVariant());
+}
+
+void StateMachine::notifyDisplayFlush(std::chrono::steady_clock::time_point flushTime)
+{
+    std::visit(
+        [flushTime](auto&& state) {
+            if constexpr (requires { state.onDisplayFlush(flushTime); }) {
+                state.onDisplayFlush(flushTime);
+            }
+        },
+        fsmState.getVariant());
+}
+
 bool StateMachine::waitForEvents(std::chrono::milliseconds timeout)
 {
     return eventProcessor.waitForEvents(timeout);

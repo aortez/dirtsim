@@ -10,6 +10,7 @@ namespace DirtSim {
 enum class NesGameAdapterControllerSource : uint8_t {
     InferredPolicy = 0,
     ScriptedSetup = 1,
+    LiveInput = 2,
 };
 
 struct NesControllerTelemetry {
@@ -22,8 +23,13 @@ struct NesControllerTelemetry {
     NesGameAdapterControllerSource controllerSource =
         NesGameAdapterControllerSource::InferredPolicy;
     std::optional<uint64_t> controllerSourceFrameIndex = std::nullopt;
+    std::optional<uint64_t> controllerAppliedFrameId = std::nullopt;
+    std::optional<uint64_t> controllerObservedTimestampNs = std::nullopt;
+    std::optional<uint64_t> controllerLatchTimestampNs = std::nullopt;
+    std::optional<uint64_t> controllerRequestTimestampNs = std::nullopt;
+    std::optional<uint64_t> controllerSequenceId = std::nullopt;
 
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const NesControllerTelemetry& value);

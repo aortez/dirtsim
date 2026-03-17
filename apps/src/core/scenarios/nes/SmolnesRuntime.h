@@ -19,6 +19,7 @@ enum class SmolnesRuntimePacingMode : uint8_t {
 class SmolnesRuntime {
 public:
     struct MemorySnapshot {
+        uint64_t frameId = 0;
         std::array<uint8_t, SMOLNES_RUNTIME_CPU_RAM_BYTES> cpuRam{};
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
     };
@@ -52,6 +53,23 @@ public:
         uint64_t memorySnapshotCopyCalls = 0;
     };
 
+    struct ControllerSnapshot {
+        uint64_t latestFrameId = 0;
+        uint64_t controller1AppliedFrameId = 0;
+        uint64_t controller1ObservedTimestampNs = 0;
+        uint64_t controller1LatchTimestampNs = 0;
+        uint64_t controller1RequestTimestampNs = 0;
+        uint64_t controller1SequenceId = 0;
+        uint8_t controller1State = 0;
+    };
+
+    struct LiveSnapshot {
+        std::optional<ControllerSnapshot> controllerSnapshot = std::nullopt;
+        MemorySnapshot memorySnapshot{};
+        NesPaletteFrame paletteFrame;
+        ScenarioVideoFrame videoFrame;
+    };
+
     SmolnesRuntime();
     virtual ~SmolnesRuntime();
 
@@ -62,6 +80,7 @@ public:
     virtual bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
     virtual void stop();
     virtual void setController1State(uint8_t buttonMask);
+    virtual void setController1StateObserved(uint8_t buttonMask, uint64_t observedTimestampNs);
 
     virtual bool isHealthy() const;
     virtual bool isRunning() const;
@@ -69,6 +88,8 @@ public:
     virtual bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
     virtual std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     virtual std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    virtual std::optional<LiveSnapshot> copyLiveSnapshot() const;
+    virtual std::optional<ControllerSnapshot> copyControllerSnapshot() const;
     struct ApuSnapshot {
         bool pulse1Enabled = false;
         bool pulse2Enabled = false;

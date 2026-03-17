@@ -29,6 +29,9 @@ struct NesSuperMarioBrosState {
     SmbPowerupState powerupState = SmbPowerupState::Small;
     bool airborne = false;
     bool enemyPresent = false;
+    bool secondEnemyPresent = false;
+    float facingX = 0.0f;
+    float movementX = 0.0f;
     double horizontalSpeedNormalized = 0.0;
     double verticalSpeedNormalized = 0.0;
     int16_t nearestEnemyDx = 0;

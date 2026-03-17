@@ -13,6 +13,9 @@ constexpr size_t kHorizontalSpeedAddr = 0x0057;
 constexpr size_t kLevelAddr = 0x0760;
 constexpr size_t kLivesAddr = 0x075A;
 constexpr size_t kEnemySlotCount = 5;
+constexpr size_t kFacingDirectionAddr = 0x0033;
+constexpr size_t kMovementDirectionAddr = 0x0045;
+constexpr size_t kPlayerFloatStateAddr = 0x001D;
 constexpr size_t kPlayerStateAddr = 0x000E;
 constexpr size_t kPlayerXPageAddr = 0x006D;
 constexpr size_t kPlayerXScreenAddr = 0x0086;
@@ -37,10 +40,9 @@ constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
 };
 
 constexpr uint8_t kGameEngineGameplay = 1;
-constexpr uint8_t kPlayerStateActiveGameplay = 0x08;
 constexpr uint8_t kPlayerStateDeathAnimation = 0x0B;
 constexpr uint8_t kPlayerStateReloadScreen = 0x00;
-constexpr uint8_t kPlayerStateRespawnTransition = 0x06;
+constexpr uint8_t kPlayerStatePlayerDies = 0x06;
 
 uint16_t decodeAbsoluteX(uint8_t playerXPage, uint8_t playerXScreen)
 {
@@ -52,22 +54,30 @@ double decodeHorizontalSpeedNormalized(uint8_t horizontalSpeed)
     return std::clamp(static_cast<double>(static_cast<int8_t>(horizontalSpeed)) / 40.0, -1.0, 1.0);
 }
 
+float decodeFacingX(uint8_t rawFacingDirection)
+{
+    switch (rawFacingDirection) {
+        case 1u:
+            return 1.0f;
+        case 2u:
+            return -1.0f;
+        default:
+            return 0.0f;
+    }
+}
+
 SmbLifeState decodeLifeState(uint8_t playerState)
 {
-    // Probe runs show 0x08 during active gameplay and 0x0B during the death animation.
+    // 0x000E is a broad player-mode register. For the coarse life-state model we only treat the
+    // explicit death lifecycle states as non-alive.
     switch (playerState) {
-        case 0x01:
-        case 0x02:
-        case 0x03:
-        case kPlayerStateActiveGameplay:
-            return SmbLifeState::Alive;
+        case kPlayerStatePlayerDies:
         case kPlayerStateDeathAnimation:
             return SmbLifeState::Dying;
         case kPlayerStateReloadScreen:
-        case kPlayerStateRespawnTransition:
             return SmbLifeState::Dead;
         default:
-            return SmbLifeState::Dying;
+            return SmbLifeState::Alive;
     }
 }
 
@@ -120,9 +130,9 @@ DecodedEnemy decodeEnemy(
     };
 }
 
-bool isAirborne(uint8_t playerState)
+bool isAirborne(uint8_t playerFloatState)
 {
-    return playerState >= 1u && playerState <= 3u;
+    return playerFloatState == 0x01u || playerFloatState == 0x02u;
 }
 
 } // namespace
@@ -131,6 +141,7 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     const SmolnesRuntime::MemorySnapshot& snapshot, bool setupComplete) const
 {
     const uint8_t playerState = snapshot.cpuRam.at(kPlayerStateAddr);
+    const uint8_t playerFloatState = snapshot.cpuRam.at(kPlayerFloatStateAddr);
     const uint16_t playerAbsoluteX = decodeAbsoluteX(
         snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
     const uint8_t playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
@@ -139,7 +150,9 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     output.phase = decodePhase(snapshot.cpuRam.at(kGameEngineSubroutineAddr), setupComplete);
     output.lifeState = decodeLifeState(playerState);
     output.powerupState = decodePowerupState(snapshot.cpuRam.at(kPowerupStateAddr));
-    output.airborne = isAirborne(playerState);
+    output.airborne = isAirborne(playerFloatState);
+    output.facingX = decodeFacingX(snapshot.cpuRam.at(kFacingDirectionAddr));
+    output.movementX = decodeFacingX(snapshot.cpuRam.at(kMovementDirectionAddr));
     output.horizontalSpeedNormalized =
         decodeHorizontalSpeedNormalized(snapshot.cpuRam.at(kHorizontalSpeedAddr));
     output.verticalSpeedNormalized =
@@ -199,6 +212,7 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
         output.nearestEnemyDy = nearestEnemies[0].dy;
     }
     if (nearestEnemyCount > 1u) {
+        output.secondEnemyPresent = true;
         output.secondNearestEnemyDx = nearestEnemies[1].dx;
         output.secondNearestEnemyDy = nearestEnemies[1].dy;
     }

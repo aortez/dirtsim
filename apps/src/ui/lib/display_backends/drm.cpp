@@ -101,6 +101,7 @@ static void run_loop_drm(DirtSim::Ui::StateMachine& sm)
         auto loopStart = DirtSim::Ui::LoopTimingStats::Clock::now();
 
         auto eventsStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsBeforeRender);
         sm.processEvents();
         double eventsMs = std::chrono::duration<double, std::milli>(
                               DirtSim::Ui::LoopTimingStats::Clock::now() - eventsStart)
@@ -110,16 +111,21 @@ static void run_loop_drm(DirtSim::Ui::StateMachine& sm)
 
         // Renders into DRM buffer, submits page flip, blocks on vsync.
         auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::TimerHandler);
+        sm.notifyDisplayTimerHandlerStart(timerStart);
         uint32_t idle_time = lv_timer_handler();
         double timerMs = std::chrono::duration<double, std::milli>(
                              DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
                              .count();
+        sm.notifyDisplayFlush(DirtSim::Ui::LoopTimingStats::Clock::now());
 
         // Drain events that arrived during the vsync wait.
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsAfterRender);
         sm.processEvents();
 
         if (timerMs < 1.0 && idle_time > 0) {
             constexpr uint32_t MAX_IDLE_MS = 1;
+            sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::WaitingForEvents);
             sm.waitForEvents(
                 std::chrono::milliseconds(idle_time < MAX_IDLE_MS ? idle_time : MAX_IDLE_MS));
         }
