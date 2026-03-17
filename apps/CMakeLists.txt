@@ -329,6 +329,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
+    src/server/UserSettingsDiskCompat.cpp
     src/server/EventProcessor.cpp
     src/server/evolution/EvaluationExecutor.cpp
     src/server/evolution/FitnessModelBundle.cpp

@@ -12,6 +12,7 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
@@ -29,6 +30,16 @@ UserSettings readUserSettingsFromDisk(const std::filesystem::path& path)
     nlohmann::json json;
     file >> json;
     return json.get<UserSettings>();
+}
+
+nlohmann::json readUserSettingsJsonFromDisk(const std::filesystem::path& path)
+{
+    std::ifstream file(path);
+    EXPECT_TRUE(file.is_open()) << "Failed to open user settings file: " << path;
+
+    nlohmann::json json;
+    file >> json;
+    return json;
 }
 
 } // namespace
@@ -101,6 +112,87 @@ TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
     EXPECT_EQ(diskPopulation.count, 2);
     EXPECT_EQ(diskPopulation.randomCount, 2);
     EXPECT_TRUE(diskPopulation.seedGenomes.empty());
+}
+
+TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFields)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-compat");
+    fixture.stateMachine.reset();
+
+    UserSettings legacySettings{};
+    legacySettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
+    legacySettings.nesSessionSettings.frameDelayEnabled = true;
+    legacySettings.volumePercent = 65;
+    legacySettings.defaultScenario = Scenario::EnumType::Clock;
+    legacySettings.uiTraining.streamIntervalMs = 24;
+
+    nlohmann::json legacyJson = legacySettings;
+    legacyJson.erase("trainingResumePolicy");
+    legacyJson.erase("treeGerminationScenarioConfig");
+    legacyJson["nesSessionSettings"].erase("frameDelayMs");
+    legacyJson["uiTraining"].erase("bestPlaybackIntervalMs");
+    legacyJson["futureSetting"] = 123;
+    legacyJson["clockScenarioConfig"]["futureClockToggle"] = true;
+    legacyJson["uiTraining"]["futureOverlayMode"] = "on";
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    std::ofstream file(settingsPath);
+    ASSERT_TRUE(file.is_open());
+    file << legacyJson.dump(2) << "\n";
+    file.close();
+
+    auto mockWs = std::make_unique<MockWebSocketService>();
+    fixture.mockWebSocketService = mockWs.get();
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingResult>(std::monostate{});
+    fixture.stateMachine = std::make_unique<StateMachine>(std::move(mockWs), fixture.testDataDir);
+
+    const UserSettings& inMemory = fixture.stateMachine->getUserSettings();
+    EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(
+        inMemory.treeGerminationScenarioConfig.brain_type,
+        UserSettings{}.treeGerminationScenarioConfig.brain_type);
+    EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(inMemory.uiTraining.streamIntervalMs, 24);
+    EXPECT_EQ(inMemory.uiTraining.bestPlaybackIntervalMs, 16);
+
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
+    EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(
+        fromDisk.treeGerminationScenarioConfig.brain_type,
+        UserSettings{}.treeGerminationScenarioConfig.brain_type);
+    EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(fromDisk.uiTraining.streamIntervalMs, 24);
+    EXPECT_EQ(fromDisk.uiTraining.bestPlaybackIntervalMs, 16);
+
+    const nlohmann::json canonicalJson = readUserSettingsJsonFromDisk(settingsPath);
+    EXPECT_FALSE(canonicalJson.contains("futureSetting"));
+    ASSERT_TRUE(canonicalJson.contains("clockScenarioConfig"));
+    EXPECT_FALSE(canonicalJson["clockScenarioConfig"].contains("futureClockToggle"));
+    ASSERT_TRUE(canonicalJson.contains("uiTraining"));
+    EXPECT_FALSE(canonicalJson["uiTraining"].contains("futureOverlayMode"));
+    ASSERT_TRUE(canonicalJson.contains("nesSessionSettings"));
+    EXPECT_TRUE(canonicalJson.contains("trainingResumePolicy"));
+    EXPECT_TRUE(canonicalJson.contains("treeGerminationScenarioConfig"));
+    EXPECT_TRUE(canonicalJson["nesSessionSettings"].contains("frameDelayMs"));
+    EXPECT_TRUE(canonicalJson["uiTraining"].contains("bestPlaybackIntervalMs"));
+}
+
+TEST(UserSettingsTest, UserSettingsSetJsonRemainsStrictForMissingFields)
+{
+    const nlohmann::json json = {
+        { "settings",
+          {
+              { "clockScenarioConfig", nlohmann::json(UserSettings{}.clockScenarioConfig) },
+              { "volumePercent", 55 },
+              { "defaultScenario", "Clock" },
+          } },
+    };
+
+    EXPECT_THROW((void)Api::UserSettingsSet::Command::fromJson(json), std::runtime_error);
 }
 
 TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)

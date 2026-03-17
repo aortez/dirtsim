@@ -3,6 +3,7 @@
 #include "EventProcessor.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
+#include "UserSettingsDiskCompat.h"
 #include "api/TrainingBestSnapshotGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
@@ -378,13 +379,14 @@ UserSettings loadUserSettingsFromDisk(
 
         nlohmann::json json;
         file >> json;
-        const UserSettings parsed = json.get<UserSettings>();
+        const UserSettings parsed = parseUserSettingsDiskJsonWithDefaults(json);
 
         bool changed = false;
         std::vector<std::string> updates;
         const UserSettings sanitized =
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
-        if (changed) {
+        const nlohmann::json canonicalJson = sanitized;
+        if (changed || canonicalJson != json) {
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
             }
