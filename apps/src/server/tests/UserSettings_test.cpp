@@ -59,42 +59,6 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
-TEST(UserSettingsTest, LegacySettingsWithoutNesSessionSettingsLoadDefaultsForNewField)
-{
-    TestStateMachineFixture fixture("dirtsim-user-settings-legacy-nes-settings");
-    fixture.stateMachine.reset();
-
-    UserSettings legacySettings;
-    legacySettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
-    legacySettings.volumePercent = 42;
-
-    nlohmann::json json = legacySettings;
-    json.erase("nesSessionSettings");
-
-    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
-    std::ofstream file(settingsPath);
-    ASSERT_TRUE(file.is_open());
-    file << json.dump(2) << "\n";
-    file.close();
-
-    auto mockWs = std::make_unique<MockWebSocketService>();
-    fixture.mockWebSocketService = mockWs.get();
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingResult>(std::monostate{});
-    fixture.stateMachine = std::make_unique<StateMachine>(std::move(mockWs), fixture.testDataDir);
-
-    const UserSettings& loadedSettings = fixture.stateMachine->getUserSettings();
-    EXPECT_EQ(loadedSettings.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
-    EXPECT_EQ(loadedSettings.volumePercent, 42);
-    EXPECT_FALSE(loadedSettings.nesSessionSettings.frameDelayEnabled);
-    EXPECT_DOUBLE_EQ(loadedSettings.nesSessionSettings.frameDelayMs, 0.0);
-
-    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
-    EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
-    EXPECT_EQ(fromDisk.volumePercent, 42);
-    EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
-    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
-}
-
 TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
 {
     TestStateMachineFixture fixture("dirtsim-user-settings-sanitize-seeds");
