@@ -649,7 +649,13 @@ function runFastDeployFunctionalTest(remoteTarget, testName, timeoutMs) {
  * Fast deploy: ninja build + scp binaries + restart services.
  * Skips rootfs regeneration, image creation, and flash/reboot.
  */
-async function fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb = false) {
+async function fastDeploy(
+  remoteHost,
+  remoteTarget,
+  dryRun,
+  wipeGenomeDb = false,
+  runFunctionalTests = false,
+) {
   const startTime = Date.now();
 
   log('');
@@ -1149,7 +1155,7 @@ async function main() {
   }
 
   if (fastMode) {
-    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb);
+    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb, runFunctionalTests);
     return;
   }
 
@@ -1204,7 +1210,7 @@ async function main() {
       await buildX86ForFastDeploy(forceClean, forceCleanAll);
     }
 
-    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb);
+    await fastDeploy(remoteHost, remoteTarget, dryRun, wipeGenomeDb, runFunctionalTests);
     return;
   }
 

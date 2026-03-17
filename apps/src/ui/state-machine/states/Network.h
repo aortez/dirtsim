@@ -20,12 +20,18 @@ struct Network {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkConnectCancelPress::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkConnectPress::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
 
     static constexpr const char* name() { return "Network"; }
+    bool blocksAutoShrink() const { return true; }
 
 private:
+    IconId activeSubviewIcon_ = IconId::NETWORK;
     lv_obj_t* contentRoot_ = nullptr;
     std::unique_ptr<NetworkDiagnosticsPanel> networkPanel_;
 };

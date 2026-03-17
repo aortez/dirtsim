@@ -1,5 +1,7 @@
 #pragma once
 
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
+#include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
@@ -19,6 +21,11 @@
 #include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
+#include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
+#include "os-manager/api/WifiDisconnect.h"
+#include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -34,6 +41,8 @@ concept HasEventName = requires {
 class Event {
 public:
     using Variant = std::variant<
+        OsApi::NetworkDiagnosticsModeSet::Cwc,
+        OsApi::NetworkSnapshotGet::Cwc,
         OsApi::PeerClientKeyEnsure::Cwc,
         OsApi::PeersGet::Cwc,
         OsApi::RemoteCliRun::Cwc,
@@ -51,6 +60,11 @@ public:
         OsApi::TrustBundleGet::Cwc,
         OsApi::TrustPeer::Cwc,
         OsApi::UntrustPeer::Cwc,
+        OsApi::WifiConnectCancel::Cwc,
+        OsApi::WifiConnect::Cwc,
+        OsApi::WifiDisconnect::Cwc,
+        OsApi::WifiForget::Cwc,
+        OsApi::WifiScanRequest::Cwc,
         OsApi::WebSocketAccessSet::Cwc,
         OsApi::WebUiAccessSet::Cwc>;
 

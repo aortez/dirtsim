@@ -349,6 +349,21 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
+
+    for (size_t visibleIndex = 0; visibleIndex < visibleIcons.size(); ++visibleIndex) {
+        const IconId id = visibleIcons[visibleIndex];
+
+        for (size_t buttonIndex = 0;
+             buttonIndex < iconConfigs_.size() && buttonIndex < buttons_.size();
+             ++buttonIndex) {
+            if (iconConfigs_[buttonIndex].id != id || !buttons_[buttonIndex]) {
+                continue;
+            }
+
+            lv_obj_move_to_index(buttons_[buttonIndex], static_cast<int32_t>(visibleIndex));
+            break;
+        }
+    }
 }
 
 void IconRail::showIcons()
@@ -580,7 +595,7 @@ void IconRail::applyMode()
     if (expandButton_) {
         applyExpandButtonGeometry();
 
-        if (minimized && visible_) {
+        if (allowMinimize_ && minimized && visible_) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
 
             lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
@@ -621,7 +636,7 @@ void IconRail::applyMode()
     }
 
     if (collapseButton_) {
-        if (minimized || !visible_) {
+        if (!allowMinimize_ || minimized || !visible_) {
             lv_obj_add_flag(collapseButton_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
@@ -634,6 +649,10 @@ void IconRail::applyMode()
 
 void IconRail::setMode(RailMode mode)
 {
+    if (mode == RailMode::Minimized && !allowMinimize_) {
+        return;
+    }
+
     if (mode_ == mode) return;
     mode_ = mode;
 
@@ -687,6 +706,22 @@ void IconRail::setVisible(bool visible)
     }
 
     visible_ = visible;
+    applyMode();
+}
+
+void IconRail::setAllowMinimize(bool allow)
+{
+    if (allowMinimize_ == allow) {
+        return;
+    }
+
+    allowMinimize_ = allow;
+
+    if (!allowMinimize_ && mode_ == RailMode::Minimized) {
+        setMode(RailMode::Normal);
+        return;
+    }
+
     applyMode();
 }
 
