@@ -7,6 +7,8 @@
 #include "RestartAudio.h"
 #include "RestartServer.h"
 #include "RestartUi.h"
+#include "ScannerModeEnter.h"
+#include "ScannerModeExit.h"
 #include "StartAudio.h"
 #include "StartServer.h"
 #include "StartUi.h"
@@ -32,6 +34,8 @@ using OsApiCommand = std::variant<
     RestartAudio::Command,
     RestartServer::Command,
     RestartUi::Command,
+    ScannerModeEnter::Command,
+    ScannerModeExit::Command,
     StartAudio::Command,
     StartServer::Command,
     StartUi::Command,

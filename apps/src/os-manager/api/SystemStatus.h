@@ -40,12 +40,15 @@ struct Okay {
     bool lan_web_ui_enabled = false;
     bool lan_websocket_enabled = false;
     std::string lan_websocket_token;
+    bool scanner_mode_available = false;
+    bool scanner_mode_active = false;
+    std::string scanner_mode_detail;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<14>;
+    using serialize = zpp::bits::members<17>;
 };
 
 using OkayType = Okay;

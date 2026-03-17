@@ -44,10 +44,28 @@ namespace OsManager {
 
 namespace {
 constexpr int kDefaultRemoteCommandTimeoutMs = 30000;
+constexpr const char* kScannerModeHelperPath = "/usr/bin/dirtsim-nexmon-mode";
+constexpr const char* kScannerNexutilPath = "/usr/bin/nexutil";
+constexpr const char* kScannerStateDir = "/run/dirtsim";
+constexpr const char* kScannerStateFile = "/run/dirtsim/scanner_mode_active";
+constexpr const char* kNexmonModulePath = "/usr/lib/nexmon/brcmfmac.ko";
+constexpr const char* kNexmonFirmwarePath = "/usr/lib/nexmon/cyfmac43455-sdio-standard.bin";
+constexpr const char* kWifiInterfaceName = "wlan0";
+
+struct ParsedScannerModeStatus {
+    bool stackNexmon = false;
+    bool monitorSupported = false;
+    std::string loadedVersion;
+};
 
 Result<std::monostate, ApiError> makeMissingDependencyError(const std::string& name)
 {
     return Result<std::monostate, ApiError>::error(ApiError("Missing dependency for " + name));
+}
+
+bool commandExitedSuccessfully(int result)
+{
+    return result != -1 && WIFEXITED(result) && WEXITSTATUS(result) == 0;
 }
 
 std::string getEnvValue(const char* name)
@@ -188,6 +206,57 @@ std::string trimWhitespace(const std::string& value)
     }
     const auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
+}
+
+ParsedScannerModeStatus parseScannerModeStatusOutput(const std::string& output)
+{
+    ParsedScannerModeStatus parsed;
+    std::istringstream stream(output);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.rfind("loaded_version=", 0) == 0) {
+            parsed.loadedVersion = line.substr(std::string("loaded_version=").size());
+        }
+        else if (line == "monitor_supported=1") {
+            parsed.monitorSupported = true;
+        }
+        else if (line == "stack=nexmon") {
+            parsed.stackNexmon = true;
+        }
+    }
+    return parsed;
+}
+
+std::string buildMissingScannerDetail(
+    bool helperExists, bool nexutilExists, bool nexmonModuleExists, bool nexmonFirmwareExists)
+{
+    std::vector<std::string> missing;
+    if (!helperExists) {
+        missing.push_back("dirtsim-nexmon-mode");
+    }
+    if (!nexutilExists) {
+        missing.push_back("nexutil");
+    }
+    if (!nexmonModuleExists) {
+        missing.push_back("Nexmon driver");
+    }
+    if (!nexmonFirmwareExists) {
+        missing.push_back("Nexmon firmware");
+    }
+
+    if (missing.empty()) {
+        return "Scanner mode status is unavailable.";
+    }
+
+    std::string detail = "Scanner mode unavailable: missing ";
+    for (size_t i = 0; i < missing.size(); ++i) {
+        if (i > 0) {
+            detail += (i + 1 == missing.size()) ? " and " : ", ";
+        }
+        detail += missing[i];
+    }
+    detail += ".";
+    return detail;
 }
 
 Result<std::string, ApiError> readFileToString(const std::filesystem::path& path)
@@ -830,6 +899,10 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::StopUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::RestartUi::Cwc>(
         [this](OsApi::RestartUi::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerModeEnter::Cwc>(
+        [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
+        [this](OsApi::ScannerModeExit::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::Reboot::Cwc>(
         [this](OsApi::Reboot::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::TrustBundleGet::Cwc>(
@@ -888,6 +961,8 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartUi);
@@ -1290,6 +1365,245 @@ Result<OsApi::RemoteCliRun::Okay, ApiError> OperatingSystemManager::remoteCliRun
     }
 
     return Result<OsApi::RemoteCliRun::Okay, ApiError>::okay(result.value());
+}
+
+OperatingSystemManager::ScannerModeStatusInfo OperatingSystemManager::
+    readScannerModeStatusInternal() const
+{
+    ScannerModeStatusInfo info;
+
+    std::error_code error;
+    const bool helperExists = std::filesystem::exists(kScannerModeHelperPath, error) && !error;
+    error.clear();
+    const bool nexutilExists = std::filesystem::exists(kScannerNexutilPath, error) && !error;
+    error.clear();
+    const bool nexmonModuleExists = std::filesystem::exists(kNexmonModulePath, error) && !error;
+    error.clear();
+    const bool nexmonFirmwareExists = std::filesystem::exists(kNexmonFirmwarePath, error) && !error;
+
+    info.available = helperExists && nexutilExists && nexmonModuleExists && nexmonFirmwareExists;
+    if (!info.available) {
+        info.detail = buildMissingScannerDetail(
+            helperExists, nexutilExists, nexmonModuleExists, nexmonFirmwareExists);
+        return info;
+    }
+
+    auto statusOutputResult = runCommandCapture(std::string(kScannerModeHelperPath) + " status");
+    if (statusOutputResult.isError()) {
+        info.detail = "Scanner mode status is unavailable.";
+        return info;
+    }
+
+    const auto parsed = parseScannerModeStatusOutput(statusOutputResult.value());
+    info.stack_nexmon = parsed.stackNexmon;
+
+    error.clear();
+    const bool scannerStateFileExists =
+        std::filesystem::exists(std::filesystem::path(kScannerStateFile), error) && !error;
+    info.active = info.stack_nexmon && scannerStateFileExists;
+
+    if (info.active) {
+        info.detail = "Scanner mode active on wlan0. Return to Wi-Fi to restore normal "
+                      "networking.";
+    }
+    else if (info.stack_nexmon) {
+        info.detail = "Experimental scanner stack is loaded, but scanner mode is inactive.";
+    }
+    else {
+        info.detail = "Scanner mode available. Enter scanner mode to survey channels on wlan0.";
+    }
+
+    if (info.stack_nexmon && !parsed.monitorSupported) {
+        info.detail = "Nexmon stack loaded, but monitor support is unavailable.";
+    }
+
+    return info;
+}
+
+bool OperatingSystemManager::hasEthernetDefaultRoute() const
+{
+    if (!dependencies_.systemCommand) {
+        return false;
+    }
+
+    const int result =
+        dependencies_.systemCommand("sh -lc 'ip route show default | grep -q \" dev eth\"'");
+    return commandExitedSuccessfully(result);
+}
+
+Result<std::monostate, ApiError> OperatingSystemManager::runScannerShellCommand(
+    const std::string& command, const std::string& step) const
+{
+    if (!dependencies_.systemCommand) {
+        return makeMissingDependencyError("systemCommand");
+    }
+
+    const int result = dependencies_.systemCommand(command);
+    if (commandExitedSuccessfully(result)) {
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    }
+
+    return Result<std::monostate, ApiError>::error(ApiError("Scanner step failed: " + step));
+}
+
+Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(bool active) const
+{
+    std::error_code error;
+    if (active) {
+        std::filesystem::create_directories(kScannerStateDir, error);
+        if (error) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Failed to create scanner state directory"));
+        }
+
+        std::ofstream file(kScannerStateFile, std::ios::trunc);
+        if (!file.is_open()) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Failed to write scanner state"));
+        }
+
+        file << "active\n";
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    }
+
+    std::filesystem::remove(kScannerStateFile, error);
+    if (error) {
+        return Result<std::monostate, ApiError>::error(ApiError("Failed to clear scanner state"));
+    }
+
+    return Result<std::monostate, ApiError>::okay(std::monostate{});
+}
+
+void OperatingSystemManager::bestEffortRestoreWifiFromScannerMode() const
+{
+    if (!dependencies_.systemCommand) {
+        return;
+    }
+
+    dependencies_.systemCommand(std::string(kScannerNexutilPath) + " -m0 >/dev/null 2>&1 || true");
+    dependencies_.systemCommand(std::string(kScannerNexutilPath) + " -p0 >/dev/null 2>&1 || true");
+    dependencies_.systemCommand(
+        std::string("ip link set ") + kWifiInterfaceName + " down >/dev/null 2>&1 || true");
+    dependencies_.systemCommand(
+        std::string(kScannerModeHelperPath) + " disable >/dev/null 2>&1 || true");
+    dependencies_.systemCommand(
+        std::string("nmcli device set ") + kWifiInterfaceName
+        + " managed yes >/dev/null 2>&1 || true");
+    dependencies_.systemCommand(
+        std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
+        + " >/dev/null 2>&1 || true");
+
+    const auto stateResult = setScannerModeState(false);
+    if (stateResult.isError()) {
+        SLOG_WARN("Failed to clear scanner runtime state: {}", stateResult.errorValue().message);
+    }
+}
+
+Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterScannerMode()
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(ApiError(status.detail));
+    }
+
+    if (status.active) {
+        OsApi::ScannerModeEnter::Okay okay;
+        okay.active = true;
+        okay.detail = "Scanner mode already active.";
+        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::okay(std::move(okay));
+    }
+
+    if (!hasEthernetDefaultRoute()) {
+        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(
+            ApiError("Scanner mode requires an Ethernet default route."));
+    }
+
+    const std::vector<std::pair<std::string, std::string>> steps = {
+        { std::string("nmcli device disconnect ") + kWifiInterfaceName + " >/dev/null 2>&1 || true",
+          "disconnect Wi-Fi" },
+        { std::string("nmcli device set ") + kWifiInterfaceName
+              + " managed no >/dev/null 2>&1 || true",
+          "release wlan0 from NetworkManager" },
+        { std::string(kScannerModeHelperPath) + " enable >/dev/null 2>&1",
+          "load experimental scanner stack" },
+        { std::string("ip link set ") + kWifiInterfaceName + " up >/dev/null 2>&1 || true",
+          "bring wlan0 up" },
+        { std::string(kScannerNexutilPath) + " -m2 >/dev/null 2>&1", "enable monitor mode" },
+        { std::string(kScannerNexutilPath) + " -p1 >/dev/null 2>&1", "enable promiscuous mode" },
+    };
+
+    for (const auto& [command, step] : steps) {
+        const auto result = runScannerShellCommand(command, step);
+        if (result.isError()) {
+            bestEffortRestoreWifiFromScannerMode();
+            return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(result.errorValue());
+        }
+    }
+
+    const auto stateResult = setScannerModeState(true);
+    if (stateResult.isError()) {
+        bestEffortRestoreWifiFromScannerMode();
+        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(stateResult.errorValue());
+    }
+
+    OsApi::ScannerModeEnter::Okay okay;
+    okay.active = true;
+    okay.detail = "Scanner mode active on wlan0.";
+    return Result<OsApi::ScannerModeEnter::Okay, ApiError>::okay(std::move(okay));
+}
+
+Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScannerMode()
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.stack_nexmon && !status.active) {
+        const auto clearStateResult = setScannerModeState(false);
+        if (clearStateResult.isError()) {
+            SLOG_WARN(
+                "Failed to clear scanner runtime state: {}", clearStateResult.errorValue().message);
+        }
+
+        OsApi::ScannerModeExit::Okay okay;
+        okay.active = false;
+        okay.detail = "Normal Wi-Fi mode already active.";
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
+    }
+
+    if (dependencies_.systemCommand) {
+        dependencies_.systemCommand(
+            std::string(kScannerNexutilPath) + " -m0 >/dev/null 2>&1 || true");
+        dependencies_.systemCommand(
+            std::string(kScannerNexutilPath) + " -p0 >/dev/null 2>&1 || true");
+        dependencies_.systemCommand(
+            std::string("ip link set ") + kWifiInterfaceName + " down >/dev/null 2>&1 || true");
+        dependencies_.systemCommand(
+            std::string("ip link set ") + kWifiInterfaceName + " up >/dev/null 2>&1 || true");
+    }
+
+    const auto disableResult = runScannerShellCommand(
+        std::string(kScannerModeHelperPath) + " disable >/dev/null 2>&1",
+        "restore stock Wi-Fi stack");
+    if (disableResult.isError()) {
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(disableResult.errorValue());
+    }
+
+    if (dependencies_.systemCommand) {
+        dependencies_.systemCommand(
+            std::string("nmcli device set ") + kWifiInterfaceName
+            + " managed yes >/dev/null 2>&1 || true");
+        dependencies_.systemCommand(
+            std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
+            + " >/dev/null 2>&1 || true");
+    }
+
+    const auto stateResult = setScannerModeState(false);
+    if (stateResult.isError()) {
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(stateResult.errorValue());
+    }
+
+    OsApi::ScannerModeExit::Okay okay;
+    okay.active = false;
+    okay.detail = "Restoring normal Wi-Fi. NetworkManager will reconnect after the next scan.";
+    return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::TrustBundleGet::Okay, ApiError> OperatingSystemManager::getTrustBundle()
@@ -2080,6 +2394,10 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()
     status.lan_web_ui_enabled = webUiEnabled_;
     status.lan_websocket_enabled = webSocketEnabled_;
     status.lan_websocket_token = webSocketEnabled_ ? webSocketToken_ : "";
+    const auto scannerStatus = readScannerModeStatusInternal();
+    status.scanner_mode_available = scannerStatus.available;
+    status.scanner_mode_active = scannerStatus.active;
+    status.scanner_mode_detail = scannerStatus.detail;
 
     return status;
 }

@@ -29,7 +29,8 @@ enum class IconId {
     TRAINING_RESULTS = 9,
     MUSIC = 10,
     DUCK = 11,
-    SETTINGS = 12
+    SETTINGS = 12,
+    SCANNER = 13
 };
 
 enum class RailMode {

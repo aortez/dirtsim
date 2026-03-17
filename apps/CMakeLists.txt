@@ -691,6 +691,8 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
@@ -757,6 +759,8 @@ add_executable(cli
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
@@ -812,6 +816,8 @@ add_executable(dirtsim-tests
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
