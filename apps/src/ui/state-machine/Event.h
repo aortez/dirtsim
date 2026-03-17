@@ -13,6 +13,10 @@
 #include "api/MouseDown.h"
 #include "api/MouseMove.h"
 #include "api/MouseUp.h"
+#include "api/NetworkConnectCancelPress.h"
+#include "api/NetworkConnectPress.h"
+#include "api/NetworkDiagnosticsGet.h"
+#include "api/NetworkPasswordSubmit.h"
 #include "api/PixelRendererToggle.h"
 #include "api/PlantSeed.h"
 #include "api/RenderModeSelect.h"
@@ -337,6 +341,10 @@ using Event = std::variant<
     DirtSim::UiApi::MouseDown::Cwc,
     DirtSim::UiApi::MouseMove::Cwc,
     DirtSim::UiApi::MouseUp::Cwc,
+    DirtSim::UiApi::NetworkConnectCancelPress::Cwc,
+    DirtSim::UiApi::NetworkConnectPress::Cwc,
+    DirtSim::UiApi::NetworkDiagnosticsGet::Cwc,
+    DirtSim::UiApi::NetworkPasswordSubmit::Cwc,
     DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::PixelRendererToggle::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,

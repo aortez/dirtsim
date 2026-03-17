@@ -23,6 +23,7 @@ public:
         bool hideZeroValuePoints = false;
         bool showSecondarySeries = false;
         bool showHighlights = false;
+        bool showTitle = true;
         bool showYAxisRangeLabels = true;
         lv_chart_type_t chartType = LV_CHART_TYPE_LINE;
         int32_t barGroupGapPx = -1;

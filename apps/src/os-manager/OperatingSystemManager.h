@@ -8,6 +8,8 @@
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
 #include "os-manager/PeerTrust.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
+#include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/SystemStatus.h"
@@ -16,6 +18,12 @@
 #include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
+#include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
+#include "os-manager/api/WifiDisconnect.h"
+#include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
+#include "os-manager/network/NetworkService.h"
 #include "os-manager/states/State.h"
 #include "server/api/ApiError.h"
 #include <cstdint>
@@ -98,6 +106,10 @@ public:
     void processEvents() override;
 
     OsApi::SystemStatus::Okay buildSystemStatus();
+    Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> setNetworkDiagnosticsMode(
+        const OsApi::NetworkDiagnosticsModeSet::Command& command);
+    Result<OsApi::NetworkSnapshotGet::Okay, ApiError> getNetworkSnapshot(
+        const OsApi::NetworkSnapshotGet::Command& command);
     std::vector<PeerInfo> getPeers() const;
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
@@ -106,6 +118,16 @@ public:
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
         const OsApi::UntrustPeer::Command& command);
+    Result<OsApi::WifiConnectCancel::Okay, ApiError> wifiConnectCancel(
+        const OsApi::WifiConnectCancel::Command& command);
+    void wifiConnectAsync(OsApi::WifiConnect::Cwc cwc);
+    Result<OsApi::WifiConnect::Okay, ApiError> wifiConnect(
+        const OsApi::WifiConnect::Command& command);
+    Result<OsApi::WifiDisconnect::Okay, ApiError> wifiDisconnect(
+        const OsApi::WifiDisconnect::Command& command);
+    Result<OsApi::WifiForget::Okay, ApiError> wifiForget(const OsApi::WifiForget::Command& command);
+    Result<OsApi::WifiScanRequest::Okay, ApiError> wifiScanRequest(
+        const OsApi::WifiScanRequest::Command& command);
     Result<OsApi::WebSocketAccessSet::Okay, ApiError> setWebSocketAccess(bool enabled);
     Result<OsApi::WebUiAccessSet::Okay, ApiError> setWebUiAccess(bool enabled);
     Result<std::monostate, ApiError> startService(const std::string& unitName);
@@ -150,6 +172,7 @@ private:
     void transitionTo(State::Any newState);
     void initializeDefaultDependencies();
     void initializePeerDiscovery();
+    void publishNetworkSnapshotChanged(const NetworkService::Snapshot& snapshot);
 
     uint16_t port_ = 0;
     bool enableNetworking_ = true;
@@ -160,6 +183,7 @@ private:
     Dependencies dependencies_;
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
+    std::unique_ptr<NetworkService> networkService_;
     std::unique_ptr<PeerAdvertisement> serverPeerAdvertisement_;
     std::unique_ptr<PeerAdvertisement> uiPeerAdvertisement_;
     std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;

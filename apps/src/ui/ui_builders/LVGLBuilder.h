@@ -77,6 +77,11 @@ public:
         // Trough colors (for ActionButton, ActionDropdown, etc.).
         static constexpr uint32_t TROUGH_COLOR = 0x202020;       // Dark inset trough.
         static constexpr uint32_t TROUGH_INNER_COLOR = 0x404040; // Inner element background.
+        static constexpr uint32_t SLIDER_ACTIVE_COLOR = 0xA0A0A0;
+        static constexpr uint32_t SLIDER_DISABLED_COLOR = 0x606060;
+        static constexpr uint32_t SLIDER_KNOB_COLOR = 0xFFFFFF;
+        static constexpr uint32_t SWITCH_ACTIVE_COLOR = 0x8A8A8A;
+        static constexpr uint32_t TEXT_DISABLED_COLOR = 0xB0B0B0;
     };
 
     /**
@@ -607,22 +612,23 @@ public:
     };
 
     /**
-     * @brief ActionStepperBuilder - Creates a stepper control with − value + layout.
+     * @brief ActionStepperBuilder - Creates a stepper control with a top label bar and − value +
+     * row.
      *
      * Visual structure (80px tall to match ActionButton):
-     * ┌─────────┬─────────────────┬─────────┐
-     * │         │      Label      │         │
-     * │    −    │      5.0        │    +    │
-     * │         │                 │         │
+     * ┌─────────────────────────────────────┐
+     * │                Label                │
+     * ├─────────┬─────────────────┬─────────┤
+     * │    −    │       5.0       │    +    │
      * └─────────┴─────────────────┴─────────┘
      *
-     * Three sections inside one trough: minus button, center label+value, plus button.
+     * The label gets its own full-width bar so long captions do not fight the value for space.
      */
     class ActionStepperBuilder {
     public:
         explicit ActionStepperBuilder(lv_obj_t* parent);
 
-        // Label displayed above the value.
+        // Label displayed in the top bar.
         ActionStepperBuilder& label(const char* text);
 
         // Value range and step.
@@ -687,10 +693,6 @@ public:
         void* user_data_ = nullptr;
 
         Result<lv_obj_t*, std::string> createActionStepper();
-        void updateValueDisplay();
-
-        static void onMinusClicked(lv_event_t* e);
-        static void onPlusClicked(lv_event_t* e);
     };
 
     /**

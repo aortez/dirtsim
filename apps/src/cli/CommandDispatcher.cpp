@@ -3,6 +3,8 @@
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
+#include "os-manager/api/NetworkDiagnosticsModeSet.h"
+#include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
@@ -22,6 +24,15 @@
 #include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
+#include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
+#include "os-manager/api/WifiDisconnect.h"
+#include "os-manager/api/WifiForget.h"
+#include "os-manager/api/WifiScanRequest.h"
+#include "ui/state-machine/api/NetworkConnectCancelPress.h"
+#include "ui/state-machine/api/NetworkConnectPress.h"
+#include "ui/state-machine/api/NetworkDiagnosticsGet.h"
+#include "ui/state-machine/api/NetworkPasswordSubmit.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -105,6 +116,10 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkConnectCancelPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkConnectPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkDiagnosticsGet::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkPasswordSubmit::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
@@ -127,6 +142,8 @@ CommandDispatcher::CommandDispatcher()
 
     spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
 
+    registerCommand<OsApi::NetworkDiagnosticsModeSet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::NetworkSnapshotGet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::PeerClientKeyEnsure::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::PeersGet::Cwc>(osHandlers_, osExampleHandlers_);
@@ -144,6 +161,11 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::TrustBundleGet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::TrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::UntrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiConnectCancel::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiConnect::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiDisconnect::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiForget::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WifiScanRequest::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebSocketAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 

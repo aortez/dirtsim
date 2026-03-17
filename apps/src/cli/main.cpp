@@ -615,7 +615,11 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario\n";
     examples += "  cli functional-test canControlNesScenario\n";
     examples += "  cli functional-test canApplyClockTimezoneFromUserSettings\n";
+    examples +=
+        "  cli functional-test canCancelWifiConnect --wifi-config /etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test canPlaySynthKeys\n";
+    examples +=
+        "  cli functional-test canSwitchWifiNetworks --wifi-config /etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test verifyTraining\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
@@ -864,6 +868,8 @@ int main(int argc, char** argv)
         "os-manager-address",
         "Functional test: os-manager WebSocket URL override",
         { "os-manager-address" });
+    args::ValueFlag<std::string> wifiConfigPath(
+        parser, "wifi-config", "Functional test: path to WiFi test config JSON", { "wifi-config" });
     args::Flag restartFunctionalTest(
         parser, "restart", "Functional test: restart local UI/server after canExit", { "restart" });
 
@@ -1138,8 +1144,9 @@ int main(int argc, char** argv)
             && testName != "canPersistUserSettingsAcrossRestart"
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
             && testName != "canControlNesScenario"
-            && testName != "canApplyClockTimezoneFromUserSettings" && testName != "canPlaySynthKeys"
-            && testName != "verifyTraining") {
+            && testName != "canApplyClockTimezoneFromUserSettings"
+            && testName != "canCancelWifiConnect" && testName != "canPlaySynthKeys"
+            && testName != "canSwitchWifiNetworks" && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
@@ -1148,7 +1155,8 @@ int main(int argc, char** argv)
                          "canResetUserSettings, canPersistUserSettingsAcrossRestart, "
                          "canUseDefaultScenarioWhenSimRunHasNoScenario, "
                          "canControlNesScenario, "
-                         "canApplyClockTimezoneFromUserSettings, canPlaySynthKeys, "
+                         "canApplyClockTimezoneFromUserSettings, canCancelWifiConnect, "
+                         "canPlaySynthKeys, canSwitchWifiNetworks, "
                          "verifyTraining\n";
             return 1;
         }
@@ -1222,6 +1230,15 @@ int main(int argc, char** argv)
             summary = runner.runCanApplyClockTimezoneFromUserSettings(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
+        else if (testName == "canCancelWifiConnect") {
+            if (!wifiConfigPath) {
+                std::cerr
+                    << "Error: canCancelWifiConnect requires --wifi-config /path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanCancelWifiConnect(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
         else if (testName == "canPlaySynthKeys") {
             summary =
                 runner.runCanPlaySynthKeys(uiAddress, serverAddress, osManagerAddress, timeoutMs);
@@ -1229,6 +1246,15 @@ int main(int argc, char** argv)
         else if (testName == "canPlantTreeSeed") {
             summary =
                 runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canSwitchWifiNetworks") {
+            if (!wifiConfigPath) {
+                std::cerr
+                    << "Error: canSwitchWifiNetworks requires --wifi-config /path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanSwitchWifiNetworks(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
         }
         else if (testName == "verifyTraining") {
             summary =
