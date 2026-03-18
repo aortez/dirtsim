@@ -255,7 +255,7 @@ function shouldDisableStrictHostKeyChecking() {
 }
 
 function buildSshOptions() {
-  const options = ['-o BatchMode=yes', '-o ConnectTimeout=10'];
+  const options = ['-F /dev/null', '-o BatchMode=yes', '-o ConnectTimeout=10'];
   const identity = getSshIdentity();
   if (identity) {
     options.push(`-i ${identity}`);
