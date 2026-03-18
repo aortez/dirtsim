@@ -433,3 +433,34 @@ TEST(UserSettingsTest, NesFrameDelaySetPersistsIntoUserSettingsAndLiveState)
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 3.5);
 }
+
+TEST(UserSettingsTest, NesFrameDelaySetClampsAndPersists)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-nes-frame-delay-set-clamp");
+
+    bool callbackInvoked = false;
+    Api::NesFrameDelaySet::Response response;
+    Api::NesFrameDelaySet::Command command{ .enabled = true, .frame_delay_ms = 999.0 };
+    Api::NesFrameDelaySet::Cwc cwc(command, [&](Api::NesFrameDelaySet::Response&& result) {
+        callbackInvoked = true;
+        response = std::move(result);
+    });
+
+    fixture.stateMachine->handleEvent(Event{ cwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+    EXPECT_TRUE(response.value().enabled);
+    EXPECT_DOUBLE_EQ(response.value().frame_delay_ms, kMaxPersistedNesFrameDelayMs);
+    EXPECT_TRUE(fixture.stateMachine->isNesFrameDelayEnabled());
+    EXPECT_DOUBLE_EQ(fixture.stateMachine->getNesFrameDelayMs(), kMaxPersistedNesFrameDelayMs);
+    EXPECT_TRUE(fixture.stateMachine->getUserSettings().nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(
+        fixture.stateMachine->getUserSettings().nesSessionSettings.frameDelayMs,
+        kMaxPersistedNesFrameDelayMs);
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
+    EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
+}

@@ -109,8 +109,13 @@ NesSettingsPanel::NesSettingsPanel(lv_obj_t* container, UserSettingsManager& use
                              .valueFormat("%.1f")
                              .valueScale(kFrameDelayTickMs)
                              .width(LV_PCT(95))
-                             .callback(onFrameDelayValueChanged, this)
                              .buildOrLog();
+    if (frameDelayStepper_) {
+        lv_obj_add_event_cb(
+            frameDelayStepper_, onFrameDelayValueCommitted, LV_EVENT_RELEASED, this);
+        lv_obj_add_event_cb(
+            frameDelayStepper_, onFrameDelayValueCommitted, LV_EVENT_PRESS_LOST, this);
+    }
 
     updateFromSettings(userSettingsManager_.get());
 
@@ -171,7 +176,7 @@ void NesSettingsPanel::onFrameDelayToggleClicked(lv_event_t* e)
     self->syncSettings();
 }
 
-void NesSettingsPanel::onFrameDelayValueChanged(lv_event_t* e)
+void NesSettingsPanel::onFrameDelayValueCommitted(lv_event_t* e)
 {
     auto* self = static_cast<NesSettingsPanel*>(lv_event_get_user_data(e));
     if (!self || self->updatingUi_) {

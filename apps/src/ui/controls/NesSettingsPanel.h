@@ -20,7 +20,7 @@ private:
     void updateFrameDelayToggleText();
 
     static void onFrameDelayToggleClicked(lv_event_t* e);
-    static void onFrameDelayValueChanged(lv_event_t* e);
+    static void onFrameDelayValueCommitted(lv_event_t* e);
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* frameDelayStepper_ = nullptr;

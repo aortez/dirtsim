@@ -387,6 +387,12 @@ UserSettings loadUserSettingsFromDisk(
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
         const nlohmann::json canonicalJson = sanitized;
         if (changed || canonicalJson != json) {
+            if (!changed && canonicalJson != json) {
+                LOG_INFO(
+                    State,
+                    "User settings normalized, rewriting '{}' to canonical form",
+                    filePath.string());
+            }
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
             }
@@ -1783,13 +1789,6 @@ void StateMachine::handleEvent(const Event& event)
 
     if (std::holds_alternative<Api::NesFrameDelaySet::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::NesFrameDelaySet::Cwc>(event.getVariant());
-        if (cwc.command.frame_delay_ms < 0.0
-            || cwc.command.frame_delay_ms >= kNtscNesFramePeriodMs) {
-            cwc.sendResponse(
-                Api::NesFrameDelaySet::Response::error(
-                    ApiError("frame_delay_ms must be >= 0 and less than one NES frame")));
-            return;
-        }
 
         UserSettings patched = pImpl->userSettings_;
         patched.nesSessionSettings.frameDelayEnabled = cwc.command.enabled;
