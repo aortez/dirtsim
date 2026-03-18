@@ -1064,6 +1064,40 @@ Result<std::monostate, std::string> NetworkDiagnosticsPanel::pressAutomationScan
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
+bool NetworkDiagnosticsPanel::isScannerModeActive() const
+{
+    return scannerModeActive_;
+}
+
+bool NetworkDiagnosticsPanel::isScannerModeBusy() const
+{
+    return scannerActionInProgress_;
+}
+
+bool NetworkDiagnosticsPanel::isScannerModeActiveOrBusy()
+{
+    applyPendingUpdates();
+    return scannerModeActive_ || scannerActionInProgress_;
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::requestScannerExit()
+{
+    applyPendingUpdates();
+    if (!scannerModeActive_) {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    if (scannerActionInProgress_) {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    if (!startAsyncScannerExit()) {
+        return Result<std::monostate, std::string>::error("Failed to start scanner mode exit");
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 void NetworkDiagnosticsPanel::showLanAccessView()
 {
     setViewMode(ViewMode::LanAccess);
@@ -3584,6 +3618,14 @@ void NetworkDiagnosticsPanel::updatePasswordVisibilityButton()
 void NetworkDiagnosticsPanel::updateWifiStatus(
     const Result<Network::WifiStatus, std::string>& statusResult)
 {
+    if (scannerActionInProgress_) {
+        latestWifiStatus_.reset();
+        setWifiStatusMessage(
+            scannerModeActive_ ? "Restoring normal Wi-Fi..." : "Switching Wi-Fi modes...",
+            MUTED_TEXT_COLOR);
+        return;
+    }
+
     if (scannerModeActive_) {
         latestWifiStatus_.reset();
         setWifiStatusMessage(

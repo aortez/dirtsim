@@ -87,6 +87,11 @@ public:
     Result<std::monostate, std::string> pressAutomationScannerEnter();
     Result<std::monostate, std::string> pressAutomationScannerExit();
 
+    bool isScannerModeActive() const;
+    bool isScannerModeBusy() const;
+    bool isScannerModeActiveOrBusy();
+    Result<std::monostate, std::string> requestScannerExit();
+
     void showLanAccessView();
     void showScannerView();
     /**

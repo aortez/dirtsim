@@ -134,15 +134,35 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
 
     if (evt.selectedId == IconId::DUCK) {
+        if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+            LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+            activeSubviewIcon_ = IconId::SCANNER;
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         LOG_INFO(State, "Duck icon selected, returning to StartMenu");
         return StartMenu{};
     }
 
     if (evt.selectedId == IconId::NETWORK) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         activeSubviewIcon_ = IconId::NETWORK;
         if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
             networkPanel_->showWifiView();
             networkPanel_->refresh();
         }
@@ -150,8 +170,16 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     if (evt.selectedId == IconId::SETTINGS) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         activeSubviewIcon_ = IconId::SETTINGS;
         if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
             networkPanel_->showLanAccessView();
             networkPanel_->refresh();
         }
@@ -192,8 +220,23 @@ State::Any Network::onEvent(const RailModeChangedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
+    if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+        LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+        auto* uiManager = sm.getUiComponentManager();
+        DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+        IconRail* iconRail = uiManager->getIconRail();
+        DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+
+        activeSubviewIcon_ = IconId::SCANNER;
+        networkPanel_->showScannerView();
+        networkPanel_->refresh();
+        iconRail->selectIcon(activeSubviewIcon_);
+        return std::move(*this);
+    }
+
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
 }
