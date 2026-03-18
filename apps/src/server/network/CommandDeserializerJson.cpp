@@ -199,19 +199,6 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::WorldResize::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::WorldResize::Command::fromJson(cmd));
         }
-        // Legacy aliases for backward compatibility.
-        else if (commandName == "place_material") {
-            return Result<ApiCommand, ApiError>::okay(Api::CellSet::Command::fromJson(cmd));
-        }
-        else if (commandName == "get_cell") {
-            return Result<ApiCommand, ApiError>::okay(Api::CellGet::Command::fromJson(cmd));
-        }
-        else if (commandName == "get_state") {
-            return Result<ApiCommand, ApiError>::okay(Api::StateGet::Command::fromJson(cmd));
-        }
-        else if (commandName == "set_gravity") {
-            return Result<ApiCommand, ApiError>::okay(Api::GravitySet::Command::fromJson(cmd));
-        }
         else {
             return Result<ApiCommand, ApiError>::error(ApiError("Unknown command: " + commandName));
         }

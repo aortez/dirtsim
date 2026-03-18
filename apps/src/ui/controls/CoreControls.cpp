@@ -11,7 +11,6 @@
 #include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
-#include "ui/state-machine/api/PixelRendererToggle.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/ui_builders/LVGLBuilder.h"

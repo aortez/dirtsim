@@ -161,12 +161,12 @@ struct SimRunning {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
+    Any onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::PlantSeed::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const UiApi::PixelRendererToggle::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::RenderModeSelect::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimPause::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);

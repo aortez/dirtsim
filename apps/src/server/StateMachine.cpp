@@ -3,6 +3,7 @@
 #include "EventProcessor.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
+#include "UserSettingsDiskCompat.h"
 #include "api/TrainingBestSnapshotGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
@@ -83,6 +84,7 @@ constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 constexpr double kNtscNesFramePeriodMs = 1000.0 / 60.0988;
+constexpr double kNtscNesFrameDelayMaxMs = kNtscNesFramePeriodMs - 0.001;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -183,6 +185,19 @@ UserSettings sanitizeUserSettings(
     if (!ClockTimezones::isValid(settings.clockScenarioConfig.timezone)) {
         settings.clockScenarioConfig.timezone = Config::ClockTimezone::LosAngeles;
         recordUpdate("clockScenarioConfig.timezone reset to default timezone");
+    }
+
+    if (!std::isfinite(settings.nesSessionSettings.frameDelayMs)) {
+        settings.nesSessionSettings.frameDelayMs = 0.0;
+        recordUpdate("nesSessionSettings.frameDelayMs reset to 0");
+    }
+    else if (settings.nesSessionSettings.frameDelayMs < 0.0) {
+        settings.nesSessionSettings.frameDelayMs = 0.0;
+        recordUpdate("nesSessionSettings.frameDelayMs clamped to 0");
+    }
+    else if (settings.nesSessionSettings.frameDelayMs >= kNtscNesFramePeriodMs) {
+        settings.nesSessionSettings.frameDelayMs = kNtscNesFrameDelayMaxMs;
+        recordUpdate("nesSessionSettings.frameDelayMs clamped below one NES frame");
     }
 
     if (settings.volumePercent < 0) {
@@ -364,13 +379,20 @@ UserSettings loadUserSettingsFromDisk(
 
         nlohmann::json json;
         file >> json;
-        const UserSettings parsed = json.get<UserSettings>();
+        const UserSettings parsed = parseUserSettingsDiskJsonWithDefaults(json);
 
         bool changed = false;
         std::vector<std::string> updates;
         const UserSettings sanitized =
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
-        if (changed) {
+        const nlohmann::json canonicalJson = sanitized;
+        if (changed || canonicalJson != json) {
+            if (!changed && canonicalJson != json) {
+                LOG_INFO(
+                    State,
+                    "User settings normalized, rewriting '{}' to canonical form",
+                    filePath.string());
+            }
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
             }
@@ -670,6 +692,8 @@ struct StateMachine::Impl {
           userSettings_(
               loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_, genomeRepository_))
     {
+        nesFrameDelayEnabled_ = userSettings_.nesSessionSettings.frameDelayEnabled;
+        nesFrameDelayMs_ = userSettings_.nesSessionSettings.frameDelayMs;
         renderEnvelopeScratch_.id = 0;
         renderEnvelopeScratch_.message_type = "RenderMessage";
 
@@ -704,6 +728,11 @@ private:
         spdlog::info("TrainingResultRepository: Using database at {}", dbPath.string());
         return TrainingResultRepository(dbPath);
     }
+};
+
+constexpr auto applyNesSessionSettingsToLiveState = [](auto& impl) {
+    impl.nesFrameDelayEnabled_ = impl.userSettings_.nesSessionSettings.frameDelayEnabled;
+    impl.nesFrameDelayMs_ = impl.userSettings_.nesSessionSettings.frameDelayMs;
 };
 
 StateMachine::StateMachine(
@@ -1760,16 +1789,31 @@ void StateMachine::handleEvent(const Event& event)
 
     if (std::holds_alternative<Api::NesFrameDelaySet::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::NesFrameDelaySet::Cwc>(event.getVariant());
-        if (cwc.command.frame_delay_ms < 0.0
-            || cwc.command.frame_delay_ms >= kNtscNesFramePeriodMs) {
+
+        UserSettings patched = pImpl->userSettings_;
+        patched.nesSessionSettings.frameDelayEnabled = cwc.command.enabled;
+        patched.nesSessionSettings.frameDelayMs = cwc.command.frame_delay_ms;
+
+        bool changed = false;
+        std::vector<std::string> updates;
+        const UserSettings sanitized = sanitizeUserSettings(
+            patched, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
+
+        if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
             cwc.sendResponse(
                 Api::NesFrameDelaySet::Response::error(
-                    ApiError("frame_delay_ms must be >= 0 and less than one NES frame")));
+                    ApiError("Failed to persist user settings")));
             return;
         }
 
-        pImpl->nesFrameDelayEnabled_ = cwc.command.enabled;
-        pImpl->nesFrameDelayMs_ = cwc.command.frame_delay_ms;
+        if (changed) {
+            for (const auto& update : updates) {
+                LOG_WARN(State, "NesFrameDelaySet: {}", update);
+            }
+        }
+
+        pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
         LOG_INFO(
             State,
             "Live NES frame delay config updated: enabled={} frame_delay_ms={:.2f}",
@@ -1781,6 +1825,10 @@ void StateMachine::handleEvent(const Event& event)
             .frame_delay_ms = pImpl->nesFrameDelayMs_,
         };
         cwc.sendResponse(Api::NesFrameDelaySet::Response::okay(std::move(response)));
+
+        const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+        broadcastEventData(
+            Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
         return;
     }
 
@@ -1805,6 +1853,9 @@ void StateMachine::handleEvent(const Event& event)
         }
         if (cwc.command.treeGerminationScenarioConfig.has_value()) {
             patched.treeGerminationScenarioConfig = *cwc.command.treeGerminationScenarioConfig;
+        }
+        if (cwc.command.nesSessionSettings.has_value()) {
+            patched.nesSessionSettings = *cwc.command.nesSessionSettings;
         }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;
@@ -1856,6 +1907,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_,
             pImpl->userSettings_,
@@ -1898,6 +1950,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
 
@@ -1922,6 +1975,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = defaults;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
         Api::UserSettingsReset::Okay response{ .settings = pImpl->userSettings_ };

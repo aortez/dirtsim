@@ -2588,16 +2588,20 @@ static void onStepperReleased(lv_event_t* e)
     }
     state->loggedThisPress = true;
 
-    if (state->pressCanceled || code == LV_EVENT_PRESS_LOST) {
-        return;
-    }
-
-    if (!state->initialDelayPassed) {
+    if (!state->pressCanceled && code != LV_EVENT_PRESS_LOST && !state->initialDelayPassed) {
         const int32_t delta = state->isIncrementing ? state->step : -state->step;
         stepperApplyDelta(state, delta);
     }
 
     if (!state->valueChangedThisPress) {
+        return;
+    }
+
+    if (state->container) {
+        lv_obj_send_event(state->container, code, nullptr);
+    }
+
+    if (state->pressCanceled || code == LV_EVENT_PRESS_LOST) {
         return;
     }
 

@@ -437,19 +437,6 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const UiApi::PixelRendererToggle::Cwc& cwc, StateMachine& /*sm*/)
-{
-    using Response = UiApi::PixelRendererToggle::Response;
-
-    // DEPRECATED: Convert old boolean API to new RenderMode for backward compatibility.
-    RenderMode mode = cwc.command.enabled ? RenderMode::SHARP : RenderMode::LVGL_DEBUG;
-    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
-    playground_->setRenderMode(mode);
-
-    cwc.sendResponse(Response::okay(UiApi::PixelRendererToggle::Okay{ cwc.command.enabled }));
-    return std::move(*this);
-}
-
 State::Any SimRunning::onEvent(const UiApi::RenderModeSelect::Cwc& cwc, StateMachine& /*sm*/)
 {
     using Response = UiApi::RenderModeSelect::Response;
@@ -646,6 +633,13 @@ State::Any SimRunning::onEvent(const PhysicsSettingsReceivedEvent& evt, StateMac
     DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
     playground_->updatePhysicsPanels(evt.settings);
 
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& /*sm*/)
+{
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->updateUserSettings(evt.settings);
     return std::move(*this);
 }
 

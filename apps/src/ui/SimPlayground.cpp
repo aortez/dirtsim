@@ -2,12 +2,14 @@
 #include "controls/ClockControls.h"
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
+#include "controls/NesSettingsPanel.h"
 #include "controls/PhysicsPanel.h"
 #include "controls/ScenarioPanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
+#include "core/ScenarioMetadata.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
@@ -16,6 +18,7 @@
 #include "server/api/CellSet.h"
 #include "server/api/UserSettingsPatch.h"
 #include "state-machine/EventSink.h"
+#include "ui/ScenarioMetadataManager.h"
 #include "ui/UiComponentManager.h"
 #include "ui/UiServices.h"
 #include "ui/UserSettingsManager.h"
@@ -25,6 +28,27 @@
 
 namespace DirtSim {
 namespace Ui {
+
+namespace {
+
+bool isNesScenarioConfig(const ScenarioConfig& scenarioConfig)
+{
+    return std::holds_alternative<Config::NesFlappyParatroopa>(scenarioConfig)
+        || std::holds_alternative<Config::NesSuperMarioBros>(scenarioConfig)
+        || std::holds_alternative<Config::NesSuperTiltBro>(scenarioConfig);
+}
+
+bool resolveScenarioIsNesWorld(
+    UiServices& uiServices, Scenario::EnumType scenarioId, const ScenarioConfig& scenarioConfig)
+{
+    if (scenarioId != Scenario::EnumType::Empty) {
+        return uiServices.scenarioMetadataManager().get(scenarioId).kind == ScenarioKind::NesWorld;
+    }
+
+    return isNesScenarioConfig(scenarioConfig);
+}
+
+} // namespace
 
 SimPlayground::SimPlayground(
     UiComponentManager* uiManager,
@@ -110,7 +134,7 @@ void SimPlayground::showPanelContent(IconId panelId)
             createScenarioPanel(container);
             break;
         case IconId::PHYSICS:
-            createPhysicsPanel(container);
+            createWorldSettingsPanel(container);
             break;
         case IconId::EVOLUTION:
         case IconId::MUSIC:
@@ -138,6 +162,7 @@ void SimPlayground::clearPanelContent()
 {
     // Reset panel-specific controls.
     coreControls_.reset();
+    nesSettingsPanel_.reset();
     physicsPanel_.reset();
     scenarioPanel_.reset();
 
@@ -201,25 +226,51 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         dimensionsGetter);
 }
 
-void SimPlayground::createPhysicsPanel(lv_obj_t* container)
+void SimPlayground::createWorldSettingsPanel(lv_obj_t* container)
 {
-    LOG_DEBUG(Controls, "Creating Physics panel");
+    LOG_DEBUG(
+        Controls,
+        "Creating World Settings panel for {} scenario",
+        currentScenarioIsNesWorld_ ? "NES" : "grid");
 
-    // Physics title with emphasis.
     lv_obj_t* title = lv_label_create(container);
-    lv_label_set_text(title, "Physics Settings");
+    lv_label_set_text(title, "World Settings");
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_UNDERLINE, 0);
     lv_obj_set_style_pad_bottom(title, 8, 0);
 
+    if (currentScenarioIsNesWorld_) {
+        nesSettingsPanel_ =
+            std::make_unique<NesSettingsPanel>(container, uiServices_.userSettingsManager());
+        return;
+    }
+
     physicsPanel_ = std::make_unique<PhysicsPanel>(container, wsService_);
+}
+
+void SimPlayground::rebuildActivePanel()
+{
+    if (activePanel_ == IconId::NONE) {
+        return;
+    }
+
+    const IconId panelId = activePanel_;
+    clearPanelContent();
+    showPanelContent(panelId);
 }
 
 void SimPlayground::updatePhysicsPanels(const PhysicsSettings& settings)
 {
     if (physicsPanel_) {
         physicsPanel_->updateFromSettings(settings);
+    }
+}
+
+void SimPlayground::updateUserSettings(const UserSettings& settings)
+{
+    if (nesSettingsPanel_) {
+        nesSettingsPanel_->updateFromSettings(settings);
     }
 }
 
@@ -251,13 +302,20 @@ void SimPlayground::updateFromWorldData(
         }
     }
 
-    // Store current scenario info.
+    const bool previousScenarioIsNesWorld = currentScenarioIsNesWorld_;
     currentScenarioId_ = scenario_id;
     currentScenarioConfig_ = scenario_config;
+    currentScenarioIsNesWorld_ =
+        resolveScenarioIsNesWorld(uiServices_, currentScenarioId_, currentScenarioConfig_);
 
     // Update scenario panel if active.
     if (scenarioPanel_) {
         scenarioPanel_->updateFromConfig(scenario_id, scenario_config);
+    }
+
+    if (activePanel_ == IconId::PHYSICS
+        && previousScenarioIsNesWorld != currentScenarioIsNesWorld_) {
+        rebuildActivePanel();
     }
 }
 
