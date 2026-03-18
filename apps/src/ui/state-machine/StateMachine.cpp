@@ -203,6 +203,10 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::NetworkDiagnosticsGet::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::NetworkPasswordSubmit::Cwc>(
         [this](UiApi::NetworkPasswordSubmit::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkScannerEnterPress::Cwc>(
+        [this](UiApi::NetworkScannerEnterPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkScannerExitPress::Cwc>(
+        [this](UiApi::NetworkScannerExitPress::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
@@ -281,6 +285,8 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkConnectPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkDiagnosticsGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkPasswordSubmit);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerEnterPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerExitPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::PixelRendererToggle);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::RenderModeSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::ScreenGrab);

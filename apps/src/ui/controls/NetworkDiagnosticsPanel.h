@@ -58,6 +58,7 @@ public:
         std::optional<std::string> connectTargetSsid;
         std::optional<std::string> passwordPromptTargetSsid;
         std::string passwordError;
+        std::string scannerStatusMessage;
         std::vector<AutomationNetworkInfo> networks;
         std::string viewMode;
         std::string wifiStatusMessage;
@@ -66,6 +67,10 @@ public:
         bool connectOverlayVisible = false;
         bool passwordPromptVisible = false;
         bool passwordSubmitEnabled = false;
+        bool scannerEnterEnabled = false;
+        bool scannerExitEnabled = false;
+        bool scannerModeActive = false;
+        bool scannerModeAvailable = false;
     };
 
     /**
@@ -79,6 +84,8 @@ public:
     Result<std::monostate, std::string> pressAutomationConnect(const std::string& ssid);
     Result<std::monostate, std::string> pressAutomationConnectCancel();
     Result<std::monostate, std::string> submitAutomationPassword(const std::string& password);
+    Result<std::monostate, std::string> pressAutomationScannerEnter();
+    Result<std::monostate, std::string> pressAutomationScannerExit();
 
     void showLanAccessView();
     void showScannerView();

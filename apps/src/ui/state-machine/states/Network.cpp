@@ -19,11 +19,16 @@ UiApi::NetworkDiagnosticsGet::Okay toAutomationOkay(
         .connect_overlay_visible = state.connectOverlayVisible,
         .password_prompt_visible = state.passwordPromptVisible,
         .password_submit_enabled = state.passwordSubmitEnabled,
+        .scanner_enter_enabled = state.scannerEnterEnabled,
+        .scanner_exit_enabled = state.scannerExitEnabled,
+        .scanner_mode_active = state.scannerModeActive,
+        .scanner_mode_available = state.scannerModeAvailable,
         .connect_progress = std::nullopt,
         .connected_ssid = state.connectedSsid,
         .connect_target_ssid = state.connectTargetSsid,
         .password_prompt_target_ssid = state.passwordPromptTargetSsid,
         .password_error = state.passwordError,
+        .scanner_status_message = state.scannerStatusMessage,
         .networks = {},
         .view_mode = state.viewMode,
         .wifi_status_message = state.wifiStatusMessage,
@@ -274,6 +279,49 @@ State::Any Network::onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateM
     cwc.sendResponse(
         UiApi::NetworkPasswordSubmit::Response::okay(
             UiApi::NetworkPasswordSubmit::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerEnterPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(
+                ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerEnter();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerEnterPress::Response::okay(
+            UiApi::NetworkScannerEnterPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerExitPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerExit();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerExitPress::Response::okay(
+            UiApi::NetworkScannerExitPress::Okay{ .accepted = true }));
     return std::move(*this);
 }
 

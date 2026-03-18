@@ -35,6 +35,8 @@
 #include "ui/state-machine/api/NetworkConnectPress.h"
 #include "ui/state-machine/api/NetworkDiagnosticsGet.h"
 #include "ui/state-machine/api/NetworkPasswordSubmit.h"
+#include "ui/state-machine/api/NetworkScannerEnterPress.h"
+#include "ui/state-machine/api/NetworkScannerExitPress.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -122,6 +124,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::NetworkConnectPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkDiagnosticsGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkPasswordSubmit::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkScannerEnterPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkScannerExitPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
