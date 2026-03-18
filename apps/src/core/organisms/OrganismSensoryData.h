@@ -76,9 +76,10 @@ struct TemplateMatch {
  * @param template_pattern The pattern to find.
  * @return Match result with position (or found=false if not found).
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 TemplateMatch findTemplate(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     const SensoryTemplate& template_pattern);
 
 /**
@@ -90,9 +91,10 @@ TemplateMatch findTemplate(
  * @param start_row Starting row in sensory grid.
  * @return True if pattern matches at this position.
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool matchesTemplate(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row);
@@ -110,11 +112,12 @@ bool matchesTemplate(
  * @param histograms Output array to fill with material histograms.
  * @param world_offset Output: offset from neural grid to world coordinates.
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 void gatherMaterialHistograms(
     const World& world,
     Vector2i center,
-    std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     Vector2i& world_offset);
 
 /**
@@ -127,44 +130,47 @@ void gatherMaterialHistograms(
  * @param gy Grid y coordinate (0 to GridSize-1).
  * @return The material type with the highest fill ratio.
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 Material::EnumType getDominantMaterial(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy);
 
 /**
  * Check if a grid position is solid (non-AIR, non-WATER).
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool isSolid(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy);
 
 /**
  * Check if a grid position is empty (very low total fill).
  */
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool isEmpty(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy);
 
 // Explicit instantiation declarations for common sizes.
-extern template void gatherMaterialHistograms<15, 10>(
+extern template void gatherMaterialHistograms<15, 10, double>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     Vector2i& world_offset);
 
-extern template void gatherMaterialHistograms<21, 10>(
+extern template void gatherMaterialHistograms<21, 10, float>(
     const World& world,
     Vector2i center,
-    std::array<std::array<std::array<double, 10>, 21>, 21>& histograms,
+    std::array<std::array<std::array<float, 10>, 21>, 21>& histograms,
     Vector2i& world_offset);
 
-extern template void gatherMaterialHistograms<9, 10>(
+extern template void gatherMaterialHistograms<9, 10, double>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
