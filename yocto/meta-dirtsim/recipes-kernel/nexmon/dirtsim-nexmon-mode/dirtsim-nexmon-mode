@@ -1,0 +1,141 @@
+#!/bin/sh
+
+set -eu
+
+BACKUP_DIR=/var/lib/nexmon
+BACKUP_FW="$BACKUP_DIR/cyfmac43455-sdio-standard.stock.bin"
+LIVE_FW=/lib/firmware/cypress/cyfmac43455-sdio-standard.bin
+NEXMON_FW=/usr/lib/nexmon/cyfmac43455-sdio-standard.bin
+NEXMON_MODULE=/usr/lib/nexmon/brcmfmac.ko
+NEXMON_VERSION=6.12.2-nexmon
+
+delete_monitor_interfaces() {
+    iw dev | awk '
+        $1 == "Interface" { iface = $2 }
+        $1 == "type" && $2 == "monitor" { print iface }
+    ' | while read -r iface; do
+        [ -n "$iface" ] || continue
+        ip link set "$iface" down >/dev/null 2>&1 || true
+        iw dev "$iface" del >/dev/null 2>&1 || true
+    done
+}
+
+disconnect_wifi() {
+    nmcli device disconnect wlan0 >/dev/null 2>&1 || true
+}
+
+ensure_backup() {
+    mkdir -p "$BACKUP_DIR"
+    if [ ! -f "$BACKUP_FW" ]; then
+        cp "$LIVE_FW" "$BACKUP_FW"
+    fi
+}
+
+replace_file() {
+    src=$1
+    dst=$2
+
+    cp "$src" "$dst"
+    chmod 0644 "$dst"
+}
+
+loaded_version() {
+    cat /sys/module/brcmfmac/version 2>/dev/null || true
+}
+
+is_enabled() {
+    [ "$(loaded_version)" = "$NEXMON_VERSION" ]
+}
+
+require_safe_route() {
+    if [ "${DIRTSIM_NEXMON_FORCE:-0}" = "1" ]; then
+        return 0
+    fi
+
+    if ip route show default | grep -q " dev eth"; then
+        return 0
+    fi
+
+    echo "Refusing to switch Wi-Fi stacks without an Ethernet default route." >&2
+    echo "Set DIRTSIM_NEXMON_FORCE=1 to override." >&2
+    exit 1
+}
+
+unload_wifi_modules() {
+    modprobe -r brcmfmac_wcc >/dev/null 2>&1 || true
+    modprobe -r brcmfmac >/dev/null 2>&1 || true
+}
+
+print_status() {
+    version=$(loaded_version)
+    if [ -n "$version" ]; then
+        echo "loaded_version=$version"
+    else
+        echo "loaded_version=none"
+    fi
+
+    if iw phy 2>/dev/null | grep -q '^[[:space:]]*\* monitor$'; then
+        echo "monitor_supported=1"
+    else
+        echo "monitor_supported=0"
+    fi
+
+    if is_enabled; then
+        echo "stack=nexmon"
+    else
+        echo "stack=stock"
+    fi
+}
+
+enable_stack() {
+    require_safe_route
+
+    if is_enabled; then
+        print_status
+        exit 0
+    fi
+
+    if [ ! -f "$NEXMON_MODULE" ] || [ ! -f "$NEXMON_FW" ]; then
+        echo "Nexmon artifacts are missing from /usr/lib/nexmon." >&2
+        exit 1
+    fi
+
+    ensure_backup
+    delete_monitor_interfaces
+    disconnect_wifi
+    unload_wifi_modules
+    replace_file "$NEXMON_FW" "$LIVE_FW"
+    insmod "$NEXMON_MODULE"
+    sleep 2
+    print_status
+}
+
+disable_stack() {
+    delete_monitor_interfaces
+    disconnect_wifi
+    unload_wifi_modules
+
+    if [ -f "$BACKUP_FW" ]; then
+        replace_file "$BACKUP_FW" "$LIVE_FW"
+    fi
+
+    modprobe brcmfmac
+    sleep 2
+    print_status
+}
+
+case "${1:-status}" in
+    enable)
+        enable_stack
+        ;;
+    disable)
+        disable_stack
+        ;;
+    status)
+        print_status
+        ;;
+    *)
+        echo "Usage: dirtsim-nexmon-mode [status|enable|disable]" >&2
+        exit 1
+        ;;
+esac

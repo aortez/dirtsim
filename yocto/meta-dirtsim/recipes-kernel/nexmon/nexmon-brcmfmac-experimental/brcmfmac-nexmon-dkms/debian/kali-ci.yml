@@ -1,0 +1,7 @@
+include:
+  - https://gitlab.com/kalilinux/tools/kali-ci-pipeline/raw/master/recipes/kali.yml
+
+variables:
+  # We don't want to build test this package as it is specific to RaspberryPi
+  # kernels
+  SALSA_CI_IGNORED_BRANCHES: 'kali/master'
