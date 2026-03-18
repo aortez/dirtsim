@@ -1787,14 +1787,6 @@ State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMac
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const ToggleLeftThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
-{
-    // Note: Left throw is not currently in Config::Sandbox - this command is deprecated.
-    // Use UserSettingsPatch to modify scenario configs instead.
-    spdlog::warn("SimRunning: ToggleLeftThrowCommand is deprecated - left throw not in config");
-    return std::move(*this);
-}
-
 State::Any SimRunning::onEvent(const ToggleRightThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
     World* world = session.getWorld();

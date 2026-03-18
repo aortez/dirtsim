@@ -2446,13 +2446,9 @@ int main(int argc, char** argv)
 
     // Handle test_binary command - tests binary protocol with type-safe StatusGet.
     if (targetName == "test_binary") {
-        // Get address from override or use command as address for backward compatibility.
         std::string testAddress;
         if (addressOverride) {
             testAddress = args::get(addressOverride);
-        }
-        else if (command) {
-            testAddress = args::get(command);
         }
         else {
             std::cerr << "Error: address is required for test_binary command\n\n";

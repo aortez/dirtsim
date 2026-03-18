@@ -301,10 +301,6 @@ struct ToggleWaterColumnCommand {
     static constexpr const char* name() { return "ToggleWaterColumnCommand"; }
 };
 
-struct ToggleLeftThrowCommand {
-    static constexpr const char* name() { return "ToggleLeftThrowCommand"; }
-};
-
 struct ToggleRightThrowCommand {
     static constexpr const char* name() { return "ToggleRightThrowCommand"; }
 };
@@ -409,7 +405,6 @@ public:
         SetFragmentationCommand,
         ToggleWallsCommand,
         ToggleWaterColumnCommand,
-        ToggleLeftThrowCommand,
         ToggleRightThrowCommand,
         ToggleQuadrantCommand,
         ToggleFrameLimitCommand,

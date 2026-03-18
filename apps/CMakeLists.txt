@@ -330,6 +330,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
+    src/server/UserSettingsDiskCompat.cpp
     src/server/EventProcessor.cpp
     src/server/evolution/EvaluationExecutor.cpp
     src/server/evolution/FitnessModelBundle.cpp
@@ -555,7 +556,6 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/NetworkDiagnosticsGet.cpp
     src/ui/state-machine/api/NetworkPasswordSubmit.cpp
     src/ui/state-machine/api/PlantSeed.cpp
-    src/ui/state-machine/api/PixelRendererToggle.cpp
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
     src/ui/state-machine/api/SimPause.cpp
@@ -613,6 +613,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/GenomeBrowserPanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/LogPanel.cpp
+    src/ui/controls/NesSettingsPanel.cpp
     src/ui/controls/NetworkDiagnosticsPanel.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsPanel.cpp
