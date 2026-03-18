@@ -301,6 +301,7 @@ set(DIRTSIM_CORE_SOURCES
     # Network layer.
     src/core/network/WebSocketService.cpp
     src/core/network/WifiManager.cpp
+    src/core/network/WifiManagerLibNm.cpp
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
@@ -550,6 +551,10 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/MouseDown.cpp
     src/ui/state-machine/api/MouseMove.cpp
     src/ui/state-machine/api/MouseUp.cpp
+    src/ui/state-machine/api/NetworkConnectCancelPress.cpp
+    src/ui/state-machine/api/NetworkConnectPress.cpp
+    src/ui/state-machine/api/NetworkDiagnosticsGet.cpp
+    src/ui/state-machine/api/NetworkPasswordSubmit.cpp
     src/ui/state-machine/api/PlantSeed.cpp
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
@@ -705,6 +710,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp
@@ -826,6 +832,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp

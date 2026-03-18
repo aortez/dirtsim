@@ -1885,6 +1885,9 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.uiTraining.has_value()) {
             patched.uiTraining = *cwc.command.uiTraining;
         }
+        if (cwc.command.networkLiveScanPreferred.has_value()) {
+            patched.networkLiveScanPreferred = *cwc.command.networkLiveScanPreferred;
+        }
 
         bool changed = false;
         std::vector<std::string> updates;

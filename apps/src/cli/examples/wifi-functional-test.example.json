@@ -1,0 +1,15 @@
+{
+  "networks": [
+    {
+      "ssid": "lab-a",
+      "password": "replace-me-a",
+      "minimum_signal_dbm": -72
+    },
+    {
+      "ssid": "lab-b",
+      "password": "replace-me-b",
+      "minimum_signal_dbm": -72
+    }
+  ],
+  "cancel_target_ssid": "lab-b"
+}

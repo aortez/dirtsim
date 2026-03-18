@@ -59,6 +59,7 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_FALSE(inMemory.networkLiveScanPreferred);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
@@ -68,6 +69,7 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_FALSE(fromDisk.networkLiveScanPreferred);
 }
 
 TEST(UserSettingsTest, LoadingSettingsScrubsMissingSeedGenomes)
@@ -342,6 +344,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     updatedTrainingSpec.population.clear();
 
     Api::UserSettingsPatch::Command patchCommand{};
+    patchCommand.networkLiveScanPreferred = true;
     patchCommand.trainingSpec = updatedTrainingSpec;
     Api::UserSettingsPatch::Cwc patchCwc(
         patchCommand, [&](Api::UserSettingsPatch::Response&& result) {
@@ -364,6 +367,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 90000);
     EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::DUCK);
+    EXPECT_TRUE(inMemory.networkLiveScanPreferred);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
@@ -376,6 +380,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 90000);
     EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::DUCK);
+    EXPECT_TRUE(fromDisk.networkLiveScanPreferred);
 }
 
 TEST(UserSettingsTest, UserSettingsPatchRejectsEmptyCommand)

@@ -11,6 +11,10 @@
 #include "MouseDown.h"
 #include "MouseMove.h"
 #include "MouseUp.h"
+#include "NetworkConnectCancelPress.h"
+#include "NetworkConnectPress.h"
+#include "NetworkDiagnosticsGet.h"
+#include "NetworkPasswordSubmit.h"
 #include "PlantSeed.h"
 #include "RenderModeSelect.h"
 #include "ScreenGrab.h"
@@ -51,6 +55,10 @@ using UiApiCommand = std::variant<
     UiApi::MouseDown::Command,
     UiApi::MouseMove::Command,
     UiApi::MouseUp::Command,
+    UiApi::NetworkConnectCancelPress::Command,
+    UiApi::NetworkConnectPress::Command,
+    UiApi::NetworkDiagnosticsGet::Command,
+    UiApi::NetworkPasswordSubmit::Command,
     UiApi::PlantSeed::Command,
     UiApi::RenderModeSelect::Command,
     UiApi::ScreenGrab::Command,
