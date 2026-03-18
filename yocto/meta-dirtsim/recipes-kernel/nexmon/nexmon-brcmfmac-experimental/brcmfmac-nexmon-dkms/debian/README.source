@@ -1,0 +1,9 @@
+brcmfmac-nexmon-dkms for Kali
+-------------------------------
+
+The source can be found here:
+ https://github.com/seemoo-lab/nexmon
+
+Currently we are using the files from patches/driver/brcmfmac_6.6.y-nexmon
+
+ -- Steev Klimaszewski <steev@kali.org>

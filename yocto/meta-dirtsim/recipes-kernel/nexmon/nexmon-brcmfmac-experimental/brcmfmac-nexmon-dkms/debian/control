@@ -1,0 +1,19 @@
+Source: brcmfmac-nexmon-dkms
+Section: contrib/kernel
+Priority: optional
+Maintainer: Kali Developers <devel@kali.org>
+Uploaders: Steev Klimaszewski <steev@kali.org>
+Build-Depends: debhelper-compat (= 13), dh-sequence-dkms
+Standards-Version: 4.7.2
+Homepage: https://github.com/seemoo-lab/nexmon
+Vcs-Browser: https://gitlab.com/kalilinux/packages/brcmfmac-nexmon-dkms
+Vcs-Git: https://gitlab.com/kalilinux/packages/brcmfmac-nexmon-dkms.git
+
+Package: brcmfmac-nexmon-dkms
+Architecture: all
+Depends: dkms (>= 1.95), ${misc:Depends}
+Recommends: firmware-nexmon,
+Description: Broadcom FMAC driver in DKMS format
+ This package provides the source code for Broadcom FMAC Linux
+ driver with nexmon's modifications to be built with dkms. Kernel
+ sources or headers are required to compile this module.
