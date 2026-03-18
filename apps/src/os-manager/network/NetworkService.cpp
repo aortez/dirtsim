@@ -121,6 +121,12 @@ bool wifiAccessPointsEqual(
 }
 
 bool wifiConnectProgressEqual(
+    const Network::WifiConnectProgress& lhs, const Network::WifiConnectProgress& rhs)
+{
+    return lhs.ssid == rhs.ssid && lhs.phase == rhs.phase && lhs.canCancel == rhs.canCancel;
+}
+
+bool wifiConnectProgressEqual(
     const std::optional<Network::WifiConnectProgress>& lhs,
     const std::optional<Network::WifiConnectProgress>& rhs)
 {
@@ -128,7 +134,16 @@ bool wifiConnectProgressEqual(
         return !lhs.has_value() && !rhs.has_value();
     }
 
-    return lhs->ssid == rhs->ssid && lhs->phase == rhs->phase && lhs->canCancel == rhs->canCancel;
+    return wifiConnectProgressEqual(lhs.value(), rhs.value());
+}
+
+Network::WifiConnectProgress cloneWifiConnectProgress(const Network::WifiConnectProgress& progress)
+{
+    return Network::WifiConnectProgress{
+        .ssid = progress.ssid,
+        .phase = progress.phase,
+        .canCancel = progress.canCancel,
+    };
 }
 
 bool wifiConnectOutcomeEqual(
@@ -140,6 +155,27 @@ bool wifiConnectOutcomeEqual(
     }
 
     return lhs->ssid == rhs->ssid && lhs->message == rhs->message && lhs->canceled == rhs->canceled;
+}
+
+Network::WifiConnectOutcome cloneWifiConnectOutcome(const Network::WifiConnectOutcome& outcome)
+{
+    return Network::WifiConnectOutcome{
+        .ssid = outcome.ssid,
+        .message = outcome.message,
+        .canceled = outcome.canceled,
+    };
+}
+
+void assignWifiConnectOutcome(
+    std::optional<Network::WifiConnectOutcome>& target,
+    const std::optional<Network::WifiConnectOutcome>& source)
+{
+    if (!source.has_value()) {
+        target.reset();
+        return;
+    }
+
+    target.emplace(cloneWifiConnectOutcome(source.value()));
 }
 
 bool isScanDerivedStatus(Network::WifiNetworkStatus status)
@@ -316,7 +352,8 @@ struct NetworkService::Impl {
     std::vector<SignalConnection> deviceSignals;
     std::optional<CachedSnapshot> cachedSnapshot;
     std::optional<Network::WifiConnectOutcome> connectOutcome;
-    std::optional<Network::WifiConnectProgress> connectProgress;
+    Network::WifiConnectProgress connectProgress{};
+    bool hasConnectProgress = false;
     bool connectCancelRequested = false;
     std::string lastRefreshError;
     SnapshotChangedCallback snapshotChangedCallback;
@@ -391,7 +428,8 @@ struct NetworkService::Impl {
 
         cachedSnapshot.reset();
         connectOutcome.reset();
-        connectProgress.reset();
+        connectProgress = {};
+        hasConnectProgress = false;
         connectCancelRequested = false;
         lastRefreshError.clear();
         scanInProgress = false;
@@ -418,10 +456,10 @@ struct NetworkService::Impl {
     Result<std::monostate, std::string> cancelConnect()
     {
         return invokeOnWorker<Result<std::monostate, std::string>>([this]() {
-            if (!connectProgress.has_value()) {
+            if (!hasConnectProgress) {
                 return Result<std::monostate, std::string>::error("No WiFi connect in progress");
             }
-            if (!connectProgress->canCancel) {
+            if (!connectProgress.canCancel) {
                 return Result<std::monostate, std::string>::error(
                     "WiFi connect can no longer be canceled");
             }
@@ -429,11 +467,12 @@ struct NetworkService::Impl {
                 return Result<std::monostate, std::string>::error(lastRefreshError);
             }
 
-            const auto previousProgress = connectProgress;
+            const Network::WifiConnectProgress previousProgress =
+                cloneWifiConnectProgress(connectProgress);
             connectCancelRequested = true;
             setConnectProgress(
                 Network::WifiConnectProgress{
-                    .ssid = connectProgress->ssid,
+                    .ssid = connectProgress.ssid,
                     .phase = Network::WifiConnectPhase::Canceling,
                     .canCancel = false,
                 });
@@ -441,9 +480,7 @@ struct NetworkService::Impl {
             const auto result = Network::Internal::requestConnectCancel(client.get(), mainContext);
             if (result.isError()) {
                 connectCancelRequested = false;
-                if (previousProgress.has_value()) {
-                    setConnectProgress(previousProgress.value());
-                }
+                setConnectProgress(previousProgress);
                 return result;
             }
 
@@ -460,8 +497,7 @@ struct NetworkService::Impl {
         }
 
         const bool canceled = connectCancelRequested;
-        const std::string targetSsid =
-            connectProgress.has_value() ? connectProgress->ssid : std::string{};
+        const std::string targetSsid = hasConnectProgress ? connectProgress.ssid : std::string{};
 
         clearConnectProgress();
         connectCancelRequested = false;
@@ -502,7 +538,7 @@ struct NetworkService::Impl {
     {
         return invokeOnWorker<Result<std::monostate, std::string>>(
             [this, ssid, password, completionCallback = std::move(completionCallback)]() mutable {
-                if (connectProgress.has_value()) {
+                if (hasConnectProgress) {
                     return Result<std::monostate, std::string>::error(
                         "WiFi connect already in progress");
                 }
@@ -990,7 +1026,7 @@ struct NetworkService::Impl {
 
     void handleWifiDeviceStateChanged(NMDeviceState state)
     {
-        if (!connectProgress.has_value()) {
+        if (!hasConnectProgress) {
             return;
         }
         if (connectCancelRequested) {
@@ -1002,12 +1038,12 @@ struct NetworkService::Impl {
             return;
         }
         const bool canCancel = wifiConnectCanCancelForDeviceState(state);
-        if (connectProgress->phase == phase.value() && connectProgress->canCancel == canCancel) {
+        if (connectProgress.phase == phase.value() && connectProgress.canCancel == canCancel) {
             return;
         }
 
-        connectProgress->phase = phase.value();
-        connectProgress->canCancel = canCancel;
+        connectProgress.phase = phase.value();
+        connectProgress.canCancel = canCancel;
         updateCachedSnapshotConnectProgress();
     }
 
@@ -1046,11 +1082,12 @@ struct NetworkService::Impl {
 
     void clearConnectProgress()
     {
-        if (!connectProgress.has_value()) {
+        if (!hasConnectProgress) {
             return;
         }
 
-        connectProgress.reset();
+        connectProgress = {};
+        hasConnectProgress = false;
         updateCachedSnapshotConnectProgress();
     }
 
@@ -1066,12 +1103,12 @@ struct NetworkService::Impl {
 
     void setConnectProgress(const Network::WifiConnectProgress& progress)
     {
-        if (wifiConnectProgressEqual(
-                connectProgress, std::optional<Network::WifiConnectProgress>(progress))) {
+        if (hasConnectProgress && wifiConnectProgressEqual(connectProgress, progress)) {
             return;
         }
 
-        connectProgress = progress;
+        connectProgress = cloneWifiConnectProgress(progress);
+        hasConnectProgress = true;
         updateCachedSnapshotConnectProgress();
     }
 
@@ -1082,7 +1119,7 @@ struct NetworkService::Impl {
             return;
         }
 
-        connectOutcome = outcome;
+        connectOutcome.emplace(cloneWifiConnectOutcome(outcome));
         updateCachedSnapshotConnectOutcome();
     }
 
@@ -1091,11 +1128,22 @@ struct NetworkService::Impl {
         if (!cachedSnapshot.has_value()) {
             return;
         }
-        if (wifiConnectProgressEqual(cachedSnapshot->snapshot.connectProgress, connectProgress)) {
+        const bool snapshotMatchesConnectProgress =
+            cachedSnapshot->snapshot.connectProgress.has_value() == hasConnectProgress
+            && (!hasConnectProgress
+                || wifiConnectProgressEqual(
+                    cachedSnapshot->snapshot.connectProgress.value(), connectProgress));
+        if (snapshotMatchesConnectProgress) {
             return;
         }
 
-        cachedSnapshot->snapshot.connectProgress = connectProgress;
+        if (!hasConnectProgress) {
+            cachedSnapshot->snapshot.connectProgress.reset();
+        }
+        else {
+            cachedSnapshot->snapshot.connectProgress.emplace(
+                cloneWifiConnectProgress(connectProgress));
+        }
         notifySnapshotChanged(cachedSnapshot->snapshot);
     }
 
@@ -1108,7 +1156,7 @@ struct NetworkService::Impl {
             return;
         }
 
-        cachedSnapshot->snapshot.connectOutcome = connectOutcome;
+        assignWifiConnectOutcome(cachedSnapshot->snapshot.connectOutcome, connectOutcome);
         notifySnapshotChanged(cachedSnapshot->snapshot);
     }
 

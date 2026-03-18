@@ -181,15 +181,18 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
             playerAbsoluteX,
             playerYScreen);
 
-        if (nearestEnemyCount < nearestEnemies.size()) {
-            nearestEnemies[nearestEnemyCount] = decodedEnemy;
-            ++nearestEnemyCount;
-            std::sort(
-                nearestEnemies.begin(),
-                nearestEnemies.begin() + static_cast<int64_t>(nearestEnemyCount),
-                [](const DecodedEnemy& lhs, const DecodedEnemy& rhs) {
-                    return lhs.distanceSquared < rhs.distanceSquared;
-                });
+        if (nearestEnemyCount == 0u) {
+            nearestEnemies[0] = decodedEnemy;
+            nearestEnemyCount = 1u;
+            continue;
+        }
+
+        if (nearestEnemyCount == 1u) {
+            nearestEnemies[1] = decodedEnemy;
+            nearestEnemyCount = 2u;
+            if (nearestEnemies[1].distanceSquared < nearestEnemies[0].distanceSquared) {
+                std::swap(nearestEnemies[0], nearestEnemies[1]);
+            }
             continue;
         }
 
@@ -198,12 +201,9 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
         }
 
         nearestEnemies.back() = decodedEnemy;
-        std::sort(
-            nearestEnemies.begin(),
-            nearestEnemies.end(),
-            [](const DecodedEnemy& lhs, const DecodedEnemy& rhs) {
-                return lhs.distanceSquared < rhs.distanceSquared;
-            });
+        if (nearestEnemies[1].distanceSquared < nearestEnemies[0].distanceSquared) {
+            std::swap(nearestEnemies[0], nearestEnemies[1]);
+        }
     }
 
     if (nearestEnemyCount > 0u) {

@@ -20,7 +20,7 @@ struct DuckSensoryData {
     static constexpr int SPECIAL_SENSE_COUNT = 32;
 
     // Material histogram grid: [y][x][material] = fill contribution.
-    std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
+    std::array<std::array<std::array<float, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
         material_histograms = {};
 
     // Mapping from neural grid to world coordinates.
