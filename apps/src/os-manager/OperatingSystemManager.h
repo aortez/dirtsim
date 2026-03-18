@@ -14,6 +14,7 @@
 #include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
 #include "os-manager/api/TrustPeer.h"
@@ -43,6 +44,7 @@ namespace OsManager {
 class LocalProcessBackend;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
+class ScannerService;
 struct PeerInfo;
 
 class OperatingSystemManager : public StateMachineBase, public StateMachineInterface<Event> {
@@ -118,6 +120,8 @@ public:
         const OsApi::RemoteCliRun::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
+    Result<OsApi::ScannerSnapshotGet::Okay, ApiError> getScannerSnapshot(
+        const OsApi::ScannerSnapshotGet::Command& command);
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
@@ -210,6 +214,7 @@ private:
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
     std::unique_ptr<NetworkService> networkService_;
+    std::unique_ptr<ScannerService> scannerService_;
     std::unique_ptr<PeerAdvertisement> serverPeerAdvertisement_;
     std::unique_ptr<PeerAdvertisement> uiPeerAdvertisement_;
     std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;

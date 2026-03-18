@@ -122,6 +122,7 @@ private:
     lv_obj_t* scannerEnterButton_ = nullptr;
     lv_obj_t* scannerExitButton_ = nullptr;
     lv_obj_t* scannerHintLabel_ = nullptr;
+    lv_obj_t* scannerDataLabel_ = nullptr;
     lv_obj_t* scannerRefreshButton_ = nullptr;
     lv_obj_t* scannerStatusLabel_ = nullptr;
     lv_obj_t* scannerView_ = nullptr;
@@ -207,11 +208,16 @@ private:
         std::unique_ptr<TimeSeriesPlotWidget> plot;
     };
 
+    struct ScannerSnapshotTextError {
+        std::string message;
+    };
+
     struct AsyncState {
         std::mutex mutex;
         bool eventStreamConnected = false;
         bool refreshInProgress = false;
         bool scanRequestInProgress = false;
+        bool scannerSnapshotInProgress = false;
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<std::monostate, std::string>> pendingConnectCancel;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
@@ -220,6 +226,7 @@ private:
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScannerEnter;
         std::optional<Result<std::monostate, std::string>> pendingScannerExit;
+        std::optional<Result<std::string, ScannerSnapshotTextError>> pendingScannerSnapshot;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
@@ -268,6 +275,7 @@ private:
     bool scannerModeActive_ = false;
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
+    std::optional<std::chrono::steady_clock::time_point> scannerSnapshotLastRequestedAt_;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -278,6 +286,7 @@ private:
     bool startAsyncRefresh(bool forceRefresh);
     bool startAsyncScannerEnter();
     bool startAsyncScannerExit();
+    bool startAsyncScannerSnapshot();
     bool startAsyncScanRequest();
     bool startAsyncConnect(
         const Network::WifiNetworkInfo& network,
@@ -325,6 +334,8 @@ private:
     void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
+    void updateScannerSnapshotPolling();
+    void updateScannerSnapshotText(const Result<std::string, ScannerSnapshotTextError>& result);
     void updateScannerControls();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);

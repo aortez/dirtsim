@@ -11,6 +11,7 @@
 #include "os-manager/network/NetworkService.h"
 #include "os-manager/network/PeerAdvertisement.h"
 #include "os-manager/network/PeerDiscovery.h"
+#include "os-manager/network/ScannerService.h"
 #include "os-manager/ssh/RemoteSshExecutor.h"
 #include "server/api/StatusGet.h"
 #include "server/api/WebSocketAccessSet.h"
@@ -824,6 +825,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
 {
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.systemCommand);
     setupWebSocketService();
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
@@ -837,6 +839,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
 {
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.systemCommand);
     setupWebSocketService();
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
@@ -851,6 +854,7 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
       backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.systemCommand);
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
     });
@@ -945,6 +949,9 @@ void OperatingSystemManager::stop()
 {
     if (networkService_) {
         networkService_->stop();
+    }
+    if (scannerService_) {
+        scannerService_->stop();
     }
 
     if (enableNetworking_) {
@@ -1153,6 +1160,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerSnapshotGet);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartUi);
@@ -1237,6 +1245,67 @@ Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNet
 
     return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::okay(
         toApiNetworkSnapshotOkay(snapshotResult.value()));
+}
+
+Result<OsApi::ScannerSnapshotGet::Okay, ApiError> OperatingSystemManager::getScannerSnapshot(
+    const OsApi::ScannerSnapshotGet::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!status.active) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(
+            ApiError("Scanner mode is not active."));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    OsApi::ScannerSnapshotGet::Okay okay;
+    okay.active = true;
+
+    const uint64_t maxAgeMs = command.maxAgeMs.value_or(15000);
+    const size_t maxRadios = static_cast<size_t>(command.maxRadios.value_or(64));
+
+    const auto startResult = scannerService_->start();
+    if (startResult.isError()) {
+        okay.detail = "Capture unavailable: " + startResult.errorValue();
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
+    }
+
+    const auto snapshot = scannerService_->snapshot(maxAgeMs, maxRadios);
+    okay.currentChannel = snapshot.currentChannel;
+
+    const auto now = std::chrono::steady_clock::now();
+    okay.radios.reserve(snapshot.radios.size());
+    for (const auto& radio : snapshot.radios) {
+        OsApi::ScannerSnapshotGet::ObservedRadioInfo info;
+        info.bssid = radio.bssid;
+        info.ssid = radio.ssid;
+        info.signalDbm = radio.signalDbm;
+        info.channel = radio.channel;
+        if (radio.lastSeenAt.time_since_epoch().count() > 0) {
+            info.lastSeenAgeMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - radio.lastSeenAt)
+                    .count());
+        }
+        okay.radios.push_back(std::move(info));
+    }
+
+    const std::string lastError = scannerService_->lastError();
+    if (!lastError.empty()) {
+        okay.detail = lastError;
+    }
+    else if (okay.currentChannel.has_value()) {
+        okay.detail = "Scanning channel " + std::to_string(*okay.currentChannel) + ".";
+    }
+    else {
+        okay.detail = "Scanning.";
+    }
+
+    return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::
@@ -1991,14 +2060,32 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
         return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(stateResult.errorValue());
     }
 
+    std::optional<std::string> captureError;
+    if (scannerService_) {
+        const auto captureStartResult = scannerService_->start();
+        if (captureStartResult.isError()) {
+            captureError = captureStartResult.errorValue();
+            SLOG_WARN("Scanner capture failed to start: {}", *captureError);
+        }
+    }
+
     OsApi::ScannerModeEnter::Okay okay;
     okay.active = true;
-    okay.detail = "Scanner mode active on wlan0.";
+    if (captureError.has_value()) {
+        okay.detail = "Scanner mode active on wlan0, but capture failed: " + *captureError;
+    }
+    else {
+        okay.detail = "Scanner mode active on wlan0.";
+    }
     return Result<OsApi::ScannerModeEnter::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScannerMode()
 {
+    if (scannerService_) {
+        scannerService_->stop();
+    }
+
     std::optional<std::string> restoreSsid;
     const auto runtimeStateResult = readScannerModeState();
     if (runtimeStateResult.isValue()) {

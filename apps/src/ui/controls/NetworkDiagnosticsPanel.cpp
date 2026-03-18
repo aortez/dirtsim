@@ -7,6 +7,7 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
@@ -841,6 +842,13 @@ void NetworkDiagnosticsPanel::createUI()
                              .height(NETWORK_ACTION_BUTTON_HEIGHT)
                              .callback(onScannerExitClicked, this)
                              .buildOrLog();
+
+    scannerDataLabel_ = lv_label_create(scannerCard);
+    lv_label_set_text(scannerDataLabel_, "Scanner data will appear here.");
+    lv_obj_set_style_text_font(scannerDataLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_long_mode(scannerDataLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(scannerDataLabel_, LV_PCT(100));
 
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
 
@@ -3076,6 +3084,112 @@ bool NetworkDiagnosticsPanel::startAsyncScannerExit()
     return true;
 }
 
+bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->scannerSnapshotInProgress) {
+            return false;
+        }
+        asyncState_->scannerSnapshotInProgress = true;
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<std::string, ScannerSnapshotTextError> result =
+            Result<std::string, ScannerSnapshotTextError>::error(
+                ScannerSnapshotTextError{ "Scanner snapshot failed" });
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<std::string, ScannerSnapshotTextError>::error(
+                    ScannerSnapshotTextError{ "Failed to connect to os-manager: "
+                                              + connectResult.errorValue() });
+            }
+            else {
+                OsApi::ScannerSnapshotGet::Command cmd{};
+                cmd.maxRadios = 18;
+                cmd.maxAgeMs = 15000;
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::ScannerSnapshotGet::Okay>(cmd, 2000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<std::string, ScannerSnapshotTextError>::error(
+                        ScannerSnapshotTextError{ "ScannerSnapshotGet failed: "
+                                                  + response.errorValue() });
+                }
+                else if (response.value().isError()) {
+                    result = Result<std::string, ScannerSnapshotTextError>::error(
+                        ScannerSnapshotTextError{ "ScannerSnapshotGet failed: "
+                                                  + response.value().errorValue().message });
+                }
+                else {
+                    const auto& okay = response.value().value();
+                    std::string text;
+                    if (!okay.detail.empty()) {
+                        text += okay.detail;
+                        text += "\n";
+                    }
+                    if (okay.currentChannel.has_value()) {
+                        text += "Channel: ";
+                        text += std::to_string(*okay.currentChannel);
+                        text += "\n";
+                    }
+                    if (okay.radios.empty()) {
+                        text += "No radios observed yet.";
+                    }
+                    else {
+                        for (const auto& radio : okay.radios) {
+                            const std::string ssid =
+                                !radio.ssid.empty() ? radio.ssid : std::string("<hidden>");
+                            text += ssid;
+                            if (radio.channel.has_value()) {
+                                text += "  ch ";
+                                text += std::to_string(*radio.channel);
+                            }
+                            if (radio.signalDbm.has_value()) {
+                                text += "  ";
+                                text += std::to_string(*radio.signalDbm);
+                                text += " dBm";
+                            }
+                            text += "\n";
+                            text += radio.bssid;
+                            if (radio.lastSeenAgeMs.has_value()) {
+                                text += "  ";
+                                text += std::to_string(*radio.lastSeenAgeMs);
+                                text += "ms ago";
+                            }
+                            text += "\n";
+                        }
+                    }
+
+                    result = Result<std::string, ScannerSnapshotTextError>::okay(std::move(text));
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<std::string, ScannerSnapshotTextError>::error(
+                ScannerSnapshotTextError{ e.what() });
+        }
+        catch (...) {
+            result = Result<std::string, ScannerSnapshotTextError>::error(
+                ScannerSnapshotTextError{ "Scanner snapshot failed" });
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingScannerSnapshot = std::move(result);
+        state->scannerSnapshotInProgress = false;
+    }).detach();
+
+    return true;
+}
+
 bool NetworkDiagnosticsPanel::startAsyncConnect(
     const Network::WifiNetworkInfo& network, const std::optional<std::string>& password)
 {
@@ -3705,6 +3819,49 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
     updateScannerControls();
 }
 
+void NetworkDiagnosticsPanel::updateScannerSnapshotText(
+    const Result<std::string, ScannerSnapshotTextError>& result)
+{
+    if (!scannerDataLabel_) {
+        return;
+    }
+
+    if (result.isError()) {
+        const std::string text = "Scanner data unavailable: " + result.errorValue().message;
+        lv_label_set_text(scannerDataLabel_, text.c_str());
+        lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
+        return;
+    }
+
+    lv_label_set_text(scannerDataLabel_, result.value().c_str());
+    lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
+}
+
+void NetworkDiagnosticsPanel::updateScannerSnapshotPolling()
+{
+    if (viewMode_ != ViewMode::Scanner) {
+        return;
+    }
+
+    if (!scannerModeActive_) {
+        if (scannerDataLabel_) {
+            lv_label_set_text(scannerDataLabel_, "Enter scanner mode to view observed radios.");
+            lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
+        }
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (scannerSnapshotLastRequestedAt_.has_value()
+        && now - scannerSnapshotLastRequestedAt_.value() < std::chrono::milliseconds(800)) {
+        return;
+    }
+
+    if (startAsyncScannerSnapshot()) {
+        scannerSnapshotLastRequestedAt_ = now;
+    }
+}
+
 void NetworkDiagnosticsPanel::updateScannerControls()
 {
     if (scannerHintLabel_) {
@@ -4196,6 +4353,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<Result<std::monostate, std::string>> scannerEnterResult;
     std::optional<Result<std::monostate, std::string>> scannerExitResult;
+    std::optional<Result<std::string, ScannerSnapshotTextError>> scannerSnapshotResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<std::monostate, std::string>> scanRequestResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
@@ -4223,6 +4381,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         scannerExitResult = asyncState_->pendingScannerExit;
         asyncState_->pendingScannerExit.reset();
+
+        scannerSnapshotResult = asyncState_->pendingScannerSnapshot;
+        asyncState_->pendingScannerSnapshot.reset();
 
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
@@ -4366,6 +4527,10 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             showScannerView();
             refresh();
         }
+    }
+
+    if (scannerSnapshotResult.has_value()) {
+        updateScannerSnapshotText(scannerSnapshotResult.value());
     }
 
     if (scannerExitResult.has_value()) {
@@ -4607,6 +4772,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     bool scanRequestInProgress = false;
     bool scannerEnterInProgress = false;
     bool scannerExitInProgress = false;
+    bool scannerSnapshotInProgress = false;
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         connectCancelInProgress = asyncState_->connectCancelInProgress;
@@ -4615,6 +4781,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         scanRequestInProgress = asyncState_->scanRequestInProgress;
         scannerEnterInProgress = asyncState_->scannerEnterInProgress;
         scannerExitInProgress = asyncState_->scannerExitInProgress;
+        scannerSnapshotInProgress = asyncState_->scannerSnapshotInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnectCancel.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingDisconnect.has_value()
@@ -4622,12 +4789,13 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             || asyncState_->pendingForget.has_value()
             || asyncState_->pendingScannerEnter.has_value()
             || asyncState_->pendingScannerExit.has_value()
+            || asyncState_->pendingScannerSnapshot.has_value()
             || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->connectCancelInProgress
             || asyncState_->diagnosticsModeUpdateInProgress || asyncState_->scannerEnterInProgress
-            || asyncState_->scannerExitInProgress || asyncState_->webSocketUpdateInProgress
-            || asyncState_->webUiUpdateInProgress;
+            || asyncState_->scannerExitInProgress || asyncState_->scannerSnapshotInProgress
+            || asyncState_->webSocketUpdateInProgress || asyncState_->webUiUpdateInProgress;
     }
 
     setRefreshButtonEnabled(
@@ -4635,7 +4803,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         && !diagnosticsModeUpdateInProgress && !scannerEnterInProgress && !scannerExitInProgress
         && !isActionInProgress() && !hasPending);
     setScannerRefreshButtonEnabled(
-        !refreshInProgress && !scannerEnterInProgress && !scannerExitInProgress && !hasPending);
+        !refreshInProgress && !scannerEnterInProgress && !scannerExitInProgress
+        && !scannerSnapshotInProgress && !hasPending);
 }
 
 void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
@@ -4648,6 +4817,7 @@ void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
     self->applyPendingUpdates();
     self->updateSignalHistory();
     self->updateConnectOverlay();
+    self->updateScannerSnapshotPolling();
 }
 
 void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)
