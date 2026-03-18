@@ -67,11 +67,16 @@ struct Okay {
     bool connect_overlay_visible = false;
     bool password_prompt_visible = false;
     bool password_submit_enabled = false;
+    bool scanner_enter_enabled = false;
+    bool scanner_exit_enabled = false;
+    bool scanner_mode_active = false;
+    bool scanner_mode_available = false;
     std::optional<ConnectProgressInfo> connect_progress;
     std::optional<std::string> connected_ssid;
     std::optional<std::string> connect_target_ssid;
     std::optional<std::string> password_prompt_target_ssid;
     std::string password_error;
+    std::string scanner_status_message;
     std::vector<NetworkInfo> networks;
     std::string view_mode;
     std::string wifi_status_message;
@@ -79,7 +84,7 @@ struct Okay {
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<18>;
 };
 
 API_STANDARD_TYPES();

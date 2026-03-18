@@ -893,12 +893,26 @@ Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnostics
         ? std::optional<std::string>(passwordPromptNetwork_->ssid)
         : std::nullopt;
     state.passwordError = labelText(passwordErrorLabel_);
+    state.scannerStatusMessage = labelText(scannerStatusLabel_);
     state.passwordPromptVisible =
         passwordOverlay_ && !lv_obj_has_flag(passwordOverlay_, LV_OBJ_FLAG_HIDDEN);
     state.connectOverlayVisible =
         state.passwordPromptVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
     state.passwordSubmitEnabled = passwordJoinButton_
         && !lv_obj_has_state(getActionButtonInnerButton(passwordJoinButton_), LV_STATE_DISABLED);
+    state.scannerModeActive = scannerModeActive_;
+    state.scannerModeAvailable = scannerModeAvailable_;
+
+    if (scannerEnterButton_) {
+        const lv_obj_t* innerButton = getActionButtonInnerButton(scannerEnterButton_);
+        state.scannerEnterEnabled =
+            innerButton && !lv_obj_has_state(const_cast<lv_obj_t*>(innerButton), LV_STATE_DISABLED);
+    }
+    if (scannerExitButton_) {
+        const lv_obj_t* innerButton = getActionButtonInnerButton(scannerExitButton_);
+        state.scannerExitEnabled =
+            innerButton && !lv_obj_has_state(const_cast<lv_obj_t*>(innerButton), LV_STATE_DISABLED);
+    }
 
     if (connectProgress_.has_value()) {
         state.connectProgress = AutomationConnectProgress{
@@ -996,6 +1010,57 @@ Result<std::monostate, std::string> NetworkDiagnosticsPanel::submitAutomationPas
     lv_textarea_set_text(passwordTextArea_, password.c_str());
     updatePasswordJoinButton();
     submitPasswordPrompt();
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::pressAutomationScannerEnter()
+{
+    applyPendingUpdates();
+    if (viewMode_ != ViewMode::Scanner) {
+        return Result<std::monostate, std::string>::error("Scanner view is not active");
+    }
+    if (!scannerModeAvailable_) {
+        return Result<std::monostate, std::string>::error("Scanner mode is unavailable");
+    }
+    if (scannerModeActive_) {
+        return Result<std::monostate, std::string>::error("Scanner mode is already active");
+    }
+    if (!scannerEnterButton_) {
+        return Result<std::monostate, std::string>::error("Scanner enter is unavailable");
+    }
+
+    lv_obj_t* innerButton = getActionButtonInnerButton(scannerEnterButton_);
+    if (!innerButton || lv_obj_has_state(innerButton, LV_STATE_DISABLED)) {
+        return Result<std::monostate, std::string>::error("Scanner enter is disabled");
+    }
+    if (!startAsyncScannerEnter()) {
+        return Result<std::monostate, std::string>::error("Failed to start scanner mode enter");
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> NetworkDiagnosticsPanel::pressAutomationScannerExit()
+{
+    applyPendingUpdates();
+    if (viewMode_ != ViewMode::Scanner) {
+        return Result<std::monostate, std::string>::error("Scanner view is not active");
+    }
+    if (!scannerModeActive_) {
+        return Result<std::monostate, std::string>::error("Scanner mode is not active");
+    }
+    if (!scannerExitButton_) {
+        return Result<std::monostate, std::string>::error("Scanner exit is unavailable");
+    }
+
+    lv_obj_t* innerButton = getActionButtonInnerButton(scannerExitButton_);
+    if (!innerButton || lv_obj_has_state(innerButton, LV_STATE_DISABLED)) {
+        return Result<std::monostate, std::string>::error("Scanner exit is disabled");
+    }
+    if (!startAsyncScannerExit()) {
+        return Result<std::monostate, std::string>::error("Failed to start scanner mode exit");
+    }
+
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -2758,6 +2823,9 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
                 cache.webUiEnabled = data.accessStatusResult.value().webUiEnabled;
                 cache.webSocketEnabled = data.accessStatusResult.value().webSocketEnabled;
                 cache.webSocketToken = data.accessStatusResult.value().webSocketToken;
+                cache.scannerModeAvailable = data.accessStatusResult.value().scannerModeAvailable;
+                cache.scannerModeActive = data.accessStatusResult.value().scannerModeActive;
+                cache.scannerModeDetail = data.accessStatusResult.value().scannerModeDetail;
                 updateAccessCache(cache);
             }
         }
@@ -2943,7 +3011,7 @@ bool NetworkDiagnosticsPanel::startAsyncScannerExit()
             else {
                 OsApi::ScannerModeExit::Command cmd{};
                 const auto response =
-                    client.sendCommandAndGetResponse<OsApi::ScannerModeExit::Okay>(cmd, 10000);
+                    client.sendCommandAndGetResponse<OsApi::ScannerModeExit::Okay>(cmd, 60000);
                 client.disconnect();
 
                 if (response.isError()) {
@@ -3293,6 +3361,9 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
             cache.webUiEnabled = result.value().webUiEnabled;
             cache.webSocketEnabled = result.value().webSocketEnabled;
             cache.webSocketToken = result.value().webSocketToken;
+            cache.scannerModeAvailable = result.value().scannerModeAvailable;
+            cache.scannerModeActive = result.value().scannerModeActive;
+            cache.scannerModeDetail = result.value().scannerModeDetail;
             updateAccessCache(cache);
         }
 
@@ -3398,6 +3469,9 @@ bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
             cache.webUiEnabled = result.value().webUiEnabled;
             cache.webSocketEnabled = result.value().webSocketEnabled;
             cache.webSocketToken = result.value().webSocketToken;
+            cache.scannerModeAvailable = result.value().scannerModeAvailable;
+            cache.scannerModeActive = result.value().scannerModeActive;
+            cache.scannerModeDetail = result.value().scannerModeDetail;
             updateAccessCache(cache);
         }
 

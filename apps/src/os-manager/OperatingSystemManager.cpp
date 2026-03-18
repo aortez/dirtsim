@@ -1794,10 +1794,45 @@ Result<std::monostate, ApiError> OperatingSystemManager::runScannerShellCommand(
     return Result<std::monostate, ApiError>::error(ApiError("Scanner step failed: " + step));
 }
 
-Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(bool active) const
+Result<OperatingSystemManager::ScannerModeRuntimeState, ApiError> OperatingSystemManager::
+    readScannerModeState() const
 {
     std::error_code error;
-    if (active) {
+    const bool exists =
+        std::filesystem::exists(std::filesystem::path(kScannerStateFile), error) && !error;
+    if (!exists) {
+        return Result<ScannerModeRuntimeState, ApiError>::okay(ScannerModeRuntimeState{});
+    }
+
+    std::ifstream file(kScannerStateFile);
+    if (!file.is_open()) {
+        return Result<ScannerModeRuntimeState, ApiError>::error(
+            ApiError("Failed to read scanner state"));
+    }
+
+    nlohmann::json json;
+    try {
+        file >> json;
+    }
+    catch (const std::exception& e) {
+        return Result<ScannerModeRuntimeState, ApiError>::error(
+            ApiError(std::string("Failed to parse scanner state: ") + e.what()));
+    }
+
+    ScannerModeRuntimeState state;
+    state.active = json.value("active", false);
+    if (json.contains("restore_ssid") && !json.at("restore_ssid").is_null()) {
+        state.restoreSsid = json.at("restore_ssid").get<std::string>();
+    }
+
+    return Result<ScannerModeRuntimeState, ApiError>::okay(std::move(state));
+}
+
+Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(
+    const ScannerModeRuntimeState& state) const
+{
+    std::error_code error;
+    if (state.active) {
         std::filesystem::create_directories(kScannerStateDir, error);
         if (error) {
             return Result<std::monostate, ApiError>::error(
@@ -1810,7 +1845,13 @@ Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(boo
                 ApiError("Failed to write scanner state"));
         }
 
-        file << "active\n";
+        nlohmann::json json = {
+            { "active", true },
+            { "restore_ssid",
+              state.restoreSsid.has_value() ? nlohmann::json(*state.restoreSsid)
+                                            : nlohmann::json(nullptr) },
+        };
+        file << json.dump() << '\n';
         return Result<std::monostate, ApiError>::okay(std::monostate{});
     }
 
@@ -1820,6 +1861,37 @@ Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(boo
     }
 
     return Result<std::monostate, ApiError>::okay(std::monostate{});
+}
+
+Result<std::monostate, ApiError> OperatingSystemManager::restoreWifiAfterScannerMode(
+    const std::optional<std::string>& restoreSsid) const
+{
+    if (!restoreSsid.has_value() || restoreSsid->empty()) {
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    }
+    if (!networkService_) {
+        return makeMissingDependencyError("networkService");
+    }
+
+    std::string lastError = "Timed out waiting for Wi-Fi restore";
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::seconds(attempt == 0 ? 2 : 3));
+
+        const auto connectResult = networkService_->connectBySsid(*restoreSsid, std::nullopt);
+        if (!connectResult.isError()) {
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+
+        lastError = connectResult.errorValue();
+        if (dependencies_.systemCommand) {
+            dependencies_.systemCommand(
+                std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
+                + " >/dev/null 2>&1 || true");
+        }
+    }
+
+    return Result<std::monostate, ApiError>::error(
+        ApiError("Failed to restore Wi-Fi connection to '" + *restoreSsid + "': " + lastError));
 }
 
 void OperatingSystemManager::bestEffortRestoreWifiFromScannerMode() const
@@ -1841,7 +1913,7 @@ void OperatingSystemManager::bestEffortRestoreWifiFromScannerMode() const
         std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
         + " >/dev/null 2>&1 || true");
 
-    const auto stateResult = setScannerModeState(false);
+    const auto stateResult = setScannerModeState(ScannerModeRuntimeState{});
     if (stateResult.isError()) {
         SLOG_WARN("Failed to clear scanner runtime state: {}", stateResult.errorValue().message);
     }
@@ -1866,6 +1938,30 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
             ApiError("Scanner mode requires an Ethernet default route."));
     }
 
+    std::optional<std::string> restoreSsid;
+    if (networkService_) {
+        const auto snapshotResult = networkService_->getSnapshot(false);
+        if (snapshotResult.isValue() && snapshotResult.value().status.connected
+            && !snapshotResult.value().status.ssid.empty()) {
+            restoreSsid = snapshotResult.value().status.ssid;
+        }
+    }
+    if (!restoreSsid.has_value()) {
+        const auto activeSsidResult = runCommandCaptureOutput(
+            std::string("sh -lc 'nmcli -t -f ACTIVE,SSID device wifi list ifname ")
+            + kWifiInterfaceName + " --rescan no 2>/dev/null | sed -n \"s/^yes://p\"'");
+        if (activeSsidResult.isValue()) {
+            std::string activeSsid = trimWhitespace(activeSsidResult.value());
+            const auto newline = activeSsid.find_first_of("\r\n");
+            if (newline != std::string::npos) {
+                activeSsid = trimWhitespace(activeSsid.substr(0, newline));
+            }
+            if (!activeSsid.empty()) {
+                restoreSsid = std::move(activeSsid);
+            }
+        }
+    }
+
     const std::vector<std::pair<std::string, std::string>> steps = {
         { std::string("nmcli device disconnect ") + kWifiInterfaceName + " >/dev/null 2>&1 || true",
           "disconnect Wi-Fi" },
@@ -1888,7 +1984,8 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
         }
     }
 
-    const auto stateResult = setScannerModeState(true);
+    const auto stateResult =
+        setScannerModeState(ScannerModeRuntimeState{ .active = true, .restoreSsid = restoreSsid });
     if (stateResult.isError()) {
         bestEffortRestoreWifiFromScannerMode();
         return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(stateResult.errorValue());
@@ -1902,9 +1999,19 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
 
 Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScannerMode()
 {
+    std::optional<std::string> restoreSsid;
+    const auto runtimeStateResult = readScannerModeState();
+    if (runtimeStateResult.isValue()) {
+        restoreSsid = runtimeStateResult.value().restoreSsid;
+    }
+    else {
+        SLOG_WARN(
+            "Failed to read scanner runtime state: {}", runtimeStateResult.errorValue().message);
+    }
+
     const auto status = readScannerModeStatusInternal();
     if (!status.stack_nexmon && !status.active) {
-        const auto clearStateResult = setScannerModeState(false);
+        const auto clearStateResult = setScannerModeState(ScannerModeRuntimeState{});
         if (clearStateResult.isError()) {
             SLOG_WARN(
                 "Failed to clear scanner runtime state: {}", clearStateResult.errorValue().message);
@@ -1943,14 +2050,24 @@ Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScann
             + " >/dev/null 2>&1 || true");
     }
 
-    const auto stateResult = setScannerModeState(false);
+    const auto restoreResult = restoreWifiAfterScannerMode(restoreSsid);
+
+    const auto stateResult = setScannerModeState(ScannerModeRuntimeState{});
     if (stateResult.isError()) {
         return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(stateResult.errorValue());
+    }
+    if (restoreResult.isError()) {
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(restoreResult.errorValue());
     }
 
     OsApi::ScannerModeExit::Okay okay;
     okay.active = false;
-    okay.detail = "Restoring normal Wi-Fi. NetworkManager will reconnect after the next scan.";
+    if (restoreSsid.has_value() && !restoreSsid->empty()) {
+        okay.detail = "Restored normal Wi-Fi connection to '" + *restoreSsid + "'.";
+    }
+    else {
+        okay.detail = "Restored normal Wi-Fi mode.";
+    }
     return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
 }
 

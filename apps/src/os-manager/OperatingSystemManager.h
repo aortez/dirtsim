@@ -154,6 +154,11 @@ private:
         std::string detail;
     };
 
+    struct ScannerModeRuntimeState {
+        bool active = false;
+        std::optional<std::string> restoreSsid;
+    };
+
     void setupWebSocketService();
     OsApi::SystemStatus::Okay buildSystemStatusInternal();
     ScannerModeStatusInfo readScannerModeStatusInternal() const;
@@ -165,7 +170,11 @@ private:
         const std::string& action, const std::string& unitName);
     Result<std::monostate, ApiError> runScannerShellCommand(
         const std::string& command, const std::string& step) const;
-    Result<std::monostate, ApiError> setScannerModeState(bool active) const;
+    Result<ScannerModeRuntimeState, ApiError> readScannerModeState() const;
+    Result<std::monostate, ApiError> restoreWifiAfterScannerMode(
+        const std::optional<std::string>& restoreSsid) const;
+    Result<std::monostate, ApiError> setScannerModeState(
+        const ScannerModeRuntimeState& state) const;
     std::filesystem::path getPeerAllowlistPath() const;
     std::filesystem::path getPeerClientKeyPath() const;
     Result<std::vector<PeerTrustBundle>, ApiError> loadPeerAllowlist() const;

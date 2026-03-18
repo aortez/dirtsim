@@ -122,6 +122,14 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::NetworkPasswordSubmit::Command::fromJson(cmd));
         }
+        else if (commandName == UiApi::NetworkScannerEnterPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkScannerEnterPress::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkScannerExitPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkScannerExitPress::Command::fromJson(cmd));
+        }
         else if (commandName == UiApi::PlantSeed::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::PlantSeed::Command::fromJson(cmd));
         }
