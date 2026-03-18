@@ -19,7 +19,6 @@
 #include "api/NetworkPasswordSubmit.h"
 #include "api/NetworkScannerEnterPress.h"
 #include "api/NetworkScannerExitPress.h"
-#include "api/PixelRendererToggle.h"
 #include "api/PlantSeed.h"
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
@@ -350,7 +349,6 @@ using Event = std::variant<
     DirtSim::UiApi::NetworkScannerEnterPress::Cwc,
     DirtSim::UiApi::NetworkScannerExitPress::Cwc,
     DirtSim::UiApi::PlantSeed::Cwc,
-    DirtSim::UiApi::PixelRendererToggle::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,
     DirtSim::UiApi::SimPause::Cwc,

@@ -126,7 +126,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::NetworkPasswordSubmit::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkScannerEnterPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkScannerExitPress::Cwc>(uiHandlers_, uiExampleHandlers_);
-    registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::SimPause::Cwc>(uiHandlers_, uiExampleHandlers_);

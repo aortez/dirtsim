@@ -29,11 +29,19 @@ struct UiTrainingConfig {
     using serialize = zpp::bits::members<4>;
 };
 
+struct NesSessionSettings {
+    bool frameDelayEnabled = false;
+    double frameDelayMs = 0.0;
+
+    using serialize = zpp::bits::members<2>;
+};
+
 struct UserSettings {
     Config::Clock clockScenarioConfig;
     Config::Sandbox sandboxScenarioConfig;
     Config::Raining rainingScenarioConfig;
     Config::TreeGermination treeGerminationScenarioConfig;
+    NesSessionSettings nesSessionSettings;
     int volumePercent = 20;
     Scenario::EnumType defaultScenario = Scenario::EnumType::Sandbox;
     StartMenuIdleAction startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -45,11 +53,14 @@ struct UserSettings {
     UiTrainingConfig uiTraining;
     bool networkLiveScanPreferred = false;
 
-    using serialize = zpp::bits::members<14>;
+    using serialize = zpp::bits::members<15>;
 };
 
 void from_json(const nlohmann::json& j, UiTrainingConfig& settings);
 void to_json(nlohmann::json& j, const UiTrainingConfig& settings);
+
+void from_json(const nlohmann::json& j, NesSessionSettings& settings);
+void to_json(nlohmann::json& j, const NesSessionSettings& settings);
 
 void from_json(const nlohmann::json& j, UserSettings& settings);
 void to_json(nlohmann::json& j, const UserSettings& settings);

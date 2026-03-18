@@ -17,7 +17,6 @@
 #include "NetworkPasswordSubmit.h"
 #include "NetworkScannerEnterPress.h"
 #include "NetworkScannerExitPress.h"
-#include "PixelRendererToggle.h"
 #include "PlantSeed.h"
 #include "RenderModeSelect.h"
 #include "ScreenGrab.h"
@@ -65,7 +64,6 @@ using UiApiCommand = std::variant<
     UiApi::NetworkScannerEnterPress::Command,
     UiApi::NetworkScannerExitPress::Command,
     UiApi::PlantSeed::Command,
-    UiApi::PixelRendererToggle::Command,
     UiApi::RenderModeSelect::Command,
     UiApi::ScreenGrab::Command,
     UiApi::SimPause::Command,
