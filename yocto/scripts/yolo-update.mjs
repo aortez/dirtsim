@@ -254,8 +254,15 @@ function shouldDisableStrictHostKeyChecking() {
   return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 }
 
+function shouldIgnoreSshConfig() {
+  return process.env.DIRTSIM_SSH_NO_CONFIG === '1';
+}
+
 function buildSshOptions() {
-  const options = ['-F /dev/null', '-o BatchMode=yes', '-o ConnectTimeout=10'];
+  const options = ['-o BatchMode=yes', '-o ConnectTimeout=10'];
+  if (shouldIgnoreSshConfig()) {
+    options.unshift('-F /dev/null');
+  }
   const identity = getSshIdentity();
   if (identity) {
     options.push(`-i ${identity}`);
