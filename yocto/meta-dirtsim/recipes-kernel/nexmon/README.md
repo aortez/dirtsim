@@ -27,3 +27,10 @@ This directory contains third-party sources and recipes used to build an experim
 - Purpose: Switches between stock and experimental stacks on device.
 - Note: This is a reversible safety mechanism; use Ethernet as a recovery path whenever possible.
 
+## Enabling in Yocto
+
+The scanner stack is opt-in. Enable it by setting:
+- `DIRTSIM_ENABLE_NEXMON_SCANNER = "1"` (in your build configuration).
+
+The firmware recipe also requires accepting a license flag:
+- `LICENSE_FLAGS_ACCEPTED:append = " nexmon-firmware"`

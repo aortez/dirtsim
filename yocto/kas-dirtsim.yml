@@ -56,6 +56,10 @@ local_conf_header:
     # Accept restricted licenses (Pi WiFi firmware, H.264 codec).
     LICENSE_FLAGS_ACCEPTED = "commercial synaptics-killswitch"
 
+    # Experimental Nexmon scanner stack (third-party firmware fetch).
+    # DIRTSIM_ENABLE_NEXMON_SCANNER = "1"
+    # LICENSE_FLAGS_ACCEPTED:append = " nexmon-firmware"
+
     # Use systemd as init system.
     INIT_MANAGER = "systemd"
 
