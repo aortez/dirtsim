@@ -1,7 +1,8 @@
 SUMMARY = "Experimental Nexmon brcmfmac module for Raspberry Pi 5"
 DESCRIPTION = "Builds the Kali-packaged Nexmon brcmfmac driver as an experimental alternate Wi-Fi stack."
 HOMEPAGE = "https://gitlab.com/kalilinux/packages/brcmfmac-nexmon-dkms"
-LICENSE = "CLOSED"
+LICENSE = "GPL-2.0-only"
+LIC_FILES_CHKSUM = "file://debian/copyright;md5=2715adf71522b4b3beae400f6305e8c7"
 COMPATIBLE_MACHINE = "^raspberrypi-dirtsim$"
 
 inherit module

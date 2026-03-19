@@ -1,6 +1,7 @@
 SUMMARY = "Experimental Nexmon firmware blob for bcm43455"
 DESCRIPTION = "Installs the Kali-packaged Nexmon 43455 standard firmware blob for scanner-mode experiments."
 HOMEPAGE = "https://gitlab.com/kalilinux/packages/firmware-nexmon"
+# Binary firmware blob. Keep license accounting explicit in distribution docs.
 LICENSE = "CLOSED"
 COMPATIBLE_MACHINE = "^raspberrypi-dirtsim$"
 

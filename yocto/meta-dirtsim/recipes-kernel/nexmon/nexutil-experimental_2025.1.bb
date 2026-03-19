@@ -1,7 +1,8 @@
 SUMMARY = "Experimental nexutil userspace tool for Raspberry Pi 5 scanner mode"
 DESCRIPTION = "Builds nexutil from the Nexmon utilities tree so scanner mode can control the experimental Wi-Fi stack."
 HOMEPAGE = "https://github.com/seemoo-lab/nexmon"
-LICENSE = "CLOSED"
+LICENSE = "GPL-3.0-or-later"
+LIC_FILES_CHKSUM = "file://nexutil/nexutil.c;beginline=1;endline=33;md5=3097a20ad1df77880fcbb75829c97ca3"
 COMPATIBLE_MACHINE = "^raspberrypi-dirtsim$"
 
 inherit pkgconfig
