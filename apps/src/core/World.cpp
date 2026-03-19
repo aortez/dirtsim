@@ -30,6 +30,7 @@
 #include "organisms/OrganismManager.h"
 #include "scenarios/Scenario.h"
 #include "spdlog/spdlog.h"
+#include "water/WaterSimSystem.h"
 
 #include <algorithm>
 #include <array>
@@ -521,6 +522,8 @@ struct World::Impl {
     WorldRegionActivityTracker region_activity_tracker_;
     WorldStaticLoadCalculator static_load_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
+    WaterSimSystem water_sim_system_;
+    std::vector<float> mac_water_surface_scratch_;
 
     // Light calculator (unique_ptr for runtime swappability).
     std::unique_ptr<LightCalculatorBase> light_calculator_;
@@ -777,6 +780,16 @@ const PhysicsSettings& World::getPhysicsSettings() const
     return pImpl->physicsSettings_;
 }
 
+bool World::tryGetWaterVolumeView(WaterVolumeView& out) const
+{
+    return pImpl->water_sim_system_.tryGetWaterVolumeView(out);
+}
+
+bool World::tryGetMutableWaterVolumeView(WaterVolumeMutableView& out)
+{
+    return pImpl->water_sim_system_.tryGetMutableWaterVolumeView(out);
+}
+
 // =================================================================
 // SIMPLE GETTERS/SETTERS (moved from inline in header)
 // =================================================================
@@ -983,6 +996,10 @@ void World::advanceTime(double deltaTimeSeconds)
         return;
     }
 
+    pImpl->water_sim_system_.syncToSettings(
+        pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+    pImpl->water_sim_system_.advanceTime(*this, scaledDeltaTime);
+
     pImpl->light_calculator_->clearAllEmissive();
 
     // Rebuild grid cache only when external or prior-frame mutations invalidated it.
@@ -1118,6 +1135,36 @@ void World::addMaterialAtCell(Vector2s pos, Material::EnumType type, float amoun
         return;
     }
 
+    if (type == Material::EnumType::Water
+        && pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        pImpl->water_sim_system_.syncToSettings(
+            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+
+        WaterVolumeMutableView volumeMutable{};
+        if (!pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)) {
+            return;
+        }
+
+        const Cell& cell = pImpl->data_.at(pos.x, pos.y);
+        const bool isBlockedBySolid =
+            !cell.isEmpty() && cell.material_type != Material::EnumType::Air;
+        if (isBlockedBySolid) {
+            return;
+        }
+
+        const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
+        const float current = volumeMutable.volume[idx];
+        const float added = std::min(amount, std::max(0.0f, 1.0f - current));
+        if (added <= 0.0f) {
+            return;
+        }
+
+        volumeMutable.volume[idx] = current + added;
+        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
+        spdlog::trace("Added {:.3f} {} (mac) at cell ({},{})", added, toString(type), pos.x, pos.y);
+        return;
+    }
+
     Cell& cell = pImpl->data_.at(pos.x, pos.y);
     const float added = cell.addMaterial(type, amount);
 
@@ -1186,6 +1233,38 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
     // AIR means "clear this cell" - delegate to clearCellAtPosition.
     if (material == Material::EnumType::Air) {
         clearCellAtPosition(pos);
+        return;
+    }
+
+    if (material == Material::EnumType::Water
+        && pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
+            return;
+        }
+
+        pImpl->water_sim_system_.syncToSettings(
+            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+
+        WaterVolumeMutableView volumeMutable{};
+        if (!pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)) {
+            return;
+        }
+
+        const Cell& cell = pImpl->data_.at(pos.x, pos.y);
+        const bool isBlockedBySolid =
+            !cell.isEmpty() && cell.material_type != Material::EnumType::Air;
+        if (isBlockedBySolid) {
+            return;
+        }
+
+        const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
+        if (idx >= volumeMutable.volume.size()) {
+            return;
+        }
+
+        volumeMutable.volume[idx] = 1.0f;
+        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
+        spdlog::trace("Replaced with {} (mac) at cell ({},{})", toString(material), pos.x, pos.y);
         return;
     }
 
@@ -1365,13 +1444,33 @@ void World::clearCellAtPosition(Vector2s pos)
         return;
     }
 
+    bool changed = false;
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        pImpl->water_sim_system_.syncToSettings(
+            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+
+        WaterVolumeMutableView volumeMutable{};
+        if (pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)) {
+            const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
+            if (idx < volumeMutable.volume.size() && volumeMutable.volume[idx] > 0.0f) {
+                volumeMutable.volume[idx] = 0.0f;
+                changed = true;
+            }
+        }
+    }
+
     Cell& cell = pImpl->data_.at(pos.x, pos.y);
     if (cell.isEmpty()) {
+        if (!changed) {
+            return;
+        }
+        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
         return;
     }
 
     cell.clear();
     markGridCacheDirty();
+    changed = true;
     pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
 }
 
@@ -1524,6 +1623,162 @@ void World::applyGravity()
 
                 // Debug tracking.
                 debug_info[idx].accumulated_gravity_force = gravityForce;
+            }
+        }
+    }
+}
+
+void World::applyMacWaterCouplingForces()
+{
+    const PhysicsSettings& settings = pImpl->physicsSettings_;
+    if (settings.water_sim_mode != WaterSimMode::MacProjection) {
+        return;
+    }
+
+    const double buoyancyStrength = settings.mac_water_buoyancy_strength;
+    const double dragRate = settings.mac_water_drag_rate;
+    if (buoyancyStrength <= 0.0 && dragRate <= 0.0) {
+        return;
+    }
+
+    WaterVolumeView waterView{};
+    if (!tryGetWaterVolumeView(waterView)) {
+        return;
+    }
+
+    WorldData& data = pImpl->data_;
+    if (waterView.width != data.width || waterView.height != data.height) {
+        return;
+    }
+
+    constexpr float kVolumeEpsilon = 0.0001f;
+    const int width = data.width;
+    const int height = data.height;
+    const size_t cellCount = static_cast<size_t>(width) * height;
+
+    auto& surfaceScratch = pImpl->mac_water_surface_scratch_;
+    if (surfaceScratch.size() != cellCount) {
+        surfaceScratch.resize(cellCount);
+    }
+    std::fill(
+        surfaceScratch.begin(), surfaceScratch.end(), std::numeric_limits<float>::quiet_NaN());
+
+    const bool gravityDown = settings.gravity >= 0.0;
+    if (gravityDown) {
+        for (int x = 0; x < width; ++x) {
+            bool inSegment = false;
+            float segmentSurface = 0.0f;
+
+            for (int y = 0; y < height; ++y) {
+                const size_t idx = static_cast<size_t>(y) * width + x;
+                const float v = waterView.volume[idx];
+                if (v <= kVolumeEpsilon) {
+                    inSegment = false;
+                    continue;
+                }
+
+                if (!inSegment) {
+                    segmentSurface = static_cast<float>(y) + (1.0f - std::clamp(v, 0.0f, 1.0f));
+                    inSegment = true;
+                }
+
+                surfaceScratch[idx] = segmentSurface;
+            }
+        }
+    }
+    else {
+        for (int x = 0; x < width; ++x) {
+            bool inSegment = false;
+            float segmentSurface = 0.0f;
+
+            for (int y = height - 1; y >= 0; --y) {
+                const size_t idx = static_cast<size_t>(y) * width + x;
+                const float v = waterView.volume[idx];
+                if (v <= kVolumeEpsilon) {
+                    inSegment = false;
+                    continue;
+                }
+
+                if (!inSegment) {
+                    segmentSurface = static_cast<float>(y) + std::clamp(v, 0.0f, 1.0f);
+                    inSegment = true;
+                }
+
+                surfaceScratch[idx] = segmentSurface;
+            }
+        }
+    }
+
+    const double gravity = settings.gravity;
+    const double waterDensity = Material::getDensity(Material::EnumType::Water);
+
+    const auto incorporateNeighborSurface = [&](int nx, int ny, float& surface, bool& hasSurface) {
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+            return;
+        }
+
+        const size_t nIdx = static_cast<size_t>(ny) * width + nx;
+        if (waterView.volume[nIdx] <= kVolumeEpsilon) {
+            return;
+        }
+
+        const float neighborSurface = surfaceScratch[nIdx];
+        if (!std::isfinite(neighborSurface)) {
+            return;
+        }
+
+        if (!hasSurface) {
+            surface = neighborSurface;
+            hasSurface = true;
+            return;
+        }
+
+        surface =
+            gravityDown ? std::min(surface, neighborSurface) : std::max(surface, neighborSurface);
+    };
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            Cell& cell = data.at(x, y);
+            if (cell.isEmpty() || cell.isWall()) {
+                continue;
+            }
+            if (cell.material_type == Material::EnumType::Water) {
+                continue;
+            }
+
+            float surface = 0.0f;
+            bool hasSurface = false;
+            incorporateNeighborSurface(x - 1, y, surface, hasSurface);
+            incorporateNeighborSurface(x + 1, y, surface, hasSurface);
+            incorporateNeighborSurface(x, y - 1, surface, hasSurface);
+            incorporateNeighborSurface(x, y + 1, surface, hasSurface);
+
+            if (!hasSurface) {
+                continue;
+            }
+
+            const float submerged = gravityDown
+                ? std::clamp(static_cast<float>(y) + 1.0f - surface, 0.0f, 1.0f)
+                : std::clamp(surface - static_cast<float>(y), 0.0f, 1.0f);
+
+            if (submerged <= 0.0f) {
+                continue;
+            }
+
+            if (buoyancyStrength > 0.0 && std::abs(gravity) > 0.00001) {
+                const double buoyancyForceY =
+                    -buoyancyStrength * waterDensity * gravity * static_cast<double>(submerged);
+                cell.addPendingForce(Vector2d{ 0.0, buoyancyForceY });
+            }
+
+            if (dragRate > 0.0) {
+                const double mass = cell.getMass();
+                if (mass > 0.0001) {
+                    const Vector2d dragForce = Vector2d(cell.velocity)
+                        * (-dragRate * static_cast<double>(submerged) * mass);
+                    cell.addPendingForce(dragForce);
+                }
             }
         }
     }
@@ -1768,6 +2023,12 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     {
         ScopeTimer gravityTimer(timers, "resolve_forces_apply_gravity");
         applyGravity();
+    }
+
+    // Apply buoyancy + drag from the separate-layer MAC water volume.
+    {
+        ScopeTimer waterTimer(timers, "resolve_forces_apply_mac_water");
+        applyMacWaterCouplingForces();
     }
 
     // Apply air resistance forces.
@@ -2776,17 +3037,42 @@ std::string World::settingsToString() const
 
 nlohmann::json World::toJSON() const
 {
-    // Automatic serialization via ReflectSerializer!
-    return ReflectSerializer::to_json(pImpl->data_);
+    WorldData dataCopy = pImpl->data_;
+
+    WaterVolumeView waterVolumeView{};
+    if (tryGetWaterVolumeView(waterVolumeView) && waterVolumeView.width == dataCopy.width
+        && waterVolumeView.height == dataCopy.height) {
+        dataCopy.water_volume =
+            std::vector<float>(waterVolumeView.volume.begin(), waterVolumeView.volume.end());
+    }
+
+    return ReflectSerializer::to_json(dataCopy);
 }
 
 void World::fromJSON(const nlohmann::json& doc)
 {
-    // Automatic deserialization via ReflectSerializer!
     pImpl->data_ = ReflectSerializer::from_json<WorldData>(doc);
     resizeRegionDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
     markGridCacheDirty();
     recomputeStaticLoad("static_load_deserialize_recompute");
+
+    pImpl->water_sim_system_.syncToSettings(
+        pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection
+        && pImpl->data_.water_volume.has_value()) {
+        WaterVolumeMutableView volumeMutable{};
+        if (pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)
+            && volumeMutable.width == pImpl->data_.width
+            && volumeMutable.height == pImpl->data_.height
+            && volumeMutable.volume.size() == pImpl->data_.water_volume->size()) {
+            std::copy(
+                pImpl->data_.water_volume->begin(),
+                pImpl->data_.water_volume->end(),
+                volumeMutable.volume.begin());
+            pImpl->data_.water_volume.reset();
+        }
+    }
+
     spdlog::info("World deserialized: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }
 

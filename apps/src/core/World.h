@@ -17,6 +17,8 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
+struct WaterVolumeMutableView;
+struct WaterVolumeView;
 class LightCalculatorBase;
 class LightManager;
 class WorldAdhesionCalculator;
@@ -234,6 +236,9 @@ public:
     PhysicsSettings& getPhysicsSettings();
     const PhysicsSettings& getPhysicsSettings() const;
 
+    bool tryGetWaterVolumeView(WaterVolumeView& out) const;
+    bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out);
+
     const LightBuffer& getRawLightBuffer() const;
 
     // WorldInterface hook implementations (rarely overridden - can be public).
@@ -275,6 +280,7 @@ private:
 
     void clearPendingForces();
     void applyGravity();
+    void applyMacWaterCouplingForces();
     void applyAirResistance();
     void applyCohesionForces(const GridOfCells& grid);
     void applyPressureForces();

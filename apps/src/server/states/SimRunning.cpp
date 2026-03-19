@@ -24,6 +24,7 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterVolumeView.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
@@ -660,6 +661,10 @@ void SimRunning::tick(StateMachine& dsm)
     if (dsm.getWebSocketService()) {
         auto& timers = dsm.getTimers();
 
+        WaterVolumeView waterVolumeView{};
+        const WaterVolumeView* waterVolumeViewPtr =
+            world->tryGetWaterVolumeView(waterVolumeView) ? &waterVolumeView : nullptr;
+
         auto broadcastStart = std::chrono::steady_clock::now();
         timers.startTimer("broadcast_render_message");
 
@@ -668,7 +673,8 @@ void SimRunning::tick(StateMachine& dsm)
             world->getOrganismManager().getGrid(),
             session.getScenarioId(),
             scenario->getConfig(),
-            std::nullopt);
+            std::nullopt,
+            waterVolumeViewPtr);
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -1239,6 +1245,14 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
     if (World* world = session.getWorld()) {
         populateOrganismDebug(*world, responseData.worldData);
+
+        WaterVolumeView waterVolumeView{};
+        if (world->tryGetWaterVolumeView(waterVolumeView)
+            && waterVolumeView.width == responseData.worldData.width
+            && waterVolumeView.height == responseData.worldData.height) {
+            responseData.worldData.water_volume =
+                std::vector<float>(waterVolumeView.volume.begin(), waterVolumeView.volume.end());
+        }
     }
 
     cwc.sendResponse(Response::okay(std::move(responseData)));

@@ -27,6 +27,7 @@ namespace DirtSim {
 class GamepadManager;
 class GenomeRepository;
 struct UserSettings;
+struct WaterVolumeView;
 struct WorldData;
 
 namespace Api {
@@ -108,7 +109,8 @@ public:
         const std::vector<OrganismId>& organism_grid,
         Scenario::EnumType scenario_id,
         const ScenarioConfig& scenario_config,
-        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame);
+        const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+        const WaterVolumeView* waterVolumeView = nullptr);
 
     void broadcastCommand(const std::string& messageType);
     void broadcastEventData(const std::string& messageType, const std::vector<std::byte>& payload);

@@ -455,6 +455,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/WorldStaticLoadCalculator.cpp
     src/core/WorldVelocityLimitCalculator.cpp
     src/core/WorldViscosityCalculator.cpp
+    src/core/water/MacProjectionWaterSim.cpp
+    src/core/water/WaterSimSystem.cpp
 
     # Organism system.
     src/core/organisms/Duck.cpp
@@ -838,6 +840,9 @@ add_executable(dirtsim-tests
     src/tests/WebSocketService_integration_test.cpp
     src/tests/HorizontalMomentum_test.cpp
     src/tests/WaterEqualization_test.cpp
+    src/tests/WaterMacBuoyancy_test.cpp
+    src/tests/WaterMacQuadrantEqualization_test.cpp
+    src/tests/WaterMacStability_test.cpp
     src/tests/WorldRigidBodyCalculator_test.cpp
 
     # Bitmap tests.

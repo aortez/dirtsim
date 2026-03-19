@@ -119,6 +119,18 @@ AllColumnConfigs createAllColumnConfigs()
                         .step = 50,
                         .valueSetter = [](PhysicsSettings& s, double v) { s.gravity = v; },
                         .valueGetter = [](const PhysicsSettings& s) { return s.gravity; } },
+                      { .label = "Water Sim",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "Legacy Cell\nMAC Projection",
+                        .indexSetter =
+                            [](PhysicsSettings& s, int idx) {
+                                s.water_sim_mode = idx == 1 ? WaterSimMode::MacProjection
+                                                            : WaterSimMode::LegacyCell;
+                            },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.water_sim_mode == WaterSimMode::MacProjection ? 1 : 0;
+                            } },
                       { .label = "Elasticity",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,

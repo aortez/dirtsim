@@ -317,12 +317,6 @@ void Cell::addDirt(float amount)
     addMaterial(Material::EnumType::Dirt, amount);
 }
 
-void Cell::addWater(float amount)
-{
-    if (amount <= 0.0f) return;
-    addMaterial(Material::EnumType::Water, amount);
-}
-
 void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
 {
     if (amount <= 0.0f) return;

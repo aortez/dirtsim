@@ -47,6 +47,10 @@ struct WorldData {
     // Cell colors computed by light calculator (float RGB).
     GridBuffer<ColorNames::RgbF> colors;
 
+    // Optional separate-layer water volume [0,1] per cell.
+    // Only populated when using WaterSimMode::MacProjection.
+    std::optional<std::vector<float>> water_volume;
+
     // Organism debug info (optional - only populated for debugging stuck organisms).
     struct OrganismDebugInfo {
         OrganismId id;
@@ -100,6 +104,7 @@ struct WorldData {
             self.tree_vision,
             self.entities,
             self.colors,
+            self.water_volume,
             self.organism_debug);
         // debug_info is intentionally excluded from binary serialization.
     }
@@ -178,6 +183,16 @@ inline void from_json(const nlohmann::json& j, WorldData& data)
     size_t cell_count = static_cast<size_t>(data.width) * data.height;
     if (data.debug_info.size() != cell_count) {
         data.debug_info.resize(cell_count);
+    }
+    if (data.water_volume.has_value()) {
+        if (data.water_volume->size() != cell_count) {
+            data.water_volume.reset();
+        }
+        else {
+            for (float& v : *data.water_volume) {
+                v = std::clamp(v, 0.0f, 1.0f);
+            }
+        }
     }
     data.region_debug_blocks_x = 0;
     data.region_debug_blocks_y = 0;

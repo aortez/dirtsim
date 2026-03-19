@@ -124,7 +124,6 @@ struct Cell {
 
     // Basic material addition.
     void addDirt(float amount);
-    void addWater(float amount);
 
     // Advanced material addition with physics.
     void addDirtWithVelocity(float amount, const Vector2f& newVel);

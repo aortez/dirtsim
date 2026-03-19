@@ -2,6 +2,7 @@
 
 #include "LightConfig.h"
 #include "ReflectSerializer.h"
+#include "water/WaterSimMode.h"
 #include <nlohmann/json.hpp>
 
 namespace DirtSim {
@@ -25,6 +26,9 @@ struct PhysicsSettings {
     bool cohesion_enabled;
     double elasticity;
     double fluid_lubrication_factor;
+    WaterSimMode water_sim_mode;
+    double mac_water_buoyancy_strength;
+    double mac_water_drag_rate;
     bool fragmentation_enabled;
     double fragmentation_threshold;      // Minimum energy for fragmentation chance.
     double fragmentation_full_threshold; // Energy for 100% fragmentation.
