@@ -78,13 +78,14 @@ struct Okay {
     std::string password_error;
     std::string scanner_status_message;
     std::vector<NetworkInfo> networks;
+    std::string screen;
     std::string view_mode;
     std::string wifi_status_message;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<18>;
+    using serialize = zpp::bits::members<19>;
 };
 
 API_STANDARD_TYPES();

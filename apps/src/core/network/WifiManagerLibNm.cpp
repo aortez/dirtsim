@@ -862,6 +862,11 @@ bool deleteRemoteConnection(
     NMRemoteConnection* connection,
     GMainContext* mainContext,
     std::string& errorMessage);
+bool deleteRemoteConnectionByUuid(
+    NMClient* client,
+    const std::string& uuid,
+    GMainContext* mainContext,
+    std::string& errorMessage);
 bool connectionHasCredentials(NMConnection* connection);
 
 std::vector<WifiConnectionCandidate> collectWifiConnections(
@@ -978,6 +983,32 @@ const WifiConnectionCandidate* selectBestWifiConnection(
     }
 
     return &candidates.front();
+}
+
+bool deleteRemoteConnectionByUuid(
+    NMClient* client, const std::string& uuid, GMainContext* mainContext, std::string& errorMessage)
+{
+    if (!client) {
+        errorMessage = "No WiFi client available";
+        return false;
+    }
+    if (uuid.empty()) {
+        errorMessage = "WiFi profile UUID is required";
+        return false;
+    }
+
+    auto* connection = nm_client_get_connection_by_uuid(client, uuid.c_str());
+    if (!connection) {
+        return true;
+    }
+
+    std::string deleteError;
+    if (!deleteRemoteConnection(client, connection, mainContext, deleteError)) {
+        errorMessage = deleteError;
+        return false;
+    }
+
+    return true;
 }
 
 bool deleteWifiConnectionsBySsid(
@@ -1909,6 +1940,7 @@ Result<WifiConnectResult, std::string> connectBySsid(
     }
 
     auto candidates = collectWifiConnections(client, device, ssid, WifiConnectionMatch::BySsid);
+    NMAccessPoint* ap = findBestAccessPoint(device, ssid);
 
     if (password.has_value() && !candidates.empty()) {
         LOG_INFO(
@@ -1919,17 +1951,32 @@ Result<WifiConnectResult, std::string> connectBySsid(
     }
 
     if (!password.has_value()) {
-        const auto* chosen = selectBestWifiConnection("SSID", ssid, candidates);
-        if (chosen && chosen->connection) {
+        if (!candidates.empty()) {
+            selectBestWifiConnection("SSID", ssid, candidates);
+        }
+
+        std::string lastError;
+        for (const auto& candidate : candidates) {
+            if (!candidate.connection) {
+                continue;
+            }
+
             std::string activationError;
             if (!activateConnection(
                     client,
-                    chosen->connection,
+                    candidate.connection,
                     NM_DEVICE(device),
-                    findBestAccessPoint(device, ssid),
+                    ap,
                     mainContext,
                     activationError)) {
-                return Result<WifiConnectResult, std::string>::error(activationError);
+                LOG_WARN(
+                    Network,
+                    "WiFi activation failed for saved profile (ssid={}, uuid={}): {}",
+                    ssid,
+                    candidate.uuid.empty() ? "unknown" : candidate.uuid,
+                    activationError);
+                lastError = activationError;
+                continue;
             }
 
             std::string waitError;
@@ -1940,16 +1987,30 @@ Result<WifiConnectResult, std::string> connectBySsid(
                     mainContext,
                     kActivationTimeoutSeconds,
                     waitError)) {
-                return Result<WifiConnectResult, std::string>::error(waitError);
+                LOG_WARN(
+                    Network,
+                    "WiFi activation failed for saved profile (ssid={}, uuid={}): {}",
+                    ssid,
+                    candidate.uuid.empty() ? "unknown" : candidate.uuid,
+                    waitError);
+                lastError = waitError;
+                continue;
             }
 
-            LOG_INFO(Network, "WiFi connected to '{}'.", ssid);
+            LOG_INFO(
+                Network,
+                "WiFi connected to '{}' using saved profile {}.",
+                ssid,
+                candidate.uuid.empty() ? "unknown" : candidate.uuid);
             return Result<WifiConnectResult, std::string>::okay(
                 WifiConnectResult{ .success = true, .ssid = ssid });
         }
+
+        if (!lastError.empty()) {
+            return Result<WifiConnectResult, std::string>::error(lastError);
+        }
     }
 
-    NMAccessPoint* ap = findBestAccessPoint(device, ssid);
     if (!password.has_value() && ap && securityFromAccessPoint(ap) != "open") {
         return Result<WifiConnectResult, std::string>::error(
             "Password required for secured network");
@@ -1960,15 +2021,30 @@ Result<WifiConnectResult, std::string> connectBySsid(
         return Result<WifiConnectResult, std::string>::error("Failed to build WiFi connection");
     }
 
+    const std::string createdUuid =
+        nm_connection_get_uuid(connection.get()) ? nm_connection_get_uuid(connection.get()) : "";
+
     std::string activationError;
     if (!addAndActivateConnection(
             client, connection.get(), NM_DEVICE(device), ap, mainContext, activationError)) {
+        if (password.has_value() && !createdUuid.empty()) {
+            std::string deleteError;
+            if (!deleteRemoteConnectionByUuid(client, createdUuid, mainContext, deleteError)) {
+                LOG_WARN(Network, "Failed to delete unsuccessful WiFi profile: {}", deleteError);
+            }
+        }
         return Result<WifiConnectResult, std::string>::error(activationError);
     }
 
     std::string waitError;
     if (!waitForDeviceActivation(
             client, NM_DEVICE(device), ssid, mainContext, kActivationTimeoutSeconds, waitError)) {
+        if (password.has_value() && !createdUuid.empty()) {
+            std::string deleteError;
+            if (!deleteRemoteConnectionByUuid(client, createdUuid, mainContext, deleteError)) {
+                LOG_WARN(Network, "Failed to delete unsuccessful WiFi profile: {}", deleteError);
+            }
+        }
         return Result<WifiConnectResult, std::string>::error(waitError);
     }
 

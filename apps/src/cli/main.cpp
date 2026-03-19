@@ -69,6 +69,13 @@ using namespace DirtSim;
 namespace {
 constexpr int kProgressFitnessPrecision = 6;
 
+bool isNetworkStateName(const std::string& state)
+{
+    return state == "NetworkScanner" || state == "NetworkSettings" || state == "NetworkWifi"
+        || state == "NetworkWifiConnecting" || state == "NetworkWifiDetails"
+        || state == "NetworkWifiPassword";
+}
+
 std::string commandTypeFromSignature(const std::string& signature)
 {
     const std::string_view delimiter = " -> ";
@@ -1651,7 +1658,7 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network") {
+            if (isNetworkStateName(state)) {
                 auto showResult = ensureIconRailVisible();
                 if (showResult.isError()) {
                     return Result<std::monostate, std::string>::error(showResult.errorValue());
@@ -1740,7 +1747,7 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network" || state == "Synth" || state == "SynthConfig") {
+            if (isNetworkStateName(state) || state == "Synth" || state == "SynthConfig") {
                 UiApi::SimStop::Command cmd{};
                 auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
                     uiClient, cmd, timeoutMs);
@@ -1932,7 +1939,7 @@ int main(int argc, char** argv)
                 return select;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            auto waitResult = waitForUiState({ "Network" }, 8000);
+            auto waitResult = waitForUiState({ "NetworkWifi" }, 8000);
             if (waitResult.isError()) {
                 return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
             }

@@ -613,6 +613,16 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_size(wifiView_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(wifiView_, 1);
 
+    connectFlowView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(connectFlowView_);
+    lv_obj_set_size(connectFlowView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(connectFlowView_, 1);
+
+    networkDetailsView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(networkDetailsView_);
+    lv_obj_set_size(networkDetailsView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(networkDetailsView_, 1);
+
     lanAccessView_ = lv_obj_create(pagesContainer_);
     stylePanelColumn(lanAccessView_);
     lv_obj_set_size(lanAccessView_, LV_PCT(100), 0);
@@ -946,12 +956,25 @@ Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnostics
     AutomationState state;
     switch (viewMode_) {
         case ViewMode::Wifi:
+            state.screen = AutomationScreen::Wifi;
+            state.viewMode = "Wifi";
+            break;
+        case ViewMode::WifiConnectFlow:
+            state.screen = connectOverlayMode_ == ConnectOverlayMode::PasswordEntry
+                ? AutomationScreen::WifiPassword
+                : AutomationScreen::WifiConnecting;
+            state.viewMode = "Wifi";
+            break;
+        case ViewMode::WifiDetails:
+            state.screen = AutomationScreen::WifiDetails;
             state.viewMode = "Wifi";
             break;
         case ViewMode::LanAccess:
+            state.screen = AutomationScreen::LanAccess;
             state.viewMode = "LanAccess";
             break;
         case ViewMode::Scanner:
+            state.screen = AutomationScreen::Scanner;
             state.viewMode = "Scanner";
             break;
     }
@@ -968,10 +991,13 @@ Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnostics
         : std::nullopt;
     state.passwordError = labelText(passwordErrorLabel_);
     state.scannerStatusMessage = labelText(scannerStatusLabel_);
-    state.passwordPromptVisible =
-        passwordOverlay_ && !lv_obj_has_flag(passwordOverlay_, LV_OBJ_FLAG_HIDDEN);
+    const bool connectFlowVisible = viewMode_ == ViewMode::WifiConnectFlow && connectFlowView_
+        && !lv_obj_has_flag(connectFlowView_, LV_OBJ_FLAG_HIDDEN);
+    state.passwordPromptVisible = connectFlowVisible
+        && connectOverlayMode_ == ConnectOverlayMode::PasswordEntry
+        && connectOverlayHasPasswordEntry_;
     state.connectOverlayVisible =
-        state.passwordPromptVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
+        connectFlowVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
     state.passwordSubmitEnabled = passwordJoinButton_
         && !lv_obj_has_state(getActionButtonInnerButton(passwordJoinButton_), LV_STATE_DISABLED);
     state.scannerModeActive = scannerModeActive_;
@@ -1203,6 +1229,10 @@ std::optional<size_t> NetworkDiagnosticsPanel::findNetworkIndexBySsid(const std:
 void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
 {
     const ViewMode previousMode = viewMode_;
+    const bool wasWifiMode = previousMode == ViewMode::Wifi
+        || previousMode == ViewMode::WifiConnectFlow || previousMode == ViewMode::WifiDetails;
+    const bool isWifiMode = mode == ViewMode::Wifi || mode == ViewMode::WifiConnectFlow
+        || mode == ViewMode::WifiDetails;
     auto setVisibility = [](lv_obj_t* view, bool visible) {
         if (!view) {
             return;
@@ -1219,16 +1249,18 @@ void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
     };
 
     setVisibility(wifiView_, mode == ViewMode::Wifi);
+    setVisibility(connectFlowView_, mode == ViewMode::WifiConnectFlow);
+    setVisibility(networkDetailsView_, mode == ViewMode::WifiDetails);
     setVisibility(lanAccessView_, mode == ViewMode::LanAccess);
     setVisibility(scannerView_, mode == ViewMode::Scanner);
     viewMode_ = mode;
-    if (mode != ViewMode::Wifi) {
+    if (!isWifiMode) {
         signalHistoryByBssid_.clear();
         signalHistoryLastSampleAt_.reset();
         return;
     }
 
-    if (previousMode != ViewMode::Wifi) {
+    if (!wasWifiMode) {
         signalHistoryLastSampleAt_.reset();
         updateSignalHistory(true);
     }
@@ -1361,9 +1393,11 @@ void NetworkDiagnosticsPanel::startEventStream()
 
 void NetworkDiagnosticsPanel::closePasswordPrompt()
 {
-    if (passwordOverlay_) {
-        lv_obj_del(passwordOverlay_);
-        passwordOverlay_ = nullptr;
+    if (connectFlowView_) {
+        lv_obj_clean(connectFlowView_);
+        if (viewMode_ == ViewMode::WifiConnectFlow) {
+            setViewMode(ViewMode::Wifi);
+        }
     }
 
     passwordCancelButton_ = nullptr;
@@ -1392,6 +1426,12 @@ void NetworkDiagnosticsPanel::closeNetworkDetailsOverlay()
     if (networkDetailsOverlay_) {
         lv_obj_del(networkDetailsOverlay_);
         networkDetailsOverlay_ = nullptr;
+    }
+    if (networkDetailsView_) {
+        lv_obj_clean(networkDetailsView_);
+        if (viewMode_ == ViewMode::WifiDetails) {
+            setViewMode(ViewMode::Wifi);
+        }
     }
 
     networkDetailsContent_ = nullptr;
@@ -1423,23 +1463,19 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
     passwordVisible_ = false;
 
-    passwordOverlay_ = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(passwordOverlay_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(passwordOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(passwordOverlay_, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(passwordOverlay_, 0, 0);
-    lv_obj_set_style_pad_all(passwordOverlay_, 0, 0);
-    lv_obj_set_style_radius(passwordOverlay_, 0, 0);
-    lv_obj_clear_flag(passwordOverlay_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(passwordOverlay_);
+    if (!connectFlowView_) {
+        return;
+    }
 
-    lv_obj_t* modal = lv_obj_create(passwordOverlay_);
-    lv_obj_set_size(modal, LV_PCT(90), LV_PCT(100));
-    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
+    setViewMode(ViewMode::WifiConnectFlow);
+    lv_obj_clean(connectFlowView_);
+
+    lv_obj_t* modal = lv_obj_create(connectFlowView_);
+    lv_obj_set_size(modal, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(modal, 1);
     lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
     lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(modal, 1, 0);
-    lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
+    lv_obj_set_style_border_width(modal, 0, 0);
     lv_obj_set_style_radius(modal, 0, 0);
     lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
     lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
@@ -1752,28 +1788,28 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
             return lhs.bssid < rhs.bssid;
         });
 
-    networkDetailsOverlay_ = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(networkDetailsOverlay_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(networkDetailsOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(networkDetailsOverlay_, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(networkDetailsOverlay_, 0, 0);
-    lv_obj_set_style_pad_all(networkDetailsOverlay_, 0, 0);
-    lv_obj_set_style_radius(networkDetailsOverlay_, 0, 0);
-    lv_obj_clear_flag(networkDetailsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(networkDetailsOverlay_);
+    if (!networkDetailsView_) {
+        return;
+    }
 
-    lv_obj_t* modal = lv_obj_create(networkDetailsOverlay_);
-    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
-    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
-    lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(modal, 0, 0);
-    lv_obj_set_style_radius(modal, 0, 0);
-    lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
-    lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
-    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+    setViewMode(ViewMode::WifiDetails);
+    lv_obj_clean(networkDetailsView_);
+
+    networkDetailsOverlay_ = lv_obj_create(networkDetailsView_);
+    lv_obj_set_size(networkDetailsOverlay_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(networkDetailsOverlay_, 1);
+    lv_obj_set_style_bg_color(networkDetailsOverlay_, lv_color_hex(0x1E1E2E), 0);
+    lv_obj_set_style_bg_opa(networkDetailsOverlay_, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(networkDetailsOverlay_, 0, 0);
+    lv_obj_set_style_radius(networkDetailsOverlay_, 0, 0);
+    lv_obj_set_style_pad_all(networkDetailsOverlay_, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_pad_row(networkDetailsOverlay_, NETWORK_CARD_ROW_PADDING, 0);
+    lv_obj_set_flex_flow(networkDetailsOverlay_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        networkDetailsOverlay_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(networkDetailsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* modal = networkDetailsOverlay_;
 
     lv_obj_t* headerRow = lv_obj_create(modal);
     lv_obj_set_size(headerRow, LV_PCT(100), LV_SIZE_CONTENT);
@@ -2527,7 +2563,7 @@ void NetworkDiagnosticsPanel::updateConnectPhaseBadges()
 
 void NetworkDiagnosticsPanel::updateConnectOverlay()
 {
-    if (!passwordOverlay_ || !passwordPromptNetwork_.has_value()) {
+    if (viewMode_ != ViewMode::WifiConnectFlow || !passwordPromptNetwork_.has_value()) {
         return;
     }
     if (connectOverlayMode_ != ConnectOverlayMode::Connecting || !connectProgressTitleLabel_
@@ -2578,9 +2614,7 @@ void NetworkDiagnosticsPanel::finalizeConfirmedConnect()
     LOG_INFO(Controls, "WiFi connect confirmed for {}", confirmedSsid);
 
     connectAwaitingConfirmationSsid_.reset();
-    if (passwordOverlay_) {
-        closePasswordPrompt();
-    }
+    closePasswordPrompt();
 
     endAsyncAction(AsyncActionKind::Connect);
     setConnectProgress(std::nullopt);
@@ -4235,7 +4269,7 @@ void NetworkDiagnosticsPanel::updateDetailsSignalHistoryPlots()
 
 void NetworkDiagnosticsPanel::updateSignalHistory(bool forceSample)
 {
-    if (viewMode_ != ViewMode::Wifi) {
+    if (viewMode_ != ViewMode::Wifi && viewMode_ != ViewMode::WifiDetails) {
         return;
     }
 
@@ -4577,7 +4611,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         updateWebSocketStatus(refreshData->accessStatusResult);
         updateSignalHistory(true);
 
-        if (networkDetailsOverlay_ && networkDetailsNetwork_.has_value()) {
+        if (viewMode_ == ViewMode::WifiDetails && networkDetailsOverlay_
+            && networkDetailsNetwork_.has_value()) {
             const int32_t detailsScrollY =
                 networkDetailsContent_ ? lv_obj_get_scroll_y(networkDetailsContent_) : 0;
             auto it = std::find_if(

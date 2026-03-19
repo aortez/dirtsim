@@ -40,6 +40,15 @@ struct NetworkInterfaceInfo {
  */
 class NetworkDiagnosticsPanel {
 public:
+    enum class AutomationScreen {
+        LanAccess,
+        Scanner,
+        Wifi,
+        WifiConnecting,
+        WifiDetails,
+        WifiPassword,
+    };
+
     struct AutomationConnectProgress {
         std::string phase;
         std::string ssid;
@@ -60,6 +69,7 @@ public:
         std::string passwordError;
         std::string scannerStatusMessage;
         std::vector<AutomationNetworkInfo> networks;
+        AutomationScreen screen = AutomationScreen::Wifi;
         std::string viewMode;
         std::string wifiStatusMessage;
         bool connectCancelEnabled = false;
@@ -104,7 +114,7 @@ public:
     void showWifiView();
 
 private:
-    enum class ViewMode { LanAccess, Scanner, Wifi };
+    enum class ViewMode { LanAccess, Scanner, Wifi, WifiConnectFlow, WifiDetails };
     enum class ConnectOverlayMode { PasswordEntry, Connecting };
 
     lv_obj_t* container_;
@@ -118,6 +128,8 @@ private:
     lv_obj_t* lanAccessView_ = nullptr;
     lv_obj_t* networksTitleLabel_ = nullptr;
     lv_obj_t* pagesContainer_ = nullptr;
+    lv_obj_t* connectFlowView_ = nullptr;
+    lv_obj_t* networkDetailsView_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
     lv_obj_t* scannerEnterButton_ = nullptr;
     lv_obj_t* scannerExitButton_ = nullptr;
@@ -137,7 +149,6 @@ private:
     lv_obj_t* networkDetailsOverlay_ = nullptr;
     lv_obj_t* networkDetailsContent_ = nullptr;
     lv_obj_t* networkDetailsLastScanValueLabel_ = nullptr;
-    lv_obj_t* passwordOverlay_ = nullptr;
     lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
     lv_obj_t* passwordVisibilityButton_ = nullptr;
