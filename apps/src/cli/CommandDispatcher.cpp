@@ -12,6 +12,8 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/ScannerModeEnter.h"
+#include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
 #include "os-manager/api/StartUi.h"
@@ -33,6 +35,8 @@
 #include "ui/state-machine/api/NetworkConnectPress.h"
 #include "ui/state-machine/api/NetworkDiagnosticsGet.h"
 #include "ui/state-machine/api/NetworkPasswordSubmit.h"
+#include "ui/state-machine/api/NetworkScannerEnterPress.h"
+#include "ui/state-machine/api/NetworkScannerExitPress.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -120,6 +124,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::NetworkConnectPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkDiagnosticsGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::NetworkPasswordSubmit::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkScannerEnterPress::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::NetworkScannerExitPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::SimPause::Cwc>(uiHandlers_, uiExampleHandlers_);
@@ -150,6 +156,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::ScannerModeEnter::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::ScannerModeExit::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StartUi::Cwc>(osHandlers_, osExampleHandlers_);

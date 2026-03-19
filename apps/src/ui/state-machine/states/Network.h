@@ -24,6 +24,8 @@ struct Network {
     Any onEvent(const UiApi::NetworkConnectPress::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkScannerEnterPress::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkScannerExitPress::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
 

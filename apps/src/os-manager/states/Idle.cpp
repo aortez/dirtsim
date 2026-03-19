@@ -89,6 +89,20 @@ Any Idle::onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm)
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::ScannerModeEnter::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerModeEnter command received");
+    cwc.sendResponse(osm.enterScannerMode());
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerModeExit command received");
+    cwc.sendResponse(osm.exitScannerMode());
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::StartAudio::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "StartAudio command received");

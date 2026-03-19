@@ -17,6 +17,8 @@
 #include "api/NetworkConnectPress.h"
 #include "api/NetworkDiagnosticsGet.h"
 #include "api/NetworkPasswordSubmit.h"
+#include "api/NetworkScannerEnterPress.h"
+#include "api/NetworkScannerExitPress.h"
 #include "api/PlantSeed.h"
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
@@ -344,6 +346,8 @@ using Event = std::variant<
     DirtSim::UiApi::NetworkConnectPress::Cwc,
     DirtSim::UiApi::NetworkDiagnosticsGet::Cwc,
     DirtSim::UiApi::NetworkPasswordSubmit::Cwc,
+    DirtSim::UiApi::NetworkScannerEnterPress::Cwc,
+    DirtSim::UiApi::NetworkScannerExitPress::Cwc,
     DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,

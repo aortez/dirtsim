@@ -58,6 +58,7 @@ public:
         std::optional<std::string> connectTargetSsid;
         std::optional<std::string> passwordPromptTargetSsid;
         std::string passwordError;
+        std::string scannerStatusMessage;
         std::vector<AutomationNetworkInfo> networks;
         std::string viewMode;
         std::string wifiStatusMessage;
@@ -66,6 +67,10 @@ public:
         bool connectOverlayVisible = false;
         bool passwordPromptVisible = false;
         bool passwordSubmitEnabled = false;
+        bool scannerEnterEnabled = false;
+        bool scannerExitEnabled = false;
+        bool scannerModeActive = false;
+        bool scannerModeAvailable = false;
     };
 
     /**
@@ -79,8 +84,16 @@ public:
     Result<std::monostate, std::string> pressAutomationConnect(const std::string& ssid);
     Result<std::monostate, std::string> pressAutomationConnectCancel();
     Result<std::monostate, std::string> submitAutomationPassword(const std::string& password);
+    Result<std::monostate, std::string> pressAutomationScannerEnter();
+    Result<std::monostate, std::string> pressAutomationScannerExit();
+
+    bool isScannerModeActive() const;
+    bool isScannerModeBusy() const;
+    bool isScannerModeActiveOrBusy();
+    Result<std::monostate, std::string> requestScannerExit();
 
     void showLanAccessView();
+    void showScannerView();
     /**
      * @brief Refresh the network information display.
      *
@@ -91,7 +104,7 @@ public:
     void showWifiView();
 
 private:
-    enum class ViewMode { LanAccess, Wifi };
+    enum class ViewMode { LanAccess, Scanner, Wifi };
     enum class ConnectOverlayMode { PasswordEntry, Connecting };
 
     lv_obj_t* container_;
@@ -106,6 +119,12 @@ private:
     lv_obj_t* networksTitleLabel_ = nullptr;
     lv_obj_t* pagesContainer_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
+    lv_obj_t* scannerEnterButton_ = nullptr;
+    lv_obj_t* scannerExitButton_ = nullptr;
+    lv_obj_t* scannerHintLabel_ = nullptr;
+    lv_obj_t* scannerRefreshButton_ = nullptr;
+    lv_obj_t* scannerStatusLabel_ = nullptr;
+    lv_obj_t* scannerView_ = nullptr;
     lv_obj_t* wifiStatusLabel_ = nullptr;
     lv_obj_t* wifiView_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
@@ -160,6 +179,9 @@ private:
         bool webUiEnabled = false;
         bool webSocketEnabled = false;
         std::string webSocketToken;
+        bool scannerModeAvailable = false;
+        bool scannerModeActive = false;
+        std::string scannerModeDetail;
     };
 
     struct PendingRefreshData {
@@ -196,11 +218,15 @@ private:
         std::optional<Result<Network::WifiDisconnectResult, std::string>> pendingDisconnect;
         std::optional<Result<bool, std::string>> pendingDiagnosticsModeUpdate;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
+        std::optional<Result<std::monostate, std::string>> pendingScannerEnter;
+        std::optional<Result<std::monostate, std::string>> pendingScannerExit;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
         bool connectCancelInProgress = false;
         bool diagnosticsModeUpdateInProgress = false;
+        bool scannerEnterInProgress = false;
+        bool scannerExitInProgress = false;
         bool webSocketUpdateInProgress = false;
         bool webUiUpdateInProgress = false;
     };
@@ -238,6 +264,10 @@ private:
     std::optional<Network::WifiNetworkInfo> passwordPromptNetwork_;
     std::string webSocketToken_;
     ViewMode viewMode_ = ViewMode::Wifi;
+    bool scannerActionInProgress_ = false;
+    bool scannerModeActive_ = false;
+    bool scannerModeAvailable_ = false;
+    std::string scannerModeDetail_;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -246,6 +276,8 @@ private:
     bool hasEventStreamConnection() const;
     void startEventStream();
     bool startAsyncRefresh(bool forceRefresh);
+    bool startAsyncScannerEnter();
+    bool startAsyncScannerExit();
     bool startAsyncScanRequest();
     bool startAsyncConnect(
         const Network::WifiNetworkInfo& network,
@@ -276,6 +308,7 @@ private:
     void setPasswordPromptError(const std::string& message);
     void setPasswordPromptStatus(const std::string& message, uint32_t color);
     void setRefreshButtonEnabled(bool enabled);
+    void setScannerRefreshButtonEnabled(bool enabled);
     void setViewMode(ViewMode mode);
     void setLiveScanToggleEnabled(bool enabled);
     void setWebSocketToggleEnabled(bool enabled);
@@ -292,6 +325,8 @@ private:
     void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
+    void updateScannerControls();
+    void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWebSocketTokenLabel();
@@ -324,6 +359,9 @@ private:
     static void onPasswordKeyboardEvent(lv_event_t* e);
     static void onPasswordTextAreaEvent(lv_event_t* e);
     static void onPasswordVisibilityClicked(lv_event_t* e);
+    static void onScannerEnterClicked(lv_event_t* e);
+    static void onScannerExitClicked(lv_event_t* e);
+    static void onScannerRefreshClicked(lv_event_t* e);
     static void onLiveScanToggleChanged(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);
     static void onWebUiToggleChanged(lv_event_t* e);

@@ -19,11 +19,16 @@ UiApi::NetworkDiagnosticsGet::Okay toAutomationOkay(
         .connect_overlay_visible = state.connectOverlayVisible,
         .password_prompt_visible = state.passwordPromptVisible,
         .password_submit_enabled = state.passwordSubmitEnabled,
+        .scanner_enter_enabled = state.scannerEnterEnabled,
+        .scanner_exit_enabled = state.scannerExitEnabled,
+        .scanner_mode_active = state.scannerModeActive,
+        .scanner_mode_available = state.scannerModeAvailable,
         .connect_progress = std::nullopt,
         .connected_ssid = state.connectedSsid,
         .connect_target_ssid = state.connectTargetSsid,
         .password_prompt_target_ssid = state.passwordPromptTargetSsid,
         .password_error = state.passwordError,
+        .scanner_status_message = state.scannerStatusMessage,
         .networks = {},
         .view_mode = state.viewMode,
         .wifi_status_message = state.wifiStatusMessage,
@@ -91,7 +96,7 @@ void Network::onEnter(StateMachine& sm)
     iconRail->setVisible(true);
     iconRail->setAllowMinimize(false);
     iconRail->setLayout(RailLayout::SingleColumn);
-    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK, IconId::SETTINGS });
+    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK, IconId::SETTINGS, IconId::SCANNER });
     iconRail->showIcons();
     iconRail->selectIcon(activeSubviewIcon_);
 }
@@ -129,24 +134,63 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
 
     if (evt.selectedId == IconId::DUCK) {
+        if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+            LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+            activeSubviewIcon_ = IconId::SCANNER;
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         LOG_INFO(State, "Duck icon selected, returning to StartMenu");
         return StartMenu{};
     }
 
     if (evt.selectedId == IconId::NETWORK) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         activeSubviewIcon_ = IconId::NETWORK;
         if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
             networkPanel_->showWifiView();
+            networkPanel_->refresh();
         }
         return std::move(*this);
     }
 
     if (evt.selectedId == IconId::SETTINGS) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         activeSubviewIcon_ = IconId::SETTINGS;
         if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
             networkPanel_->showLanAccessView();
+            networkPanel_->refresh();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.selectedId == IconId::SCANNER) {
+        activeSubviewIcon_ = IconId::SCANNER;
+        if (networkPanel_) {
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
         }
         return std::move(*this);
     }
@@ -176,8 +220,23 @@ State::Any Network::onEvent(const RailModeChangedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
+    if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+        LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+        auto* uiManager = sm.getUiComponentManager();
+        DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+        IconRail* iconRail = uiManager->getIconRail();
+        DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+
+        activeSubviewIcon_ = IconId::SCANNER;
+        networkPanel_->showScannerView();
+        networkPanel_->refresh();
+        iconRail->selectIcon(activeSubviewIcon_);
+        return std::move(*this);
+    }
+
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
 }
@@ -263,6 +322,49 @@ State::Any Network::onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateM
     cwc.sendResponse(
         UiApi::NetworkPasswordSubmit::Response::okay(
             UiApi::NetworkPasswordSubmit::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerEnterPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(
+                ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerEnter();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerEnterPress::Response::okay(
+            UiApi::NetworkScannerEnterPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerExitPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerExit();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerExitPress::Response::okay(
+            UiApi::NetworkScannerExitPress::Okay{ .accepted = true }));
     return std::move(*this);
 }
 

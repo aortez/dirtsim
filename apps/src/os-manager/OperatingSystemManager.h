@@ -12,6 +12,8 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
+#include "os-manager/api/ScannerModeEnter.h"
+#include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
 #include "os-manager/api/TrustPeer.h"
@@ -114,6 +116,8 @@ public:
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
         const OsApi::RemoteCliRun::Command& command);
+    Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
+    Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
@@ -143,14 +147,34 @@ private:
         uint64_t total_bytes = 0;
     };
 
+    struct ScannerModeStatusInfo {
+        bool available = false;
+        bool active = false;
+        bool stack_nexmon = false;
+        std::string detail;
+    };
+
+    struct ScannerModeRuntimeState {
+        bool active = false;
+        std::optional<std::string> restoreSsid;
+    };
+
     void setupWebSocketService();
     OsApi::SystemStatus::Okay buildSystemStatusInternal();
+    ScannerModeStatusInfo readScannerModeStatusInternal() const;
     DiskStats getDiskStats(const std::string& path) const;
     std::string getAudioHealth(int timeoutMs);
     std::string getServerHealth(int timeoutMs);
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(
         const std::string& action, const std::string& unitName);
+    Result<std::monostate, ApiError> runScannerShellCommand(
+        const std::string& command, const std::string& step) const;
+    Result<ScannerModeRuntimeState, ApiError> readScannerModeState() const;
+    Result<std::monostate, ApiError> restoreWifiAfterScannerMode(
+        const std::optional<std::string>& restoreSsid) const;
+    Result<std::monostate, ApiError> setScannerModeState(
+        const ScannerModeRuntimeState& state) const;
     std::filesystem::path getPeerAllowlistPath() const;
     std::filesystem::path getPeerClientKeyPath() const;
     Result<std::vector<PeerTrustBundle>, ApiError> loadPeerAllowlist() const;
@@ -160,6 +184,8 @@ private:
     Result<std::string, ApiError> getClientKeyFingerprintSha256() const;
     Result<std::string, ApiError> getPeerClientPublicKey(bool* created);
     Result<PeerTrustBundle, ApiError> buildTrustBundle(bool* created);
+    bool hasEthernetDefaultRoute() const;
+    void bestEffortRestoreWifiFromScannerMode() const;
     Result<std::string, ApiError> runCommandCapture(const std::string& command) const;
     std::filesystem::path getSshUserHomeDir(const std::string& user) const;
     Result<std::monostate, ApiError> applySshPermissions(
