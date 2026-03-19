@@ -1,0 +1,16 @@
+# Local-only KAS overlay for DirtSim.
+#
+# Usage:
+#   cp kas-dirtsim.local.yml.example kas-dirtsim.local.yml
+#   # Edit kas-dirtsim.local.yml as needed.
+#
+# All standard Yocto helper scripts automatically include kas-dirtsim.local.yml
+# when it exists. This file is gitignored.
+
+header:
+  version: 14
+
+local_conf_header:
+  local-nexmon: |
+    DIRTSIM_ENABLE_NEXMON_SCANNER = "1"
+    LICENSE_FLAGS_ACCEPTED:append = " nexmon-firmware"
