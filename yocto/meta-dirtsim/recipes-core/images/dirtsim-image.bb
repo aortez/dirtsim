@@ -150,8 +150,6 @@ IMAGE_INSTALL:append = " \
 IMAGE_INSTALL:append = " \
     dirtsim-os-manager \
     dirtsim-audio \
-    dirtsim-nexmon-mode \
-    nexutil-experimental \
     dirtsim-server \
     dirtsim-ui \
 "
