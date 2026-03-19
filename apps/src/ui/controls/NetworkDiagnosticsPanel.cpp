@@ -787,6 +787,11 @@ void NetworkDiagnosticsPanel::createUI()
     styleSwitchRow(liveScanToggle_);
 
     lv_obj_t* scannerCard = createSectionCard(scannerView_, "Scanner");
+    lv_obj_set_height(scannerCard, 0);
+    lv_obj_set_flex_grow(scannerCard, 1);
+    lv_obj_add_flag(scannerCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(scannerCard, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scannerCard, LV_SCROLLBAR_MODE_AUTO);
 
     scannerStatusLabel_ = lv_label_create(scannerCard);
     lv_label_set_text(scannerStatusLabel_, "Scanner status unavailable.");
@@ -842,6 +847,67 @@ void NetworkDiagnosticsPanel::createUI()
                              .height(NETWORK_ACTION_BUTTON_HEIGHT)
                              .callback(onScannerExitClicked, this)
                              .buildOrLog();
+
+    lv_obj_t* channelMapTitleLabel = lv_label_create(scannerCard);
+    lv_label_set_text(channelMapTitleLabel, "Channel map");
+    lv_obj_set_style_text_font(channelMapTitleLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(channelMapTitleLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_width(channelMapTitleLabel, LV_PCT(100));
+
+    lv_obj_t* channelMapRow = lv_obj_create(scannerCard);
+    lv_obj_set_size(channelMapRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(channelMapRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        channelMapRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(channelMapRow, 0, 0);
+    lv_obj_set_style_pad_column(channelMapRow, 10, 0);
+    lv_obj_set_style_bg_opa(channelMapRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(channelMapRow, 0, 0);
+    lv_obj_clear_flag(channelMapRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    scannerChannelPlot24_ = std::make_unique<TimeSeriesPlotWidget>(
+        channelMapRow,
+        TimeSeriesPlotWidget::Config{
+            .title = "2.4 GHz",
+            .lineColor = lv_color_hex(0x00CED1),
+            .defaultMinY = -100.0f,
+            .defaultMaxY = -20.0f,
+            .valueScale = 1.0f,
+            .autoScaleY = false,
+            .hideZeroValuePoints = true,
+            .showYAxisRangeLabels = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .barGroupGapPx = 1,
+            .barSeriesGapPx = 1,
+            .minPointCount = 1,
+        });
+    scannerChannelPlot24_->setBottomLabels("ch 1", "ch 11");
+
+    lv_obj_t* plot24Container = scannerChannelPlot24_->getContainer();
+    lv_obj_set_size(plot24Container, 0, 110);
+    lv_obj_set_flex_grow(plot24Container, 1);
+
+    scannerChannelPlot5_ = std::make_unique<TimeSeriesPlotWidget>(
+        channelMapRow,
+        TimeSeriesPlotWidget::Config{
+            .title = "5 GHz",
+            .lineColor = lv_color_hex(0xFFDD66),
+            .defaultMinY = -100.0f,
+            .defaultMaxY = -20.0f,
+            .valueScale = 1.0f,
+            .autoScaleY = false,
+            .hideZeroValuePoints = true,
+            .showYAxisRangeLabels = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .barGroupGapPx = 1,
+            .barSeriesGapPx = 1,
+            .minPointCount = 1,
+        });
+    scannerChannelPlot5_->setBottomLabels("ch 36", "ch 165");
+
+    lv_obj_t* plot5Container = scannerChannelPlot5_->getContainer();
+    lv_obj_set_size(plot5Container, 0, 110);
+    lv_obj_set_flex_grow(plot5Container, 1);
 
     scannerDataLabel_ = lv_label_create(scannerCard);
     lv_label_set_text(scannerDataLabel_, "Scanner data will appear here.");
@@ -3100,86 +3166,64 @@ bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
 
     auto state = asyncState_;
     std::thread([state]() {
-        Result<std::string, ScannerSnapshotTextError> result =
-            Result<std::string, ScannerSnapshotTextError>::error(
-                ScannerSnapshotTextError{ "Scanner snapshot failed" });
+        Result<ScannerSnapshot, ScannerSnapshotError> result =
+            Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ "Scanner snapshot failed" });
         try {
             Network::WebSocketService client;
             const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
             if (connectResult.isError()) {
-                result = Result<std::string, ScannerSnapshotTextError>::error(
-                    ScannerSnapshotTextError{ "Failed to connect to os-manager: "
-                                              + connectResult.errorValue() });
+                result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                    ScannerSnapshotError{ "Failed to connect to os-manager: "
+                                          + connectResult.errorValue() });
             }
             else {
                 OsApi::ScannerSnapshotGet::Command cmd{};
-                cmd.maxRadios = 18;
+                cmd.maxRadios = 48;
                 cmd.maxAgeMs = 15000;
                 const auto response =
                     client.sendCommandAndGetResponse<OsApi::ScannerSnapshotGet::Okay>(cmd, 2000);
                 client.disconnect();
 
                 if (response.isError()) {
-                    result = Result<std::string, ScannerSnapshotTextError>::error(
-                        ScannerSnapshotTextError{ "ScannerSnapshotGet failed: "
-                                                  + response.errorValue() });
+                    result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                        ScannerSnapshotError{ "ScannerSnapshotGet failed: "
+                                              + response.errorValue() });
                 }
                 else if (response.value().isError()) {
-                    result = Result<std::string, ScannerSnapshotTextError>::error(
-                        ScannerSnapshotTextError{ "ScannerSnapshotGet failed: "
-                                                  + response.value().errorValue().message });
+                    result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                        ScannerSnapshotError{ "ScannerSnapshotGet failed: "
+                                              + response.value().errorValue().message });
                 }
                 else {
                     const auto& okay = response.value().value();
-                    std::string text;
-                    if (!okay.detail.empty()) {
-                        text += okay.detail;
-                        text += "\n";
-                    }
-                    if (okay.currentChannel.has_value()) {
-                        text += "Channel: ";
-                        text += std::to_string(*okay.currentChannel);
-                        text += "\n";
-                    }
-                    if (okay.radios.empty()) {
-                        text += "No radios observed yet.";
-                    }
-                    else {
-                        for (const auto& radio : okay.radios) {
-                            const std::string ssid =
-                                !radio.ssid.empty() ? radio.ssid : std::string("<hidden>");
-                            text += ssid;
-                            if (radio.channel.has_value()) {
-                                text += "  ch ";
-                                text += std::to_string(*radio.channel);
-                            }
-                            if (radio.signalDbm.has_value()) {
-                                text += "  ";
-                                text += std::to_string(*radio.signalDbm);
-                                text += " dBm";
-                            }
-                            text += "\n";
-                            text += radio.bssid;
-                            if (radio.lastSeenAgeMs.has_value()) {
-                                text += "  ";
-                                text += std::to_string(*radio.lastSeenAgeMs);
-                                text += "ms ago";
-                            }
-                            text += "\n";
-                        }
+                    ScannerSnapshot snapshot;
+                    snapshot.active = okay.active;
+                    snapshot.currentChannel = okay.currentChannel;
+                    snapshot.detail = okay.detail;
+                    snapshot.radios.reserve(okay.radios.size());
+                    for (const auto& radio : okay.radios) {
+                        ScannerObservedRadio entry;
+                        entry.bssid = radio.bssid;
+                        entry.ssid = radio.ssid;
+                        entry.signalDbm = radio.signalDbm;
+                        entry.channel = radio.channel;
+                        entry.lastSeenAgeMs = radio.lastSeenAgeMs;
+                        snapshot.radios.push_back(std::move(entry));
                     }
 
-                    result = Result<std::string, ScannerSnapshotTextError>::okay(std::move(text));
+                    result =
+                        Result<ScannerSnapshot, ScannerSnapshotError>::okay(std::move(snapshot));
                 }
             }
         }
         catch (const std::exception& e) {
-            result = Result<std::string, ScannerSnapshotTextError>::error(
-                ScannerSnapshotTextError{ e.what() });
+            result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ e.what() });
         }
         catch (...) {
-            result = Result<std::string, ScannerSnapshotTextError>::error(
-                ScannerSnapshotTextError{ "Scanner snapshot failed" });
+            result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ "Scanner snapshot failed" });
         }
 
         std::lock_guard<std::mutex> lock(state->mutex);
@@ -3819,8 +3863,8 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
     updateScannerControls();
 }
 
-void NetworkDiagnosticsPanel::updateScannerSnapshotText(
-    const Result<std::string, ScannerSnapshotTextError>& result)
+void NetworkDiagnosticsPanel::updateScannerSnapshot(
+    const Result<ScannerSnapshot, ScannerSnapshotError>& result)
 {
     if (!scannerDataLabel_) {
         return;
@@ -3830,10 +3874,103 @@ void NetworkDiagnosticsPanel::updateScannerSnapshotText(
         const std::string text = "Scanner data unavailable: " + result.errorValue().message;
         lv_label_set_text(scannerDataLabel_, text.c_str());
         lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
+        }
         return;
     }
 
-    lv_label_set_text(scannerDataLabel_, result.value().c_str());
+    const auto& snapshot = result.value();
+
+    std::vector<float> channel24MaxSignal(11, 0.0f);
+    std::vector<float> channel5MaxSignal(9, 0.0f);
+    constexpr std::array<int, 9> kChannel5Plan{ { 36, 40, 44, 48, 149, 153, 157, 161, 165 } };
+
+    for (const auto& radio : snapshot.radios) {
+        if (!radio.channel.has_value() || !radio.signalDbm.has_value()) {
+            continue;
+        }
+
+        const int channel = radio.channel.value();
+        const float signal = static_cast<float>(radio.signalDbm.value());
+
+        if (channel >= 1 && channel <= 11) {
+            const size_t idx = static_cast<size_t>(channel - 1);
+            if (channel24MaxSignal[idx] == 0.0f || signal > channel24MaxSignal[idx]) {
+                channel24MaxSignal[idx] = signal;
+            }
+            continue;
+        }
+
+        const auto it = std::find(kChannel5Plan.begin(), kChannel5Plan.end(), channel);
+        if (it != kChannel5Plan.end()) {
+            const size_t idx = static_cast<size_t>(std::distance(kChannel5Plan.begin(), it));
+            if (channel5MaxSignal[idx] == 0.0f || signal > channel5MaxSignal[idx]) {
+                channel5MaxSignal[idx] = signal;
+            }
+        }
+    }
+
+    if (scannerChannelPlot24_) {
+        scannerChannelPlot24_->setSamples(channel24MaxSignal);
+    }
+    if (scannerChannelPlot5_) {
+        scannerChannelPlot5_->setSamples(channel5MaxSignal);
+    }
+
+    std::string text;
+    if (!snapshot.detail.empty()) {
+        text += snapshot.detail;
+        text += "\n";
+    }
+    if (snapshot.currentChannel.has_value()) {
+        text += "Channel: ";
+        text += std::to_string(*snapshot.currentChannel);
+        text += "\n";
+    }
+    text += "Observed radios: ";
+    text += std::to_string(snapshot.radios.size());
+    text += "\n\n";
+    if (snapshot.radios.empty()) {
+        text += "No radios observed yet.";
+    }
+    else {
+        const size_t maxRows = 10;
+        const size_t rowCount = std::min(snapshot.radios.size(), maxRows);
+        for (size_t i = 0; i < rowCount; ++i) {
+            const auto& radio = snapshot.radios[i];
+            const std::string ssid = !radio.ssid.empty() ? radio.ssid : std::string("<hidden>");
+            text += ssid;
+            if (radio.channel.has_value()) {
+                text += "  ch ";
+                text += std::to_string(*radio.channel);
+            }
+            if (radio.signalDbm.has_value()) {
+                text += "  ";
+                text += std::to_string(*radio.signalDbm);
+                text += " dBm";
+            }
+            if (radio.lastSeenAgeMs.has_value()) {
+                text += "  ";
+                text += std::to_string(*radio.lastSeenAgeMs);
+                text += "ms";
+            }
+            text += "\n";
+            text += radio.bssid;
+            text += "\n";
+        }
+        if (snapshot.radios.size() > rowCount) {
+            text += "\n";
+            text += "…";
+            text += std::to_string(snapshot.radios.size() - rowCount);
+            text += " more";
+        }
+    }
+
+    lv_label_set_text(scannerDataLabel_, text.c_str());
     lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
 }
 
@@ -3847,6 +3984,12 @@ void NetworkDiagnosticsPanel::updateScannerSnapshotPolling()
         if (scannerDataLabel_) {
             lv_label_set_text(scannerDataLabel_, "Enter scanner mode to view observed radios.");
             lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
+        }
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
         }
         return;
     }
@@ -4353,7 +4496,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<Result<std::monostate, std::string>> scannerEnterResult;
     std::optional<Result<std::monostate, std::string>> scannerExitResult;
-    std::optional<Result<std::string, ScannerSnapshotTextError>> scannerSnapshotResult;
+    std::optional<Result<ScannerSnapshot, ScannerSnapshotError>> scannerSnapshotResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<std::monostate, std::string>> scanRequestResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
@@ -4530,7 +4673,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     if (scannerSnapshotResult.has_value()) {
-        updateScannerSnapshotText(scannerSnapshotResult.value());
+        updateScannerSnapshot(scannerSnapshotResult.value());
     }
 
     if (scannerExitResult.has_value()) {

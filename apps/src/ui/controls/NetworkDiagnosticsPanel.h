@@ -208,7 +208,22 @@ private:
         std::unique_ptr<TimeSeriesPlotWidget> plot;
     };
 
-    struct ScannerSnapshotTextError {
+    struct ScannerObservedRadio {
+        std::string bssid;
+        std::string ssid;
+        std::optional<int> signalDbm;
+        std::optional<int> channel;
+        std::optional<uint64_t> lastSeenAgeMs;
+    };
+
+    struct ScannerSnapshot {
+        bool active = false;
+        std::optional<int> currentChannel;
+        std::string detail;
+        std::vector<ScannerObservedRadio> radios;
+    };
+
+    struct ScannerSnapshotError {
         std::string message;
     };
 
@@ -226,7 +241,7 @@ private:
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScannerEnter;
         std::optional<Result<std::monostate, std::string>> pendingScannerExit;
-        std::optional<Result<std::string, ScannerSnapshotTextError>> pendingScannerSnapshot;
+        std::optional<Result<ScannerSnapshot, ScannerSnapshotError>> pendingScannerSnapshot;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
@@ -246,6 +261,8 @@ private:
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::vector<std::unique_ptr<NetworkDetailsContext>> networkDetailsContexts_;
     std::vector<NetworkDetailsPlotBinding> networkDetailsPlotBindings_;
+    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot24_;
+    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot5_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
@@ -335,7 +352,7 @@ private:
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
     void updateScannerSnapshotPolling();
-    void updateScannerSnapshotText(const Result<std::string, ScannerSnapshotTextError>& result);
+    void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
     void updateScannerControls();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
