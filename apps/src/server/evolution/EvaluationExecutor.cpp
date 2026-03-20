@@ -159,6 +159,38 @@ struct EvaluationPassResult {
     std::unordered_map<std::string, EvaluationTimerAggregate> timerStats;
 };
 
+struct QueuedEvaluation {
+    EvaluationRequest request;
+    EvolutionConfig evolutionConfig;
+    std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
+};
+
+struct VisibleEvaluationHandle {
+    mutable std::mutex mutex;
+    QueuedEvaluation queued;
+    std::optional<VisibleRenderFrame> frame;
+    std::unordered_map<std::string, EvaluationTimerAggregate> timerStats;
+    double simTime = 0.0;
+    uint64_t progressRevision = 0;
+    uint64_t deliveredProgressRevision = 0;
+    TrainingRunner* runner = nullptr;
+};
+
+struct VisibleEvaluationState {
+    std::mutex mutex;
+    std::shared_ptr<VisibleEvaluationHandle> activeHandle;
+    std::deque<CompletedEvaluation> completed;
+    std::chrono::steady_clock::time_point lastStreamBroadcastTime{};
+
+    void reset()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        activeHandle.reset();
+        completed.clear();
+        lastStreamBroadcastTime = std::chrono::steady_clock::time_point{};
+    }
+};
+
 std::optional<EvaluationSnapshot> buildEvaluationSnapshotForRunner(const TrainingRunner& runner)
 {
     const WorldData* worldData = runner.getWorldData();
@@ -213,6 +245,7 @@ EvaluationPassResult runEvaluationPass(
     std::optional<bool> duckClockSpawnLeftFirst,
     const FitnessModelBundle& fitnessModel,
     bool includeGenerationDetails,
+    const std::shared_ptr<VisibleEvaluationHandle>& visibleHandle,
     std::atomic<bool>* stopRequested)
 {
     const TrainingRunner::Config runnerConfig{
@@ -228,6 +261,11 @@ EvaluationPassResult runEvaluationPass(
         genomeRepository,
         runnerConfig);
 
+    if (visibleHandle) {
+        std::lock_guard<std::mutex> lock(visibleHandle->mutex);
+        visibleHandle->runner = &runner;
+    }
+
     if (trainingSpec.scenarioId == Scenario::EnumType::Clock && runner.getWorld()) {
         runner.getWorld()->getPhysicsSettings().light.enabled = false;
     }
@@ -236,6 +274,41 @@ EvaluationPassResult runEvaluationPass(
     while (status.state == TrainingRunner::State::Running
            && !(stopRequested && stopRequested->load())) {
         status = runner.step(1);
+        if (visibleHandle) {
+            const WorldData* worldData = runner.getWorldData();
+            const std::vector<OrganismId>* organismGrid = runner.getOrganismGrid();
+            const auto videoFrame = runner.getScenarioVideoFrame();
+
+            std::optional<VisibleRenderFrame> frame;
+            if (worldData && organismGrid && (!runner.isNesScenario() || videoFrame.has_value())) {
+                frame = VisibleRenderFrame{
+                    .worldData = *worldData,
+                    .organismIds = *organismGrid,
+                    .scenarioId = individual.scenarioId,
+                    .scenarioConfig = runner.getScenarioConfig(),
+                    .nesControllerTelemetry = runner.getNesLastControllerTelemetry(),
+                    .scenarioVideoFrame = videoFrame,
+                };
+            }
+
+            std::lock_guard<std::mutex> lock(visibleHandle->mutex);
+            if (visibleHandle->runner == &runner) {
+                visibleHandle->frame = std::move(frame);
+                visibleHandle->simTime = status.simTime;
+                visibleHandle->timerStats = {};
+                if (const Timers* timers = runner.getTimers()) {
+                    visibleHandle->timerStats = collectTimerStats(*timers);
+                }
+                visibleHandle->progressRevision++;
+            }
+        }
+    }
+
+    if (visibleHandle) {
+        std::lock_guard<std::mutex> lock(visibleHandle->mutex);
+        if (visibleHandle->runner == &runner) {
+            visibleHandle->runner = nullptr;
+        }
     }
 
     return buildEvaluationPassResult(
@@ -384,34 +457,6 @@ CompletedEvaluation mergeDuckClockGenerationPasses(
     return merged;
 }
 
-struct QueuedEvaluation {
-    EvaluationRequest request;
-    EvolutionConfig evolutionConfig;
-    std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
-};
-
-struct VisibleEvaluationState {
-    std::optional<QueuedEvaluation> activeRequest;
-    std::optional<bool> duckPrimarySpawnLeftFirst = std::nullopt;
-    std::vector<CompletedEvaluation> duckPassResults;
-    std::deque<QueuedEvaluation> queue;
-    std::unique_ptr<TrainingRunner> runner;
-
-    void clearActive()
-    {
-        activeRequest.reset();
-        duckPassResults.clear();
-        duckPrimarySpawnLeftFirst.reset();
-        runner.reset();
-    }
-
-    void reset()
-    {
-        clearActive();
-        queue.clear();
-    }
-};
-
 } // namespace
 
 struct EvaluationExecutor::Impl {
@@ -430,190 +475,158 @@ struct EvaluationExecutor::Impl {
     std::atomic<int> allowedConcurrency{ 0 };
     std::atomic<int> activeEvaluations{ 0 };
     VisibleEvaluationState visible;
-    std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
 };
 
 namespace {
 
-void visibleRunnerStart(
-    EvaluationExecutor::Impl& impl,
-    const QueuedEvaluation& queued,
-    std::optional<bool> duckClockSpawnLeftFirst)
+std::shared_ptr<VisibleEvaluationHandle> visibleEvaluationTryClaim(
+    EvaluationExecutor::Impl& impl, const QueuedEvaluation& queued)
 {
-    DIRTSIM_ASSERT(
-        impl.config.genomeRepository != nullptr,
-        "EvaluationExecutor: GenomeRepository missing for visible runner");
+    std::lock_guard<std::mutex> lock(impl.visible.mutex);
+    if (impl.visible.activeHandle) {
+        return nullptr;
+    }
 
-    const TrainingRunner::Config runnerConfig{
-        .brainRegistry = impl.config.brainRegistry,
-        .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
-        .duckClockSpawnRngSeed = std::nullopt,
-        .scenarioConfigOverride = queued.scenarioConfigOverride,
-    };
-    impl.visible.activeRequest = queued;
-    impl.visible.runner = std::make_unique<TrainingRunner>(
-        impl.config.trainingSpec,
-        makeRunnerIndividual(queued.request.individual),
-        queued.evolutionConfig,
-        *impl.config.genomeRepository,
-        runnerConfig);
+    auto handle = std::make_shared<VisibleEvaluationHandle>();
+    handle->queued = queued;
+    impl.visible.activeHandle = handle;
+    impl.visible.lastStreamBroadcastTime = std::chrono::steady_clock::time_point{};
+    return handle;
 }
 
-void visibleEvaluationStartNext(EvaluationExecutor::Impl& impl)
+void visibleEvaluationComplete(
+    EvaluationExecutor::Impl& impl,
+    const std::shared_ptr<VisibleEvaluationHandle>& handle,
+    CompletedEvaluation result)
 {
-    if (impl.visible.runner || impl.visible.queue.empty()) {
+    if (!handle) {
         return;
     }
 
-    const QueuedEvaluation queued = impl.visible.queue.front();
-    impl.visible.queue.pop_front();
-    impl.visible.duckPassResults.clear();
+    {
+        std::lock_guard<std::mutex> lock(handle->mutex);
+        handle->runner = nullptr;
+        handle->simTime = result.simTime;
+        handle->timerStats = result.timerStats;
+    }
 
-    const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
-        queued.request.taskType,
-        impl.config.trainingSpec.organismType,
-        queued.request.individual.scenarioId,
-        queued.request.robustSampleOrdinal);
-    impl.visible.duckPrimarySpawnLeftFirst = primarySpawnSide;
-    visibleRunnerStart(impl, queued, primarySpawnSide);
+    std::lock_guard<std::mutex> lock(impl.visible.mutex);
+    if (impl.visible.activeHandle == handle) {
+        impl.visible.activeHandle.reset();
+    }
+    impl.visible.completed.push_back(std::move(result));
+    impl.visible.lastStreamBroadcastTime = std::chrono::steady_clock::time_point{};
 }
 
-std::optional<VisibleRenderFrame> visibleFrameBuild(const EvaluationExecutor::Impl& impl)
+void visibleEvaluationRelease(
+    EvaluationExecutor::Impl& impl, const std::shared_ptr<VisibleEvaluationHandle>& handle)
 {
-    if (!impl.visible.runner || !impl.visible.activeRequest.has_value()) {
-        return std::nullopt;
+    if (!handle) {
+        return;
     }
 
-    const WorldData* worldData = impl.visible.runner->getWorldData();
-    const std::vector<OrganismId>* organismGrid = impl.visible.runner->getOrganismGrid();
-    DIRTSIM_ASSERT(worldData != nullptr, "EvaluationExecutor: Visible runner missing WorldData");
-    DIRTSIM_ASSERT(
-        organismGrid != nullptr, "EvaluationExecutor: Visible runner missing organism grid");
-
-    const auto& videoFrame = impl.visible.runner->getScenarioVideoFrame();
-    if (impl.visible.runner->isNesScenario() && !videoFrame.has_value()) {
-        return std::nullopt;
+    {
+        std::lock_guard<std::mutex> lock(handle->mutex);
+        handle->runner = nullptr;
     }
 
-    VisibleRenderFrame frame;
-    frame.worldData = *worldData;
-    frame.organismIds = *organismGrid;
-    frame.scenarioId = impl.visible.activeRequest->request.individual.scenarioId;
-    frame.scenarioConfig = impl.visible.runner->getScenarioConfig();
-    frame.nesControllerTelemetry = impl.visible.runner->getNesLastControllerTelemetry();
-    frame.scenarioVideoFrame = videoFrame;
-    return frame;
+    std::lock_guard<std::mutex> lock(impl.visible.mutex);
+    if (impl.visible.activeHandle == handle) {
+        impl.visible.activeHandle.reset();
+    }
 }
 
-std::vector<CompletedEvaluation> visibleEvaluationComplete(
-    EvaluationExecutor::Impl& impl, const TrainingRunner::Status& status)
+QueuedEvaluation visibleQueuedSnapshot(
+    const std::shared_ptr<VisibleEvaluationHandle>& handle, const QueuedEvaluation& fallback)
 {
-    DIRTSIM_ASSERT(
-        impl.visible.runner && impl.visible.activeRequest.has_value(),
-        "EvaluationExecutor: visible completion requires active request");
-
-    const QueuedEvaluation request = impl.visible.activeRequest.value();
-    const bool includeGenerationDetails =
-        request.request.taskType == EvaluationTaskType::GenerationEval;
-    EvaluationPassResult completedPass = buildEvaluationPassResult(
-        *impl.visible.runner,
-        status,
-        impl.config.trainingSpec.organismType,
-        request.evolutionConfig,
-        impl.config.fitnessModel,
-        includeGenerationDetails);
-    CompletedEvaluation passResult = buildCompletedEvaluationFromPass(
-        request.request, std::move(completedPass), includeGenerationDetails);
-
-    const bool duckClockVisibleEval = isDuckClockScenario(
-        impl.config.trainingSpec.organismType, request.request.individual.scenarioId);
-    if (!duckClockVisibleEval) {
-        impl.visible.clearActive();
-        return { std::move(passResult) };
+    if (!handle) {
+        return fallback;
     }
 
-    impl.visible.duckPassResults.push_back(std::move(passResult));
-    const int passCount = duckClockPassCountForTask(request.request.taskType);
-    if (static_cast<int>(impl.visible.duckPassResults.size()) < passCount) {
-        const int nextPassOrdinal = static_cast<int>(impl.visible.duckPassResults.size());
-        const std::optional<bool> spawnSide = resolveDuckClockSpawnSideForPass(
-            impl.visible.duckPrimarySpawnLeftFirst, nextPassOrdinal);
-        visibleRunnerStart(impl, request, spawnSide);
-        return {};
-    }
-
-    DIRTSIM_ASSERT(
-        passCount == 4 && impl.visible.duckPassResults.size() == 4,
-        "EvaluationExecutor: duck clock evaluation must complete 4 passes");
-    CompletedEvaluation result = mergeDuckClockGenerationPasses(
-        impl.config.fitnessModel,
-        impl.visible.duckPassResults[0],
-        impl.visible.duckPassResults[1],
-        impl.visible.duckPassResults[2],
-        impl.visible.duckPassResults[3]);
-    impl.visible.clearActive();
-    return { std::move(result) };
+    std::lock_guard<std::mutex> lock(handle->mutex);
+    return handle->queued;
 }
 
-CompletedEvaluation runEvaluationTask(
-    EvaluationExecutor::Impl& impl, const QueuedEvaluation& queued)
+std::optional<CompletedEvaluation> runEvaluationTask(
+    EvaluationExecutor::Impl& impl, QueuedEvaluation queued)
 {
     DIRTSIM_ASSERT(queued.request.index >= 0, "EvaluationExecutor: Invalid evaluation index");
     DIRTSIM_ASSERT(
         impl.config.genomeRepository != nullptr, "EvaluationExecutor: GenomeRepository missing");
 
+    const auto visibleHandle = visibleEvaluationTryClaim(impl, queued);
+    const auto finishResult =
+        [&](CompletedEvaluation result) -> std::optional<CompletedEvaluation> {
+        if (!visibleHandle) {
+            return std::optional<CompletedEvaluation>(std::move(result));
+        }
+
+        if (impl.stopRequested.load()) {
+            visibleEvaluationRelease(impl, visibleHandle);
+            return std::nullopt;
+        }
+
+        visibleEvaluationComplete(impl, visibleHandle, std::move(result));
+        return std::nullopt;
+    };
+
+    const QueuedEvaluation initialQueued = visibleQueuedSnapshot(visibleHandle, queued);
     const bool includeGenerationDetails =
-        queued.request.taskType == EvaluationTaskType::GenerationEval;
+        initialQueued.request.taskType == EvaluationTaskType::GenerationEval;
     const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
-        queued.request.taskType,
+        initialQueued.request.taskType,
         impl.config.trainingSpec.organismType,
-        queued.request.individual.scenarioId,
-        queued.request.robustSampleOrdinal);
+        initialQueued.request.individual.scenarioId,
+        initialQueued.request.robustSampleOrdinal);
     EvaluationPassResult primaryPass = runEvaluationPass(
         impl.config.trainingSpec,
-        queued.request.individual,
-        queued.evolutionConfig,
+        initialQueued.request.individual,
+        initialQueued.evolutionConfig,
         *impl.config.genomeRepository,
         impl.config.brainRegistry,
-        queued.scenarioConfigOverride,
+        initialQueued.scenarioConfigOverride,
         primarySpawnSide,
         impl.config.fitnessModel,
         includeGenerationDetails,
+        visibleHandle,
         &impl.stopRequested);
 
     CompletedEvaluation result = buildCompletedEvaluationFromPass(
-        queued.request, std::move(primaryPass), includeGenerationDetails);
+        initialQueued.request, std::move(primaryPass), includeGenerationDetails);
     if (!isDuckClockScenario(
-            impl.config.trainingSpec.organismType, queued.request.individual.scenarioId)) {
-        return result;
+            impl.config.trainingSpec.organismType, initialQueued.request.individual.scenarioId)) {
+        return finishResult(std::move(result));
     }
 
-    const int passCount = duckClockPassCountForTask(queued.request.taskType);
+    const int passCount = duckClockPassCountForTask(initialQueued.request.taskType);
     std::vector<CompletedEvaluation> passResults;
     passResults.reserve(static_cast<size_t>(passCount));
     passResults.push_back(std::move(result));
 
     for (int passOrdinal = 1; passOrdinal < passCount; ++passOrdinal) {
+        const QueuedEvaluation passQueued = visibleQueuedSnapshot(visibleHandle, queued);
         const std::optional<bool> spawnSide =
             resolveDuckClockSpawnSideForPass(primarySpawnSide, passOrdinal);
         EvaluationPassResult pass = runEvaluationPass(
             impl.config.trainingSpec,
-            queued.request.individual,
-            queued.evolutionConfig,
+            passQueued.request.individual,
+            passQueued.evolutionConfig,
             *impl.config.genomeRepository,
             impl.config.brainRegistry,
-            queued.scenarioConfigOverride,
+            passQueued.scenarioConfigOverride,
             spawnSide,
             impl.config.fitnessModel,
             includeGenerationDetails,
+            visibleHandle,
             &impl.stopRequested);
         passResults.push_back(buildCompletedEvaluationFromPass(
-            queued.request, std::move(pass), includeGenerationDetails));
+            passQueued.request, std::move(pass), includeGenerationDetails));
     }
 
     DIRTSIM_ASSERT(passCount == 4, "EvaluationExecutor: duck clock pass count must be 4");
-    return mergeDuckClockGenerationPasses(
+    CompletedEvaluation merged = mergeDuckClockGenerationPasses(
         impl.config.fitnessModel, passResults[0], passResults[1], passResults[2], passResults[3]);
+    return finishResult(std::move(merged));
 }
 
 QueuedEvaluation queuedEvaluationMake(
@@ -645,15 +658,11 @@ void EvaluationExecutor::start(int maxParallelEvaluations)
 
     const int resolvedParallelEvaluations = std::max(1, maxParallelEvaluations);
     impl_->maxParallelEvaluations = resolvedParallelEvaluations;
-    impl_->backgroundWorkerCount = std::max(0, resolvedParallelEvaluations - 1);
+    impl_->backgroundWorkerCount = resolvedParallelEvaluations;
     impl_->allowedConcurrency.store(impl_->backgroundWorkerCount);
     impl_->activeEvaluations.store(0);
     impl_->stopRequested.store(false);
     impl_->visible.reset();
-
-    if (impl_->backgroundWorkerCount <= 0) {
-        return;
-    }
 
     impl_->workers.reserve(impl_->backgroundWorkerCount);
     Impl* state = impl_.get();
@@ -677,7 +686,8 @@ void EvaluationExecutor::start(int maxParallelEvaluations)
                     state->activeEvaluations.fetch_add(1);
                 }
 
-                CompletedEvaluation result = runEvaluationTask(*state, task);
+                std::optional<CompletedEvaluation> result =
+                    runEvaluationTask(*state, std::move(task));
 
                 state->activeEvaluations.fetch_sub(1);
                 state->taskCv.notify_one();
@@ -686,9 +696,9 @@ void EvaluationExecutor::start(int maxParallelEvaluations)
                     return;
                 }
 
-                {
+                if (result.has_value()) {
                     std::lock_guard<std::mutex> lock(state->resultMutex);
-                    state->resultQueue.push_back(std::move(result));
+                    state->resultQueue.push_back(std::move(*result));
                 }
             }
         });
@@ -725,7 +735,6 @@ void EvaluationExecutor::stop()
     }
 
     impl_->visible.reset();
-    impl_->lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
     impl_->stopRequested.store(false);
 }
 
@@ -734,25 +743,20 @@ void EvaluationExecutor::generationBatchSubmit(
     const EvolutionConfig& evolutionConfig,
     const std::optional<ScenarioConfig>& scenarioConfigOverride)
 {
-    DIRTSIM_ASSERT(
-        !impl_->visible.runner,
-        "EvaluationExecutor: generation batch submission requires no active visible runner");
-    impl_->visible.reset();
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        DIRTSIM_ASSERT(
+            !impl_->visible.activeHandle,
+            "EvaluationExecutor: generation batch submission requires no active preview task");
+    }
 
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
         impl_->taskQueue.clear();
 
-        const int totalWorkers = std::max(1, impl_->maxParallelEvaluations);
-        for (size_t i = 0; i < requests.size(); ++i) {
-            const QueuedEvaluation queued =
-                queuedEvaluationMake(requests[i], evolutionConfig, scenarioConfigOverride);
-            if (totalWorkers == 1 || (static_cast<int>(i) % totalWorkers) == 0) {
-                impl_->visible.queue.push_back(queued);
-            }
-            else {
-                impl_->taskQueue.push_back(queued);
-            }
+        for (const auto& request : requests) {
+            impl_->taskQueue.push_back(
+                queuedEvaluationMake(request, evolutionConfig, scenarioConfigOverride));
         }
     }
 
@@ -765,25 +769,18 @@ void EvaluationExecutor::robustnessPassSubmit(
     const EvolutionConfig& evolutionConfig,
     const std::optional<ScenarioConfig>& scenarioConfigOverride)
 {
-    DIRTSIM_ASSERT(
-        !impl_->visible.runner,
-        "EvaluationExecutor: robustness submission requires no active visible runner");
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        DIRTSIM_ASSERT(
+            !impl_->visible.activeHandle,
+            "EvaluationExecutor: robustness submission requires no active preview task");
+    }
 
     const int resolvedEvalCount = std::max(0, targetEvalCount);
-    const int visibleSampleCount =
-        resolvedEvalCount > 0 ? (impl_->backgroundWorkerCount > 0 ? 1 : resolvedEvalCount) : 0;
-
-    for (int sampleOrdinal = 1; sampleOrdinal <= visibleSampleCount; ++sampleOrdinal) {
-        EvaluationRequest sampleRequest = request;
-        sampleRequest.robustSampleOrdinal = sampleOrdinal;
-        impl_->visible.queue.push_back(
-            queuedEvaluationMake(sampleRequest, evolutionConfig, scenarioConfigOverride));
-    }
 
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
-        for (int sampleOrdinal = visibleSampleCount + 1; sampleOrdinal <= resolvedEvalCount;
-             ++sampleOrdinal) {
+        for (int sampleOrdinal = 1; sampleOrdinal <= resolvedEvalCount; ++sampleOrdinal) {
             EvaluationRequest sampleRequest = request;
             sampleRequest.robustSampleOrdinal = sampleOrdinal;
             impl_->taskQueue.push_back(
@@ -795,24 +792,13 @@ void EvaluationExecutor::robustnessPassSubmit(
 }
 
 void EvaluationExecutor::queuedVisibleExecutionConfigSet(
-    const EvolutionConfig& evolutionConfig,
-    const std::optional<ScenarioConfig>& scenarioConfigOverride)
-{
-    for (auto& queued : impl_->visible.queue) {
-        queued.evolutionConfig = evolutionConfig;
-        queued.scenarioConfigOverride = scenarioConfigOverride;
-    }
-}
+    const EvolutionConfig& /*evolutionConfig*/,
+    const std::optional<ScenarioConfig>& /*scenarioConfigOverride*/)
+{}
 
 std::optional<std::string> EvaluationExecutor::scenarioConfigOverrideSet(
     const std::optional<ScenarioConfig>& scenarioConfigOverride, Scenario::EnumType scenarioId)
 {
-    for (auto& queued : impl_->visible.queue) {
-        if (queued.request.individual.scenarioId == scenarioId) {
-            queued.scenarioConfigOverride = scenarioConfigOverride;
-        }
-    }
-
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
         for (auto& queued : impl_->taskQueue) {
@@ -822,17 +808,27 @@ std::optional<std::string> EvaluationExecutor::scenarioConfigOverrideSet(
         }
     }
 
-    if (!impl_->visible.runner || !impl_->visible.activeRequest.has_value()
-        || impl_->visible.activeRequest->request.individual.scenarioId != scenarioId) {
+    std::shared_ptr<VisibleEvaluationHandle> activeHandle;
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        activeHandle = impl_->visible.activeHandle;
+    }
+
+    if (!activeHandle) {
         return std::nullopt;
     }
 
-    impl_->visible.activeRequest->scenarioConfigOverride = scenarioConfigOverride;
-    if (!scenarioConfigOverride.has_value()) {
+    std::lock_guard<std::mutex> lock(activeHandle->mutex);
+    if (activeHandle->queued.request.individual.scenarioId != scenarioId) {
         return std::nullopt;
     }
 
-    const auto result = impl_->visible.runner->setScenarioConfig(*scenarioConfigOverride);
+    activeHandle->queued.scenarioConfigOverride = scenarioConfigOverride;
+    if (!scenarioConfigOverride.has_value() || !activeHandle->runner) {
+        return std::nullopt;
+    }
+
+    const auto result = activeHandle->runner->setScenarioConfig(*scenarioConfigOverride);
     if (result.isError()) {
         return result.errorValue();
     }
@@ -860,55 +856,63 @@ std::vector<CompletedEvaluation> EvaluationExecutor::completedDrain()
 std::unordered_map<std::string, EvaluationTimerAggregate> EvaluationExecutor::
     visibleTimerStatsCollect() const
 {
-    if (!impl_->visible.runner) {
+    std::shared_ptr<VisibleEvaluationHandle> activeHandle;
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        activeHandle = impl_->visible.activeHandle;
+    }
+
+    if (!activeHandle) {
         return {};
     }
 
-    const Timers* timers = impl_->visible.runner->getTimers();
-    if (!timers) {
-        return {};
-    }
-
-    return collectTimerStats(*timers);
+    std::lock_guard<std::mutex> lock(activeHandle->mutex);
+    return activeHandle->timerStats;
 }
 
 VisibleTickResult EvaluationExecutor::visibleTick(
     std::chrono::steady_clock::time_point now, int streamIntervalMs)
 {
     VisibleTickResult result;
+    std::shared_ptr<VisibleEvaluationHandle> activeHandle;
+    bool shouldBroadcast = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        while (!impl_->visible.completed.empty()) {
+            result.completed.push_back(std::move(impl_->visible.completed.front()));
+            impl_->visible.completed.pop_front();
+        }
 
-    visibleEvaluationStartNext(*impl_);
-    if (!impl_->visible.runner) {
+        activeHandle = impl_->visible.activeHandle;
+        if (activeHandle) {
+            shouldBroadcast = true;
+            if (streamIntervalMs > 0) {
+                const auto interval = std::chrono::milliseconds(streamIntervalMs);
+                if (impl_->visible.lastStreamBroadcastTime
+                        != std::chrono::steady_clock::time_point{}
+                    && now - impl_->visible.lastStreamBroadcastTime < interval) {
+                    shouldBroadcast = false;
+                }
+                else {
+                    impl_->visible.lastStreamBroadcastTime = now;
+                }
+            }
+            else {
+                impl_->visible.lastStreamBroadcastTime = now;
+            }
+        }
+    }
+
+    if (!activeHandle) {
         return result;
     }
 
-    const TrainingRunner::Status status = impl_->visible.runner->step(1);
-    result.progressed = true;
-
-    bool shouldBroadcast = true;
-    if (streamIntervalMs > 0) {
-        const auto interval = std::chrono::milliseconds(streamIntervalMs);
-        if (impl_->lastStreamBroadcastTime_ != std::chrono::steady_clock::time_point{}
-            && now - impl_->lastStreamBroadcastTime_ < interval) {
-            shouldBroadcast = false;
-        }
-        else {
-            impl_->lastStreamBroadcastTime_ = now;
-        }
+    std::lock_guard<std::mutex> lock(activeHandle->mutex);
+    result.progressed = activeHandle->progressRevision != activeHandle->deliveredProgressRevision;
+    activeHandle->deliveredProgressRevision = activeHandle->progressRevision;
+    if (shouldBroadcast && activeHandle->frame.has_value()) {
+        result.frame = activeHandle->frame;
     }
-    else {
-        impl_->lastStreamBroadcastTime_ = now;
-    }
-
-    if (shouldBroadcast) {
-        result.frame = visibleFrameBuild(*impl_);
-    }
-
-    if (status.state == TrainingRunner::State::Running) {
-        return result;
-    }
-
-    result.completed = visibleEvaluationComplete(*impl_, status);
     return result;
 }
 
@@ -936,17 +940,29 @@ int EvaluationExecutor::backgroundWorkerCountGet() const
 
 bool EvaluationExecutor::hasVisibleEvaluation() const
 {
-    return impl_->visible.runner != nullptr;
+    std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+    return impl_->visible.activeHandle != nullptr;
 }
 
 size_t EvaluationExecutor::pendingVisibleCountGet() const
 {
-    return impl_->visible.queue.size();
+    return 0;
 }
 
 double EvaluationExecutor::visibleSimTimeGet() const
 {
-    return impl_->visible.runner ? impl_->visible.runner->getSimTime() : 0.0;
+    std::shared_ptr<VisibleEvaluationHandle> activeHandle;
+    {
+        std::lock_guard<std::mutex> lock(impl_->visible.mutex);
+        activeHandle = impl_->visible.activeHandle;
+    }
+
+    if (!activeHandle) {
+        return 0.0;
+    }
+
+    std::lock_guard<std::mutex> lock(activeHandle->mutex);
+    return activeHandle->simTime;
 }
 
 } // namespace DirtSim::Server::EvolutionSupport

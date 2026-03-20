@@ -114,30 +114,28 @@ TEST(EvaluationExecutorTest, VisibleEvaluationAdvancesIncrementally)
 
     EXPECT_FALSE(executor.hasVisibleEvaluation());
 
-    const auto firstTick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
-    EXPECT_TRUE(firstTick.progressed);
-    EXPECT_TRUE(firstTick.completed.empty());
-    EXPECT_TRUE(executor.hasVisibleEvaluation());
-    EXPECT_GT(executor.visibleSimTimeGet(), 0.0);
-    EXPECT_LT(executor.visibleSimTimeGet(), 0.1);
-
+    bool sawVisibleEvaluation = false;
+    bool sawProgress = false;
     std::vector<CompletedEvaluation> completed;
-    int tickCount = 1;
-    while (completed.empty() && tickCount < 20) {
-        auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && completed.empty()) {
+        const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        sawProgress = sawProgress || tick.progressed;
+        sawVisibleEvaluation = sawVisibleEvaluation || executor.hasVisibleEvaluation();
         if (!tick.completed.empty()) {
             completed = std::move(tick.completed);
         }
-        tickCount++;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    EXPECT_GT(tickCount, 1);
+    EXPECT_TRUE(sawVisibleEvaluation);
+    EXPECT_TRUE(sawProgress);
     ASSERT_EQ(completed.size(), 1u);
     EXPECT_FALSE(executor.hasVisibleEvaluation());
     EXPECT_EQ(completed.front().index, 0);
 }
 
-TEST(EvaluationExecutorTest, GenerationBatchSplitsVisibleAndBackgroundEvaluations)
+TEST(EvaluationExecutorTest, GenerationBatchQueuesAllEvaluationsInWorkerPool)
 {
     TestStateMachineFixture fixture;
     const TrainingSpec trainingSpec =
@@ -155,10 +153,9 @@ TEST(EvaluationExecutorTest, GenerationBatchSplitsVisibleAndBackgroundEvaluation
     executor.start(3);
     executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
 
-    EXPECT_EQ(executor.backgroundWorkerCountGet(), 2);
-    EXPECT_EQ(executor.allowedConcurrencyGet(), 2);
-    EXPECT_GT(executor.pendingVisibleCountGet(), 0u);
-    EXPECT_LT(executor.pendingVisibleCountGet(), requests.size());
+    EXPECT_EQ(executor.backgroundWorkerCountGet(), 3);
+    EXPECT_EQ(executor.allowedConcurrencyGet(), 3);
+    EXPECT_EQ(executor.pendingVisibleCountGet(), 0u);
 
     int completedCount = 0;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -172,7 +169,7 @@ TEST(EvaluationExecutorTest, GenerationBatchSplitsVisibleAndBackgroundEvaluation
     EXPECT_EQ(completedCount, 5);
 }
 
-TEST(EvaluationExecutorTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
+TEST(EvaluationExecutorTest, PreviewCoexistsWithBackgroundWork)
 {
     TestStateMachineFixture fixture;
     const TrainingSpec trainingSpec =
@@ -189,26 +186,26 @@ TEST(EvaluationExecutorTest, BackgroundResultsArriveWhileVisibleEvaluationRunnin
 
     executor.start(3);
     executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
-    executor.visibleTick(std::chrono::steady_clock::now(), 0);
 
     bool sawBackgroundCompletion = false;
-    for (int i = 0; i < 200; ++i) {
-        const bool visibleActive = executor.hasVisibleEvaluation();
+    bool sawVisibleEvaluation = false;
+    for (int i = 0; i < 400; ++i) {
+        executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        sawVisibleEvaluation = sawVisibleEvaluation || executor.hasVisibleEvaluation();
         const auto backgroundResults = executor.completedDrain();
-        if (!backgroundResults.empty() && visibleActive
-            && executor.visibleSimTimeGet() < evolutionConfig.maxSimulationTime) {
+        if (!backgroundResults.empty()) {
             sawBackgroundCompletion = true;
             break;
         }
 
-        executor.visibleTick(std::chrono::steady_clock::now(), 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
+    EXPECT_TRUE(sawVisibleEvaluation);
     EXPECT_TRUE(sawBackgroundCompletion);
 }
 
-TEST(EvaluationExecutorTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeCompletion)
+TEST(EvaluationExecutorTest, DuckClockPreviewCompletesAsSingleMergedEvaluation)
 {
     TestStateMachineFixture fixture;
     const TrainingSpec trainingSpec =
@@ -223,13 +220,19 @@ TEST(EvaluationExecutorTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeC
     executor.start(1);
     executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
 
-    for (int i = 0; i < 3; ++i) {
+    int completedCount = 0;
+    int backgroundCount = 0;
+    int previewCount = 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && completedCount < 1) {
         const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
-        EXPECT_TRUE(tick.progressed);
-        EXPECT_TRUE(tick.completed.empty());
+        previewCount += static_cast<int>(tick.completed.size());
+        backgroundCount += static_cast<int>(executor.completedDrain().size());
+        completedCount = previewCount + backgroundCount;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    const auto finalTick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
-    ASSERT_EQ(finalTick.completed.size(), 1u);
-    EXPECT_EQ(finalTick.completed.front().index, 0);
+    EXPECT_EQ(completedCount, 1);
+    EXPECT_EQ(backgroundCount, 0);
+    EXPECT_EQ(previewCount, 1);
 }

@@ -654,9 +654,6 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 
     drainResults(dsm);
     if (!trainingComplete_) {
-        if (executor_) {
-            executor_->queuedVisibleExecutionConfigSet(evolutionConfig, scenarioConfigOverride_);
-        }
         const auto visibleTick = executor_ ? executor_->visibleTick(
                                                  std::chrono::steady_clock::now(),
                                                  dsm.getUserSettings().uiTraining.streamIntervalMs)
@@ -1078,22 +1075,15 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
 
     pendingBest_.robustness = false;
 
-    const bool hasWorkerPool = executor_ && executor_->backgroundWorkerCountGet() > 0;
-    const int visibleSampleCount = robustnessPass_.pendingSamples > 0
-        ? (hasWorkerPool ? 1 : robustnessPass_.pendingSamples)
-        : 0;
-    const int workerSampleCount = robustnessPass_.pendingSamples - visibleSampleCount;
-
     LOG_INFO(
         State,
         "Evolution: Starting robust pass for gen {} eval {} "
-        "(validation samples={}, pending samples={}, visible samples={}, worker samples={})",
+        "(validation samples={}, pending samples={}, worker samples={})",
         robustnessPass_.generation,
         robustnessPass_.index,
         robustnessPass_.targetEvalCount,
         robustnessPass_.pendingSamples,
-        visibleSampleCount,
-        workerSampleCount);
+        robustnessPass_.pendingSamples);
 
     if (!executor_ || robustnessPass_.pendingSamples <= 0) {
         return;
@@ -1950,7 +1940,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
     double latestCpu = lastCpuPercent_;
     if (executor_) {
-        activeParallelism = executor_->allowedConcurrencyGet() + 1; // +1 for main thread.
+        activeParallelism = executor_->allowedConcurrencyGet();
     }
 
     const size_t totalGenomeCount = repo.count();

@@ -922,9 +922,10 @@ TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
     evolutionState.onEnter(*fixture.stateMachine);
 
     std::optional<Any> finalState;
-    constexpr int maxTicks = 8000;
-    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     ASSERT_TRUE(finalState.has_value()) << "Evolution should complete";
@@ -964,22 +965,19 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
     auto firstTick = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(firstTick.has_value());
     EXPECT_EQ(evolutionState.currentEval, 0)
-        << "Duck clock visible eval should keep first pass in-progress";
+        << "Duck clock eval should not advance on the first tick";
 
-    auto secondTick = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(secondTick.has_value());
-    EXPECT_EQ(evolutionState.currentEval, 0) << "Duck clock visible eval should keep evaluation "
-                                                "in-progress until all generation passes complete";
+    std::optional<Any> tickResult;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.currentEval < 1
+           && !tickResult.has_value()) {
+        tickResult = evolutionState.tick(*fixture.stateMachine);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
-    auto thirdTick = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(thirdTick.has_value());
-    EXPECT_EQ(evolutionState.currentEval, 0) << "Duck clock visible eval should keep evaluation "
-                                                "in-progress until all generation passes complete";
-
-    auto fourthTick = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(fourthTick.has_value());
+    EXPECT_FALSE(tickResult.has_value());
     EXPECT_EQ(evolutionState.currentEval, 1)
-        << "Duck clock visible eval should advance only after all four side passes complete";
+        << "Duck clock eval should advance only after the merged worker result completes";
 }
 
 TEST(StateEvolutionTest, DuckClockConfiguredCountZeroSkipsRobustPassAndStoresSingleSampleBest)
@@ -1006,16 +1004,17 @@ TEST(StateEvolutionTest, DuckClockConfiguredCountZeroSkipsRobustPassAndStoresSin
 
     evolutionState.onEnter(*fixture.stateMachine);
 
-    for (int i = 0; i < 3; ++i) {
-        auto tickResult = evolutionState.tick(*fixture.stateMachine);
-        EXPECT_FALSE(tickResult.has_value());
-        EXPECT_EQ(evolutionState.currentEval, 0)
-            << "Duck clock generation eval should still be in progress";
-        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
-            << "Robust pass should not finalize before generation eval completes";
+    std::optional<Any> finalTick;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !finalTick.has_value()) {
+        finalTick = evolutionState.tick(*fixture.stateMachine);
+        if (!finalTick.has_value()) {
+            EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+                << "Robust pass should remain disabled while generation eval runs";
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    auto finalTick = evolutionState.tick(*fixture.stateMachine);
     ASSERT_TRUE(finalTick.has_value());
     EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalTick->getVariant()));
     EXPECT_EQ(evolutionState.currentEval, 1);
@@ -1055,44 +1054,31 @@ TEST(StateEvolutionTest, DuckClockRobustValidationWaitsForAllSamplesBeforeFinali
 
     evolutionState.onEnter(*fixture.stateMachine);
 
-    for (int i = 0; i < 3; ++i) {
+    const auto generationDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < generationDeadline
+           && evolutionState.currentEval < 1) {
         auto tickResult = evolutionState.tick(*fixture.stateMachine);
         EXPECT_FALSE(tickResult.has_value());
-        EXPECT_EQ(evolutionState.currentEval, 0)
-            << "Duck clock generation eval should still be in progress";
         EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
             << "Robust pass should not finalize before generation eval completes";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    auto generationCompleteTick = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(generationCompleteTick.has_value());
     EXPECT_EQ(evolutionState.currentEval, 1);
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 
-    for (int i = 0; i < 3; ++i) {
-        auto robustTick = evolutionState.tick(*fixture.stateMachine);
-        EXPECT_FALSE(robustTick.has_value());
-        EXPECT_EQ(evolutionState.currentEval, 1)
-            << "Duck clock robust sample should stay in progress";
-        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
-            << "Duck clock robust sample should wait for all four side passes";
+    std::optional<Any> robustFinalizeTick;
+    const auto robustDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < robustDeadline && !robustFinalizeTick.has_value()) {
+        robustFinalizeTick = evolutionState.tick(*fixture.stateMachine);
+        if (!robustFinalizeTick.has_value()) {
+            EXPECT_EQ(evolutionState.currentEval, 1);
+            EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
+                << "Duck clock should wait for all validation samples";
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    auto firstRobustSampleCompleteTick = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(firstRobustSampleCompleteTick.has_value());
-    EXPECT_EQ(evolutionState.currentEval, 1);
-    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
-
-    for (int i = 0; i < 3; ++i) {
-        auto robustTick = evolutionState.tick(*fixture.stateMachine);
-        EXPECT_FALSE(robustTick.has_value());
-        EXPECT_EQ(evolutionState.currentEval, 1)
-            << "Duck clock second robust sample should stay in progress";
-        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u)
-            << "Duck clock should wait for all validation samples";
-    }
-
-    auto robustFinalizeTick = evolutionState.tick(*fixture.stateMachine);
     ASSERT_TRUE(robustFinalizeTick.has_value());
     EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(robustFinalizeTick->getVariant()));
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 1u)
