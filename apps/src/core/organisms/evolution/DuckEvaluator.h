@@ -34,11 +34,25 @@ struct DuckFitnessBreakdown {
     double coverageCellScore = 0.0;
     double collisionDamageTotal = 0.0;
     double damageTotal = 0.0;
+    double fullTraversals = 0.0;
+    double hurdleClears = 0.0;
+    double hurdleClearBonus = 0.0;
+    double leftWallTouches = 0.0;
+    double obstacleBonus = 0.0;
+    double pitClears = 0.0;
+    double pitClearBonus = 0.0;
+    double rightWallTouches = 0.0;
+    double traversalBonus = 0.0;
+    bool exitDoorDistanceObserved = false;
     bool exitedThroughDoor = false;
+    double bestExitDoorDistanceCells = 0.0;
+    double exitDoorProximityBonus = 0.0;
+    double exitDoorProximityScore = 0.0;
     double exitDoorRaw = 0.0;
     double exitDoorTime = 0.0;
     double healthAverage = 0.0;
     double exitDoorBonus = 0.0;
+    double clockBonus = 0.0;
     double totalFitness = 0.0;
 };
 

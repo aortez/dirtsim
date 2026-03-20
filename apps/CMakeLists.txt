@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 project(lvgl)
 
-# Export compile commands for clangd/LSP support.
+#Export compile commands for clangd / LSP support.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Suppress FindBoost deprecation warning (we use Boost's config mode when available).
+#Suppress FindBoost deprecation warning(we use Boost's config mode when available).
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 
-# Use ccache for faster rebuilds when available.
+#Use ccache for faster rebuilds when available.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
     message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
@@ -19,10 +19,10 @@ else()
     message(STATUS "ccache not found - builds will not be cached")
 endif()
 
-# Allow linking to targets from subdirectories.
+#Allow linking to targets from subdirectories.
 cmake_policy(SET CMP0079 NEW)
 
-# Add Google Test (1.15.2 fixes CMake deprecation warnings).
+#Add Google Test(1.15.2 fixes CMake deprecation warnings).
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -31,18 +31,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-# Add libdatachannel for WebSocket/WebRTC support.
+#Add libdatachannel for WebSocket / WebRTC support.
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
     GIT_TAG v0.24.0
 )
-# Disable tests and examples for libdatachannel.
+#Disable tests and examples for libdatachannel.
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libdatachannel)
 
-# Add nlohmann/json for JSON serialization.
+#Add nlohmann / json for JSON serialization.
 FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -50,7 +50,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Find packages.
+#Find packages.
 find_package(Boost REQUIRED)
 
 find_package(PkgConfig REQUIRED)
@@ -61,9 +61,9 @@ pkg_check_modules(OPENH264 REQUIRED openh264)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(FREETYPE REQUIRED freetype2)
 
-# Headers at /usr/include/libyuv.h, library at /usr/lib/x86_64-linux-gnu/libyuv.so
+#Headers at / usr / include / libyuv.h, library at / usr / lib / x86_64 - linux - gnu / libyuv.so
 
-# Find OpenMP for parallel physics calculations.
+#Find OpenMP for parallel physics calculations.
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
     message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
@@ -71,7 +71,7 @@ else()
     message(STATUS "OpenMP not found - physics will run sequentially")
 endif()
 
-# Add zpp_bits for high-performance binary serialization.
+#Add zpp_bits for high - performance binary serialization.
 FetchContent_Declare(
     zpp_bits
     GIT_REPOSITORY https://github.com/eyalz800/zpp_bits.git
@@ -79,7 +79,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(zpp_bits)
 
-# Add sqlite_modern_cpp for type-safe SQLite access (header-only wrapper).
+#Add sqlite_modern_cpp for type - safe SQLite access(header - only wrapper).
 FetchContent_Declare(
     sqlite_modern_cpp
     GIT_REPOSITORY https://github.com/SqliteModernCpp/sqlite_modern_cpp.git
@@ -87,7 +87,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sqlite_modern_cpp)
 
-# Add libssh2 for SSH execution.
+#Add libssh2 for SSH execution.
 option(DIRTSIM_USE_SYSTEM_LIBSSH2 "Use system libssh2 instead of FetchContent" OFF)
 set(DIRTSIM_LIBSSH2_INCLUDE_DIRS "")
 
@@ -119,9 +119,9 @@ else()
     endif()
 endif()
 
-# qlibs/reflect is header-only, downloaded to src/core/reflect
+#qlibs / reflect is header - only, downloaded to src / core / reflect
 
-# Embed web resources (HTML, CSS, JS) at build time.
+#Embed web resources(HTML, CSS, JS) at build time.
 include(cmake/EmbedWebResources.cmake)
 embed_web_resources(
     OUTPUT ${CMAKE_BINARY_DIR}/generated/WebResources.h
@@ -140,7 +140,7 @@ foreach(BACKEND_NAME "SDL" "LINUX_DRM" "LINUX_FBDEV" "X11" "WAYLAND" "OPENGLES")
 
 endforeach()
 
-# Uncomment if the program needs debugging.
+#Uncomment if the program needs debugging.
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -ggdb")
 
 set(CMAKE_C_STANDARD 99) # LVGL officially supports C99 and above
@@ -148,15 +148,15 @@ set(CMAKE_CXX_STANDARD 23) #C++23
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 
-# Common warning flags for all dirtsim targets.
+#Common warning flags for all dirtsim targets.
 set(DIRTSIM_WARNINGS -Wall -Wextra -Werror -Wswitch-enum)
 
-# Find SDL2 for gamepad support and display backend.
+#Find SDL2 for gamepad support and display backend.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
 message(STATUS "SDL2 found - gamepad support enabled")
 
-# Configuration
+#Configuration
 if (LV_USE_SDL)
 
     message("Including SDL2 display backend support")
@@ -182,7 +182,7 @@ if (LV_USE_WAYLAND)
     list(APPEND PKG_CONFIG_LIB ${WAYLAND_CURSOR_LIBRARIES})
     list(APPEND PKG_CONFIG_LIB ${XKBCOMMON_LIBRARIES})
 
-    # Wayland protocols.
+#Wayland protocols.
     pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.25)
     pkg_get_variable(WAYLAND_PROTOCOLS_BASE wayland-protocols pkgdatadir)
 
@@ -208,7 +208,7 @@ endif()
 
 if (LV_USE_LINUX_FBDEV)
 
-    # FBDEV has no dependencies.
+#FBDEV has no dependencies.
     message("Including FBDEV support")
     list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/fbdev.cpp)
 
@@ -488,6 +488,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
     src/core/organisms/evolution/DuckEvaluator.cpp
+    src/core/organisms/evolution/DuckClockEvaluationTracker.cpp
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
@@ -934,6 +935,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
+    src/core/organisms/evolution/tests/DuckClockEvaluationTracker_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
     src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 

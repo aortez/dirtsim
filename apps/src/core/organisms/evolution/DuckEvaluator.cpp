@@ -27,6 +27,22 @@ struct DuckMovementScoringConfig {
 
 const DuckMovementScoringConfig kDuckScoringConfig{};
 
+struct DuckClockScoringConfig {
+    double exitDoorBonus = 0.5;
+    double exitDoorProximityBonus = 0.2;
+    double exitDoorProximityRadiusCells = 10.0;
+    double hurdleClearBonus = 0.1;
+    double pitClearBonus = 0.15;
+    double traversalBonus = 0.2;
+};
+
+const DuckClockScoringConfig kDuckClockScoringConfig{};
+
+const DuckEvaluationArtifacts* duckArtifactsGet(const FitnessContext& context)
+{
+    return context.duckArtifacts.has_value() ? &context.duckArtifacts.value() : nullptr;
+}
+
 MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
 {
     MovementScoring::Scores scores;
@@ -81,15 +97,15 @@ MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
         + (kDuckScoringConfig.cellCoverageWeight * scores.coverageCellScore);
 
     const auto* duck = dynamic_cast<const Duck*>(context.finalOrganism);
-    const auto* snap = context.duckStatsSnapshot;
+    const auto* artifacts = duckArtifactsGet(context);
     const uint64_t effortSamples =
-        duck ? duck->getEffortSampleCount() : (snap ? snap->effortSampleCount : 0);
+        artifacts ? artifacts->effortSampleCount : (duck ? duck->getEffortSampleCount() : 0);
     if (effortSamples > 0) {
         const double sampleCount = static_cast<double>(effortSamples);
         const double absMoveTotal =
-            duck ? duck->getEffortAbsMoveInputTotal() : snap->effortAbsMoveInputTotal;
+            artifacts ? artifacts->effortAbsMoveInputTotal : duck->getEffortAbsMoveInputTotal();
         const double jumpHeldTotal =
-            duck ? duck->getEffortJumpHeldTotal() : snap->effortJumpHeldTotal;
+            artifacts ? artifacts->effortJumpHeldTotal : duck->getEffortJumpHeldTotal();
         const double averageAbsMoveInput = absMoveTotal / sampleCount;
         const double jumpHeldRatio = jumpHeldTotal / sampleCount;
         const double combinedEffort = std::max(0.0, averageAbsMoveInput)
@@ -118,6 +134,13 @@ double computeSurvivalScore(const FitnessContext& context)
             context.result.lifespan, context.evolutionConfig.maxSimulationTime));
 }
 
+double computeExitDoorProximityScore(double bestExitDoorDistanceCells)
+{
+    return MovementScoring::clamp01(
+        (kDuckClockScoringConfig.exitDoorProximityRadiusCells - bestExitDoorDistanceCells)
+        / kDuckClockScoringConfig.exitDoorProximityRadiusCells);
+}
+
 } // namespace
 
 double DuckEvaluator::evaluate(const FitnessContext& context)
@@ -138,8 +161,18 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     }
 
     const auto* duck = dynamic_cast<const Duck*>(context.finalOrganism);
-    const auto* snap = context.duckStatsSnapshot;
-    if (duck) {
+    const auto* artifacts = duckArtifactsGet(context);
+    if (artifacts) {
+        breakdown.energyAverage = artifacts->energyAverage;
+        breakdown.energyConsumedTotal = artifacts->energyConsumedTotal;
+        breakdown.energyLimitedSeconds = artifacts->energyLimitedSeconds;
+        breakdown.healthAverage = artifacts->healthAverage;
+        breakdown.collisionDamageTotal = artifacts->collisionDamageTotal;
+        breakdown.damageTotal = artifacts->damageTotal;
+        breakdown.wingUpSeconds = artifacts->wingUpSeconds;
+        breakdown.wingDownSeconds = artifacts->wingDownSeconds;
+    }
+    else if (duck) {
         breakdown.energyAverage = duck->getEnergyAverage();
         breakdown.energyConsumedTotal = duck->getEnergyConsumedTotal();
         breakdown.energyLimitedSeconds = duck->getEnergyLimitedSeconds();
@@ -148,16 +181,6 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
         breakdown.damageTotal = duck->getDamageTotal();
         breakdown.wingUpSeconds = duck->getWingUpSeconds();
         breakdown.wingDownSeconds = duck->getWingDownSeconds();
-    }
-    else if (snap) {
-        breakdown.energyAverage = snap->energyAverage;
-        breakdown.energyConsumedTotal = snap->energyConsumedTotal;
-        breakdown.energyLimitedSeconds = snap->energyLimitedSeconds;
-        breakdown.healthAverage = snap->healthAverage;
-        breakdown.collisionDamageTotal = snap->collisionDamageTotal;
-        breakdown.damageTotal = snap->damageTotal;
-        breakdown.wingUpSeconds = snap->wingUpSeconds;
-        breakdown.wingDownSeconds = snap->wingDownSeconds;
     }
 
     const MovementScoring::Scores movement = computeDuckMovementScores(context);
@@ -181,16 +204,43 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.movementRaw = movement.movementRaw;
     breakdown.movementScore = movement.movementScore;
 
-    // Exit door bonus: additive reward for exiting through the door.
-    breakdown.exitedThroughDoor = context.exitedThroughDoor;
-    breakdown.exitDoorRaw = context.exitedThroughDoor ? 1.0 : 0.0;
-    breakdown.exitDoorTime = std::max(0.0, context.exitDoorTime);
-    if (context.exitedThroughDoor) {
-        breakdown.exitDoorBonus = 0.5;
+    if (artifacts && artifacts->clock.has_value()) {
+        const DuckClockEvaluationArtifacts& clock = artifacts->clock.value();
+        breakdown.fullTraversals = static_cast<double>(clock.fullTraversals);
+        breakdown.hurdleClears = static_cast<double>(clock.hurdleClears);
+        breakdown.leftWallTouches = static_cast<double>(clock.leftWallTouches);
+        breakdown.pitClears = static_cast<double>(clock.pitClears);
+        breakdown.rightWallTouches = static_cast<double>(clock.rightWallTouches);
+        breakdown.traversalBonus =
+            kDuckClockScoringConfig.traversalBonus * breakdown.fullTraversals;
+        breakdown.hurdleClearBonus =
+            kDuckClockScoringConfig.hurdleClearBonus * breakdown.hurdleClears;
+        breakdown.pitClearBonus = kDuckClockScoringConfig.pitClearBonus * breakdown.pitClears;
+        breakdown.obstacleBonus = breakdown.hurdleClearBonus + breakdown.pitClearBonus;
+        breakdown.exitDoorDistanceObserved = clock.exitDoorDistanceObserved;
+        breakdown.exitedThroughDoor = clock.exitedThroughDoor;
+        breakdown.bestExitDoorDistanceCells = clock.bestExitDoorDistanceCells;
+        breakdown.exitDoorTime = std::max(0.0, clock.exitDoorTime);
+
+        if (breakdown.exitDoorDistanceObserved) {
+            breakdown.exitDoorProximityScore =
+                computeExitDoorProximityScore(clock.bestExitDoorDistanceCells);
+        }
+
+        breakdown.exitDoorRaw =
+            breakdown.exitedThroughDoor ? 1.0 : breakdown.exitDoorProximityScore;
+        breakdown.exitDoorProximityBonus = breakdown.exitedThroughDoor
+            ? 0.0
+            : kDuckClockScoringConfig.exitDoorProximityBonus * breakdown.exitDoorProximityScore;
+        breakdown.exitDoorBonus = breakdown.exitedThroughDoor
+            ? kDuckClockScoringConfig.exitDoorBonus
+            : breakdown.exitDoorProximityBonus;
+        breakdown.clockBonus =
+            breakdown.traversalBonus + breakdown.obstacleBonus + breakdown.exitDoorBonus;
     }
 
     breakdown.totalFitness =
-        breakdown.survivalScore * (1.0 + breakdown.movementScore) + breakdown.exitDoorBonus;
+        breakdown.survivalScore * (1.0 + breakdown.movementScore) + breakdown.clockBonus;
     return breakdown;
 }
 

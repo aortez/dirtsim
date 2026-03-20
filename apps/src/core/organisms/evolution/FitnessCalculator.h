@@ -6,6 +6,7 @@
 #include "core/scenarios/nes/NesFitnessDetails.h"
 
 #include <cstdint>
+#include <optional>
 
 namespace DirtSim {
 
@@ -16,8 +17,19 @@ class Body;
 struct OrganismTrackingHistory;
 struct TreeResourceTotals;
 
-// Snapshot of duck stats taken before the duck is removed from the world.
-struct DuckStatsSnapshot {
+struct DuckClockEvaluationArtifacts {
+    int fullTraversals = 0;
+    int hurdleClears = 0;
+    int leftWallTouches = 0;
+    int pitClears = 0;
+    int rightWallTouches = 0;
+    bool exitDoorDistanceObserved = false;
+    bool exitedThroughDoor = false;
+    double bestExitDoorDistanceCells = 0.0;
+    double exitDoorTime = 0.0;
+};
+
+struct DuckEvaluationArtifacts {
     double collisionDamageTotal = 0.0;
     double damageTotal = 0.0;
     double effortAbsMoveInputTotal = 0.0;
@@ -29,6 +41,7 @@ struct DuckStatsSnapshot {
     double wingDownSeconds = 0.0;
     double wingUpSeconds = 0.0;
     uint64_t effortSampleCount = 0;
+    std::optional<DuckClockEvaluationArtifacts> clock = std::nullopt;
 };
 
 struct FitnessContext {
@@ -38,12 +51,10 @@ struct FitnessContext {
     int worldHeight;
     const EvolutionConfig& evolutionConfig;
     const Organism::Body* finalOrganism = nullptr;
-    const DuckStatsSnapshot* duckStatsSnapshot = nullptr;
+    std::optional<DuckEvaluationArtifacts> duckArtifacts = std::nullopt;
     const NesFitnessDetails* nesFitnessDetails = nullptr;
     const OrganismTrackingHistory* organismTrackingHistory = nullptr;
     const TreeResourceTotals* treeResources = nullptr;
-    bool exitedThroughDoor = false;
-    double exitDoorTime = 0.0;
 };
 
 double computeFitnessForOrganism(const FitnessContext& context);

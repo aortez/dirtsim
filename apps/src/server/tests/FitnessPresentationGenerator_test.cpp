@@ -143,11 +143,25 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
                 .coverageCellScore = 0.6667,
                 .collisionDamageTotal = 0.75,
                 .damageTotal = 1.5,
+                .fullTraversals = 2.0,
+                .hurdleClears = 1.0,
+                .hurdleClearBonus = 0.1,
+                .leftWallTouches = 2.0,
+                .obstacleBonus = 0.25,
+                .pitClears = 1.0,
+                .pitClearBonus = 0.15,
+                .rightWallTouches = 3.0,
+                .traversalBonus = 0.4,
+                .exitDoorDistanceObserved = true,
                 .exitedThroughDoor = true,
+                .bestExitDoorDistanceCells = 0.0,
+                .exitDoorProximityBonus = 0.0,
+                .exitDoorProximityScore = 1.0,
                 .exitDoorRaw = 1.0,
                 .exitDoorTime = 27.5,
                 .healthAverage = 0.8,
                 .exitDoorBonus = 0.5,
+                .clockBonus = 1.15,
                 .totalFitness = 1.85,
             },
     };
@@ -158,7 +172,18 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
     EXPECT_EQ(presentation.modelId, "duck");
     EXPECT_EQ(
         presentation.summary, "Survival 0.7500 | Movement 0.8000 | Coverage 0.8500 | Exit yes");
-    ASSERT_EQ(presentation.sections.size(), 6u);
+    ASSERT_EQ(presentation.sections.size(), 7u);
+
+    const Api::FitnessPresentationSection* clockCourse =
+        fitnessSectionFind(presentation, "clock_course");
+    ASSERT_NE(clockCourse, nullptr);
+    ASSERT_TRUE(clockCourse->score.has_value());
+    EXPECT_DOUBLE_EQ(clockCourse->score.value(), 0.65);
+
+    const Api::FitnessPresentationMetric* fullTraversals =
+        fitnessMetricFind(*clockCourse, "full_traversals");
+    ASSERT_NE(fullTraversals, nullptr);
+    EXPECT_DOUBLE_EQ(fullTraversals->value, 2.0);
 
     const Api::FitnessPresentationSection* clockExit =
         fitnessSectionFind(presentation, "clock_exit");
@@ -170,6 +195,13 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
         fitnessMetricFind(*clockExit, "exit_door_time");
     ASSERT_NE(exitDoorTime, nullptr);
     EXPECT_DOUBLE_EQ(exitDoorTime->value, 27.5);
+
+    const Api::FitnessPresentationMetric* exitDoorDistance =
+        fitnessMetricFind(*clockExit, "best_exit_door_distance_cells");
+    ASSERT_NE(exitDoorDistance, nullptr);
+    EXPECT_DOUBLE_EQ(exitDoorDistance->value, 0.0);
+    ASSERT_TRUE(exitDoorDistance->reference.has_value());
+    EXPECT_DOUBLE_EQ(exitDoorDistance->reference.value(), 10.0);
 }
 
 TEST(FitnessPresentationGeneratorTest, BuildsNesSuperMarioBrosPresentationFromBreakdown)

@@ -1709,6 +1709,14 @@ TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
     const TrainingRunner::Status finalStatus = runner.getStatus();
     EXPECT_TRUE(finalStatus.exitedThroughDoor);
     EXPECT_GT(finalStatus.exitDoorTime, 0.0);
+
+    const std::optional<DuckEvaluationArtifacts> duckArtifacts =
+        runner.getDuckEvaluationArtifacts();
+    ASSERT_TRUE(duckArtifacts.has_value());
+    ASSERT_TRUE(duckArtifacts->clock.has_value());
+    EXPECT_TRUE(duckArtifacts->clock->exitedThroughDoor);
+    EXPECT_DOUBLE_EQ(duckArtifacts->clock->bestExitDoorDistanceCells, 0.0);
+    EXPECT_DOUBLE_EQ(duckArtifacts->clock->exitDoorTime, finalStatus.exitDoorTime);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)

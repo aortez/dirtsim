@@ -126,12 +126,10 @@ FitnessEvaluation computeFitnessEvaluationForRunner(
         .worldHeight = world ? world->getData().height : 0,
         .evolutionConfig = evolutionConfig,
         .finalOrganism = runner.getOrganism(),
-        .duckStatsSnapshot = runner.getDuckStatsSnapshot(),
+        .duckArtifacts = runner.getDuckEvaluationArtifacts(),
         .nesFitnessDetails = nesFitnessDetailsPtr,
         .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
         .treeResources = treeResourcesPtr,
-        .exitedThroughDoor = status.exitedThroughDoor,
-        .exitDoorTime = status.exitDoorTime,
     };
     return fitnessModel.evaluate(context);
 }
