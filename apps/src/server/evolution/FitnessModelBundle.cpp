@@ -206,13 +206,20 @@ DuckFitnessBreakdown duckFitnessBreakdownAverage(
         averageDouble(first.collisionDamageTotal, second.collisionDamageTotal);
     merged.damageTotal = averageDouble(first.damageTotal, second.damageTotal);
     merged.fullTraversals = averageDouble(first.fullTraversals, second.fullTraversals);
+    merged.hurdleClearScore = averageDouble(first.hurdleClearScore, second.hurdleClearScore);
     merged.hurdleClears = averageDouble(first.hurdleClears, second.hurdleClears);
     merged.hurdleClearBonus = averageDouble(first.hurdleClearBonus, second.hurdleClearBonus);
+    merged.hurdleOpportunities =
+        averageDouble(first.hurdleOpportunities, second.hurdleOpportunities);
     merged.leftWallTouches = averageDouble(first.leftWallTouches, second.leftWallTouches);
     merged.obstacleBonus = averageDouble(first.obstacleBonus, second.obstacleBonus);
+    merged.obstacleScore = averageDouble(first.obstacleScore, second.obstacleScore);
+    merged.pitClearScore = averageDouble(first.pitClearScore, second.pitClearScore);
     merged.pitClears = averageDouble(first.pitClears, second.pitClears);
     merged.pitClearBonus = averageDouble(first.pitClearBonus, second.pitClearBonus);
+    merged.pitOpportunities = averageDouble(first.pitOpportunities, second.pitOpportunities);
     merged.rightWallTouches = averageDouble(first.rightWallTouches, second.rightWallTouches);
+    merged.traversalScore = averageDouble(first.traversalScore, second.traversalScore);
     merged.traversalBonus = averageDouble(first.traversalBonus, second.traversalBonus);
     merged.exitDoorDistanceObserved = exitDoorDistance.observed;
     merged.bestExitDoorDistanceCells = exitDoorDistance.value;

@@ -332,6 +332,13 @@ Api::FitnessPresentation duckPresentationBuild(
                     std::nullopt,
                     "score"),
                 makeMetric(
+                    "traversal_score",
+                    "Traversal Score",
+                    duck.traversalScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
                     "pit_clears",
                     "Pit Clears",
                     duck.pitClears,
@@ -346,6 +353,20 @@ Api::FitnessPresentation duckPresentationBuild(
                     std::nullopt,
                     "score"),
                 makeMetric(
+                    "pit_opportunities",
+                    "Pit Opportunities",
+                    duck.pitOpportunities,
+                    std::nullopt,
+                    std::nullopt,
+                    "opportunities"),
+                makeMetric(
+                    "pit_clear_score",
+                    "Pit Clear Score",
+                    duck.pitClearScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
                     "hurdle_clears",
                     "Hurdle Clears",
                     duck.hurdleClears,
@@ -356,6 +377,27 @@ Api::FitnessPresentation duckPresentationBuild(
                     "hurdle_clear_bonus",
                     "Hurdle Clear Bonus",
                     duck.hurdleClearBonus,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "hurdle_opportunities",
+                    "Hurdle Opportunities",
+                    duck.hurdleOpportunities,
+                    std::nullopt,
+                    std::nullopt,
+                    "opportunities"),
+                makeMetric(
+                    "hurdle_clear_score",
+                    "Hurdle Clear Score",
+                    duck.hurdleClearScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "obstacle_score",
+                    "Obstacle Score",
+                    duck.obstacleScore,
                     std::nullopt,
                     std::nullopt,
                     "score"),
@@ -391,6 +433,13 @@ Api::FitnessPresentation duckPresentationBuild(
                 std::nullopt,
                 "score"),
             makeMetric(
+                "exit_door_bonus",
+                "Exit Door Completion Bonus",
+                duck.exitDoorBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
                 "exit_door_time",
                 "Exit Door Time",
                 duck.exitDoorTime,
@@ -409,7 +458,10 @@ Api::FitnessPresentation duckPresentationBuild(
         }
 
         presentation.sections.push_back(makeSection(
-            "clock_exit", "Clock Exit", duck.exitDoorBonus, std::move(clockExitMetrics)));
+            "clock_exit",
+            "Clock Exit",
+            duck.exitDoorBonus + duck.exitDoorProximityBonus,
+            std::move(clockExitMetrics)));
     }
 
     return presentation;

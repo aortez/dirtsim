@@ -20,8 +20,10 @@ struct TreeResourceTotals;
 struct DuckClockEvaluationArtifacts {
     int fullTraversals = 0;
     int hurdleClears = 0;
+    int hurdleOpportunities = 0;
     int leftWallTouches = 0;
     int pitClears = 0;
+    int pitOpportunities = 0;
     int rightWallTouches = 0;
     bool exitDoorDistanceObserved = false;
     bool exitedThroughDoor = false;

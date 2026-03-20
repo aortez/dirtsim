@@ -41,14 +41,19 @@ private:
     static bool didJumpClearObstacle(
         const JumpAttempt& jumpAttempt, const Vector2i& landingCell, const FloorObstacle& obstacle);
     static bool floorObstacleMatches(const FloorObstacle& left, const FloorObstacle& right);
+    static bool isObstacleOpportunityActive(
+        const DuckClockTrackerFrame& frame, const FloorObstacle& obstacle);
     static WallZone resolveWallZone(int x, int worldWidth);
 
+    void cleanupInactiveObstacleOpportunities(std::span<const FloorObstacle> obstacles);
+    void updateObstacleOpportunities(const DuckClockTrackerFrame& frame);
     void finalizeJumpAttempt(const Vector2i& landingCell);
     void recordObservedObstacles(std::span<const FloorObstacle> obstacles);
     void updateExitDoorDistance(const DuckClockTrackerFrame& frame);
     void updateTraversalState(const DuckClockTrackerFrame& frame);
 
     DuckClockEvaluationArtifacts artifacts_{};
+    std::vector<FloorObstacle> activeOpportunityObstacles_;
     std::optional<JumpAttempt> jumpAttempt_ = std::nullopt;
     std::optional<Vector2i> previousDuckAnchorCell_ = std::nullopt;
     WallZone currentWallZone_ = WallZone::None;

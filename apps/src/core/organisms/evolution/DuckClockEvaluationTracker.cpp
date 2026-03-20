@@ -68,6 +68,15 @@ bool DuckClockEvaluationTracker::floorObstacleMatches(
     return left.start_x == right.start_x && left.width == right.width && left.type == right.type;
 }
 
+bool DuckClockEvaluationTracker::isObstacleOpportunityActive(
+    const DuckClockTrackerFrame& frame, const FloorObstacle& obstacle)
+{
+    const int obstacleStart = obstacle.start_x;
+    const int obstacleEndExclusive = obstacle.start_x + obstacle.width;
+    return frame.duckAnchorCell.x >= (obstacleStart - 1)
+        && frame.duckAnchorCell.x <= obstacleEndExclusive;
+}
+
 void DuckClockEvaluationTracker::markExitedThroughDoor(double simTime)
 {
     artifacts_.bestExitDoorDistanceCells = 0.0;
@@ -98,6 +107,7 @@ void DuckClockEvaluationTracker::recordObservedObstacles(std::span<const FloorOb
 void DuckClockEvaluationTracker::reset()
 {
     artifacts_ = DuckClockEvaluationArtifacts{};
+    activeOpportunityObstacles_.clear();
     currentWallZone_ = WallZone::None;
     jumpAttempt_.reset();
     lastTouchedWallZone_ = WallZone::None;
@@ -122,6 +132,7 @@ void DuckClockEvaluationTracker::update(const DuckClockTrackerFrame& frame)
 {
     updateTraversalState(frame);
     updateExitDoorDistance(frame);
+    updateObstacleOpportunities(frame);
 
     if (!previousDuckOnGroundKnown_) {
         previousDuckAnchorCell_ = frame.duckAnchorCell;
@@ -162,6 +173,48 @@ void DuckClockEvaluationTracker::update(const DuckClockTrackerFrame& frame)
 
     previousDuckAnchorCell_ = frame.duckAnchorCell;
     previousDuckOnGround_ = frame.duckOnGround;
+}
+
+void DuckClockEvaluationTracker::cleanupInactiveObstacleOpportunities(
+    std::span<const FloorObstacle> obstacles)
+{
+    std::erase_if(activeOpportunityObstacles_, [&obstacles](const FloorObstacle& activeObstacle) {
+        const auto it = std::find_if(
+            obstacles.begin(), obstacles.end(), [&activeObstacle](const FloorObstacle& obstacle) {
+                return floorObstacleMatches(activeObstacle, obstacle);
+            });
+        return it == obstacles.end();
+    });
+}
+
+void DuckClockEvaluationTracker::updateObstacleOpportunities(const DuckClockTrackerFrame& frame)
+{
+    cleanupInactiveObstacleOpportunities(frame.obstacles);
+
+    for (const FloorObstacle& obstacle : frame.obstacles) {
+        const auto alreadyCountedIt = std::find_if(
+            activeOpportunityObstacles_.begin(),
+            activeOpportunityObstacles_.end(),
+            [&obstacle](const FloorObstacle& activeObstacle) {
+                return floorObstacleMatches(activeObstacle, obstacle);
+            });
+        if (alreadyCountedIt != activeOpportunityObstacles_.end()) {
+            continue;
+        }
+        if (!isObstacleOpportunityActive(frame, obstacle)) {
+            continue;
+        }
+
+        switch (obstacle.type) {
+            case FloorObstacleType::HURDLE:
+                ++artifacts_.hurdleOpportunities;
+                break;
+            case FloorObstacleType::PIT:
+                ++artifacts_.pitOpportunities;
+                break;
+        }
+        activeOpportunityObstacles_.push_back(obstacle);
+    }
 }
 
 void DuckClockEvaluationTracker::updateExitDoorDistance(const DuckClockTrackerFrame& frame)

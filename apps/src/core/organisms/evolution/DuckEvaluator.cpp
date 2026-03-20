@@ -28,12 +28,14 @@ struct DuckMovementScoringConfig {
 const DuckMovementScoringConfig kDuckScoringConfig{};
 
 struct DuckClockScoringConfig {
-    double exitDoorBonus = 0.5;
-    double exitDoorProximityBonus = 0.2;
     double exitDoorProximityRadiusCells = 10.0;
-    double hurdleClearBonus = 0.1;
-    double pitClearBonus = 0.15;
-    double traversalBonus = 0.2;
+    double exitDoorCompletionBonus = 0.5;
+    double exitDoorProximityWeight = 0.25;
+    double hurdleScoreWeight = 0.40;
+    double obstacleWeight = 0.30;
+    double pitScoreWeight = 0.60;
+    double traversalReference = 2.0;
+    double traversalWeight = 0.45;
 };
 
 const DuckClockScoringConfig kDuckClockScoringConfig{};
@@ -141,6 +143,14 @@ double computeExitDoorProximityScore(double bestExitDoorDistanceCells)
         / kDuckClockScoringConfig.exitDoorProximityRadiusCells);
 }
 
+double computeOpportunityRate(double clears, double opportunities)
+{
+    if (opportunities <= 0.0) {
+        return 0.0;
+    }
+    return MovementScoring::clamp01(clears / opportunities);
+}
+
 } // namespace
 
 double DuckEvaluator::evaluate(const FitnessContext& context)
@@ -207,40 +217,52 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     if (artifacts && artifacts->clock.has_value()) {
         const DuckClockEvaluationArtifacts& clock = artifacts->clock.value();
         breakdown.fullTraversals = static_cast<double>(clock.fullTraversals);
+        breakdown.hurdleOpportunities = static_cast<double>(clock.hurdleOpportunities);
         breakdown.hurdleClears = static_cast<double>(clock.hurdleClears);
         breakdown.leftWallTouches = static_cast<double>(clock.leftWallTouches);
         breakdown.pitClears = static_cast<double>(clock.pitClears);
+        breakdown.pitOpportunities = static_cast<double>(clock.pitOpportunities);
         breakdown.rightWallTouches = static_cast<double>(clock.rightWallTouches);
+        breakdown.traversalScore = MovementScoring::saturatingScore(
+            breakdown.fullTraversals, kDuckClockScoringConfig.traversalReference);
         breakdown.traversalBonus =
-            kDuckClockScoringConfig.traversalBonus * breakdown.fullTraversals;
-        breakdown.hurdleClearBonus =
-            kDuckClockScoringConfig.hurdleClearBonus * breakdown.hurdleClears;
-        breakdown.pitClearBonus = kDuckClockScoringConfig.pitClearBonus * breakdown.pitClears;
-        breakdown.obstacleBonus = breakdown.hurdleClearBonus + breakdown.pitClearBonus;
+            kDuckClockScoringConfig.traversalWeight * breakdown.traversalScore;
+        breakdown.pitClearScore =
+            computeOpportunityRate(breakdown.pitClears, breakdown.pitOpportunities);
+        breakdown.hurdleClearScore =
+            computeOpportunityRate(breakdown.hurdleClears, breakdown.hurdleOpportunities);
+        breakdown.obstacleScore = (kDuckClockScoringConfig.pitScoreWeight * breakdown.pitClearScore)
+            + (kDuckClockScoringConfig.hurdleScoreWeight * breakdown.hurdleClearScore);
+        breakdown.pitClearBonus = kDuckClockScoringConfig.obstacleWeight
+            * (kDuckClockScoringConfig.pitScoreWeight * breakdown.pitClearScore);
+        breakdown.hurdleClearBonus = kDuckClockScoringConfig.obstacleWeight
+            * (kDuckClockScoringConfig.hurdleScoreWeight * breakdown.hurdleClearScore);
+        breakdown.obstacleBonus = kDuckClockScoringConfig.obstacleWeight * breakdown.obstacleScore;
         breakdown.exitDoorDistanceObserved = clock.exitDoorDistanceObserved;
         breakdown.exitedThroughDoor = clock.exitedThroughDoor;
         breakdown.bestExitDoorDistanceCells = clock.bestExitDoorDistanceCells;
         breakdown.exitDoorTime = std::max(0.0, clock.exitDoorTime);
 
-        if (breakdown.exitDoorDistanceObserved) {
+        if (breakdown.exitedThroughDoor) {
+            breakdown.exitDoorProximityScore = 1.0;
+        }
+        else if (breakdown.exitDoorDistanceObserved) {
             breakdown.exitDoorProximityScore =
                 computeExitDoorProximityScore(clock.bestExitDoorDistanceCells);
         }
 
-        breakdown.exitDoorRaw =
-            breakdown.exitedThroughDoor ? 1.0 : breakdown.exitDoorProximityScore;
-        breakdown.exitDoorProximityBonus = breakdown.exitedThroughDoor
-            ? 0.0
-            : kDuckClockScoringConfig.exitDoorProximityBonus * breakdown.exitDoorProximityScore;
-        breakdown.exitDoorBonus = breakdown.exitedThroughDoor
-            ? kDuckClockScoringConfig.exitDoorBonus
-            : breakdown.exitDoorProximityBonus;
+        breakdown.exitDoorRaw = breakdown.exitDoorProximityScore;
+        breakdown.exitDoorProximityBonus =
+            kDuckClockScoringConfig.exitDoorProximityWeight * breakdown.exitDoorProximityScore;
+        breakdown.exitDoorBonus =
+            breakdown.exitedThroughDoor ? kDuckClockScoringConfig.exitDoorCompletionBonus : 0.0;
         breakdown.clockBonus =
-            breakdown.traversalBonus + breakdown.obstacleBonus + breakdown.exitDoorBonus;
+            breakdown.traversalBonus + breakdown.obstacleBonus + breakdown.exitDoorProximityBonus;
     }
 
     breakdown.totalFitness =
-        breakdown.survivalScore * (1.0 + breakdown.movementScore) + breakdown.clockBonus;
+        breakdown.survivalScore * (1.0 + breakdown.movementScore + breakdown.clockBonus)
+        + breakdown.exitDoorBonus;
     return breakdown;
 }
 

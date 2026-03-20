@@ -115,7 +115,9 @@ TEST(DuckClockEvaluationTrackerTest, CountsPitAndHurdleClearsAcrossJumpArcs)
 
     const DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
     EXPECT_EQ(artifacts.pitClears, 1);
+    EXPECT_EQ(artifacts.pitOpportunities, 1);
     EXPECT_EQ(artifacts.hurdleClears, 1);
+    EXPECT_EQ(artifacts.hurdleOpportunities, 1);
 }
 
 TEST(DuckClockEvaluationTrackerTest, DoesNotRewardFallingAcrossPitWithoutJumpLift)
@@ -161,6 +163,7 @@ TEST(DuckClockEvaluationTrackerTest, DoesNotRewardFallingAcrossPitWithoutJumpLif
 
     const DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
     EXPECT_EQ(artifacts.pitClears, 0);
+    EXPECT_EQ(artifacts.pitOpportunities, 1);
 }
 
 TEST(DuckClockEvaluationTrackerTest, MarkExitedThroughDoorSetsFullExitState)

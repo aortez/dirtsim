@@ -144,24 +144,30 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
                 .collisionDamageTotal = 0.75,
                 .damageTotal = 1.5,
                 .fullTraversals = 2.0,
+                .hurdleClearScore = 0.5,
                 .hurdleClears = 1.0,
-                .hurdleClearBonus = 0.1,
+                .hurdleClearBonus = 0.06,
+                .hurdleOpportunities = 2.0,
                 .leftWallTouches = 2.0,
-                .obstacleBonus = 0.25,
+                .obstacleBonus = 0.24,
+                .obstacleScore = 0.8,
+                .pitClearScore = 1.0,
                 .pitClears = 1.0,
-                .pitClearBonus = 0.15,
+                .pitClearBonus = 0.18,
+                .pitOpportunities = 1.0,
                 .rightWallTouches = 3.0,
-                .traversalBonus = 0.4,
+                .traversalScore = 0.6321,
+                .traversalBonus = 0.2844,
                 .exitDoorDistanceObserved = true,
                 .exitedThroughDoor = true,
                 .bestExitDoorDistanceCells = 0.0,
-                .exitDoorProximityBonus = 0.0,
+                .exitDoorProximityBonus = 0.25,
                 .exitDoorProximityScore = 1.0,
                 .exitDoorRaw = 1.0,
                 .exitDoorTime = 27.5,
                 .healthAverage = 0.8,
                 .exitDoorBonus = 0.5,
-                .clockBonus = 1.15,
+                .clockBonus = 0.5344,
                 .totalFitness = 1.85,
             },
     };
@@ -178,23 +184,33 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
         fitnessSectionFind(presentation, "clock_course");
     ASSERT_NE(clockCourse, nullptr);
     ASSERT_TRUE(clockCourse->score.has_value());
-    EXPECT_DOUBLE_EQ(clockCourse->score.value(), 0.65);
+    EXPECT_DOUBLE_EQ(clockCourse->score.value(), 0.5244);
 
     const Api::FitnessPresentationMetric* fullTraversals =
         fitnessMetricFind(*clockCourse, "full_traversals");
     ASSERT_NE(fullTraversals, nullptr);
     EXPECT_DOUBLE_EQ(fullTraversals->value, 2.0);
 
+    const Api::FitnessPresentationMetric* pitOpportunities =
+        fitnessMetricFind(*clockCourse, "pit_opportunities");
+    ASSERT_NE(pitOpportunities, nullptr);
+    EXPECT_DOUBLE_EQ(pitOpportunities->value, 1.0);
+
     const Api::FitnessPresentationSection* clockExit =
         fitnessSectionFind(presentation, "clock_exit");
     ASSERT_NE(clockExit, nullptr);
     ASSERT_TRUE(clockExit->score.has_value());
-    EXPECT_DOUBLE_EQ(clockExit->score.value(), 0.5);
+    EXPECT_DOUBLE_EQ(clockExit->score.value(), 0.75);
 
     const Api::FitnessPresentationMetric* exitDoorTime =
         fitnessMetricFind(*clockExit, "exit_door_time");
     ASSERT_NE(exitDoorTime, nullptr);
     EXPECT_DOUBLE_EQ(exitDoorTime->value, 27.5);
+
+    const Api::FitnessPresentationMetric* exitDoorBonus =
+        fitnessMetricFind(*clockExit, "exit_door_bonus");
+    ASSERT_NE(exitDoorBonus, nullptr);
+    EXPECT_DOUBLE_EQ(exitDoorBonus->value, 0.5);
 
     const Api::FitnessPresentationMetric* exitDoorDistance =
         fitnessMetricFind(*clockExit, "best_exit_door_distance_cells");
