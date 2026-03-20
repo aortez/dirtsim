@@ -233,6 +233,19 @@ void populateOrganismDebug(World& world, WorldData& data)
         data.organism_debug.push_back(std::move(debug));
     });
 }
+
+void populateWaterVolumeSnapshot(World& world, WorldData& data)
+{
+    WaterVolumeView waterVolumeView{};
+    if (world.tryGetWaterVolumeView(waterVolumeView) && waterVolumeView.width == data.width
+        && waterVolumeView.height == data.height) {
+        data.water_volume =
+            std::vector<float>(waterVolumeView.volume.begin(), waterVolumeView.volume.end());
+        return;
+    }
+
+    data.water_volume.reset();
+}
 } // namespace
 
 SimRunning::~SimRunning() = default;
@@ -652,6 +665,7 @@ void SimRunning::tick(StateMachine& dsm)
 
     WorldData cachedData = world->getData();
     populateOrganismDebug(*world, cachedData);
+    populateWaterVolumeSnapshot(*world, cachedData);
     dsm.updateCachedWorldData(cachedData);
     dsm.getTimers().stopTimer("cache_update");
 
@@ -1245,14 +1259,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
     if (World* world = session.getWorld()) {
         populateOrganismDebug(*world, responseData.worldData);
-
-        WaterVolumeView waterVolumeView{};
-        if (world->tryGetWaterVolumeView(waterVolumeView)
-            && waterVolumeView.width == responseData.worldData.width
-            && waterVolumeView.height == responseData.worldData.height) {
-            responseData.worldData.water_volume =
-                std::vector<float>(waterVolumeView.volume.begin(), waterVolumeView.volume.end());
-        }
+        populateWaterVolumeSnapshot(*world, responseData.worldData);
     }
 
     cwc.sendResponse(Response::okay(std::move(responseData)));

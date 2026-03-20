@@ -215,6 +215,52 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.pressure_diffusion_iterations);
                             } },
+                      { .label = "MAC P Iters",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 1,
+                        .rangeMax = 200,
+                        .defaultValue = 2,
+                        .valueScale = 1.0,
+                        .valueFormat = "%.0f",
+                        .step = 1,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.mac_water_pressure_iterations = static_cast<int>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.mac_water_pressure_iterations);
+                            } },
+                      { .label = "MAC Damp",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 5,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 1,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.mac_water_velocity_damping_per_second = v;
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.mac_water_velocity_damping_per_second;
+                            } },
+                      { .label = "MAC Sleep",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 200,
+                        .defaultValue = 5,
+                        .valueScale = 0.00001,
+                        .valueFormat = "%.5f",
+                        .step = 1,
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.mac_water_velocity_sleep_epsilon = v; },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return s.mac_water_velocity_sleep_epsilon;
+                            } },
                       { .label = "Scale",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,

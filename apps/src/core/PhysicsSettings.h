@@ -29,6 +29,9 @@ struct PhysicsSettings {
     WaterSimMode water_sim_mode;
     double mac_water_buoyancy_strength;
     double mac_water_drag_rate;
+    int mac_water_pressure_iterations;
+    double mac_water_velocity_damping_per_second;
+    double mac_water_velocity_sleep_epsilon;
     bool fragmentation_enabled;
     double fragmentation_threshold;      // Minimum energy for fragmentation chance.
     double fragmentation_full_threshold; // Energy for 100% fragmentation.

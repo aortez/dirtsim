@@ -11,17 +11,6 @@
 namespace DirtSim {
 namespace {
 
-constexpr float kAdvectionVolumeEpsilon = 0.0001f;
-constexpr float kFluidMaskVolumeEpsilon = 0.0001f;
-constexpr int kPressureIterations = 60;
-constexpr float kPressureGradientVelocityScale = 1.0f;
-constexpr float kVelocityDampingPerSecond = 0.20f;
-constexpr float kVelocitySleepEpsilon = 0.00005f;
-constexpr float kVelocityCflLimit = 0.95f;
-constexpr float kHorizontalAdvectionScale = 8.0f;
-constexpr float kVerticalAdvectionScale = 1.0f;
-constexpr int kDisplacementMaxRadius = 8;
-
 size_t cellIndex(int width, int x, int y)
 {
     return static_cast<size_t>(y) * width + x;
@@ -102,6 +91,15 @@ bool MacProjectionWaterSim::tryGetMutableWaterVolumeView(WaterVolumeMutableView&
     return true;
 }
 
+void MacProjectionWaterSim::syncToSettings(const PhysicsSettings& settings)
+{
+    parameters_.pressureIterations = std::max(1, settings.mac_water_pressure_iterations);
+    parameters_.velocityDampingPerSecond =
+        std::max(0.0f, static_cast<float>(settings.mac_water_velocity_damping_per_second));
+    parameters_.velocitySleepEpsilon =
+        std::max(0.0f, static_cast<float>(settings.mac_water_velocity_sleep_epsilon));
+}
+
 void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 {
     if (width_ <= 0 || height_ <= 0) {
@@ -115,6 +113,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     const WorldData& data = world.getData();
 
     const float gravity = static_cast<float>(world.getPhysicsSettings().gravity);
+    const Parameters& parameters = parameters_;
 
     for (int y = 0; y < height_; ++y) {
         for (int x = 0; x < width_; ++x) {
@@ -169,7 +168,8 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             tryDisplace(x, y - 1);
             tryDisplace(x, y + 1);
 
-            for (int radius = 2; radius <= kDisplacementMaxRadius && remaining > 0.0f; ++radius) {
+            for (int radius = 2; radius <= parameters.displacementMaxRadius && remaining > 0.0f;
+                 ++radius) {
                 const int xMin = x - radius;
                 const int xMax = x + radius;
                 const int yMin = y - radius;
@@ -192,7 +192,8 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
         for (int x = 0; x < width_; ++x) {
             const size_t idx = cellIndex(width_, x, y);
             fluidMask_[idx] =
-                (solidMask_[idx] == 0 && waterVolume_[idx] > kFluidMaskVolumeEpsilon) ? 1 : 0;
+                (solidMask_[idx] == 0 && waterVolume_[idx] > parameters.fluidMaskVolumeEpsilon) ? 1
+                                                                                                : 0;
         }
     }
 
@@ -222,43 +223,6 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
             projectionMask_[idx] = fluidMask_[idx] != 0 ? 1 : 0;
         }
-    }
-
-    constexpr int kProjectionShellRadius = 2;
-    for (int iter = 0; iter < kProjectionShellRadius; ++iter) {
-        for (int y = 0; y < height_; ++y) {
-            for (int x = 0; x < width_; ++x) {
-                const size_t idx = cellIndex(width_, x, y);
-                if (solidMask_[idx] != 0) {
-                    projectionMaskScratch_[idx] = 0;
-                    continue;
-                }
-
-                if (projectionMask_[idx] != 0) {
-                    projectionMaskScratch_[idx] = 1;
-                    continue;
-                }
-
-                bool neighborActive = false;
-                if (x > 0 && projectionMask_[idx - 1] != 0) {
-                    neighborActive = true;
-                }
-                else if (x + 1 < width_ && projectionMask_[idx + 1] != 0) {
-                    neighborActive = true;
-                }
-                else if (y > 0 && projectionMask_[idx - static_cast<size_t>(width_)] != 0) {
-                    neighborActive = true;
-                }
-                else if (
-                    y + 1 < height_ && projectionMask_[idx + static_cast<size_t>(width_)] != 0) {
-                    neighborActive = true;
-                }
-
-                projectionMaskScratch_[idx] = neighborActive ? 1 : 0;
-            }
-        }
-
-        std::swap(projectionMask_, projectionMaskScratch_);
     }
 
     if (totalWaterVolume <= 0.0f) {
@@ -369,7 +333,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     std::fill(pressure_.begin(), pressure_.end(), 0.0f);
     std::fill(pressureScratch_.begin(), pressureScratch_.end(), 0.0f);
 
-    for (int iter = 0; iter < kPressureIterations; ++iter) {
+    for (int iter = 0; iter < parameters.pressureIterations; ++iter) {
         for (int y = 0; y < height_; ++y) {
             for (int x = 0; x < width_; ++x) {
                 const size_t idx = cellIndex(width_, x, y);
@@ -391,12 +355,10 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                         return;
                     }
 
-                    if (projectionMask_[nIdx] == 0) {
-                        return;
-                    }
-
-                    sum += pressure_[nIdx];
                     denom += 1.0f;
+                    if (projectionMask_[nIdx] != 0) {
+                        sum += pressure_[nIdx];
+                    }
                 };
 
                 visitNeighbor(x - 1, y);
@@ -438,7 +400,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
             const float pL = projectionMask_[leftIdx] != 0 ? pressure_[leftIdx] : 0.0f;
             const float pR = projectionMask_[rightIdx] != 0 ? pressure_[rightIdx] : 0.0f;
-            uFaceVelocity_[faceIdx] -= dt * kPressureGradientVelocityScale * (pR - pL);
+            uFaceVelocity_[faceIdx] -= dt * parameters.pressureGradientVelocityScale * (pR - pL);
         }
     }
 
@@ -464,7 +426,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
             const float pT = projectionMask_[topIdx] != 0 ? pressure_[topIdx] : 0.0f;
             const float pB = projectionMask_[bottomIdx] != 0 ? pressure_[bottomIdx] : 0.0f;
-            vFaceVelocity_[faceIdx] -= dt * kPressureGradientVelocityScale * (pB - pT);
+            vFaceVelocity_[faceIdx] -= dt * parameters.pressureGradientVelocityScale * (pB - pT);
         }
     }
 
@@ -500,8 +462,9 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
         }
     }
 
-    const float dampingFactor = std::clamp(1.0f - kVelocityDampingPerSecond * dt, 0.0f, 1.0f);
-    const float maxFaceSpeed = kVelocityCflLimit / dt;
+    const float dampingFactor =
+        std::clamp(1.0f - parameters.velocityDampingPerSecond * dt, 0.0f, 1.0f);
+    const float maxFaceSpeed = parameters.velocityCflLimit / dt;
 
     for (float& u : uFaceVelocity_) {
         if (!std::isfinite(u)) {
@@ -511,7 +474,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
         u *= dampingFactor;
         u = std::clamp(u, -maxFaceSpeed, maxFaceSpeed);
-        if (std::abs(u) < kVelocitySleepEpsilon) {
+        if (std::abs(u) < parameters.velocitySleepEpsilon) {
             u = 0.0f;
         }
     }
@@ -524,11 +487,14 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
         v *= dampingFactor;
         v = std::clamp(v, -maxFaceSpeed, maxFaceSpeed);
-        if (std::abs(v) < kVelocitySleepEpsilon) {
+        if (std::abs(v) < parameters.velocitySleepEpsilon) {
             v = 0.0f;
         }
     }
 
+    // Advect from the pre-step volume field into a separate output field.
+    // The prior in-place update plus 8x horizontal scaling was turning coherent
+    // pools into a low-density haze across the basin.
     volumeScratch_ = waterVolume_;
 
     for (int y = 0; y < height_; ++y) {
@@ -545,29 +511,39 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                 continue;
             }
 
+            const float cfl =
+                std::clamp(u * dt, -parameters.advectionCflLimit, parameters.advectionCflLimit);
+            if (cfl == 0.0f) {
+                continue;
+            }
+
             const bool flowRight = u > 0.0f;
             const size_t donorIdx = flowRight ? leftIdx : rightIdx;
             const size_t receiverIdx = flowRight ? rightIdx : leftIdx;
 
-            const float donorVol = volumeScratch_[donorIdx];
-            if (donorVol <= kAdvectionVolumeEpsilon) {
+            const float donorSourceVol = waterVolume_[donorIdx];
+            if (donorSourceVol <= parameters.advectionVolumeEpsilon) {
                 continue;
             }
 
-            const float receiverVol = volumeScratch_[receiverIdx];
-            const float receiverCapacity = std::max(0.0f, 1.0f - receiverVol);
+            const float donorAvailable = volumeScratch_[donorIdx];
+            if (donorAvailable <= parameters.advectionVolumeEpsilon) {
+                continue;
+            }
+
+            const float receiverCapacity = std::max(0.0f, 1.0f - volumeScratch_[receiverIdx]);
             if (receiverCapacity <= 0.0f) {
                 continue;
             }
 
-            const float desired = std::abs(u) * dt * kHorizontalAdvectionScale * donorVol;
-            const float transfer = std::min(std::min(desired, donorVol), receiverCapacity);
+            const float desired = std::abs(cfl) * donorSourceVol;
+            const float transfer = std::min(std::min(desired, donorAvailable), receiverCapacity);
             if (transfer <= 0.0f) {
                 continue;
             }
 
-            volumeScratch_[donorIdx] = donorVol - transfer;
-            volumeScratch_[receiverIdx] = receiverVol + transfer;
+            volumeScratch_[donorIdx] -= transfer;
+            volumeScratch_[receiverIdx] += transfer;
         }
     }
 
@@ -585,29 +561,39 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                 continue;
             }
 
+            const float cfl =
+                std::clamp(v * dt, -parameters.advectionCflLimit, parameters.advectionCflLimit);
+            if (cfl == 0.0f) {
+                continue;
+            }
+
             const bool flowDown = v > 0.0f;
             const size_t donorIdx = flowDown ? topIdx : bottomIdx;
             const size_t receiverIdx = flowDown ? bottomIdx : topIdx;
 
-            const float donorVol = volumeScratch_[donorIdx];
-            if (donorVol <= kAdvectionVolumeEpsilon) {
+            const float donorSourceVol = waterVolume_[donorIdx];
+            if (donorSourceVol <= parameters.advectionVolumeEpsilon) {
                 continue;
             }
 
-            const float receiverVol = volumeScratch_[receiverIdx];
-            const float receiverCapacity = std::max(0.0f, 1.0f - receiverVol);
+            const float donorAvailable = volumeScratch_[donorIdx];
+            if (donorAvailable <= parameters.advectionVolumeEpsilon) {
+                continue;
+            }
+
+            const float receiverCapacity = std::max(0.0f, 1.0f - volumeScratch_[receiverIdx]);
             if (receiverCapacity <= 0.0f) {
                 continue;
             }
 
-            const float desired = std::abs(v) * dt * kVerticalAdvectionScale * donorVol;
-            const float transfer = std::min(std::min(desired, donorVol), receiverCapacity);
+            const float desired = std::abs(cfl) * donorSourceVol;
+            const float transfer = std::min(std::min(desired, donorAvailable), receiverCapacity);
             if (transfer <= 0.0f) {
                 continue;
             }
 
-            volumeScratch_[donorIdx] = donorVol - transfer;
-            volumeScratch_[receiverIdx] = receiverVol + transfer;
+            volumeScratch_[donorIdx] -= transfer;
+            volumeScratch_[receiverIdx] += transfer;
         }
     }
 

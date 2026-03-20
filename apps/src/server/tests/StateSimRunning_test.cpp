@@ -238,6 +238,10 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
     // Scenario ID is tracked by the active ScenarioSession.
     EXPECT_EQ(updatedState.session.getScenarioId(), Scenario::EnumType::Sandbox);
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
+    ASSERT_TRUE(worldData.water_volume.has_value());
+    EXPECT_EQ(
+        worldData.water_volume->size(),
+        static_cast<size_t>(expected_width) * static_cast<size_t>(expected_height));
 }
 
 /**

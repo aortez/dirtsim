@@ -30,10 +30,14 @@ void WaterSimSystem::syncToSettings(
 {
     if (settings.water_sim_mode != mode_) {
         setMode(settings.water_sim_mode, worldWidth, worldHeight);
-        return;
+    }
+    else {
+        resizeIfNeeded(worldWidth, worldHeight);
     }
 
-    resizeIfNeeded(worldWidth, worldHeight);
+    if (sim_) {
+        sim_->syncToSettings(settings);
+    }
 }
 
 void WaterSimSystem::advanceTime(World& world, double deltaTimeSeconds)
