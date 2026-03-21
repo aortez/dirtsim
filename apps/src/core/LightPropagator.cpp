@@ -6,6 +6,7 @@
 #include "LightConfig.h"
 #include "LightManager.h"
 #include "LightTypes.h"
+#include "MaterialColor.h"
 #include "MaterialType.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
@@ -25,7 +26,7 @@ constexpr float kCardinalWeight = 1.0f;
 constexpr float kDiagonalWeight = 0.707f;
 constexpr float kTotalWeight = 4.0f * kCardinalWeight + 4.0f * kDiagonalWeight;
 
-ColorNames::RgbF getMaterialBaseColor(Material::EnumType mat)
+ColorNames::RgbF getAmbientMaterialBaseColor(Material::EnumType mat)
 {
     using ColorNames::toRgbF;
     switch (mat) {
@@ -54,6 +55,31 @@ ColorNames::RgbF getMaterialBaseColor(Material::EnumType mat)
 }
 
 } // namespace
+
+void LightPropagator::applyFlatBasic(WorldData& data)
+{
+    const int width = data.width;
+    const int height = data.height;
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+            const Material::EnumType renderMaterial =
+                cell.isEmpty() ? Material::EnumType::Air : cell.getRenderMaterial();
+            data.colors.at(x, y) = ColorNames::toRgbF(getLegacyMaterialColor(renderMaterial));
+        }
+    }
+}
+
+void LightPropagator::clearPropagatedState()
+{
+    light_field_.clear();
+    light_field_next_.clear();
+    ambient_boost_ = {};
+}
 
 void LightPropagator::ensureBufferSizes(int width, int height)
 {
@@ -317,7 +343,7 @@ void LightPropagator::applyAmbient(WorldData& data, const LightConfig& config)
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
             const Material::EnumType mat = cell.getRenderMaterial();
             const float saturation = Material::getProperties(mat).light.saturation;
-            const RgbF base_color = getMaterialBaseColor(mat);
+            const RgbF base_color = getAmbientMaterialBaseColor(mat);
             const RgbF ambient_tinted =
                 base_ambient * ColorNames::lerp(white, base_color, saturation);
 
@@ -352,10 +378,6 @@ void LightPropagator::calculate(
 {
     ScopeTimer total_timer(timers, "light_calculation");
 
-    if (!config.enabled) {
-        return;
-    }
-
     auto& data = world.getData();
 
     // Ensure colors buffer is sized correctly.
@@ -365,38 +387,46 @@ void LightPropagator::calculate(
 
     ensureBufferSizes(data.width, data.height);
 
-    {
-        ScopeTimer t(timers, "light_propagate");
+    switch (config.mode) {
+        case LightMode::Propagated:
+        case LightMode::Fast: {
+            ScopeTimer t(timers, "light_propagate");
 
-        if (config.temporal_persistence) {
-            // Temporal mode: decay existing field and run one correction step.
-            const float decay = config.temporal_decay;
-            auto* field = light_field_.begin();
-            const size_t count = light_field_.size() * 8;
-            float* raw = reinterpret_cast<float*>(field);
-            for (size_t i = 0; i < count * 3; ++i) {
-                raw[i] *= decay;
-            }
+            if (config.temporal_persistence) {
+                // Temporal mode: decay existing field and run one correction step.
+                const float decay = config.temporal_decay;
+                auto* field = light_field_.begin();
+                const size_t count = light_field_.size() * 8;
+                float* raw = reinterpret_cast<float*>(field);
+                for (size_t i = 0; i < count * 3; ++i) {
+                    raw[i] *= decay;
+                }
 
-            light_field_next_.clear();
-            propagateStep(data, config.air_fast_path);
-            injectSources(world, config);
-            std::swap(light_field_, light_field_next_);
-        }
-        else {
-            for (int step = 0; step < config.steps_per_frame; ++step) {
                 light_field_next_.clear();
                 propagateStep(data, config.air_fast_path);
                 injectSources(world, config);
                 std::swap(light_field_, light_field_next_);
             }
-        }
-    }
+            else {
+                for (int step = 0; step < config.steps_per_frame; ++step) {
+                    light_field_next_.clear();
+                    propagateStep(data, config.air_fast_path);
+                    injectSources(world, config);
+                    std::swap(light_field_, light_field_next_);
+                }
+            }
 
-    {
-        ScopeTimer t(timers, "light_ambient");
-        applyAmbient(data, config);
-        ambient_boost_ = {};
+            ScopeTimer ambientTimer(timers, "light_ambient");
+            applyAmbient(data, config);
+            ambient_boost_ = {};
+            break;
+        }
+        case LightMode::FlatBasic: {
+            ScopeTimer t(timers, "light_flat_basic");
+            clearPropagatedState();
+            applyFlatBasic(data);
+            break;
+        }
     }
 
     {

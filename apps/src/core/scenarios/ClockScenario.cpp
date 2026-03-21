@@ -10,6 +10,7 @@
 #include "core/LightCalculatorBase.h"
 #include "core/LightManager.h"
 #include "core/LightTypes.h"
+#include "core/MaterialColor.h"
 #include "core/MaterialType.h"
 #include "core/PhysicsSettings.h"
 #include "core/ScenarioConfig.h"
@@ -108,29 +109,7 @@ ClockWorldDimensions calculateClockWorldDimensions(const Config::Clock& config)
 
 uint32_t getMaterialColor(Material::EnumType mat)
 {
-    switch (mat) {
-        case Material::EnumType::Air:
-            return ColorNames::black();
-        case Material::EnumType::Dirt:
-            return ColorNames::dirt();
-        case Material::EnumType::Leaf:
-            return ColorNames::leaf();
-        case Material::EnumType::Metal:
-            return ColorNames::metal();
-        case Material::EnumType::Root:
-            return ColorNames::root();
-        case Material::EnumType::Sand:
-            return ColorNames::sand();
-        case Material::EnumType::Seed:
-            return ColorNames::seed();
-        case Material::EnumType::Wall:
-            return ColorNames::stone();
-        case Material::EnumType::Water:
-            return ColorNames::water();
-        case Material::EnumType::Wood:
-            return ColorNames::wood();
-    }
-    return ColorNames::white();
+    return getLegacyMaterialColor(mat);
 }
 
 } // namespace

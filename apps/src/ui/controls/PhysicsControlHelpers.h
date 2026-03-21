@@ -44,6 +44,7 @@ struct ControlConfig {
     const char* dropdownOptions = nullptr; // Newline-separated options.
     std::function<void(PhysicsSettings&, int)> indexSetter = nullptr;
     std::function<int(const PhysicsSettings&)> indexGetter = nullptr;
+    bool refreshAllControlsAfterSet = false;
 
     std::function<void(PhysicsSettings&, double)> valueSetter = nullptr;
     std::function<double(const PhysicsSettings&)> valueGetter = nullptr;

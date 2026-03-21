@@ -83,6 +83,8 @@ public:
     void setAmbientBoost(ColorNames::RgbF boost) override;
 
 private:
+    void applyFlatBasic(WorldData& data);
+    void clearPropagatedState();
     void ensureBufferSizes(int width, int height);
     void propagateStep(const WorldData& data, bool air_fast_path);
     void injectSources(World& world, const LightConfig& config);

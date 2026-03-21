@@ -3,6 +3,7 @@
 #include "core/LightManager.h"
 #include "core/LightPropagator.h"
 #include "core/LightTypes.h"
+#include "core/MaterialColor.h"
 #include "core/MaterialType.h"
 #include "core/Timers.h"
 #include "core/World.h"
@@ -280,4 +281,77 @@ TEST_F(LightPropagatorTest, EmissiveOverlayWorks)
     EXPECT_LT(after_clear, with - 0.005f)
         << "After clearing overlay, light should decrease. After=" << after_clear
         << " Before=" << with;
+}
+
+TEST_F(LightPropagatorTest, FlatBasicUsesLegacyMaterialColorsAndRenderOverrides)
+{
+    World world(4, 2);
+    WorldData& data = world.getData();
+
+    data.at(1, 0).replaceMaterial(Material::EnumType::Wall, 1.0f);
+    data.at(1, 0).render_as = static_cast<int8_t>(Material::EnumType::Metal);
+    data.at(2, 0).replaceMaterial(Material::EnumType::Leaf, 1.0f);
+    data.at(3, 1).replaceMaterial(Material::EnumType::Water, 1.0f);
+    world.advanceTime(0.0001);
+
+    config.mode = LightMode::FlatBasic;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.sun_intensity = 0.0f;
+
+    prop.calculate(world, world.getGrid(), config, timers);
+
+    const LightBuffer& rawLight = prop.getRawLightBuffer();
+    const auto packedLegacyColor = [](Material::EnumType material) {
+        return ColorNames::toRgba(ColorNames::toRgbF(getLegacyMaterialColor(material)));
+    };
+
+    EXPECT_EQ(ColorNames::toRgba(data.colors.at(0, 0)), packedLegacyColor(Material::EnumType::Air));
+    EXPECT_EQ(
+        ColorNames::toRgba(data.colors.at(1, 0)), packedLegacyColor(Material::EnumType::Metal));
+    EXPECT_EQ(
+        ColorNames::toRgba(data.colors.at(2, 0)), packedLegacyColor(Material::EnumType::Leaf));
+    EXPECT_EQ(
+        ColorNames::toRgba(data.colors.at(3, 1)), packedLegacyColor(Material::EnumType::Water));
+
+    EXPECT_EQ(rawLight.at(0, 0), packedLegacyColor(Material::EnumType::Air));
+    EXPECT_EQ(rawLight.at(1, 0), packedLegacyColor(Material::EnumType::Metal));
+    EXPECT_EQ(rawLight.at(2, 0), packedLegacyColor(Material::EnumType::Leaf));
+    EXPECT_EQ(rawLight.at(3, 1), packedLegacyColor(Material::EnumType::Water));
+}
+
+TEST_F(LightPropagatorTest, FlatBasicClearsPropagatedStateBeforeReturningToFastMode)
+{
+    World world(8, 8);
+
+    config.mode = LightMode::Propagated;
+    config.steps_per_frame = 20;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.4f;
+    config.sun_intensity = 0.8f;
+
+    prop.calculate(world, world.getGrid(), config, timers);
+    EXPECT_GT(ColorNames::brightness(world.getData().colors.at(4, 4)), 0.1f);
+
+    config.mode = LightMode::FlatBasic;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.sun_intensity = 0.0f;
+
+    prop.calculate(world, world.getGrid(), config, timers);
+    EXPECT_EQ(ColorNames::toRgba(world.getData().colors.at(4, 4)), ColorNames::black());
+
+    config.mode = LightMode::Fast;
+    config.air_fast_path = true;
+    config.steps_per_frame = 1;
+    config.temporal_decay = 0.995f;
+    config.temporal_persistence = false;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.sun_intensity = 0.0f;
+
+    prop.calculate(world, world.getGrid(), config, timers);
+
+    EXPECT_EQ(ColorNames::toRgba(world.getData().colors.at(4, 4)), ColorNames::black());
+    EXPECT_EQ(prop.getRawLightBuffer().at(4, 4), ColorNames::black());
 }

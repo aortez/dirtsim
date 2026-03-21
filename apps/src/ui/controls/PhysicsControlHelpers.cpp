@@ -340,7 +340,17 @@ AllColumnConfigs createAllColumnConfigs()
 
     configs.light = {
         .title = "Light",
-        .controls = { { .label = "Sun",
+        .controls = { { .label = "Mode",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "Propagated\nFast\nFlatBasic",
+                        .indexSetter =
+                            [](PhysicsSettings& s, int idx) {
+                                applyLightModePreset(s.light, static_cast<LightMode>(idx));
+                            },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) { return static_cast<int>(s.light.mode); },
+                        .refreshAllControlsAfterSet = true },
+                      { .label = "Sun",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,

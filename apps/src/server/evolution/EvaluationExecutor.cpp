@@ -28,6 +28,11 @@ bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioI
     return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
 }
 
+LightMode resolveVisibleLightMode(OrganismType organismType)
+{
+    return organismType == OrganismType::TREE ? LightMode::Fast : LightMode::FlatBasic;
+}
+
 std::optional<bool> resolveDuckClockSpawnSideOverride(
     EvaluationTaskType taskType,
     OrganismType organismType,
@@ -266,8 +271,9 @@ EvaluationPassResult runEvaluationPass(
         visibleHandle->runner = &runner;
     }
 
-    if (trainingSpec.scenarioId == Scenario::EnumType::Clock && runner.getWorld()) {
-        runner.getWorld()->getPhysicsSettings().light.enabled = false;
+    if (World* world = runner.getWorld()) {
+        applyLightModePreset(
+            world->getPhysicsSettings().light, resolveVisibleLightMode(trainingSpec.organismType));
     }
 
     TrainingRunner::Status status;

@@ -19,6 +19,54 @@ using namespace DirtSim::Server::Tests;
 
 namespace {
 
+bool hasLitAirCell(const WorldData& data)
+{
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const Cell& cell = data.at(x, y);
+            if (!cell.isEmpty()) {
+                continue;
+            }
+            if (ColorNames::brightness(data.colors.at(x, y)) > 0.02f) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool allAirCellsBlack(const WorldData& data)
+{
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const Cell& cell = data.at(x, y);
+            if (!cell.isEmpty()) {
+                continue;
+            }
+            if (ColorNames::toRgba(data.colors.at(x, y)) != ColorNames::black()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool hasLitSolidCell(const WorldData& data)
+{
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            const Cell& cell = data.at(x, y);
+            if (cell.isEmpty()) {
+                continue;
+            }
+            if (ColorNames::brightness(data.colors.at(x, y)) > 0.02f) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 Genome makeNeuralNetGenome(WeightType value)
 {
     return Genome(static_cast<size_t>(NeuralNetBrain::getGenomeLayout().totalSize()), value);
@@ -135,6 +183,36 @@ TEST(EvaluationExecutorTest, VisibleEvaluationAdvancesIncrementally)
     EXPECT_EQ(completed.front().index, 0);
 }
 
+TEST(EvaluationExecutorTest, TreeVisibleEvaluationUsesPropagatedLightingForAirCells)
+{
+    TestStateMachineFixture fixture;
+    const TrainingSpec trainingSpec =
+        makeTrainingSpec(Scenario::EnumType::TreeGermination, OrganismType::TREE, 1);
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(1, 0.1);
+    const std::vector<EvaluationRequest> requests{
+        makeGenerationRequest(0, Scenario::EnumType::TreeGermination, 0.1f),
+    };
+
+    executor.start(1);
+    executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
+
+    std::optional<VisibleRenderFrame> frame;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !frame.has_value()) {
+        const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        if (tick.frame.has_value()) {
+            frame = tick.frame;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_TRUE(hasLitAirCell(frame->worldData));
+}
+
 TEST(EvaluationExecutorTest, GenerationBatchQueuesAllEvaluationsInWorkerPool)
 {
     TestStateMachineFixture fixture;
@@ -235,4 +313,35 @@ TEST(EvaluationExecutorTest, DuckClockPreviewCompletesAsSingleMergedEvaluation)
     EXPECT_EQ(completedCount, 1);
     EXPECT_EQ(backgroundCount, 0);
     EXPECT_EQ(previewCount, 1);
+}
+
+TEST(EvaluationExecutorTest, DuckClockVisibleEvaluationUsesFlatBasicPreviewLighting)
+{
+    TestStateMachineFixture fixture;
+    const TrainingSpec trainingSpec =
+        makeTrainingSpec(Scenario::EnumType::Clock, OrganismType::DUCK, 1);
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(1, 0.1);
+    const std::vector<EvaluationRequest> requests{
+        makeDuckClockGenerationRequest(0),
+    };
+
+    executor.start(1);
+    executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
+
+    std::optional<VisibleRenderFrame> frame;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !frame.has_value()) {
+        const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        if (tick.frame.has_value()) {
+            frame = tick.frame;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_TRUE(allAirCellsBlack(frame->worldData));
+    EXPECT_TRUE(hasLitSolidCell(frame->worldData));
 }
