@@ -4,11 +4,9 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
-#include <random>
 
 namespace DirtSim {
 
-class Cell;
 class World;
 
 /**
@@ -16,7 +14,8 @@ class World;
  *
  * The drain opens in response to water accumulation in the bottom third of the world.
  * Opening size varies (1, 3, 5, 7 cells wide) based on water amount, with hysteresis
- * to prevent rapid flickering. Material in drain cells is sprayed upward and dissipates.
+ * to prevent rapid flickering. Material in drain cells is converted into drained bulk water
+ * and dissipates while the opening is active.
  */
 class DrainManager {
 public:
@@ -25,8 +24,7 @@ public:
         World& world,
         double deltaTime,
         double waterAmount,
-        std::optional<Material::EnumType> extraDrainMaterial,
-        std::mt19937& rng);
+        std::optional<Material::EnumType> extraDrainMaterial);
 
     [[nodiscard]] bool isOpen() const { return open_; }
     [[nodiscard]] int16_t getStartX() const { return startX_; }
@@ -41,12 +39,8 @@ private:
 
     void updateSize(World& world, double waterAmount);
     void updateCells(
-        World& world,
-        double deltaTime,
-        std::optional<Material::EnumType> extraMaterial,
-        std::mt19937& rng);
+        World& world, double deltaTime, std::optional<Material::EnumType> extraMaterial);
     void applyGravity(World& world);
-    void sprayCell(World& world, Cell& cell, int16_t x, int16_t y);
 
     static constexpr double kCloseThreshold = 0.2;
     static constexpr double kFullOpenThreshold = 100.0;

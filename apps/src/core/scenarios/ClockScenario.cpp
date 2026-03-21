@@ -585,7 +585,7 @@ void ClockScenario::tick(World& world, double deltaTime)
             meltMaterial = std::get<MeltdownEventState>(event->state).digit_material;
         }
     }
-    drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
+    drain_manager_.update(world, deltaTime, waterAmount, meltMaterial);
     updateFloorObstacles(world, deltaTime);
 
     // Apply pit damage to any duck standing in a pit.

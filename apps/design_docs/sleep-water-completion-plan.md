@@ -25,11 +25,11 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 
 ## Near-Term Priority Order
 
-1. Enforce sleeping for conservative dry regions only.
-2. Finish MAC water ownership and remove remaining bulk legacy-water assumptions.
-3. Add streamed Debug render support for separate-layer MAC water.
-4. Remove legacy bulk-water APIs and call patterns once migrated replacements exist.
-5. Add MAC-based quiet metrics and allow calm pool interiors to sleep.
+1. Finish MAC water ownership and replace the remaining behavior-coupled legacy-water paths.
+2. Remove legacy bulk-water APIs and call patterns once migrated replacements exist.
+3. Add MAC-based quiet metrics and allow calm pool interiors to sleep.
+4. Gate MAC water work by active regions if profiling shows it is still needed.
+5. Add an optional transient spray/droplet layer.
 
 ## Current Branch Status
 
@@ -39,8 +39,10 @@ This document focuses on current branch status, sequencing, acceptance criteria,
   and active masks.
 - External edits, blocked transfers, gravity changes, and material moves already feed the tracker.
 - Region debug overlay plumbing exists and is visible in the UI.
-- The important missing step is that the active mask is still not used to skip the main world hot
-  loops. The engine still walks the full grid for force resolution and move generation.
+- Selected dry-region hot loops now enforce sleeping for conservative dry interiors.
+- Water regions and dirt/water boundary regions remain `tracked-only`.
+- Static-load work, MAC-water work, and some dry-region processing are still not gated by the sleep
+  mask.
 
 ### Water
 
@@ -50,6 +52,7 @@ This document focuses on current branch status, sequencing, acceptance criteria,
   serialization paths know about `waterVolume`.
 - `StateGet` includes `WorldData.water_volume`.
 - Basic render overlays `waterVolume` onto air cells.
+- Streamed Debug render carries an explicit MAC-water overlay.
 
 ### Remaining Water Migration Gaps
 
@@ -57,7 +60,6 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 - Some code paths still create legacy water cells while MAC mode is active.
 - Scenario setup and reset are inconsistent about clearing or repopulating `waterVolume` when a
   `World` instance is reused.
-- Streamed Debug render does not carry separate-layer water.
 
 ## Guiding Decisions
 
@@ -128,7 +130,6 @@ The target end state is:
   `World`.
 - Remove bulk-water creation paths that still instantiate legacy water cells while MAC mode is
   active.
-- Queue the streamed Debug render gap as the immediate follow-up once ownership cleanup lands.
 
 #### Notes
 
@@ -137,24 +138,23 @@ The target end state is:
 - In practice this phase splits into two kinds of work:
   - straightforward bulk-water migration, such as scenario setup/reset, bulk-water counting,
     hydration, and simple add/remove paths;
-  - behavior-coupled legacy-water paths, such as drain suction/spray, meltdown conversion, and
+  - behavior-coupled legacy-water paths, such as drain behavior, meltdown conversion, and
     collision fragmentation, which need MAC-native replacements rather than mechanical renames.
-- The streamed Debug render follow-up should carry a compact explicit MAC-water overlay rather than
-  relying on cell-material baking in the Debug payload. The client can then reconstruct visible
-  water cells for debugging without reintroducing legacy bulk-water ownership.
 - Once the migrated helper path exists, old bulk-water APIs and direct legacy-water access patterns
   should be removed rather than left as parallel options.
 - The behavior-coupled paths should not be papered over with new compatibility shims. They should
   either become explicit MAC bulk-water operations or move to a separate transient spray/droplet
   system.
+- Drain and meltdown behavior in MAC mode should stay conservative during this phase: direct
+  bulk-water conversion, query, and removal are in scope, but fake MAC suction or spray heuristics
+  are not. Legacy-only force and spray behavior can remain limited to legacy mode until a real
+  transient spray/disturbance system exists.
 
 #### Acceptance
 
 - Bulk-water reads/writes go through one consistent abstraction in MAC mode.
 - Scenario reset/setup does not leave stale `waterVolume` behind.
 - Bulk-water behavior no longer depends on surviving legacy water cells.
-- The remaining Debug render gap is narrowed to a dedicated follow-up task, not left as an open
-  ended deferral.
 
 ### Phase 3: Add Water Quiet Metrics And Sleep Calm Pool Interiors
 

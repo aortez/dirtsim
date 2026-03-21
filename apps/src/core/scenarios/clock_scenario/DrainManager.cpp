@@ -1,12 +1,12 @@
 #include "DrainManager.h"
 
 #include "core/Cell.h"
-#include "core/FragmentationParams.h"
 #include "core/MaterialType.h"
+#include "core/PhysicsSettings.h"
 #include "core/Vector2.h"
 #include "core/World.h"
-#include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
+#include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
 
@@ -25,8 +25,7 @@ void DrainManager::update(
     World& world,
     double deltaTime,
     double waterAmount,
-    std::optional<Material::EnumType> extraDrainMaterial,
-    std::mt19937& rng)
+    std::optional<Material::EnumType> extraDrainMaterial)
 {
     const WorldData& data = world.getData();
     if (data.height < 3 || data.width < 5) {
@@ -34,7 +33,7 @@ void DrainManager::update(
     }
 
     updateSize(world, waterAmount);
-    updateCells(world, deltaTime, extraDrainMaterial, rng);
+    updateCells(world, deltaTime, extraDrainMaterial);
 
     if (open_) {
         applyGravity(world);
@@ -69,7 +68,7 @@ void DrainManager::updateSize(World& world, double waterAmount)
     if (targetSize == 0) {
         int bottomRow = data.height - 2;
         for (int x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, bottomRow).material_type == Material::EnumType::Water) {
+            if (world.hasBulkWaterAtCell(x, bottomRow)) {
                 targetSize = 1;
                 break;
             }
@@ -152,54 +151,46 @@ void DrainManager::updateSize(World& world, double waterAmount)
 }
 
 void DrainManager::updateCells(
-    World& world,
-    double deltaTime,
-    std::optional<Material::EnumType> extraMaterial,
-    std::mt19937& rng)
+    World& world, double deltaTime, std::optional<Material::EnumType> extraMaterial)
 {
     if (!open_) {
         return;
     }
 
     WorldData& data = world.getData();
-    int drainY = data.height - 1;
-    int16_t centerX = static_cast<int16_t>((startX_ + endX_) / 2);
-    std::uniform_real_distribution<double> uniformDist(0.0, 1.0);
+    const int drainY = data.height - 1;
 
     for (int16_t x = startX_; x <= endX_; ++x) {
         Cell& cell = data.at(x, drainY);
 
-        // Extra material (e.g., melting digits) converts to water and sprays.
+        // Extra material (e.g., melting digits) converts into drainable bulk water.
         if (extraMaterial && cell.material_type == *extraMaterial && cell.com.y > 0.0) {
-            cell.replaceMaterial(Material::EnumType::Water, cell.fill_ratio);
-            sprayCell(world, cell, x, static_cast<int16_t>(drainY));
+            const float convertedAmount = std::clamp(cell.fill_ratio, 0.0f, 1.0f);
+            cell.clear();
+            if (convertedAmount >= World::MIN_MATTER_THRESHOLD) {
+                world.addBulkWaterAtCell(x, drainY, convertedAmount);
+            }
+        }
+
+        const float waterAmount = world.getBulkWaterAmountAtCell(x, drainY);
+        if (waterAmount < World::MIN_MATTER_THRESHOLD) {
+            if (waterAmount > 0.0f) {
+                world.setBulkWaterAmountAtCell(x, drainY, 0.0f);
+            }
             continue;
         }
 
-        if (cell.material_type != Material::EnumType::Water) {
-            continue;
-        }
-
-        if (cell.com.y <= 0.0) {
-            continue;
-        }
-
-        // Center cell: chance to spray dramatically.
-        if (x == centerX && cell.fill_ratio > 0.5 && uniformDist(rng) < 0.7) {
-            sprayCell(world, cell, x, static_cast<int16_t>(drainY));
-            continue;
-        }
-
-        // All drain cells dissipate.
-        cell.fill_ratio -= (deltaTime * 10);
-        if (cell.fill_ratio <= 0.0) {
-            cell = Cell();
-        }
+        const float nextAmount = std::max(0.0f, waterAmount - static_cast<float>(deltaTime * 10));
+        world.setBulkWaterAmountAtCell(x, drainY, nextAmount);
     }
 }
 
 void DrainManager::applyGravity(World& world)
 {
+    if (world.getPhysicsSettings().water_sim_mode == WaterSimMode::MacProjection) {
+        return;
+    }
+
     WorldData& data = world.getData();
     int drainY = data.height - 1;
     double drainCenterX = static_cast<double>(startX_ + endX_) / 2.0;
@@ -260,32 +251,6 @@ void DrainManager::applyGravity(World& world)
 
         cell.addPendingForce(Vector2d{ horizontalForce, downwardForce });
     }
-}
-
-void DrainManager::sprayCell(World& world, Cell& cell, int16_t x, int16_t y)
-{
-    if (cell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
-        cell = Cell();
-        return;
-    }
-
-    static const FragmentationParams kDrainFragParams{
-        .radial_bias = 0.2,
-        .min_arc = M_PI / 3.0,
-        .max_arc = M_PI / 2.0,
-        .edge_speed_factor = 1.2,
-        .base_speed = 50.0,
-        .spray_fraction = 1.0,
-    };
-
-    Vector2d sprayDirection(0.0, -1.0);
-    constexpr int kNumFrags = 5;
-    constexpr double kArcWidth = M_PI / 2.0;
-
-    world.getCollisionCalculator().fragmentSingleCell(
-        world, cell, x, y, x, y, sprayDirection, kNumFrags, kArcWidth, kDrainFragParams);
-
-    cell = Cell();
 }
 
 } // namespace DirtSim

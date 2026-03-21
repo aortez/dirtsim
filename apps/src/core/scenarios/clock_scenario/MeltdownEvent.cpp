@@ -1,18 +1,27 @@
 #include "MeltdownEvent.h"
 #include "core/Cell.h"
-#include "core/FragmentationParams.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
-#include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
 #include "spdlog/spdlog.h"
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <algorithm>
 
 namespace DirtSim {
 namespace ClockEvents {
+
+namespace {
+
+void convertCellToBulkWater(World& world, Cell& cell, int x, int y)
+{
+    const float amount = std::clamp(cell.fill_ratio, 0.0f, 1.0f);
+    cell.clear();
+
+    if (amount >= World::MIN_MATTER_THRESHOLD) {
+        world.addBulkWaterAtCell(x, y, amount);
+    }
+}
+
+} // namespace
 
 void startMeltdown(MeltdownEventState& state, World& world)
 {
@@ -61,22 +70,8 @@ void updateMeltdown(
     int above_bottom_y = data.height - 2;
     Material::EnumType digit_mat = state.digit_material;
 
-    // Fragmentation params for digit material spraying up from drain.
-    static const FragmentationParams melt_frag_params{
-        .radial_bias = 0.3,
-        .min_arc = M_PI / 4.0,
-        .max_arc = M_PI / 3.0,
-        .edge_speed_factor = 1.0,
-        .base_speed = 40.0,
-        .spray_fraction = 1.0,
-    };
-
     // Scan for digit material that has reached the bottom or fallen into drain.
     bool any_digit_material_above_bottom = false;
-
-    Vector2d spray_direction(0.0, -1.0);
-    constexpr int NUM_FRAGS = 4;
-    constexpr double ARC_WIDTH = M_PI / 2.0;
 
     for (int x = 1; x < data.width - 1; ++x) {
         // Check cells in drain hole (bottom wall row, if drain is open).
@@ -87,22 +82,7 @@ void updateMeltdown(
                     drain_cell = Cell();
                     continue;
                 }
-                // Convert to water and spray upward.
-                drain_cell.replaceMaterial(Material::EnumType::Water, drain_cell.fill_ratio);
-
-                world.getCollisionCalculator().fragmentSingleCell(
-                    world,
-                    drain_cell,
-                    x,
-                    bottom_wall_y,
-                    x,
-                    bottom_wall_y,
-                    spray_direction,
-                    NUM_FRAGS,
-                    ARC_WIDTH,
-                    melt_frag_params);
-
-                drain_cell = Cell();
+                convertCellToBulkWater(world, drain_cell, x, bottom_wall_y);
             }
         }
 
@@ -113,22 +93,7 @@ void updateMeltdown(
                 bottom_cell = Cell();
                 continue;
             }
-            // Convert to water and splash upward.
-            bottom_cell.replaceMaterial(Material::EnumType::Water, bottom_cell.fill_ratio);
-
-            world.getCollisionCalculator().fragmentSingleCell(
-                world,
-                bottom_cell,
-                x,
-                above_bottom_y,
-                x,
-                above_bottom_y,
-                spray_direction,
-                NUM_FRAGS,
-                ARC_WIDTH,
-                melt_frag_params);
-
-            bottom_cell = Cell();
+            convertCellToBulkWater(world, bottom_cell, x, above_bottom_y);
         }
     }
 
@@ -162,7 +127,7 @@ void endMeltdown(World& world, Material::EnumType digit_material)
         for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == digit_material) {
-                cell.replaceMaterial(Material::EnumType::Water, cell.fill_ratio);
+                convertCellToBulkWater(world, cell, x, y);
             }
         }
     }

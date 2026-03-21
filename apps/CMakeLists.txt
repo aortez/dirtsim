@@ -860,6 +860,7 @@ add_executable(dirtsim-tests
     src/tests/Buoyancy_test.cpp
     src/tests/CacheCorrectness_test.cpp
     src/tests/Cell_serialization_test.cpp
+    src/tests/ClockWaterTransition_test.cpp
     src/tests/ConfigLoader_test.cpp
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp
