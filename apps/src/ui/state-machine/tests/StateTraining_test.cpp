@@ -236,6 +236,9 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.averageFitness = 1.5;
     evt.progress.activeParallelism = 4;
     evt.progress.cpuPercent = 48.5;
+    evt.progress.validatingBest = true;
+    evt.progress.validatingBestCompletedSamples = 1;
+    evt.progress.validatingBestTargetSamples = 3;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -251,11 +254,14 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
     EXPECT_EQ(trainingState.progress.activeParallelism, 4);
     EXPECT_DOUBLE_EQ(trainingState.progress.cpuPercent, 48.5);
+    EXPECT_TRUE(trainingState.progress.validatingBest);
+    EXPECT_EQ(trainingState.progress.validatingBestCompletedSamples, 1);
+    EXPECT_EQ(trainingState.progress.validatingBestTargetSamples, 3);
 
     trainingState.view_.reset();
 }
 
-TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
+TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnCompletedGeneration)
 {
     LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
@@ -270,10 +276,9 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
 
     trainingState.onEnter(*fixture.stateMachine);
 
-    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 1u);
-    EXPECT_FLOAT_EQ(trainingState.plotAverageSeries_.back(), 0.0f);
-    ASSERT_EQ(trainingState.plotBestSeries_.size(), 1u);
-    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 0.0f);
+    EXPECT_TRUE(trainingState.plotAverageSeries_.empty());
+    EXPECT_TRUE(trainingState.plotBestSeries_.empty());
+    EXPECT_TRUE(trainingState.plotBestSeriesNewHighMask_.empty());
 
     const auto dispatchProgress = [&trainingState,
                                    &fixture](const EvolutionProgressReceivedEvent& evt) {
@@ -290,78 +295,104 @@ TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
     p0.progress.averageFitness = 4.2;
     p0.progress.robustEvaluationCount = 0;
     dispatchProgress(p0);
-    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 1u)
-        << "Mid-generation non-robust progress should not append yet";
-    EXPECT_EQ(trainingState.plotBestSeries_.size(), 1u)
-        << "Mid-generation non-robust progress should not append yet";
+    EXPECT_TRUE(trainingState.plotAverageSeries_.empty())
+        << "Mid-generation progress should not append yet";
+    EXPECT_TRUE(trainingState.plotBestSeries_.empty())
+        << "Mid-generation progress should not append yet";
 
     EvolutionProgressReceivedEvent p0Complete;
     p0Complete.progress.generation = 5;
     p0Complete.progress.currentEval = 50;
     p0Complete.progress.populationSize = 50;
     p0Complete.progress.lastCompletedGeneration = 5;
-    p0Complete.progress.bestThisGenSource = "seed";
     p0Complete.progress.bestFitnessThisGen = 9.9;
     p0Complete.progress.averageFitness = 0.1;
     p0Complete.progress.lastGenerationAverageFitness = 5.5;
+    p0Complete.progress.lastGenerationFitnessMax = 9.9;
     p0Complete.progress.robustEvaluationCount = 0;
     dispatchProgress(p0Complete);
-    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 2u);
+    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 1u);
     EXPECT_FLOAT_EQ(trainingState.plotAverageSeries_.back(), 5.5f);
-    ASSERT_EQ(trainingState.plotBestSeries_.size(), 2u);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 1u);
     EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 9.9f);
+    ASSERT_EQ(trainingState.plotBestSeriesNewHighMask_.size(), 1u);
+    EXPECT_EQ(trainingState.plotBestSeriesNewHighMask_.back(), 1u);
 
     EvolutionProgressReceivedEvent p0CompleteRepeat = p0Complete;
     p0CompleteRepeat.progress.bestFitnessThisGen = 8.8;
     p0CompleteRepeat.progress.averageFitness = 2.2;
     p0CompleteRepeat.progress.lastGenerationAverageFitness = 4.4;
+    p0CompleteRepeat.progress.lastGenerationFitnessMax = 8.8;
     dispatchProgress(p0CompleteRepeat);
-    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 2u)
+    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 1u)
         << "Repeated completed generation should not append duplicate points";
-    EXPECT_EQ(trainingState.plotBestSeries_.size(), 2u)
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 1u)
         << "Repeated completed generation should not append duplicate points";
 
-    EvolutionProgressReceivedEvent p1;
-    p1.progress.generation = 5;
-    p1.progress.currentEval = 50;
-    p1.progress.populationSize = 50;
-    p1.progress.bestFitnessThisGen = 1.5;
-    p1.progress.averageFitness = 0.2;
-    p1.progress.lastGenerationAverageFitness = 6.2;
-    p1.progress.robustEvaluationCount = 1;
-    dispatchProgress(p1);
-    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 3u);
-    EXPECT_FLOAT_EQ(trainingState.plotAverageSeries_.back(), 6.2f);
-    ASSERT_EQ(trainingState.plotBestSeries_.size(), 3u);
-    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 1.5f);
+    EvolutionProgressReceivedEvent p1RobustOnly;
+    p1RobustOnly.progress.generation = 5;
+    p1RobustOnly.progress.currentEval = 50;
+    p1RobustOnly.progress.populationSize = 50;
+    p1RobustOnly.progress.lastCompletedGeneration = 5;
+    p1RobustOnly.progress.bestFitnessThisGen = 1.5;
+    p1RobustOnly.progress.averageFitness = 0.2;
+    p1RobustOnly.progress.lastGenerationAverageFitness = 6.2;
+    p1RobustOnly.progress.lastGenerationFitnessMax = 1.5;
+    p1RobustOnly.progress.robustEvaluationCount = 1;
+    dispatchProgress(p1RobustOnly);
+    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 1u)
+        << "Robust-pass updates alone should not append duplicate points";
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 1u)
+        << "Robust-pass updates alone should not append duplicate points";
 
-    EvolutionProgressReceivedEvent p1Repeat;
-    p1Repeat.progress.generation = 5;
-    p1Repeat.progress.currentEval = 50;
-    p1Repeat.progress.populationSize = 50;
-    p1Repeat.progress.bestFitnessThisGen = 1.4;
-    p1Repeat.progress.averageFitness = 6.1;
-    p1Repeat.progress.lastGenerationAverageFitness = 6.0;
-    p1Repeat.progress.robustEvaluationCount = 1;
-    dispatchProgress(p1Repeat);
-    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 3u)
-        << "Repeated robust evaluation count should not append duplicate points";
-    EXPECT_EQ(trainingState.plotBestSeries_.size(), 3u)
-        << "Repeated robust evaluation count should not append duplicate points";
+    EvolutionProgressReceivedEvent p1MidGeneration;
+    p1MidGeneration.progress.generation = 6;
+    p1MidGeneration.progress.currentEval = 10;
+    p1MidGeneration.progress.populationSize = 50;
+    p1MidGeneration.progress.bestFitnessThisGen = 2.1;
+    p1MidGeneration.progress.averageFitness = 0.3;
+    p1MidGeneration.progress.robustEvaluationCount = 1;
+    dispatchProgress(p1MidGeneration);
+    EXPECT_EQ(trainingState.plotAverageSeries_.size(), 1u)
+        << "New generation should not append until it completes";
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 1u)
+        << "New generation should not append until it completes";
 
     EvolutionProgressReceivedEvent p2;
     p2.progress.generation = 6;
     p2.progress.currentEval = 50;
     p2.progress.populationSize = 50;
-    p2.progress.bestFitnessThisGen = 0.8;
+    p2.progress.bestFitnessThisGen = 2.1;
     p2.progress.averageFitness = 0.3;
+    p2.progress.lastCompletedGeneration = 6;
     p2.progress.lastGenerationAverageFitness = 6.0;
-    p2.progress.robustEvaluationCount = 2;
+    p2.progress.lastGenerationFitnessMax = 0.8;
+    p2.progress.robustEvaluationCount = 1;
     dispatchProgress(p2);
-    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 4u);
+    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 2u);
     EXPECT_FLOAT_EQ(trainingState.plotAverageSeries_.back(), 6.0f);
-    ASSERT_EQ(trainingState.plotBestSeries_.size(), 4u);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 2u);
     EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 0.8f);
+    ASSERT_EQ(trainingState.plotBestSeriesNewHighMask_.size(), 2u);
+    EXPECT_EQ(trainingState.plotBestSeriesNewHighMask_.back(), 0u);
+
+    EvolutionProgressReceivedEvent p3;
+    p3.progress.generation = 7;
+    p3.progress.currentEval = 50;
+    p3.progress.populationSize = 50;
+    p3.progress.bestFitnessThisGen = 3.5;
+    p3.progress.averageFitness = 0.4;
+    p3.progress.lastCompletedGeneration = 7;
+    p3.progress.lastGenerationAverageFitness = 7.0;
+    p3.progress.lastGenerationFitnessMax = 12.0;
+    p3.progress.robustEvaluationCount = 2;
+    dispatchProgress(p3);
+    ASSERT_EQ(trainingState.plotAverageSeries_.size(), 3u);
+    EXPECT_FLOAT_EQ(trainingState.plotAverageSeries_.back(), 7.0f);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 3u);
+    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 12.0f);
+    ASSERT_EQ(trainingState.plotBestSeriesNewHighMask_.size(), 3u);
+    EXPECT_EQ(trainingState.plotBestSeriesNewHighMask_.back(), 1u);
 
     trainingState.view_.reset();
 }

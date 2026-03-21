@@ -1,0 +1,44 @@
+brcmfmac-nexmon-dkms (6.12.2) kali-dev; urgency=medium
+
+  * Add recommends on firmware-nexmon
+  * brcmfmac: update module version to 6.12.2-nexmon
+
+ -- Steev Klimaszewski <steev@kali.org>  Mon, 14 Jul 2025 15:10:48 -0500
+
+brcmfmac-nexmon-dkms (6.12.1) kali-dev; urgency=medium
+
+  [ Steev Klimaszewski ]
+  * Remove power save message
+  * Disable CI
+  * brcmfmac: update module version to 6.12.1-nexmon
+
+  [ thau0x01 ]
+  * brcmfmac: initialize err in brcmf_cfg80211_change_beacon
+  * brcmfmac: sdio: add declaration for brcmf_sdio_debugfs_create
+  * brcmfmac: replace strlcpy with strscpy for safer string handling
+
+ -- Steev Klimaszewski <steev@kali.org>  Fri, 11 Jul 2025 11:59:43 -0500
+
+brcmfmac-nexmon-dkms (6.12) kali-dev; urgency=medium
+
+  [ Nurse Jackass ]
+  * compatability with 6.12
+  * Edit Makefile - debug symbols in failure output.  disabling to test
+  * Edit cfg80211.c to be compatible with 6.13
+  * need debug on raspi
+
+  [ Sniffleupagus ]
+  * Change kernel cut off to 6.11.2, per gitlab actions failing
+
+  [ Steev Klimaszewski ]
+  * Bump module version to 6.12
+  * Update standards version to 4.7.2, no changes needed
+  * Prepare for Release
+
+ -- Steev Klimaszewski <steev@kali.org>  Mon, 21 Apr 2025 22:23:29 -0500
+
+brcmfmac-nexmon-dkms (6.6) kali-dev; urgency=medium
+
+  * Initial release of brcmfmac-nexmon as a package
+
+ -- Steev Klimaszewski <steev@kali.org>  Thu, 23 Jan 2025 14:10:53 -0600

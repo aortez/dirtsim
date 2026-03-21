@@ -16,6 +16,7 @@
  *      INCLUDES
  *********************/
 
+#include <chrono>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -165,17 +166,23 @@ void run_loop_x11(DirtSim::Ui::StateMachine& sm)
     /* Handle LVGL tasks. */
     while (!sm.shouldExit()) {
         // Process UI state machine events.
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsBeforeRender);
         sm.processEvents();
 
         // Update background animations (event-driven, no timer).
         sm.updateAnimations();
 
         /* Returns the time to the next timer execution. */
+        auto timerStart = std::chrono::steady_clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::TimerHandler);
+        sm.notifyDisplayTimerHandlerStart(timerStart);
         idle_time = lv_timer_handler();
+        sm.notifyDisplayFlush(std::chrono::steady_clock::now());
 
         // TODO: Get frame limiting from settings or config.
         bool frame_limiting_enabled = true;
         if (frame_limiting_enabled) {
+            sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::WaitingForEvents);
             usleep(idle_time * 1000);
         }
     }

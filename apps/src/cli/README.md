@@ -248,10 +248,12 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario
 ./build-debug/bin/cli functional-test canControlNesScenario
 ./build-debug/bin/cli functional-test canApplyClockTimezoneFromUserSettings
+./build-debug/bin/cli functional-test canCancelWifiConnect --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test canPlaySynthKeys
+./build-debug/bin/cli functional-test canSwitchWifiNetworks --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test verifyTraining
 
-# verifyTraining runs 5 one-generation training loops with a 50-sized population,
+# verifyTraining runs 5 one-generation training loops with a 5-sized population,
 # saving results between runs and verifying the genomes change.
 
 # Note: canExit shuts down the UI, so run it last or restart the UI before other tests.
@@ -281,7 +283,14 @@ Run a minimal UI/server workflow check against a running system:
 - For canUseDefaultScenarioWhenSimRunHasNoScenario: sets default scenario and verifies UI SimRun (without scenario_id) uses it.
 - For canControlNesScenario: starts NES scenario, verifies timestep advances, sets Start via server `NesInputSet`, then releases it.
 - For canApplyClockTimezoneFromUserSettings: sets timezone, runs Clock scenario, and verifies pushed Clock config uses the setting.
+- For canCancelWifiConnect: runs a real WiFi connect attempt through the Network UI, waits for a cancelable state, presses Cancel, and verifies the original network stays active.
 - For canPlaySynthKeys: opens the Synth screen and sends programmatic key press/release events via UI API, verifying state details.
+- For canSwitchWifiNetworks: connects to each configured real WiFi network through the Network UI and verifies the active SSID changes.
+
+**WiFi functional test config**:
+- Use `--wifi-config /path/to/config.json` for `canSwitchWifiNetworks` and `canCancelWifiConnect`.
+- A template lives at `src/cli/examples/wifi-functional-test.example.json`.
+- These tests should be run locally on the target device so they can use `ws://localhost` while switching WiFi networks.
 
 ### Network Mode
 

@@ -274,6 +274,19 @@ Result<lv_obj_t*, std::string> LVGLBuilder::SliderBuilder::createSlider()
     }
     lv_slider_set_value(slider_, clamped_value, LV_ANIM_OFF);
 
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(slider_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::SLIDER_ACTIVE_COLOR), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_radius(slider_, size_.height / 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider_, size_.height / 2, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider_, Style::SLIDER_KNOB_RADIUS, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider_, Style::SLIDER_KNOB_SIZE / 2 - size_.height / 2, LV_PART_KNOB);
+
     return Result<lv_obj_t*, std::string>::okay(slider_);
 }
 
@@ -286,7 +299,8 @@ void LVGLBuilder::SliderBuilder::createLabel()
     }
 
     lv_label_set_text(label_, label_text_.c_str());
-    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
     lv_obj_align(label_, label_position_.align, label_position_.x, label_position_.y);
 }
 
@@ -298,7 +312,8 @@ void LVGLBuilder::SliderBuilder::createValueLabel()
         return;
     }
 
-    lv_obj_set_style_text_color(value_label_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_set_style_text_color(value_label_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(value_label_, Style::CONTROL_FONT, 0);
 
     // Set initial value text based on slider's current value.
     char buf[32];
@@ -932,18 +947,21 @@ static void labeledSwitchContainerClicked(lv_event_t* e)
     lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
     lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_obj_get_user_data(container));
 
-    if (switch_obj) {
-        // Toggle switch state.
-        if (lv_obj_has_state(switch_obj, LV_STATE_CHECKED)) {
-            lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
-        }
-        else {
-            lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
-        }
-
-        // Send VALUE_CHANGED event to trigger the callback.
-        lv_obj_send_event(switch_obj, LV_EVENT_VALUE_CHANGED, nullptr);
+    if (!switch_obj || lv_obj_has_state(switch_obj, LV_STATE_DISABLED)
+        || lv_obj_has_state(container, LV_STATE_DISABLED)) {
+        return;
     }
+
+    // Toggle switch state.
+    if (lv_obj_has_state(switch_obj, LV_STATE_CHECKED)) {
+        lv_obj_clear_state(switch_obj, LV_STATE_CHECKED);
+    }
+    else {
+        lv_obj_add_state(switch_obj, LV_STATE_CHECKED);
+    }
+
+    // Send VALUE_CHANGED event to trigger the callback.
+    lv_obj_send_event(switch_obj, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 
 Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledSwitch()
@@ -963,8 +981,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
     lv_obj_set_style_pad_right(container_, Style::PAD_HORIZONTAL, 0);
     lv_obj_set_style_pad_column(container_, Style::GAP, 0);
 
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(container_, 1, 0);
+    lv_obj_set_style_border_color(container_, lv_color_hex(0x404040), 0);
 
     // Rounded corners (from Style constants).
     lv_obj_set_style_radius(container_, Style::RADIUS, 0);
@@ -978,6 +998,21 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
         return Result<lv_obj_t*, std::string>::error("Failed to create switch");
     }
     lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
+    const auto mainSelector = static_cast<lv_style_selector_t>(LV_PART_MAIN)
+        | static_cast<lv_style_selector_t>(LV_STATE_DEFAULT);
+    const auto checkedIndicatorSelector = static_cast<lv_style_selector_t>(LV_PART_INDICATOR)
+        | static_cast<lv_style_selector_t>(LV_STATE_CHECKED);
+    const auto knobSelector = static_cast<lv_style_selector_t>(LV_PART_KNOB)
+        | static_cast<lv_style_selector_t>(LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::TROUGH_INNER_COLOR), mainSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, mainSelector);
+    lv_obj_set_style_bg_color(
+        switch_, lv_color_hex(Style::SWITCH_ACTIVE_COLOR), checkedIndicatorSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, checkedIndicatorSelector);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::SLIDER_KNOB_COLOR), knobSelector);
+    lv_obj_set_style_bg_opa(switch_, LV_OPA_COVER, knobSelector);
+    lv_obj_set_style_border_width(switch_, 0, mainSelector);
+    lv_obj_set_style_shadow_width(switch_, 0, mainSelector);
 
     // Set initial state.
     if (initial_checked_) {
@@ -1001,6 +1036,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
             lv_label_set_text(label_, label_text_.c_str());
             lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
             lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
+            lv_obj_set_flex_grow(label_, 1);
         }
     }
 
@@ -1022,6 +1058,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
 
 // State structure for toggle slider callbacks.
 struct ToggleSliderState {
+    lv_obj_t* labelObj;
     lv_obj_t* slider;
     lv_obj_t* valueLabel;
     lv_obj_t* switch_obj;
@@ -1037,6 +1074,19 @@ struct ToggleSliderState {
     bool sliderInteractionActive;
 };
 
+static void toggleSliderSetTextColors(ToggleSliderState* state, bool isEnabled)
+{
+    if (!state) return;
+
+    const uint32_t textColor = isEnabled ? 0xFFFFFF : LVGLBuilder::Style::TEXT_DISABLED_COLOR;
+    if (state->labelObj) {
+        lv_obj_set_style_text_color(state->labelObj, lv_color_hex(textColor), 0);
+    }
+    if (state->valueLabel) {
+        lv_obj_set_style_text_color(state->valueLabel, lv_color_hex(textColor), 0);
+    }
+}
+
 static void toggleSliderSwitchCallback(lv_event_t* e)
 {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
@@ -1051,10 +1101,12 @@ static void toggleSliderSwitchCallback(lv_event_t* e)
         int valueToRestore = (state->savedValue > 0) ? state->savedValue : state->defaultValue;
         lv_slider_set_value(state->slider, valueToRestore, LV_ANIM_OFF);
 
-        // Restore blue color.
         lv_obj_set_style_bg_color(
-            state->slider, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(state->slider, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+            state->slider,
+            lv_color_hex(LVGLBuilder::Style::SLIDER_ACTIVE_COLOR),
+            LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            state->slider, lv_color_hex(LVGLBuilder::Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
 
         // Update value label.
         double scaledValue = valueToRestore * state->valueScale;
@@ -1072,15 +1124,20 @@ static void toggleSliderSwitchCallback(lv_event_t* e)
 
         lv_slider_set_value(state->slider, 0, LV_ANIM_OFF);
 
-        // Grey color when disabled (visual feedback only, still interactive).
-        lv_obj_set_style_bg_color(state->slider, lv_color_hex(0x808080), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(state->slider, lv_color_hex(0x808080), LV_PART_KNOB);
+        lv_obj_set_style_bg_color(
+            state->slider,
+            lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR),
+            LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(
+            state->slider, lv_color_hex(LVGLBuilder::Style::SLIDER_DISABLED_COLOR), LV_PART_KNOB);
 
         // Update value label to 0.
         char buf[32];
         snprintf(buf, sizeof(buf), state->valueFormat.c_str(), 0.0);
         lv_label_set_text(state->valueLabel, buf);
     }
+
+    toggleSliderSetTextColors(state, isEnabled);
 
     const std::string label = state->label.empty() ? "Toggle" : state->label;
     LOG_INFO(Controls, "Toggle '{}' {}", label, isEnabled ? "on" : "off");
@@ -1244,6 +1301,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     // Create container for the whole control group.
     // Height accommodates: top row (switch height) + gap + slider (with large knob).
     constexpr int containerHeight = Style::SWITCH_HEIGHT + Style::GAP + Style::SLIDER_KNOB_SIZE + 8;
+    const lv_style_selector_t checkedIndicatorSelector = static_cast<lv_style_selector_t>(
+        static_cast<unsigned>(LV_PART_INDICATOR) | static_cast<unsigned>(LV_STATE_CHECKED));
     container_ = lv_obj_create(parent_);
     lv_obj_set_size(container_, Style::CONTROL_WIDTH, containerHeight);
     lv_obj_set_style_pad_all(container_, Style::GAP, 0);
@@ -1251,8 +1310,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_radius(container_, Style::RADIUS, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Blue background to match LabeledSwitch theme.
-    lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
 
     // Create label (top left, vertically centered with switch).
@@ -1266,6 +1324,14 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     switch_ = lv_switch_create(container_);
     lv_obj_align(switch_, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(
+        switch_, lv_color_hex(Style::SWITCH_ACTIVE_COLOR), checkedIndicatorSelector);
+    lv_obj_set_style_bg_color(switch_, lv_color_hex(Style::SLIDER_KNOB_COLOR), LV_PART_KNOB);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(switch_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(switch_, 0, LV_PART_KNOB);
 
     if (initially_enabled_) {
         lv_obj_add_state(switch_, LV_STATE_CHECKED);
@@ -1287,15 +1353,20 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
     lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_INDICATOR);
 
-    // Set initial color (slider always interactive for auto-enable).
-    if (!initially_enabled_) {
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_color_hex(0x808080), LV_PART_KNOB);
-    }
-    else {
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
-    }
+    lv_obj_set_style_bg_color(slider_, lv_color_hex(Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(
+        slider_,
+        lv_color_hex(
+            initially_enabled_ ? Style::SLIDER_ACTIVE_COLOR : Style::SLIDER_DISABLED_COLOR),
+        LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(
+        slider_,
+        lv_color_hex(initially_enabled_ ? Style::SLIDER_KNOB_COLOR : Style::SLIDER_DISABLED_COLOR),
+        LV_PART_KNOB);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(slider_, 0, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(slider_, 0, LV_PART_KNOB);
 
     // Create value label (right of label, shows current value).
     valueLabel_ = lv_label_create(container_);
@@ -1308,19 +1379,15 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_text_color(valueLabel_, lv_color_hex(0xFFFFFF), 0);
 
     // Create persistent state for callbacks.
-    ToggleSliderState* state = new ToggleSliderState{ slider_,
-                                                      valueLabel_,
-                                                      switch_,
-                                                      value_scale_,
-                                                      value_format_,
-                                                      initial_value_,
-                                                      default_value_,
-                                                      slider_callback_,
-                                                      slider_user_data_,
-                                                      toggle_callback_,
-                                                      toggle_user_data_,
-                                                      label_text_,
-                                                      false };
+    ToggleSliderState* state = new ToggleSliderState{ label_,           slider_,
+                                                      valueLabel_,      switch_,
+                                                      value_scale_,     value_format_,
+                                                      initial_value_,   default_value_,
+                                                      slider_callback_, slider_user_data_,
+                                                      toggle_callback_, toggle_user_data_,
+                                                      label_text_,      false };
+
+    toggleSliderSetTextColors(state, initially_enabled_);
 
     // Set user_data on widgets so user callbacks can access it.
     if (toggle_user_data_) {
@@ -1874,7 +1941,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         if (icon_label_) {
             lv_label_set_text(icon_label_, icon_.c_str());
             lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
-            const lv_font_t* icon_font = font_ ? font_ : &lv_font_montserrat_40;
+            const lv_font_t* icon_font = font_
+                ? font_
+                : (layout_flow_ == LV_FLEX_FLOW_ROW ? &lv_font_montserrat_24
+                                                    : &lv_font_montserrat_40);
             lv_obj_set_style_text_font(icon_label_, icon_font, 0);
         }
     };
@@ -1891,8 +1961,17 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
             lv_obj_set_style_text_font(
                 label_, use_small_font ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(label_, LV_TEXT_ALIGN_CENTER, 0);
-            lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
+            if (layout_flow_ == LV_FLEX_FLOW_ROW) {
+                lv_label_set_long_mode(label_, LV_LABEL_LONG_DOT);
+                if (!icon_.empty()) {
+                    lv_obj_set_width(label_, 0);
+                    lv_obj_set_flex_grow(label_, 1);
+                }
+            }
+            else {
+                lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
+                lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
+            }
         }
     };
 
@@ -2316,6 +2395,10 @@ LVGLBuilder::ActionDropdownBuilder LVGLBuilder::actionDropdown(lv_obj_t* parent)
 struct ActionStepperState {
     lv_obj_t* valueLabel;
     lv_obj_t* container;
+    lv_obj_t* minusButton;
+    lv_obj_t* plusButton;
+    lv_obj_t* minusHitZone;
+    lv_obj_t* plusHitZone;
     int32_t value;
     int32_t min;
     int32_t max;
@@ -2325,12 +2408,17 @@ struct ActionStepperState {
     std::string label;
 
     lv_timer_t* repeatTimer;
+    lv_point_t pressStartPoint;
     bool isIncrementing;
     bool initialDelayPassed;
     bool loggedThisPress;
+    bool pressCanceled;
+    bool valueChangedThisPress;
 
-    static constexpr uint32_t INITIAL_DELAY_MS = 400;
-    static constexpr uint32_t REPEAT_INTERVAL_MS = 80;
+    static constexpr uint32_t INITIAL_DELAY_MS = 300;
+    static constexpr uint32_t REPEAT_INTERVAL_MS = 70;
+    static constexpr int CANCEL_HORIZONTAL_DRAG_PX = 28;
+    static constexpr int CANCEL_VERTICAL_DRAG_PX = 12;
 };
 
 // Helper to get ActionStepperState from container widget.
@@ -2340,16 +2428,34 @@ static ActionStepperState* getStepperStateFromContainer(lv_obj_t* container)
 {
     if (!container) return nullptr;
 
-    // Widget structure: container -> [minusBtn, centerSection, plusBtn]
-    // centerSection -> [labelObj (optional), valueLabel]
-    lv_obj_t* centerSection = lv_obj_get_child(container, 1);
-    if (!centerSection) return nullptr;
+    // Widget structure: container -> [labelBar (optional), valueRow, hit zones...]
+    // valueRow -> [minusBtn, valueSection, plusBtn]
+    // valueSection -> [valueLabel]
+    const uint32_t containerChildCount = lv_obj_get_child_count(container);
+    if (containerChildCount == 0) return nullptr;
 
-    // valueLabel is always the last child of centerSection.
-    uint32_t childCount = lv_obj_get_child_count(centerSection);
-    if (childCount == 0) return nullptr;
+    lv_obj_t* valueRow = nullptr;
+    for (int32_t childIndex = static_cast<int32_t>(containerChildCount) - 1; childIndex >= 0;
+         --childIndex) {
+        lv_obj_t* child = lv_obj_get_child(container, childIndex);
+        if (!child) {
+            continue;
+        }
+        if (lv_obj_has_flag(child, LV_OBJ_FLAG_IGNORE_LAYOUT)) {
+            continue;
+        }
+        valueRow = child;
+        break;
+    }
+    if (!valueRow) return nullptr;
 
-    lv_obj_t* valueLabel = lv_obj_get_child(centerSection, childCount - 1);
+    lv_obj_t* valueSection = lv_obj_get_child(valueRow, 1);
+    if (!valueSection) return nullptr;
+
+    const uint32_t valueSectionChildCount = lv_obj_get_child_count(valueSection);
+    if (valueSectionChildCount == 0) return nullptr;
+
+    lv_obj_t* valueLabel = lv_obj_get_child(valueSection, valueSectionChildCount - 1);
     if (!valueLabel) return nullptr;
 
     return static_cast<ActionStepperState*>(lv_obj_get_user_data(valueLabel));
@@ -2363,6 +2469,8 @@ static void stepperApplyDelta(ActionStepperState* state, int32_t delta)
     if (state->value == oldValue) {
         return;
     }
+
+    state->valueChangedThisPress = true;
 
     char buf[32];
     snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
@@ -2395,28 +2503,107 @@ static void stepperStopRepeat(ActionStepperState* state)
     }
 }
 
-static void onStepperPressed(lv_event_t* e, bool increment)
+static lv_obj_t* stepperActiveButton(ActionStepperState* state)
+{
+    if (!state) return nullptr;
+    return state->isIncrementing ? state->plusButton : state->minusButton;
+}
+
+static bool stepperIsIncrementZone(const ActionStepperState* state, lv_obj_t* target)
+{
+    if (!state || !target) return false;
+    return target == state->plusHitZone;
+}
+
+static void stepperSetPressedVisual(ActionStepperState* state, bool pressed)
+{
+    lv_obj_t* button = stepperActiveButton(state);
+    if (!button) return;
+    if (pressed) {
+        lv_obj_add_state(button, LV_STATE_PRESSED);
+    }
+    else {
+        lv_obj_clear_state(button, LV_STATE_PRESSED);
+    }
+}
+
+static void onStepperPressed(lv_event_t* e)
 {
     auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
     if (!state) return;
 
+    lv_indev_t* indev = lv_event_get_indev(e);
+    if (!indev) return;
+
+    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    lv_indev_get_point(indev, &state->pressStartPoint);
     stepperStopRepeat(state);
-    state->isIncrementing = increment;
+    state->isIncrementing = stepperIsIncrementZone(state, target);
     state->initialDelayPassed = false;
     state->loggedThisPress = false;
+    state->pressCanceled = false;
+    state->valueChangedThisPress = false;
+    stepperSetPressedVisual(state, true);
     state->repeatTimer =
         lv_timer_create(stepperRepeatTimerCallback, ActionStepperState::INITIAL_DELAY_MS, state);
+}
+
+static void onStepperPressing(lv_event_t* e)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    if (state->pressCanceled) {
+        return;
+    }
+
+    lv_indev_t* indev = lv_event_get_indev(e);
+    if (!indev) return;
+
+    lv_point_t currentPoint;
+    lv_indev_get_point(indev, &currentPoint);
+
+    const int deltaX = std::abs(currentPoint.x - state->pressStartPoint.x);
+    const int deltaY = std::abs(currentPoint.y - state->pressStartPoint.y);
+    if (deltaX <= ActionStepperState::CANCEL_HORIZONTAL_DRAG_PX
+        && deltaY <= ActionStepperState::CANCEL_VERTICAL_DRAG_PX) {
+        return;
+    }
+
+    state->pressCanceled = true;
+    stepperStopRepeat(state);
+    stepperSetPressedVisual(state, false);
 }
 
 static void onStepperReleased(lv_event_t* e)
 {
     auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
     if (!state) return;
+
+    const auto code = lv_event_get_code(e);
     stepperStopRepeat(state);
+    stepperSetPressedVisual(state, false);
     if (state->loggedThisPress) {
         return;
     }
     state->loggedThisPress = true;
+
+    if (!state->pressCanceled && code != LV_EVENT_PRESS_LOST && !state->initialDelayPassed) {
+        const int32_t delta = state->isIncrementing ? state->step : -state->step;
+        stepperApplyDelta(state, delta);
+    }
+
+    if (!state->valueChangedThisPress) {
+        return;
+    }
+
+    if (state->container) {
+        lv_obj_send_event(state->container, code, nullptr);
+    }
+
+    if (state->pressCanceled || code == LV_EVENT_PRESS_LOST) {
+        return;
+    }
 
     char buf[32];
     snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
@@ -2555,6 +2742,9 @@ lv_obj_t* LVGLBuilder::ActionStepperBuilder::buildOrLog()
 
 Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionStepper()
 {
+    constexpr int labelBarHeight = 20;
+    constexpr int centerMinWidth = 88;
+
     // Create outer container (the trough).
     container_ = lv_obj_create(parent_);
     if (!container_) {
@@ -2571,72 +2761,116 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_pad_all(container_, Style::TROUGH_PADDING, 0);
 
-    // Row layout for the three sections.
-    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
+    // Stack the label bar above the value row.
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        container_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(container_, Style::TROUGH_PADDING, 0);
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(container_, Style::TROUGH_PADDING, 0);
 
     lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Calculate button size (square, height minus padding).
-    int btnSize = height_ - (Style::TROUGH_PADDING * 2);
+    const int labelSectionHeight =
+        label_text_.empty() ? 0 : (labelBarHeight + Style::TROUGH_PADDING);
+    const int valueRowHeight =
+        std::max(height_ - (Style::TROUGH_PADDING * 2) - labelSectionHeight, 24);
+    const int btnSize = valueRowHeight;
 
     // Create state structure.
     const std::string label = label_text_.empty() ? "Stepper" : label_text_;
-    auto* state = new ActionStepperState{ nullptr, container_,   value_,        min_,  max_,
-                                          step_,   value_scale_, value_format_, label, nullptr,
-                                          false,   false,        false };
+    auto* state = new ActionStepperState{ .valueLabel = nullptr,
+                                          .container = container_,
+                                          .minusButton = nullptr,
+                                          .plusButton = nullptr,
+                                          .minusHitZone = nullptr,
+                                          .plusHitZone = nullptr,
+                                          .value = value_,
+                                          .min = min_,
+                                          .max = max_,
+                                          .step = step_,
+                                          .scale = value_scale_,
+                                          .format = value_format_,
+                                          .label = label,
+                                          .repeatTimer = nullptr,
+                                          .pressStartPoint = { 0, 0 },
+                                          .isIncrementing = false,
+                                          .initialDelayPassed = false,
+                                          .loggedThisPress = false,
+                                          .pressCanceled = false,
+                                          .valueChangedThisPress = false };
+
+    if (!label_text_.empty()) {
+        lv_obj_t* labelBar = lv_obj_create(container_);
+        lv_obj_set_size(labelBar, LV_PCT(100), labelBarHeight);
+        lv_obj_set_style_bg_color(labelBar, lv_color_hex(bg_color_), 0);
+        lv_obj_set_style_bg_opa(labelBar, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(labelBar, 6, 0);
+        lv_obj_set_style_border_width(labelBar, 0, 0);
+        lv_obj_set_style_pad_hor(labelBar, 8, 0);
+        lv_obj_set_style_pad_ver(labelBar, 0, 0);
+        lv_obj_set_scrollbar_mode(labelBar, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_clear_flag(labelBar, LV_OBJ_FLAG_SCROLLABLE);
+
+        labelObj_ = lv_label_create(labelBar);
+        lv_label_set_text(labelObj_, label_text_.c_str());
+        lv_label_set_long_mode(labelObj_, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(labelObj_, LV_PCT(100));
+        lv_obj_set_style_text_align(labelObj_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(labelObj_, lv_color_hex(text_color_), 0);
+        lv_obj_set_style_text_font(labelObj_, &lv_font_montserrat_14, 0);
+        lv_obj_center(labelObj_);
+    }
+
+    lv_obj_t* valueRow = lv_obj_create(container_);
+    lv_obj_set_size(valueRow, LV_PCT(100), valueRowHeight);
+    lv_obj_set_style_bg_opa(valueRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(valueRow, 0, 0);
+    lv_obj_set_style_pad_all(valueRow, 0, 0);
+    lv_obj_set_flex_flow(valueRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        valueRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(valueRow, Style::TROUGH_PADDING, 0);
+    lv_obj_set_scrollbar_mode(valueRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(valueRow, LV_OBJ_FLAG_SCROLLABLE);
 
     // --- Minus button ---
-    minusBtn_ = lv_btn_create(container_);
+    minusBtn_ = lv_btn_create(valueRow);
     lv_obj_set_size(minusBtn_, btnSize, btnSize);
+    lv_obj_set_height(minusBtn_, btnSize);
     lv_obj_set_style_bg_color(minusBtn_, lv_color_hex(button_color_), 0);
     lv_obj_set_style_bg_opa(minusBtn_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(minusBtn_, 6, 0);
     lv_obj_set_style_border_width(minusBtn_, 0, 0);
     lv_obj_set_style_shadow_width(minusBtn_, 0, 0);
     lv_obj_set_style_bg_color(minusBtn_, lv_color_hex(0x606060), LV_STATE_PRESSED);
+    lv_obj_clear_flag(minusBtn_, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t* minusLabel = lv_label_create(minusBtn_);
     lv_label_set_text(minusLabel, LV_SYMBOL_MINUS);
     lv_obj_set_style_text_color(minusLabel, lv_color_hex(text_color_), 0);
     lv_obj_set_style_text_font(minusLabel, &lv_font_montserrat_20, 0);
     lv_obj_center(minusLabel);
+    state->minusButton = minusBtn_;
 
-    lv_obj_add_event_cb(minusBtn_, onMinusClicked, LV_EVENT_CLICKED, state);
-    lv_obj_add_event_cb(
-        minusBtn_, [](lv_event_t* e) { onStepperPressed(e, false); }, LV_EVENT_PRESSED, state);
-    lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
-    lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
+    // --- Value section ---
+    lv_obj_t* valueSection = lv_obj_create(valueRow);
+    lv_obj_set_flex_grow(valueSection, 1);
+    lv_obj_set_style_min_width(valueSection, centerMinWidth, 0);
+    lv_obj_set_height(valueSection, btnSize);
+    lv_obj_set_style_bg_color(valueSection, lv_color_hex(bg_color_), 0);
+    lv_obj_set_style_bg_opa(valueSection, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(valueSection, 6, 0);
+    lv_obj_set_style_border_width(valueSection, 0, 0);
+    lv_obj_set_style_pad_all(valueSection, 4, 0);
 
-    // --- Center section (label + value) ---
-    lv_obj_t* centerSection = lv_obj_create(container_);
-    lv_obj_set_flex_grow(centerSection, 1);
-    lv_obj_set_height(centerSection, btnSize);
-    lv_obj_set_style_bg_color(centerSection, lv_color_hex(bg_color_), 0);
-    lv_obj_set_style_bg_opa(centerSection, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(centerSection, 6, 0);
-    lv_obj_set_style_border_width(centerSection, 0, 0);
-    lv_obj_set_style_pad_all(centerSection, 4, 0);
-
-    lv_obj_set_flex_flow(centerSection, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_flow(valueSection, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        centerSection, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_scrollbar_mode(centerSection, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(centerSection, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Label (if provided).
-    if (!label_text_.empty()) {
-        labelObj_ = lv_label_create(centerSection);
-        lv_label_set_text(labelObj_, label_text_.c_str());
-        lv_obj_set_style_text_color(labelObj_, lv_color_hex(text_color_), 0);
-        lv_obj_set_style_text_font(labelObj_, &lv_font_montserrat_14, 0);
-    }
+        valueSection, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scrollbar_mode(valueSection, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(valueSection, LV_OBJ_FLAG_SCROLLABLE);
 
     // Value display.
-    valueObj_ = lv_label_create(centerSection);
+    valueObj_ = lv_label_create(valueSection);
     lv_obj_set_style_text_color(valueObj_, lv_color_hex(text_color_), 0);
     lv_obj_set_style_text_font(valueObj_, &lv_font_montserrat_20, 0);
     state->valueLabel = valueObj_;
@@ -2647,30 +2881,56 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_label_set_text(valueObj_, buf);
 
     // --- Plus button ---
-    plusBtn_ = lv_btn_create(container_);
+    plusBtn_ = lv_btn_create(valueRow);
     lv_obj_set_size(plusBtn_, btnSize, btnSize);
+    lv_obj_set_height(plusBtn_, btnSize);
     lv_obj_set_style_bg_color(plusBtn_, lv_color_hex(button_color_), 0);
     lv_obj_set_style_bg_opa(plusBtn_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(plusBtn_, 6, 0);
     lv_obj_set_style_border_width(plusBtn_, 0, 0);
     lv_obj_set_style_shadow_width(plusBtn_, 0, 0);
     lv_obj_set_style_bg_color(plusBtn_, lv_color_hex(0x606060), LV_STATE_PRESSED);
+    lv_obj_clear_flag(plusBtn_, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t* plusLabel = lv_label_create(plusBtn_);
     lv_label_set_text(plusLabel, LV_SYMBOL_PLUS);
     lv_obj_set_style_text_color(plusLabel, lv_color_hex(text_color_), 0);
     lv_obj_set_style_text_font(plusLabel, &lv_font_montserrat_20, 0);
     lv_obj_center(plusLabel);
-
-    lv_obj_add_event_cb(plusBtn_, onPlusClicked, LV_EVENT_CLICKED, state);
-    lv_obj_add_event_cb(
-        plusBtn_, [](lv_event_t* e) { onStepperPressed(e, true); }, LV_EVENT_PRESSED, state);
-    lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
-    lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
+    state->plusButton = plusBtn_;
 
     // Store state in valueLabel's user_data (not container's) so that
     // container's user_data remains available for the caller's use.
     lv_obj_set_user_data(state->valueLabel, state);
+
+    auto createHitZone = [&](lv_align_t align, bool increment) -> lv_obj_t* {
+        lv_obj_t* hitZone = lv_obj_create(container_);
+        lv_obj_add_flag(hitZone, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(hitZone, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(hitZone, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(hitZone, LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_set_size(hitZone, LV_PCT(50), LV_PCT(100));
+        lv_obj_align(hitZone, align, 0, 0);
+        lv_obj_set_style_bg_opa(hitZone, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(hitZone, 0, 0);
+        lv_obj_set_style_outline_width(hitZone, 0, 0);
+        lv_obj_set_style_pad_all(hitZone, 0, 0);
+        lv_obj_set_style_radius(hitZone, 8, 0);
+        lv_obj_add_event_cb(hitZone, onStepperPressed, LV_EVENT_PRESSED, state);
+        lv_obj_add_event_cb(hitZone, onStepperPressing, LV_EVENT_PRESSING, state);
+        lv_obj_add_event_cb(hitZone, onStepperReleased, LV_EVENT_RELEASED, state);
+        lv_obj_add_event_cb(hitZone, onStepperReleased, LV_EVENT_PRESS_LOST, state);
+        if (increment) {
+            state->plusHitZone = hitZone;
+        }
+        else {
+            state->minusHitZone = hitZone;
+        }
+        return hitZone;
+    };
+
+    createHitZone(LV_ALIGN_TOP_LEFT, false);
+    createHitZone(LV_ALIGN_TOP_RIGHT, true);
 
     // Register user callback on container (if provided).
     if (callback_) {
@@ -2682,8 +2942,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
         container_,
         [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
-            lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
-            auto* st = getStepperStateFromContainer(container);
+            auto* st = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
             if (st) {
                 if (st->repeatTimer) {
                     lv_timer_delete(st->repeatTimer);
@@ -2692,25 +2951,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
             }
         },
         LV_EVENT_DELETE,
-        nullptr);
+        state);
 
     return Result<lv_obj_t*, std::string>::okay(container_);
-}
-
-void LVGLBuilder::ActionStepperBuilder::onMinusClicked(lv_event_t* e)
-{
-    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
-    if (!state) return;
-    if (state->initialDelayPassed) return;
-    stepperApplyDelta(state, -state->step);
-}
-
-void LVGLBuilder::ActionStepperBuilder::onPlusClicked(lv_event_t* e)
-{
-    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
-    if (!state) return;
-    if (state->initialDelayPassed) return;
-    stepperApplyDelta(state, state->step);
 }
 
 int32_t LVGLBuilder::ActionStepperBuilder::getValue(lv_obj_t* container)

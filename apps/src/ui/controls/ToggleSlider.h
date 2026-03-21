@@ -152,6 +152,7 @@ private:
     void createWidgets();
     void updateValueLabel();
     void updateSliderColors();
+    void updateTextColors();
 
     // LVGL callbacks.
     static void onSwitchChanged(lv_event_t* e);

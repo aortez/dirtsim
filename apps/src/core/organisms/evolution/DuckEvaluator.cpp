@@ -183,6 +183,8 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
 
     // Exit door bonus: additive reward for exiting through the door.
     breakdown.exitedThroughDoor = context.exitedThroughDoor;
+    breakdown.exitDoorRaw = context.exitedThroughDoor ? 1.0 : 0.0;
+    breakdown.exitDoorTime = std::max(0.0, context.exitDoorTime);
     if (context.exitedThroughDoor) {
         breakdown.exitDoorBonus = 0.5;
     }

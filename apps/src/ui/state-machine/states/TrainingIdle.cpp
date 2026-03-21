@@ -148,6 +148,7 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::DUCK:
         case IconId::CORE:
         case IconId::SETTINGS:
+        case IconId::SCANNER:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
@@ -332,6 +333,9 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
     settings.uiTraining.streamIntervalMs = std::max(0, evt.intervalMs);
     settings.uiTraining.bestPlaybackEnabled = evt.bestPlaybackEnabled;
     settings.uiTraining.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
+    if (evt.nesControllerOverlayEnabled.has_value()) {
+        settings.uiTraining.nesControllerOverlayEnabled = evt.nesControllerOverlayEnabled;
+    }
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
     view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
@@ -408,12 +412,14 @@ State::Any TrainingIdle::onEvent(const GenomeLoadClickedEvent& evt, StateMachine
         LOG_ERROR(State, "SimRun failed");
         return std::move(*this);
     }
+    const Api::SimRun::Okay& simOkay = simResult.value().value();
+    if (simOkay.width <= 0 || simOkay.height <= 0) {
+        LOG_ERROR(State, "SimRun returned invalid world size {}x{}", simOkay.width, simOkay.height);
+        return std::move(*this);
+    }
 
-    constexpr int targetCellSize = 16;
-    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
-    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
-    const int centerX = worldWidth / 2;
-    const int centerY = worldHeight / 2;
+    const int centerX = simOkay.width / 2;
+    const int centerY = simOkay.height / 2;
 
     Api::SeedAdd::Command seedCmd;
     seedCmd.x = centerX;
@@ -475,12 +481,14 @@ State::Any TrainingIdle::onEvent(const ViewBestButtonClickedEvent& evt, StateMac
         LOG_ERROR(State, "SimRun failed");
         return std::move(*this);
     }
+    const Api::SimRun::Okay& simOkay = simResult.value().value();
+    if (simOkay.width <= 0 || simOkay.height <= 0) {
+        LOG_ERROR(State, "SimRun returned invalid world size {}x{}", simOkay.width, simOkay.height);
+        return std::move(*this);
+    }
 
-    constexpr int targetCellSize = 16;
-    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
-    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
-    const int centerX = worldWidth / 2;
-    const int centerY = worldHeight / 2;
+    const int centerX = simOkay.width / 2;
+    const int centerY = simOkay.height / 2;
 
     Api::SeedAdd::Command seedCmd;
     seedCmd.x = centerX;

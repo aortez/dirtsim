@@ -19,9 +19,11 @@ public:
         float defaultMaxY = 1.0f;
         float valueScale = 100.0f;
         bool autoScaleY = true;
+        bool autoScaleClampToZero = false;
         bool hideZeroValuePoints = false;
         bool showSecondarySeries = false;
         bool showHighlights = false;
+        bool showTitle = true;
         bool showYAxisRangeLabels = true;
         lv_chart_type_t chartType = LV_CHART_TYPE_LINE;
         int32_t barGroupGapPx = -1;

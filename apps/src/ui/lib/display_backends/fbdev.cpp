@@ -152,6 +152,7 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
 
         // Process UI state machine events.
         auto eventsStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsBeforeRender);
         sm.processEvents();
         double eventsMs = std::chrono::duration<double, std::milli>(
                               DirtSim::Ui::LoopTimingStats::Clock::now() - eventsStart)
@@ -162,12 +163,16 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
 
         /* Returns the time to the next timer execution. */
         auto timerStart = DirtSim::Ui::LoopTimingStats::Clock::now();
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::TimerHandler);
+        sm.notifyDisplayTimerHandlerStart(timerStart);
         idle_time = lv_timer_handler();
         double timerMs = std::chrono::duration<double, std::milli>(
                              DirtSim::Ui::LoopTimingStats::Clock::now() - timerStart)
                              .count();
+        sm.notifyDisplayFlush(DirtSim::Ui::LoopTimingStats::Clock::now());
 
         // Drain events that arrived during lv_timer_handler (reduces queue delay).
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::ProcessEventsAfterRender);
         sm.processEvents();
 
         // Cap idle time to maintain responsiveness for background-invalidated objects.
@@ -177,6 +182,7 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
         auto sleepStart = DirtSim::Ui::LoopTimingStats::Clock::now();
         // Wait on event queue condvar instead of blind usleep. Wakes immediately
         // when WebSocket thread pushes a new frame, or after idle_time — whichever first.
+        sm.setDisplayLoopPhase(DirtSim::Ui::DisplayLoopPhase::WaitingForEvents);
         sm.waitForEvents(std::chrono::milliseconds(idle_time));
         double sleepMs = std::chrono::duration<double, std::milli>(
                              DirtSim::Ui::LoopTimingStats::Clock::now() - sleepStart)

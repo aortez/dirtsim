@@ -99,7 +99,6 @@ private:
     Result<std::monostate, ApiError> startGridWorldScenario(
         StateMachine& dsm,
         Scenario::EnumType scenarioId,
-        const ScenarioMetadata& metadata,
         const ScenarioConfig& scenarioConfig,
         const Vector2s& containerSize);
 

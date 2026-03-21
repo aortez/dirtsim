@@ -153,3 +153,11 @@ IMAGE_INSTALL:append = " \
     dirtsim-server \
     dirtsim-ui \
 "
+
+# ============================================================================
+# Experimental Nexmon Scanner Stack
+# ============================================================================
+# Set DIRTSIM_ENABLE_NEXMON_SCANNER = "1" to add scanner-mode support to the image.
+# This pulls in third-party Nexmon components (kernel module + nexutil + firmware).
+DIRTSIM_ENABLE_NEXMON_SCANNER ?= "0"
+IMAGE_INSTALL:append = " ${@' dirtsim-nexmon-mode nexutil-experimental' if d.getVar('DIRTSIM_ENABLE_NEXMON_SCANNER') == '1' else ''}"

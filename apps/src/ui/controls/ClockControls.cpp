@@ -3,7 +3,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketServiceInterface.h"
 #include "core/reflect.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "server/api/ClockEventTrigger.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <atomic>
@@ -278,8 +278,7 @@ void ClockControls::createMainView(lv_obj_t* view)
     meltdownSwitch_ = createEventToggle(meltdownRow, onMeltdownToggled);
 
     // Timezone selector button (at end).
-    std::string timezoneText =
-        std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+    std::string timezoneText = std::string("Timezone: ") + Config::getDisplayName(currentTimezone_);
 
     timezoneButton_ = LVGLBuilder::actionButton(view)
                           .text(timezoneText.c_str())
@@ -357,11 +356,11 @@ void ClockControls::createTimezoneSelectionView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     // Timezone option buttons.
-    buttonToTimezoneIndex_.clear();
+    buttonToTimezone_.clear();
 
-    for (size_t i = 0; i < ClockScenario::TIMEZONES.size(); i++) {
+    for (const ClockTimezones::Info& info : ClockTimezones::all()) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(ClockScenario::TIMEZONES[i].label)
+                                  .text(info.label)
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -370,7 +369,7 @@ void ClockControls::createTimezoneSelectionView(lv_obj_t* view)
         if (container) {
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                buttonToTimezoneIndex_[button] = static_cast<int>(i);
+                buttonToTimezone_[button] = info.timezone;
                 lv_obj_add_event_cb(button, onTimezoneSelected, LV_EVENT_CLICKED, this);
             }
         }
@@ -437,9 +436,9 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     const Config::Clock& config = std::get<Config::Clock>(configVariant);
     spdlog::debug(
-        "ClockControls: updateFromConfig called - font={}, timezoneIndex={}",
+        "ClockControls: updateFromConfig called - font={}, timezone={}",
         static_cast<int>(config.font),
-        config.timezoneIndex);
+        static_cast<int>(config.timezone));
 
     // Prevent sending updates back to server during UI sync.
     bool wasInitializing = isInitializing();
@@ -473,10 +472,11 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     }
 
     // Update timezone selection and button text.
-    currentTimezoneIndex_ = config.timezoneIndex;
+    currentTimezone_ = ClockTimezones::isValid(config.timezone) ? config.timezone
+                                                                : Config::ClockTimezone::LosAngeles;
     if (timezoneButton_) {
         std::string timezoneText =
-            std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+            std::string("Timezone: ") + Config::getDisplayName(currentTimezone_);
 
         lv_obj_t* button = lv_obj_get_child(timezoneButton_, 0);
         if (button) {
@@ -485,7 +485,10 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
                 lv_label_set_text(label, timezoneText.c_str());
             }
         }
-        LOG_DEBUG(Controls, "ClockControls: Updated timezone to index {}", currentTimezoneIndex_);
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated timezone to {}",
+            Config::getDisplayName(currentTimezone_));
     }
 
     // Update seconds button.
@@ -605,7 +608,7 @@ Config::Clock ClockControls::getCurrentConfig() const
     config.font = static_cast<Config::ClockFont>(currentFontIndex_);
 
     // Get timezone index from current selection.
-    config.timezoneIndex = static_cast<uint8_t>(currentTimezoneIndex_);
+    config.timezone = currentTimezone_;
 
     // Get digit material from current selection.
     config.digitMaterial = static_cast<Material::EnumType>(currentMaterialIndex_);
@@ -764,24 +767,19 @@ void ClockControls::onTimezoneSelected(lv_event_t* e)
     lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
 
     // Look up timezone index from button mapping.
-    auto it = self->buttonToTimezoneIndex_.find(btn);
-    if (it == self->buttonToTimezoneIndex_.end()) {
+    auto it = self->buttonToTimezone_.find(btn);
+    if (it == self->buttonToTimezone_.end()) {
         LOG_ERROR(Controls, "ClockControls: Unknown timezone button clicked");
         return;
     }
 
-    int timezoneIndex = it->second;
-    LOG_INFO(
-        Controls,
-        "ClockControls: Timezone changed to index {} ({})",
-        timezoneIndex,
-        ClockScenario::TIMEZONES[timezoneIndex].label);
+    const Config::ClockTimezone timezone = it->second;
+    LOG_INFO(Controls, "ClockControls: Timezone changed to {}", Config::getDisplayName(timezone));
 
     // Update selection and button text.
-    self->currentTimezoneIndex_ = timezoneIndex;
+    self->currentTimezone_ = timezone;
     if (self->timezoneButton_) {
-        std::string timezoneText =
-            std::string("Timezone: ") + ClockScenario::TIMEZONES[timezoneIndex].label;
+        std::string timezoneText = std::string("Timezone: ") + Config::getDisplayName(timezone);
         lv_obj_t* button = lv_obj_get_child(self->timezoneButton_, 0);
         if (button) {
             lv_obj_t* label = lv_obj_get_child(button, 1);

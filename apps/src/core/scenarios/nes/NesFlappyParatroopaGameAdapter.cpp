@@ -63,17 +63,20 @@ public:
         cachedSpecialSenses_.fill(0.0);
     }
 
-    uint8_t resolveControllerMask(const NesGameAdapterControllerInput& input) override
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
     {
-        uint8_t controllerMask = input.inferredControllerMask;
+        NesGameAdapterControllerOutput output;
+        output.resolvedControllerMask = input.inferredControllerMask;
         const uint8_t gameState = input.lastGameState.value_or(kNesStateTitle);
         if (isTitleLikeNesState(gameState)) {
             const bool pressStart =
                 (startPulseFrameCounter_ % kNesStartPulsePeriodFrames) < kNesStartPulseWidthFrames;
-            controllerMask = pressStart ? NesPolicyLayout::ButtonStart : 0u;
+            output.resolvedControllerMask = pressStart ? NesPolicyLayout::ButtonStart : 0u;
+            output.source = NesGameAdapterControllerSource::ScriptedSetup;
             ++startPulseFrameCounter_;
             waitingFlapPulseFrameCounter_ = 0;
-            return controllerMask;
+            return output;
         }
 
         startPulseFrameCounter_ = 0;
@@ -81,13 +84,14 @@ public:
             const bool pressFlap =
                 (waitingFlapPulseFrameCounter_ % kNesWaitingFlapPulsePeriodFrames)
                 < kNesWaitingFlapPulseWidthFrames;
-            controllerMask = pressFlap ? NesPolicyLayout::ButtonA : 0u;
+            output.resolvedControllerMask = pressFlap ? NesPolicyLayout::ButtonA : 0u;
+            output.source = NesGameAdapterControllerSource::ScriptedSetup;
             ++waitingFlapPulseFrameCounter_;
-            return controllerMask;
+            return output;
         }
 
         waitingFlapPulseFrameCounter_ = 0;
-        return controllerMask;
+        return output;
     }
 
     NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override

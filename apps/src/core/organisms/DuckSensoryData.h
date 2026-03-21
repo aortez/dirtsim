@@ -11,19 +11,16 @@ namespace DirtSim {
 /**
  * Duck-specific sensory data.
  *
- * Contains a 15x15 grid of material histograms representing the duck's
+ * Contains a 21x21 grid of material histograms representing the duck's
  * view of the world around it, plus duck-specific state.
- *
- * The 15x15 grid matches tree sensory coverage so duck and tree brains can
- * share a wider world context.
  */
 struct DuckSensoryData {
-    static constexpr int GRID_SIZE = 15;
+    static constexpr int GRID_SIZE = 21;
     static constexpr int NUM_MATERIALS = 10;
     static constexpr int SPECIAL_SENSE_COUNT = 32;
 
     // Material histogram grid: [y][x][material] = fill contribution.
-    std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
+    std::array<std::array<std::array<float, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
         material_histograms = {};
 
     // Mapping from neural grid to world coordinates.

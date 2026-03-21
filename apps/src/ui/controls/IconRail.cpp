@@ -38,11 +38,12 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
         { IconId::GENOME_BROWSER, IconFont::DNA, "Genome Browser", 0x40E0D0 }, // Turquoise.
         { IconId::TRAINING_RESULTS, IconFont::FILE_CABINET, "Training Results", 0xFFD700 }, // Gold.
-        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },      // Dark turquoise.
-        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },    // Orange.
-        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },       // Silver.
-        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 }, // Light green.
-        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },    // Lime green.
+        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },       // Dark turquoise.
+        { IconId::SCANNER, IconFont::MICROSCOPE, "Scanner", 0xFFD166 }, // Warm yellow.
+        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },     // Orange.
+        { IconId::PHYSICS, IconFont::COG, "World Settings", 0xC0C0C0 }, // Silver.
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },  // Light green.
+        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },     // Lime green.
     };
 
     createIcons(parent);
@@ -349,6 +350,21 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
+
+    for (size_t visibleIndex = 0; visibleIndex < visibleIcons.size(); ++visibleIndex) {
+        const IconId id = visibleIcons[visibleIndex];
+
+        for (size_t buttonIndex = 0;
+             buttonIndex < iconConfigs_.size() && buttonIndex < buttons_.size();
+             ++buttonIndex) {
+            if (iconConfigs_[buttonIndex].id != id || !buttons_[buttonIndex]) {
+                continue;
+            }
+
+            lv_obj_move_to_index(buttons_[buttonIndex], static_cast<int32_t>(visibleIndex));
+            break;
+        }
+    }
 }
 
 void IconRail::showIcons()
@@ -580,7 +596,7 @@ void IconRail::applyMode()
     if (expandButton_) {
         applyExpandButtonGeometry();
 
-        if (minimized && visible_) {
+        if (allowMinimize_ && minimized && visible_) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
 
             lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
@@ -621,7 +637,7 @@ void IconRail::applyMode()
     }
 
     if (collapseButton_) {
-        if (minimized || !visible_) {
+        if (!allowMinimize_ || minimized || !visible_) {
             lv_obj_add_flag(collapseButton_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
@@ -634,6 +650,10 @@ void IconRail::applyMode()
 
 void IconRail::setMode(RailMode mode)
 {
+    if (mode == RailMode::Minimized && !allowMinimize_) {
+        return;
+    }
+
     if (mode_ == mode) return;
     mode_ = mode;
 
@@ -687,6 +707,22 @@ void IconRail::setVisible(bool visible)
     }
 
     visible_ = visible;
+    applyMode();
+}
+
+void IconRail::setAllowMinimize(bool allow)
+{
+    if (allowMinimize_ == allow) {
+        return;
+    }
+
+    allowMinimize_ = allow;
+
+    if (!allowMinimize_ && mode_ == RailMode::Minimized) {
+        setMode(RailMode::Normal);
+        return;
+    }
+
     applyMode();
 }
 

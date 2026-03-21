@@ -29,7 +29,7 @@ DuckSensoryData makeNesDuckSensoryDataFromPaletteFrame(
 
     for (auto& row : sensory.material_histograms) {
         for (auto& cell : row) {
-            cell.fill(0.0);
+            cell.fill(0.0f);
         }
     }
 
@@ -65,12 +65,12 @@ DuckSensoryData makeNesDuckSensoryDataFromPaletteFrame(
                 continue;
             }
 
-            const double denom = static_cast<double>(totalPixels);
+            const float denom = static_cast<float>(totalPixels);
             auto& histogram =
                 sensory.material_histograms[static_cast<size_t>(gy)][static_cast<size_t>(gx)];
             for (int c = 0; c < channelCount; ++c) {
                 histogram[static_cast<size_t>(c)] =
-                    static_cast<double>(counts[static_cast<size_t>(c)]) / denom;
+                    static_cast<float>(counts[static_cast<size_t>(c)]) / denom;
             }
         }
     }
@@ -82,7 +82,8 @@ DuckSensoryData makeNesDuckSensoryData(
     const NesPaletteClusterer& clusterer,
     const NesPaletteFrame* frame,
     double deltaTimeSeconds,
-    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses)
+    const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
+    float facingX)
 {
     DuckSensoryData sensory{};
     sensory.delta_time_seconds = deltaTimeSeconds;
@@ -90,7 +91,7 @@ DuckSensoryData makeNesDuckSensoryData(
         sensory = makeNesDuckSensoryDataFromPaletteFrame(clusterer, *frame, deltaTimeSeconds);
     }
 
-    sensory.facing_x = 0.0f;
+    sensory.facing_x = facingX;
     sensory.special_senses = specialSenses;
     return sensory;
 }

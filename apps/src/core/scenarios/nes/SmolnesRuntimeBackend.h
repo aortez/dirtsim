@@ -39,6 +39,21 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t memory_snapshot_copy_calls;
 } SmolnesRuntimeProfilingSnapshot;
 
+typedef struct SmolnesRuntimeControllerSnapshot {
+    uint64_t latest_frame_id;
+    uint64_t controller1_applied_frame_id;
+    uint64_t controller1_observed_timestamp_ns;
+    uint64_t controller1_latch_timestamp_ns;
+    uint64_t controller1_request_timestamp_ns;
+    uint64_t controller1_sequence_id;
+    uint8_t controller1_state;
+} SmolnesRuntimeControllerSnapshot;
+
+typedef enum SmolnesRuntimePacingModeValue {
+    SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP = 0,
+    SMOLNES_RUNTIME_PACING_MODE_REALTIME = 1,
+} SmolnesRuntimePacingModeValue;
+
 #define SMOLNES_RUNTIME_FRAME_WIDTH 256u
 #define SMOLNES_RUNTIME_FRAME_HEIGHT 224u
 #define SMOLNES_RUNTIME_FRAME_PITCH_BYTES (SMOLNES_RUNTIME_FRAME_WIDTH * 2u)
@@ -70,16 +85,39 @@ bool smolnesRuntimeIsHealthy(const SmolnesRuntimeHandle* runtime);
 bool smolnesRuntimeIsRunning(const SmolnesRuntimeHandle* runtime);
 uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime);
 void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask);
+void smolnesRuntimeSetController1StateObserved(
+    SmolnesRuntimeHandle* runtime, uint8_t buttonMask, uint64_t observedTimestampNs);
 bool smolnesRuntimeCopyLatestFrame(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
 bool smolnesRuntimeCopyLatestPaletteIndices(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
+bool smolnesRuntimeCopyMemorySnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId);
 bool smolnesRuntimeCopyCpuRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyProfilingSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesRuntimeProfilingSnapshot* snapshotOut);
+bool smolnesRuntimeCopyControllerSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeControllerSnapshot* snapshotOut);
+bool smolnesRuntimeCopyLiveSnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* frameBuffer,
+    uint32_t frameBufferSize,
+    uint8_t* paletteBuffer,
+    uint32_t paletteBufferSize,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId,
+    SmolnesRuntimeControllerSnapshot* controllerSnapshotOut);
 bool smolnesRuntimeCopyApuSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSamples(
@@ -88,7 +126,7 @@ void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 void smolnesRuntimeSetApuSampleCallback(
     SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
-void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
 
 #ifdef __cplusplus
 }

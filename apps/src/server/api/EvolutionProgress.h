@@ -21,11 +21,14 @@ struct EvolutionProgress {
     int populationSize = 0;
     int totalGenomeCount = 0;
     int genomeArchiveMaxSize = 0; // Per organismType+brainKind cap for managed genomes.
-    // Latest robust median for genome brains, or latest evaluated-generation best for non-genome
-    // brains.
+    // Latest validated best for genome brains, or latest evaluated-generation best for
+    // non-genome brains.
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     uint64_t robustEvaluationCount = 0;
+    bool validatingBest = false;
+    int validatingBestCompletedSamples = 0;
+    int validatingBestTargetSamples = 0;
     // Running average fitness for the currently evaluated generation.
     double averageFitness = 0.0;
     int lastCompletedGeneration = -1;
@@ -69,7 +72,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<42>;
+    using serialize = zpp::bits::members<45>;
 };
 
 } // namespace Api

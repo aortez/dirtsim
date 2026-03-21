@@ -18,7 +18,8 @@ constexpr int NUM_MATERIALS = DuckSensoryData::NUM_MATERIALS;
 constexpr int SPECIAL_SENSE_COUNT = DuckSensoryData::SPECIAL_SENSE_COUNT;
 
 constexpr int INPUT_HISTOGRAM_SIZE = GRID_SIZE * GRID_SIZE * NUM_MATERIALS;
-constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + 4 + SPECIAL_SENSE_COUNT + 2;
+constexpr int SCALAR_INPUT_SIZE = 4 + SPECIAL_SENSE_COUNT + 2;
+constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + SCALAR_INPUT_SIZE;
 constexpr int H1_SIZE = 64;
 constexpr int H2_SIZE = 32;
 constexpr int OUTPUT_SIZE = 4;
@@ -64,11 +65,13 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
     std::vector<WeightType> w_h1h1;
     std::vector<WeightType> b_h1;
     std::vector<WeightType> alpha1_logit;
+    std::vector<WeightType> alpha1;
 
     std::vector<WeightType> w_h1h2;
     std::vector<WeightType> w_h2h2;
     std::vector<WeightType> b_h2;
     std::vector<WeightType> alpha2_logit;
+    std::vector<WeightType> alpha2;
 
     std::vector<WeightType> w_h2o;
     std::vector<WeightType> b_o;
@@ -85,10 +88,12 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
           w_h1h1(W_H1H1_SIZE, 0.0f),
           b_h1(B_H1_SIZE, 0.0f),
           alpha1_logit(ALPHA1_LOGIT_SIZE, HIDDEN_LEAK_ALPHA_LOGIT_INIT),
+          alpha1(ALPHA1_LOGIT_SIZE, 0.0f),
           w_h1h2(W_H1H2_SIZE, 0.0f),
           w_h2h2(W_H2H2_SIZE, 0.0f),
           b_h2(B_H2_SIZE, 0.0f),
           alpha2_logit(ALPHA2_LOGIT_SIZE, HIDDEN_LEAK_ALPHA_LOGIT_INIT),
+          alpha2(ALPHA2_LOGIT_SIZE, 0.0f),
           w_h2o(W_H2O_SIZE, 0.0f),
           b_o(B_O_SIZE, 0.0f),
           input_buffer(INPUT_SIZE, 0.0f),
@@ -117,6 +122,8 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
         for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
             alpha1_logit[i] = genome.weights[idx++];
+            alpha1[i] =
+                std::clamp(sigmoid(alpha1_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
         for (int i = 0; i < W_H1H2_SIZE; ++i) {
             w_h1h2[i] = genome.weights[idx++];
@@ -129,6 +136,8 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
         for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
             alpha2_logit[i] = genome.weights[idx++];
+            alpha2[i] =
+                std::clamp(sigmoid(alpha2_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
         for (int i = 0; i < W_H2O_SIZE; ++i) {
             w_h2o[i] = genome.weights[idx++];
@@ -183,7 +192,6 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
     const std::vector<WeightType>& flattenSensoryData(const DuckSensoryData& sensory)
     {
         int index = 0;
-
         for (int y = 0; y < GRID_SIZE; ++y) {
             for (int x = 0; x < GRID_SIZE; ++x) {
                 for (int material = 0; material < NUM_MATERIALS; ++material) {
@@ -241,8 +249,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int h = 0; h < H1_SIZE; ++h) {
             const WeightType candidate =
                 std::clamp(h1_buffer[h], -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
-            const WeightType learnedAlpha =
-                std::clamp(sigmoid(alpha1_logit[h]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
+            const WeightType learnedAlpha = alpha1[h];
             const WeightType blended =
                 ((1.0f - learnedAlpha) * h1_state[h]) + (learnedAlpha * candidate);
             h1_state[h] = std::clamp(blended, -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
@@ -278,8 +285,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int h = 0; h < H2_SIZE; ++h) {
             const WeightType candidate =
                 std::clamp(h2_buffer[h], -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
-            const WeightType learnedAlpha =
-                std::clamp(sigmoid(alpha2_logit[h]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
+            const WeightType learnedAlpha = alpha2[h];
             const WeightType blended =
                 ((1.0f - learnedAlpha) * h2_state[h]) + (learnedAlpha * candidate);
             h2_state[h] = std::clamp(blended, -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
@@ -358,6 +364,11 @@ DuckNeuralNetRecurrentBrainV2::ControllerOutput DuckNeuralNetRecurrentBrainV2::
     const auto& input = impl_->flattenSensoryData(sensory);
     const auto& output = impl_->forward(input);
 
+    const float xRaw = static_cast<float>(output[0]);
+    const float yRaw = static_cast<float>(output[1]);
+    const float aRaw = static_cast<float>(output[2]);
+    const float bRaw = static_cast<float>(output[3]);
+
     lastMoveX_ = static_cast<float>(std::tanh(output[0]));
     lastMoveY_ = static_cast<float>(std::tanh(output[1]));
     buttonAHeld_ = output[2] > 0.0f;
@@ -368,6 +379,10 @@ DuckNeuralNetRecurrentBrainV2::ControllerOutput DuckNeuralNetRecurrentBrainV2::
         .y = lastMoveY_,
         .a = buttonAHeld_,
         .b = buttonBHeld_,
+        .xRaw = xRaw,
+        .yRaw = yRaw,
+        .aRaw = aRaw,
+        .bRaw = bRaw,
     };
 }
 
@@ -407,7 +422,6 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < B_H1_SIZE; ++i) {
         genome.weights[idx++] = 0.0f;
     }
-    // Spread alpha logits across full range so neurons start with diverse time constants.
     std::uniform_real_distribution<WeightType> alphaLogitDist(-4.0f, 4.0f);
     for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
         genome.weights[idx++] = alphaLogitDist(rng);

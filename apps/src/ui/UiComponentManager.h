@@ -115,29 +115,6 @@ public:
      */
     void transitionToScreen(lv_obj_t* screen, bool animate = true);
 
-    // =========================================================================
-    // DEPRECATED - These methods exist for backward compatibility during
-    // transition. They return the expandable panel's content area.
-    // =========================================================================
-
-    /**
-     * @brief Get container for core controls.
-     * @deprecated Use getExpandablePanel()->getContentArea() instead.
-     */
-    lv_obj_t* getCoreControlsContainer();
-
-    /**
-     * @brief Get container for scenario-specific controls.
-     * @deprecated Use getExpandablePanel()->getContentArea() instead.
-     */
-    lv_obj_t* getScenarioControlsContainer();
-
-    /**
-     * @brief Get container for physics parameter controls.
-     * @deprecated Use getExpandablePanel()->getContentArea() instead.
-     */
-    lv_obj_t* getPhysicsControlsContainer();
-
 private:
     lv_disp_t* display;
     EventSink* eventSink_ = nullptr;

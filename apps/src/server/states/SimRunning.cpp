@@ -25,6 +25,7 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/water/WaterVolumeView.h"
+#include "server/EventProcessor.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
@@ -34,12 +35,14 @@
 #include "server/api/ScenarioSwitch.h"
 #include "server/api/SimStop.h"
 #include "server/states/ScenarioSession.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
+#include <thread>
 
 namespace DirtSim {
 namespace Server {
@@ -56,6 +59,8 @@ constexpr uint8_t NES_BUTTON_UP = 1u << 4;
 constexpr uint8_t NES_BUTTON_DOWN = 1u << 5;
 constexpr uint8_t NES_BUTTON_LEFT = 1u << 6;
 constexpr uint8_t NES_BUTTON_RIGHT = 1u << 7;
+constexpr double NES_FRAME_PERIOD_MS = 1000.0 / 60.0988;
+constexpr uint32_t NES_FRAME_DELAY_LOG_SAMPLE_COUNT = 240u;
 
 uint8_t mapGamepadStateToNesButtons(const GamepadState& state)
 {
@@ -246,6 +251,155 @@ void populateWaterVolumeSnapshot(World& world, WorldData& data)
 
     data.water_volume.reset();
 }
+
+std::chrono::steady_clock::duration steadyDurationFromMs(double ms)
+{
+    if (ms <= 0.0) {
+        return std::chrono::steady_clock::duration::zero();
+    }
+    return std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double, std::milli>(ms));
+}
+
+double steadyDurationMs(std::chrono::steady_clock::duration duration)
+{
+    return std::chrono::duration<double, std::milli>(duration).count();
+}
+
+void nesFrameDelaySchedulerResetStats(NesFrameDelayScheduler& scheduler)
+{
+    scheduler.totalPeriodOverrunMs = 0.0;
+    scheduler.totalStartLatenessMs = 0.0;
+    scheduler.maxPeriodOverrunMs = 0.0;
+    scheduler.maxStartLatenessMs = 0.0;
+    scheduler.lateStartCount = 0;
+    scheduler.periodOverrunCount = 0;
+    scheduler.skippedPeriodCount = 0;
+    scheduler.statsFrameCount = 0;
+}
+
+bool sleepUntilOrYield(StateMachine& dsm, std::chrono::steady_clock::time_point deadline)
+{
+    const auto sleepChunk = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::milliseconds(1));
+
+    while (!dsm.shouldExit()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            return true;
+        }
+        if (dsm.getEventProcessor().hasEvents()) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::min(deadline - now, sleepChunk));
+    }
+
+    return false;
+}
+
+bool nesFrameDelaySchedulerApplyConfig(
+    NesFrameDelayScheduler& scheduler,
+    bool enabled,
+    double delayMs,
+    std::chrono::steady_clock::time_point now)
+{
+    const bool changed =
+        enabled != scheduler.enabled || std::abs(delayMs - scheduler.delayMs) > 0.0001;
+    if (!changed) {
+        return false;
+    }
+
+    scheduler.enabled = enabled;
+    scheduler.delayMs = delayMs;
+    scheduler.nextPeriodStart = now;
+    scheduler.hasNextPeriodStart = enabled;
+    nesFrameDelaySchedulerResetStats(scheduler);
+    return true;
+}
+
+bool nesFrameDelaySchedulerPrepareForFrame(
+    NesFrameDelayScheduler& scheduler, StateMachine& dsm, std::chrono::steady_clock::time_point now)
+{
+    if (!scheduler.enabled) {
+        scheduler.hasNextPeriodStart = false;
+        return true;
+    }
+
+    if (!scheduler.hasNextPeriodStart) {
+        scheduler.nextPeriodStart = now;
+        scheduler.hasNextPeriodStart = true;
+    }
+
+    const auto scheduledPollTime =
+        scheduler.nextPeriodStart + steadyDurationFromMs(scheduler.delayMs);
+    return sleepUntilOrYield(dsm, scheduledPollTime);
+}
+
+void nesFrameDelaySchedulerRecordFrameStart(
+    NesFrameDelayScheduler& scheduler, std::chrono::steady_clock::time_point frameStart)
+{
+    if (!scheduler.enabled || !scheduler.hasNextPeriodStart) {
+        return;
+    }
+
+    const auto scheduledStart = scheduler.nextPeriodStart + steadyDurationFromMs(scheduler.delayMs);
+    const double startLatenessMs = std::max(0.0, steadyDurationMs(frameStart - scheduledStart));
+    scheduler.totalStartLatenessMs += startLatenessMs;
+    scheduler.maxStartLatenessMs = std::max(scheduler.maxStartLatenessMs, startLatenessMs);
+    if (startLatenessMs > 0.0) {
+        scheduler.lateStartCount++;
+    }
+}
+
+void nesFrameDelaySchedulerRecordFrameEnd(
+    NesFrameDelayScheduler& scheduler, std::chrono::steady_clock::time_point frameEnd)
+{
+    if (!scheduler.enabled || !scheduler.hasNextPeriodStart) {
+        return;
+    }
+
+    const auto framePeriod = steadyDurationFromMs(NES_FRAME_PERIOD_MS);
+    const auto framePeriodEnd = scheduler.nextPeriodStart + framePeriod;
+    const double periodOverrunMs = std::max(0.0, steadyDurationMs(frameEnd - framePeriodEnd));
+    scheduler.totalPeriodOverrunMs += periodOverrunMs;
+    scheduler.maxPeriodOverrunMs = std::max(scheduler.maxPeriodOverrunMs, periodOverrunMs);
+    if (periodOverrunMs > 0.0) {
+        scheduler.periodOverrunCount++;
+    }
+
+    scheduler.statsFrameCount++;
+    scheduler.nextPeriodStart += framePeriod;
+    while (scheduler.nextPeriodStart + framePeriod <= frameEnd) {
+        scheduler.nextPeriodStart += framePeriod;
+        scheduler.skippedPeriodCount++;
+    }
+}
+
+void nesFrameDelaySchedulerMaybeLogAndReset(NesFrameDelayScheduler& scheduler)
+{
+    if (scheduler.statsFrameCount < NES_FRAME_DELAY_LOG_SAMPLE_COUNT) {
+        return;
+    }
+
+    const double avgStartLatenessMs = scheduler.totalStartLatenessMs / scheduler.statsFrameCount;
+    const double avgPeriodOverrunMs = scheduler.totalPeriodOverrunMs / scheduler.statsFrameCount;
+    spdlog::info(
+        "NES frame delay pacing ({} frames, delay={:.2f}ms):",
+        scheduler.statsFrameCount,
+        scheduler.delayMs);
+    spdlog::info(
+        "  Start lateness: {:.2f}ms avg (max={:.2f}, {} late starts)",
+        avgStartLatenessMs,
+        scheduler.maxStartLatenessMs,
+        scheduler.lateStartCount);
+    spdlog::info(
+        "  Period overrun: {:.2f}ms avg (max={:.2f}, {} overruns, {} skipped periods)",
+        avgPeriodOverrunMs,
+        scheduler.maxPeriodOverrunMs,
+        scheduler.periodOverrunCount,
+        scheduler.skippedPeriodCount);
+    nesFrameDelaySchedulerResetStats(scheduler);
+}
 } // namespace
 
 SimRunning::~SimRunning() = default;
@@ -255,6 +409,8 @@ SimRunning& SimRunning::operator=(SimRunning&&) noexcept = default;
 void SimRunning::onEnter(StateMachine& dsm)
 {
     spdlog::info("SimRunning: Entering simulation state");
+    nesFrameDelayScheduler = {};
+    nesFrameDelaySchedulerResetStats(nesFrameDelayScheduler);
 
     // Apply default scenario if no scenario is set.
     if (!session.hasSession() || session.getScenarioId() == Scenario::EnumType::Empty) {
@@ -276,6 +432,7 @@ void SimRunning::onEnter(StateMachine& dsm)
             auto nes = session.requireNesWorld();
             if (nes.isValue()) {
                 nes.value().driver->setAudioPlaybackEnabled(true);
+                nes.value().driver->setLiveServerPacingEnabled(dsm.isNesFrameDelayEnabled());
             }
         }
         return;
@@ -285,6 +442,7 @@ void SimRunning::onEnter(StateMachine& dsm)
         auto nes = session.requireNesWorld();
         if (nes.isValue()) {
             nes.value().driver->setAudioPlaybackEnabled(true);
+            nes.value().driver->setLiveServerPacingEnabled(dsm.isNesFrameDelayEnabled());
         }
         spdlog::info(
             "SimRunning: Resuming NES session (scenario='{}')", toString(session.getScenarioId()));
@@ -316,13 +474,32 @@ void SimRunning::tick(StateMachine& dsm)
 
     // Poll gamepad.
     auto& gm = dsm.getGamepadManager();
-    gm.poll();
 
     if (session.isNesSession()) {
         auto nes = session.requireNesWorld();
         DIRTSIM_ASSERT(nes.isValue(), "SimRunning: NES session missing runtime state");
 
+        const auto pacingNow = std::chrono::steady_clock::now();
+        if (nesFrameDelaySchedulerApplyConfig(
+                nesFrameDelayScheduler,
+                dsm.isNesFrameDelayEnabled(),
+                dsm.getNesFrameDelayMs(),
+                pacingNow)) {
+            spdlog::info(
+                "SimRunning: Live NES frame delay config applied (enabled={}, delay={:.2f}ms)",
+                nesFrameDelayScheduler.enabled,
+                nesFrameDelayScheduler.delayMs);
+        }
+
+        nes.value().driver->setLiveServerPacingEnabled(nesFrameDelayScheduler.enabled);
+        if (!nesFrameDelaySchedulerPrepareForFrame(nesFrameDelayScheduler, dsm, pacingNow)) {
+            return;
+        }
+
+        gm.poll();
+
         uint8_t controller1Buttons = nes_controller1_override_.value_or(0);
+        uint64_t controller1ObservedTimestampNs = 0;
 
         if (!nes_controller1_override_.has_value()) {
             for (size_t i = 0; i < gm.getDeviceCount(); ++i) {
@@ -331,18 +508,31 @@ void SimRunning::tick(StateMachine& dsm)
                     continue;
                 }
                 controller1Buttons = mapGamepadStateToNesButtons(*state);
+                controller1ObservedTimestampNs = state->lastObservedChangeTimestampNs;
                 break; // Use first connected gamepad for player one.
             }
         }
 
-        nes.value().driver->setController1State(controller1Buttons);
+        if (controller1ObservedTimestampNs > 0) {
+            nes.value().driver->setLiveController1State(
+                controller1Buttons, controller1ObservedTimestampNs);
+        }
+        else {
+            nes.value().driver->setController1State(controller1Buttons);
+        }
         nes.value().driver->setAudioVolumePercent(dsm.getUserSettings().volumePercent);
+        nes.value().driver->setSmbResponseProbeEnabled(true);
 
-        const auto now = std::chrono::steady_clock::now();
+        const auto frameStart = std::chrono::steady_clock::now();
+        nesFrameDelaySchedulerRecordFrameStart(nesFrameDelayScheduler, frameStart);
 
         dsm.getTimers().startTimer("physics_step");
         nes.value().driver->tick(*nes.value().timers, *nes.value().scenarioVideoFrame);
         dsm.getTimers().stopTimer("physics_step");
+        const auto frameEnd = std::chrono::steady_clock::now();
+
+        nesFrameDelaySchedulerRecordFrameEnd(nesFrameDelayScheduler, frameEnd);
+        nesFrameDelaySchedulerMaybeLogAndReset(nesFrameDelayScheduler);
 
         stepCount++;
         nes.value().worldData->timestep = static_cast<int32_t>(stepCount);
@@ -356,11 +546,12 @@ void SimRunning::tick(StateMachine& dsm)
 
         // Calculate actual FPS (steps per second).
         const auto frameElapsed =
-            std::chrono::duration_cast<std::chrono::microseconds>(now - lastFrameTime).count();
+            std::chrono::duration_cast<std::chrono::microseconds>(frameStart - lastFrameTime)
+                .count();
         if (frameElapsed > 0) {
             actualFPS = 1000000.0 / frameElapsed;
             nes.value().worldData->fps_server = actualFPS;
-            lastFrameTime = now;
+            lastFrameTime = frameStart;
         }
 
         dsm.updateCachedWorldData(*nes.value().worldData);
@@ -370,30 +561,36 @@ void SimRunning::tick(StateMachine& dsm)
         DIRTSIM_ASSERT(worldData != nullptr, "SimRunning: NES session missing WorldData");
         DIRTSIM_ASSERT(organismGrid != nullptr, "SimRunning: NES session missing organism grid");
 
+        const auto nesControllerTelemetry = nes.value().driver->getLastControllerTelemetry();
+        const auto nesSmbResponseTelemetry = nes.value().driver->getLastSmbResponseTelemetry();
+
         if (dsm.getWebSocketService() && nes.value().scenarioVideoFrame->has_value()) {
             dsm.broadcastRenderMessage(
                 *worldData,
                 *organismGrid,
                 session.getScenarioId(),
                 session.getScenarioConfig(),
-                *nes.value().scenarioVideoFrame);
+                nesControllerTelemetry,
+                *nes.value().scenarioVideoFrame,
+                nesSmbResponseTelemetry);
 
             // Track FPS for frame send rate.
             if (lastFrameSendTime.time_since_epoch().count() > 0) {
-                auto sendElapsed =
-                    std::chrono::duration_cast<std::chrono::microseconds>(now - lastFrameSendTime)
-                        .count();
+                auto sendElapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                                       frameEnd - lastFrameSendTime)
+                                       .count();
                 if (sendElapsed > 0) {
                     frameSendFPS = 1000000.0 / sendElapsed;
                     nes.value().worldData->fps_server = frameSendFPS;
                 }
             }
-            lastFrameSendTime = now;
+            lastFrameSendTime = frameEnd;
         }
         return;
     }
 
     // Headless server: advance physics simulation.
+    gm.poll();
     World* world = session.getWorld();
     ScenarioRunner* scenario = session.getScenarioRunner();
     DIRTSIM_ASSERT(world != nullptr, "World must exist for GridWorld simulation");
@@ -687,6 +884,8 @@ void SimRunning::tick(StateMachine& dsm)
             world->getOrganismManager().getGrid(),
             session.getScenarioId(),
             scenario->getConfig(),
+            std::nullopt,
+            std::nullopt,
             std::nullopt,
             waterVolumeViewPtr);
 
@@ -1607,14 +1806,6 @@ State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMac
             spdlog::warn("SimRunning: Current scenario does not support water column toggle");
         }
     }
-    return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const ToggleLeftThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
-{
-    // Note: Left throw is not currently in Config::Sandbox - this command is deprecated.
-    // Use UserSettingsPatch to modify scenario configs instead.
-    spdlog::warn("SimRunning: ToggleLeftThrowCommand is deprecated - left throw not in config");
     return std::move(*this);
 }
 

@@ -8,6 +8,8 @@
 #include "core/StateMachineInterface.h"
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/ClockConfig.h"
+#include "core/scenarios/nes/NesControllerTelemetry.h"
+#include "core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.h"
 #include "server/api/TrainingBestSnapshot.h"
 
 #include <filesystem>
@@ -99,8 +101,10 @@ public:
 
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
+    double getNesFrameDelayMs() const;
     UserSettings& getUserSettings();
     const UserSettings& getUserSettings() const;
+    bool isNesFrameDelayEnabled() const;
 
     void storeTrainingResult(const Api::TrainingResult& result);
 
@@ -109,7 +113,10 @@ public:
         const std::vector<OrganismId>& organism_grid,
         Scenario::EnumType scenario_id,
         const ScenarioConfig& scenario_config,
+        const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
         const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+        const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry =
+            std::nullopt,
         const WaterVolumeView* waterVolumeView = nullptr);
 
     void broadcastCommand(const std::string& messageType);

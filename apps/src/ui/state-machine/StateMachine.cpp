@@ -196,14 +196,24 @@ void StateMachine::setupWebSocketService()
     ws.registerHandler<UiApi::MouseMove::Cwc>(
         [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkConnectCancelPress::Cwc>(
+        [this](UiApi::NetworkConnectCancelPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkConnectPress::Cwc>(
+        [this](UiApi::NetworkConnectPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkDiagnosticsGet::Cwc>(
+        [this](UiApi::NetworkDiagnosticsGet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkPasswordSubmit::Cwc>(
+        [this](UiApi::NetworkPasswordSubmit::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkScannerEnterPress::Cwc>(
+        [this](UiApi::NetworkScannerEnterPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::NetworkScannerExitPress::Cwc>(
+        [this](UiApi::NetworkScannerExitPress::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DebugVisualizationSelect::Cwc>(
         [this](UiApi::DebugVisualizationSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
-    ws.registerHandler<UiApi::PixelRendererToggle::Cwc>(
-        [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<Api::TrainingResult::Cwc>(
@@ -273,7 +283,12 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseDown);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseMove);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseUp);
-            DISPATCH_UI_CMD_WITH_RESP(UiApi::PixelRendererToggle);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkConnectCancelPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkConnectPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkDiagnosticsGet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkPasswordSubmit);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerEnterPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerExitPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::RenderModeSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::ScreenGrab);
             DISPATCH_UI_CMD_EMPTY(UiApi::SimPause);
@@ -381,6 +396,38 @@ void StateMachine::processEvents()
     eventProcessor.processEventsFromQueue(*this);
 }
 
+void StateMachine::setDisplayLoopPhase(DisplayLoopPhase phase)
+{
+    displayLoopPhase_ = phase;
+}
+
+DisplayLoopPhase StateMachine::getDisplayLoopPhase() const
+{
+    return displayLoopPhase_;
+}
+
+void StateMachine::notifyDisplayTimerHandlerStart(std::chrono::steady_clock::time_point startTime)
+{
+    std::visit(
+        [startTime](auto&& state) {
+            if constexpr (requires { state.onDisplayTimerHandlerStart(startTime); }) {
+                state.onDisplayTimerHandlerStart(startTime);
+            }
+        },
+        fsmState.getVariant());
+}
+
+void StateMachine::notifyDisplayFlush(std::chrono::steady_clock::time_point flushTime)
+{
+    std::visit(
+        [flushTime](auto&& state) {
+            if constexpr (requires { state.onDisplayFlush(flushTime); }) {
+                state.onDisplayFlush(flushTime);
+            }
+        },
+        fsmState.getVariant());
+}
+
 bool StateMachine::waitForEvents(std::chrono::milliseconds timeout)
 {
     return eventProcessor.waitForEvents(timeout);
@@ -434,8 +481,15 @@ bool StateMachine::isAutoShrinkBlocked() const
 
     return std::visit(
         [](const auto& state) -> bool {
+            if constexpr (requires { state.blocksAutoShrink(); }) {
+                if (state.blocksAutoShrink()) {
+                    return true;
+                }
+            }
             if constexpr (requires { state.isTrainingResultModalVisible(); }) {
-                return state.isTrainingResultModalVisible();
+                if (state.isTrainingResultModalVisible()) {
+                    return true;
+                }
             }
             return false;
         },

@@ -8,6 +8,52 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
+namespace {
+
+UiApi::NetworkDiagnosticsGet::Okay toAutomationOkay(
+    const NetworkDiagnosticsPanel::AutomationState& state)
+{
+    UiApi::NetworkDiagnosticsGet::Okay okay{
+        .connect_cancel_enabled = state.connectCancelEnabled,
+        .connect_cancel_visible = state.connectCancelVisible,
+        .connect_overlay_visible = state.connectOverlayVisible,
+        .password_prompt_visible = state.passwordPromptVisible,
+        .password_submit_enabled = state.passwordSubmitEnabled,
+        .scanner_enter_enabled = state.scannerEnterEnabled,
+        .scanner_exit_enabled = state.scannerExitEnabled,
+        .scanner_mode_active = state.scannerModeActive,
+        .scanner_mode_available = state.scannerModeAvailable,
+        .connect_progress = std::nullopt,
+        .connected_ssid = state.connectedSsid,
+        .connect_target_ssid = state.connectTargetSsid,
+        .password_prompt_target_ssid = state.passwordPromptTargetSsid,
+        .password_error = state.passwordError,
+        .scanner_status_message = state.scannerStatusMessage,
+        .networks = {},
+        .view_mode = state.viewMode,
+        .wifi_status_message = state.wifiStatusMessage,
+    };
+    if (state.connectProgress.has_value()) {
+        okay.connect_progress = UiApi::NetworkDiagnosticsGet::ConnectProgressInfo{
+            .phase = state.connectProgress->phase,
+            .ssid = state.connectProgress->ssid,
+            .can_cancel = state.connectProgress->canCancel,
+        };
+    }
+    okay.networks.reserve(state.networks.size());
+    for (const auto& network : state.networks) {
+        okay.networks.push_back(
+            UiApi::NetworkDiagnosticsGet::NetworkInfo{
+                .ssid = network.ssid,
+                .status = network.status,
+                .requires_password = network.requiresPassword,
+            });
+    }
+    return okay;
+}
+
+} // namespace
+
 void Network::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Network state");
@@ -25,11 +71,19 @@ void Network::onEnter(StateMachine& sm)
     lv_obj_set_size(contentRoot_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(contentRoot_, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(contentRoot_, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_all(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_top(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_right(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_bottom(contentRoot_, 20, 0);
+    lv_obj_set_style_pad_left(contentRoot_, IconRail::RAIL_WIDTH + 20, 0);
     lv_obj_set_style_border_width(contentRoot_, 0, 0);
     lv_obj_clear_flag(contentRoot_, LV_OBJ_FLAG_SCROLLABLE);
 
-    networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(contentRoot_);
+    activeSubviewIcon_ = IconId::NETWORK;
+    networkPanel_ =
+        std::make_unique<NetworkDiagnosticsPanel>(contentRoot_, sm.getUserSettingsManager());
+    if (networkPanel_) {
+        networkPanel_->showWifiView();
+    }
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->hide();
@@ -40,10 +94,11 @@ void Network::onEnter(StateMachine& sm)
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
     iconRail->setVisible(true);
+    iconRail->setAllowMinimize(false);
     iconRail->setLayout(RailLayout::SingleColumn);
-    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftBottomSquare());
-    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK });
-    iconRail->selectIcon(IconId::NETWORK);
+    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK, IconId::SETTINGS, IconId::SCANNER });
+    iconRail->showIcons();
+    iconRail->selectIcon(activeSubviewIcon_);
 }
 
 void Network::onExit(StateMachine& sm)
@@ -53,6 +108,9 @@ void Network::onExit(StateMachine& sm)
     networkPanel_.reset();
 
     if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* iconRail = uiManager->getIconRail()) {
+            iconRail->setAllowMinimize(true);
+        }
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
@@ -76,13 +134,64 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
 
     if (evt.selectedId == IconId::DUCK) {
+        if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+            LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+            activeSubviewIcon_ = IconId::SCANNER;
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
         LOG_INFO(State, "Duck icon selected, returning to StartMenu");
         return StartMenu{};
     }
 
     if (evt.selectedId == IconId::NETWORK) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
+        activeSubviewIcon_ = IconId::NETWORK;
+        if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
+            networkPanel_->showWifiView();
+            networkPanel_->refresh();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.selectedId == IconId::SETTINGS) {
+        if (networkPanel_ && evt.previousId == IconId::SCANNER && networkPanel_->isScannerModeBusy()
+            && !networkPanel_->isScannerModeActive()) {
+            LOG_INFO(State, "Blocking view switch while entering scanner mode");
+            iconRail->selectIcon(activeSubviewIcon_);
+            return std::move(*this);
+        }
+
+        activeSubviewIcon_ = IconId::SETTINGS;
+        if (networkPanel_) {
+            static_cast<void>(networkPanel_->requestScannerExit());
+            networkPanel_->showLanAccessView();
+            networkPanel_->refresh();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.selectedId == IconId::SCANNER) {
+        activeSubviewIcon_ = IconId::SCANNER;
+        if (networkPanel_) {
+            networkPanel_->showScannerView();
+            networkPanel_->refresh();
+        }
         return std::move(*this);
     }
 
@@ -94,15 +203,169 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Network::onEvent(const RailModeChangedEvent& evt, StateMachine& sm)
 {
+    if (evt.newMode != RailMode::Minimized) {
+        return std::move(*this);
+    }
+
+    auto* uiManager = sm.getUiComponentManager();
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+
+    auto* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->showIcons();
+    iconRail->selectIcon(activeSubviewIcon_);
+
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
+    if (networkPanel_ && networkPanel_->isScannerModeActiveOrBusy()) {
+        LOG_INFO(State, "Blocking exit while scanner mode is active/busy");
+
+        auto* uiManager = sm.getUiComponentManager();
+        DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+        IconRail* iconRail = uiManager->getIconRail();
+        DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+
+        activeSubviewIcon_ = IconId::SCANNER;
+        networkPanel_->showScannerView();
+        networkPanel_->refresh();
+        iconRail->selectIcon(activeSubviewIcon_);
+        return std::move(*this);
+    }
+
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
+}
+
+State::Any Network::onEvent(const UiApi::NetworkConnectCancelPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectCancelPress::Response::error(
+                ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationConnectCancel();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectCancelPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkConnectCancelPress::Response::okay(
+            UiApi::NetworkConnectCancelPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkConnectPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectPress::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationConnect(cwc.command.ssid);
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkConnectPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkConnectPress::Response::okay(
+            UiApi::NetworkConnectPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkDiagnosticsGet::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->getAutomationState();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkDiagnosticsGet::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkDiagnosticsGet::Response::okay(toAutomationOkay(result.value())));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkPasswordSubmit::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->submitAutomationPassword(cwc.command.password);
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkPasswordSubmit::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkPasswordSubmit::Response::okay(
+            UiApi::NetworkPasswordSubmit::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerEnterPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(
+                ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerEnter();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerEnterPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerEnterPress::Response::okay(
+            UiApi::NetworkScannerEnterPress::Okay{ .accepted = true }));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::NetworkScannerExitPress::Cwc& cwc, StateMachine& /*sm*/)
+{
+    if (!networkPanel_) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError("Network panel unavailable")));
+        return std::move(*this);
+    }
+
+    const auto result = networkPanel_->pressAutomationScannerExit();
+    if (result.isError()) {
+        cwc.sendResponse(
+            UiApi::NetworkScannerExitPress::Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        UiApi::NetworkScannerExitPress::Response::okay(
+            UiApi::NetworkScannerExitPress::Okay{ .accepted = true }));
+    return std::move(*this);
 }
 
 State::Any Network::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)

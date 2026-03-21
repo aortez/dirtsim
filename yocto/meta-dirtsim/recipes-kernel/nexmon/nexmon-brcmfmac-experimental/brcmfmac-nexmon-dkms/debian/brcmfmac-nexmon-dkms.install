@@ -1,0 +1,1 @@
+*.c *.h dkms.conf include Kconfig Makefile  usr/src/brcmfmac-nexmon-${env:DEB_VERSION_UPSTREAM}

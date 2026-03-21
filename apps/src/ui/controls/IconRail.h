@@ -29,7 +29,8 @@ enum class IconId {
     TRAINING_RESULTS = 9,
     MUSIC = 10,
     DUCK = 11,
-    SETTINGS = 12
+    SETTINGS = 12,
+    SCANNER = 13
 };
 
 enum class RailMode {
@@ -151,6 +152,8 @@ public:
 
     void setVisible(bool visible);
     bool isVisible() const { return visible_; }
+    void setAllowMinimize(bool allow);
+    bool isMinimizeAllowed() const { return allowMinimize_; }
 
 private:
     lv_obj_t* container_ = nullptr;
@@ -171,6 +174,7 @@ private:
     // Mode support.
     RailMode mode_ = RailMode::Normal;
     RailLayout layout_ = RailLayout::SingleColumn;
+    bool allowMinimize_ = true;
     bool visible_ = true;
     MinimizedAffordanceStyle minimizedAffordanceStyle_{};
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).

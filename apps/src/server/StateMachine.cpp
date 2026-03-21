@@ -3,6 +3,7 @@
 #include "EventProcessor.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
+#include "UserSettingsDiskCompat.h"
 #include "api/TrainingBestSnapshotGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
@@ -33,7 +34,7 @@
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/water/WaterVolumeView.h"
@@ -80,14 +81,11 @@ std::filesystem::path getDefaultDataDir()
     return std::filesystem::path(home) / ".dirtsim";
 }
 
-int getMaxTimezoneIndex()
-{
-    return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
-}
-
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
+constexpr double kNtscNesFramePeriodMs = 1000.0 / 60.0988;
+constexpr double kNtscNesFrameDelayMaxMs = kNtscNesFramePeriodMs - 0.001;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -106,6 +104,13 @@ std::filesystem::path getUserSettingsTempPath(const std::filesystem::path& fileP
     tempPath += ".";
     tempPath += std::to_string(now);
     return tempPath;
+}
+
+uint64_t steadyClockNowNs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count());
 }
 
 bool persistUserSettingsToDisk(
@@ -178,9 +183,22 @@ UserSettings sanitizeUserSettings(
         changed = true;
     };
 
-    if (settings.clockScenarioConfig.timezoneIndex > getMaxTimezoneIndex()) {
-        settings.clockScenarioConfig.timezoneIndex = static_cast<uint8_t>(getMaxTimezoneIndex());
-        recordUpdate("clockScenarioConfig.timezoneIndex clamped to maximum timezone");
+    if (!ClockTimezones::isValid(settings.clockScenarioConfig.timezone)) {
+        settings.clockScenarioConfig.timezone = Config::ClockTimezone::LosAngeles;
+        recordUpdate("clockScenarioConfig.timezone reset to default timezone");
+    }
+
+    if (!std::isfinite(settings.nesSessionSettings.frameDelayMs)) {
+        settings.nesSessionSettings.frameDelayMs = 0.0;
+        recordUpdate("nesSessionSettings.frameDelayMs reset to 0");
+    }
+    else if (settings.nesSessionSettings.frameDelayMs < 0.0) {
+        settings.nesSessionSettings.frameDelayMs = 0.0;
+        recordUpdate("nesSessionSettings.frameDelayMs clamped to 0");
+    }
+    else if (settings.nesSessionSettings.frameDelayMs >= kNtscNesFramePeriodMs) {
+        settings.nesSessionSettings.frameDelayMs = kNtscNesFrameDelayMaxMs;
+        recordUpdate("nesSessionSettings.frameDelayMs clamped below one NES frame");
     }
 
     if (settings.volumePercent < 0) {
@@ -243,9 +261,9 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = kGenomeArchiveMaxSizePerBucketMax;
         recordUpdate("genomeArchiveMaxSize clamped to 1000");
     }
-    if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
-        settings.evolutionConfig.robustFitnessEvaluationCount = 1;
-        recordUpdate("robustFitnessEvaluationCount clamped to 1");
+    if (settings.evolutionConfig.robustFitnessEvaluationCount < 0) {
+        settings.evolutionConfig.robustFitnessEvaluationCount = 0;
+        recordUpdate("robustFitnessEvaluationCount clamped to 0");
     }
     if (settings.evolutionConfig.warmStartSeedCount < 0) {
         settings.evolutionConfig.warmStartSeedCount = 0;
@@ -362,13 +380,20 @@ UserSettings loadUserSettingsFromDisk(
 
         nlohmann::json json;
         file >> json;
-        const UserSettings parsed = json.get<UserSettings>();
+        const UserSettings parsed = parseUserSettingsDiskJsonWithDefaults(json);
 
         bool changed = false;
         std::vector<std::string> updates;
         const UserSettings sanitized =
             sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
-        if (changed) {
+        const nlohmann::json canonicalJson = sanitized;
+        if (changed || canonicalJson != json) {
+            if (!changed && canonicalJson != json) {
+                LOG_INFO(
+                    State,
+                    "User settings normalized, rewriting '{}' to canonical form",
+                    filePath.string());
+            }
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
             }
@@ -544,21 +569,14 @@ void applyScenarioConfigUpdatesToActiveState(
                 }
 
                 state.scenarioConfigOverride_ = *config;
-                if (state.workerState_) {
-                    state.workerState_->scenarioConfigOverride = state.scenarioConfigOverride_;
-                }
-
-                if (state.visible_.runner
-                    && state.visibleScenarioId_ == state.trainingSpec.scenarioId) {
-                    const auto result = state.visible_.runner->setScenarioConfig(*config);
-                    if (result.isError()) {
+                if (state.executor_) {
+                    const auto error = state.executor_->scenarioConfigOverrideSet(
+                        state.scenarioConfigOverride_, state.trainingSpec.scenarioId);
+                    if (error.has_value()) {
                         LOG_WARN(
                             State,
                             "Failed to apply scenario config override to visible runner: {}",
-                            result.errorValue());
-                    }
-                    else {
-                        state.visibleScenarioConfig_ = state.visible_.runner->getScenarioConfig();
+                            error.value());
                     }
                 }
 
@@ -645,6 +663,8 @@ struct StateMachine::Impl {
     ScenarioRegistry scenarioRegistry_;
     std::filesystem::path userSettingsPath_;
     UserSettings userSettings_;
+    bool nesFrameDelayEnabled_ = false;
+    double nesFrameDelayMs_ = 0.0;
     SystemMetrics systemMetrics_;
     Timers timers_;
     std::unique_ptr<HttpServer> httpServer_;
@@ -673,6 +693,8 @@ struct StateMachine::Impl {
           userSettings_(
               loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_, genomeRepository_))
     {
+        nesFrameDelayEnabled_ = userSettings_.nesSessionSettings.frameDelayEnabled;
+        nesFrameDelayMs_ = userSettings_.nesSessionSettings.frameDelayMs;
         renderEnvelopeScratch_.id = 0;
         renderEnvelopeScratch_.message_type = "RenderMessage";
 
@@ -707,6 +729,11 @@ private:
         spdlog::info("TrainingResultRepository: Using database at {}", dbPath.string());
         return TrainingResultRepository(dbPath);
     }
+};
+
+constexpr auto applyNesSessionSettingsToLiveState = [](auto& impl) {
+    impl.nesFrameDelayEnabled_ = impl.userSettings_.nesSessionSettings.frameDelayEnabled;
+    impl.nesFrameDelayMs_ = impl.userSettings_.nesSessionSettings.frameDelayMs;
 };
 
 StateMachine::StateMachine(
@@ -1105,6 +1132,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesApuGet::Cwc>(
         [this](Api::NesApuGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::NesFrameDelaySet::Cwc>(
+        [this](Api::NesFrameDelaySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesInputSet::Cwc>(
         [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
@@ -1223,6 +1252,11 @@ const GenomeRepository& StateMachine::getGenomeRepository() const
     return pImpl->genomeRepository_;
 }
 
+double StateMachine::getNesFrameDelayMs() const
+{
+    return pImpl->nesFrameDelayMs_;
+}
+
 UserSettings& StateMachine::getUserSettings()
 {
     return pImpl->userSettings_;
@@ -1231,6 +1265,11 @@ UserSettings& StateMachine::getUserSettings()
 const UserSettings& StateMachine::getUserSettings() const
 {
     return pImpl->userSettings_;
+}
+
+bool StateMachine::isNesFrameDelayEnabled() const
+{
+    return pImpl->nesFrameDelayEnabled_;
 }
 
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
@@ -1296,9 +1335,11 @@ void StateMachine::mainLoopRun()
             totalEventProcessMs += eventProcessMs;
             totalTickMs += tickMs;
 
-            // Apply frame rate limiting if configured.
+            // Let live NES frame-delay pacing own cadence without the generic frame limiter.
             double sleepMs = 0.0;
-            if (simRunning.frameLimit > 0) {
+            const bool useExternalFrameLimiter =
+                !(simRunning.session.isNesSession() && simRunning.nesFrameDelayScheduler.enabled);
+            if (useExternalFrameLimiter && simRunning.frameLimit > 0) {
                 auto elapsedMs =
                     std::chrono::duration_cast<std::chrono::milliseconds>(frameEnd - frameStart)
                         .count();
@@ -1747,6 +1788,51 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
+    if (std::holds_alternative<Api::NesFrameDelaySet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::NesFrameDelaySet::Cwc>(event.getVariant());
+
+        UserSettings patched = pImpl->userSettings_;
+        patched.nesSessionSettings.frameDelayEnabled = cwc.command.enabled;
+        patched.nesSessionSettings.frameDelayMs = cwc.command.frame_delay_ms;
+
+        bool changed = false;
+        std::vector<std::string> updates;
+        const UserSettings sanitized = sanitizeUserSettings(
+            patched, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
+
+        if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
+            cwc.sendResponse(
+                Api::NesFrameDelaySet::Response::error(
+                    ApiError("Failed to persist user settings")));
+            return;
+        }
+
+        if (changed) {
+            for (const auto& update : updates) {
+                LOG_WARN(State, "NesFrameDelaySet: {}", update);
+            }
+        }
+
+        pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
+        LOG_INFO(
+            State,
+            "Live NES frame delay config updated: enabled={} frame_delay_ms={:.2f}",
+            pImpl->nesFrameDelayEnabled_,
+            pImpl->nesFrameDelayMs_);
+
+        Api::NesFrameDelaySet::Okay response{
+            .enabled = pImpl->nesFrameDelayEnabled_,
+            .frame_delay_ms = pImpl->nesFrameDelayMs_,
+        };
+        cwc.sendResponse(Api::NesFrameDelaySet::Response::okay(std::move(response)));
+
+        const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+        broadcastEventData(
+            Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
+        return;
+    }
+
     if (std::holds_alternative<Api::UserSettingsPatch::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::UserSettingsPatch::Cwc>(event.getVariant());
 
@@ -1768,6 +1854,9 @@ void StateMachine::handleEvent(const Event& event)
         }
         if (cwc.command.treeGerminationScenarioConfig.has_value()) {
             patched.treeGerminationScenarioConfig = *cwc.command.treeGerminationScenarioConfig;
+        }
+        if (cwc.command.nesSessionSettings.has_value()) {
+            patched.nesSessionSettings = *cwc.command.nesSessionSettings;
         }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;
@@ -1796,6 +1885,9 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.uiTraining.has_value()) {
             patched.uiTraining = *cwc.command.uiTraining;
         }
+        if (cwc.command.networkLiveScanPreferred.has_value()) {
+            patched.networkLiveScanPreferred = *cwc.command.networkLiveScanPreferred;
+        }
 
         bool changed = false;
         std::vector<std::string> updates;
@@ -1816,6 +1908,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_,
             pImpl->userSettings_,
@@ -1858,6 +1951,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = sanitized;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
 
@@ -1882,6 +1976,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         pImpl->userSettings_ = defaults;
+        applyNesSessionSettingsToLiveState(*pImpl);
         applyScenarioConfigUpdatesToActiveState(
             pImpl->fsmState_, pImpl->userSettings_, true, true, true, true);
         Api::UserSettingsReset::Okay response{ .settings = pImpl->userSettings_ };
@@ -1994,7 +2089,9 @@ void StateMachine::broadcastRenderMessage(
     const std::vector<OrganismId>& organism_grid,
     Scenario::EnumType scenario_id,
     const ScenarioConfig& scenario_config,
+    const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
     const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
+    const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry,
     const WaterVolumeView* waterVolumeView)
 {
     if (pImpl->subscribedClients_.empty()) {
@@ -2082,6 +2179,9 @@ void StateMachine::broadcastRenderMessage(
         fullMsg.render_data = std::move(msg);
         fullMsg.scenario_id = scenario_id;
         fullMsg.scenario_config = scenario_config;
+        fullMsg.nes_controller_telemetry = nesControllerTelemetry;
+        fullMsg.nes_smb_response_telemetry = nesSmbResponseTelemetry;
+        fullMsg.server_send_timestamp_ns = steadyClockNowNs();
 
         Network::MessageEnvelope& envelope = pImpl->renderEnvelopeScratch_;
         envelope.id = 0;

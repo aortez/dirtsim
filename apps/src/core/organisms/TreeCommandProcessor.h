@@ -17,6 +17,9 @@ struct CommandExecutionResult {
     bool succeeded() const { return result == CommandResult::SUCCESS; }
 };
 
+CommandExecutionResult treeCommandValidate(
+    const Tree& tree, const World& world, const TreeCommand& cmd, bool checkEnergy = true);
+
 // Interface for processing tree commands.
 class ITreeCommandProcessor {
 public:

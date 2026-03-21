@@ -56,8 +56,8 @@ TEST(NesDuckSensoryBuilderTest, DownsampleMapsPaletteIndicesIntoMaterialHistogra
 {
     NesPaletteClusterer clusterer;
 
-    constexpr uint16_t width = 15;
-    constexpr uint16_t height = 15;
+    constexpr uint16_t width = static_cast<uint16_t>(DuckSensoryData::GRID_SIZE);
+    constexpr uint16_t height = static_cast<uint16_t>(DuckSensoryData::GRID_SIZE);
     NesPaletteFrame frame;
     frame.width = width;
     frame.height = height;
@@ -68,7 +68,7 @@ TEST(NesDuckSensoryBuilderTest, DownsampleMapsPaletteIndicesIntoMaterialHistogra
     constexpr uint8_t kRightIndex = 63;
     for (uint16_t y = 0; y < height; ++y) {
         for (uint16_t x = 0; x < width; ++x) {
-            const bool left = x < 7;
+            const bool left = x < (width / 2);
             frame.indices[static_cast<size_t>(y) * width + x] = left ? kLeftIndex : kRightIndex;
         }
     }
@@ -83,6 +83,6 @@ TEST(NesDuckSensoryBuilderTest, DownsampleMapsPaletteIndicesIntoMaterialHistogra
     const auto& leftHistogram = sensory.material_histograms[0][0];
     EXPECT_DOUBLE_EQ(leftHistogram[static_cast<size_t>(leftChannel)], 1.0);
 
-    const auto& rightHistogram = sensory.material_histograms[0][14];
+    const auto& rightHistogram = sensory.material_histograms[0][DuckSensoryData::GRID_SIZE - 1];
     EXPECT_DOUBLE_EQ(rightHistogram[static_cast<size_t>(rightChannel)], 1.0);
 }

@@ -11,9 +11,15 @@
 
 namespace DirtSim {
 
+enum class SmolnesRuntimePacingMode : uint8_t {
+    Lockstep = 0,
+    Realtime = 1,
+};
+
 class SmolnesRuntime {
 public:
     struct MemorySnapshot {
+        uint64_t frameId = 0;
         std::array<uint8_t, SMOLNES_RUNTIME_CPU_RAM_BYTES> cpuRam{};
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
     };
@@ -47,23 +53,43 @@ public:
         uint64_t memorySnapshotCopyCalls = 0;
     };
 
+    struct ControllerSnapshot {
+        uint64_t latestFrameId = 0;
+        uint64_t controller1AppliedFrameId = 0;
+        uint64_t controller1ObservedTimestampNs = 0;
+        uint64_t controller1LatchTimestampNs = 0;
+        uint64_t controller1RequestTimestampNs = 0;
+        uint64_t controller1SequenceId = 0;
+        uint8_t controller1State = 0;
+    };
+
+    struct LiveSnapshot {
+        std::optional<ControllerSnapshot> controllerSnapshot = std::nullopt;
+        MemorySnapshot memorySnapshot{};
+        NesPaletteFrame paletteFrame;
+        ScenarioVideoFrame videoFrame;
+    };
+
     SmolnesRuntime();
-    ~SmolnesRuntime();
+    virtual ~SmolnesRuntime();
 
     SmolnesRuntime(const SmolnesRuntime&) = delete;
     SmolnesRuntime& operator=(const SmolnesRuntime&) = delete;
 
-    bool start(const std::string& romPath);
-    bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
-    void stop();
-    void setController1State(uint8_t buttonMask);
+    virtual bool start(const std::string& romPath);
+    virtual bool runFrames(uint32_t frameCount, uint32_t timeoutMs);
+    virtual void stop();
+    virtual void setController1State(uint8_t buttonMask);
+    virtual void setController1StateObserved(uint8_t buttonMask, uint64_t observedTimestampNs);
 
-    bool isHealthy() const;
-    bool isRunning() const;
-    uint64_t getRenderedFrameCount() const;
-    bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
-    std::optional<ScenarioVideoFrame> copyLatestFrame() const;
-    std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    virtual bool isHealthy() const;
+    virtual bool isRunning() const;
+    virtual uint64_t getRenderedFrameCount() const;
+    virtual bool copyLatestFrameInto(ScenarioVideoFrame& frame) const;
+    virtual std::optional<ScenarioVideoFrame> copyLatestFrame() const;
+    virtual std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
+    virtual std::optional<LiveSnapshot> copyLiveSnapshot() const;
+    virtual std::optional<ControllerSnapshot> copyControllerSnapshot() const;
     struct ApuSnapshot {
         bool pulse1Enabled = false;
         bool pulse2Enabled = false;
@@ -91,13 +117,13 @@ public:
         uint64_t audioSamplesDropped = 0;
     };
 
-    std::optional<MemorySnapshot> copyMemorySnapshot() const;
-    std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
-    std::optional<ApuSnapshot> copyApuSnapshot() const;
-    uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
-    void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
-    void setSelfPacing(bool enabled);
-    std::string getLastError() const;
+    virtual std::optional<MemorySnapshot> copyMemorySnapshot() const;
+    virtual std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
+    virtual std::optional<ApuSnapshot> copyApuSnapshot() const;
+    virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
+    virtual void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
+    virtual void setPacingMode(SmolnesRuntimePacingMode mode);
+    virtual std::string getLastError() const;
 
 private:
     SmolnesRuntimeHandle* runtimeHandle_ = nullptr;

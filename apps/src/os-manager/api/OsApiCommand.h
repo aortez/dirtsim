@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NetworkDiagnosticsModeSet.h"
+#include "NetworkSnapshotGet.h"
 #include "PeerClientKeyEnsure.h"
 #include "PeersGet.h"
 #include "Reboot.h"
@@ -7,6 +9,8 @@
 #include "RestartAudio.h"
 #include "RestartServer.h"
 #include "RestartUi.h"
+#include "ScannerModeEnter.h"
+#include "ScannerModeExit.h"
 #include "StartAudio.h"
 #include "StartServer.h"
 #include "StartUi.h"
@@ -19,12 +23,19 @@
 #include "UntrustPeer.h"
 #include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
+#include "WifiConnect.h"
+#include "WifiConnectCancel.h"
+#include "WifiDisconnect.h"
+#include "WifiForget.h"
+#include "WifiScanRequest.h"
 #include <variant>
 
 namespace DirtSim {
 namespace OsApi {
 
 using OsApiCommand = std::variant<
+    NetworkDiagnosticsModeSet::Command,
+    NetworkSnapshotGet::Command,
     PeerClientKeyEnsure::Command,
     PeersGet::Command,
     RemoteCliRun::Command,
@@ -32,6 +43,8 @@ using OsApiCommand = std::variant<
     RestartAudio::Command,
     RestartServer::Command,
     RestartUi::Command,
+    ScannerModeEnter::Command,
+    ScannerModeExit::Command,
     StartAudio::Command,
     StartServer::Command,
     StartUi::Command,
@@ -42,6 +55,11 @@ using OsApiCommand = std::variant<
     TrustBundleGet::Command,
     TrustPeer::Command,
     UntrustPeer::Command,
+    WifiConnectCancel::Command,
+    WifiConnect::Command,
+    WifiDisconnect::Command,
+    WifiForget::Command,
+    WifiScanRequest::Command,
     WebSocketAccessSet::Command,
     WebUiAccessSet::Command>;
 

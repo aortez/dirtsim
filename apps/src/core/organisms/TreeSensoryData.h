@@ -48,11 +48,14 @@ struct TreeSensoryData {
     double action_progress = 0.0;                  // 0.0 to 1.0, how far along current action is.
     double last_action_result = 0.0;               // -1.0 rejected, 0.0 none, 1.0 accepted.
 
-    // Position mask: true = neural grid position is a valid grow target
-    // (in-bounds, not self-owned, cardinally adjacent to a tree-owned cell).
-    std::array<bool, GRID_SIZE * GRID_SIZE> valid_grow_targets = {};
+    // Command-specific target masks. These mirror runtime command validation:
+    // true means the decoded world position is currently legal for that command.
+    std::array<bool, GRID_SIZE * GRID_SIZE> valid_wood_targets = {};
+    std::array<bool, GRID_SIZE * GRID_SIZE> valid_leaf_targets = {};
+    std::array<bool, GRID_SIZE * GRID_SIZE> valid_root_targets = {};
+    std::array<bool, GRID_SIZE * GRID_SIZE> valid_seed_targets = {};
 
-    using serialize = zpp::bits::members<16>;
+    using serialize = zpp::bits::members<19>;
 };
 
 void to_json(nlohmann::json& j, const GrowthStage& stage);

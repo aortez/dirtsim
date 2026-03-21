@@ -6,14 +6,16 @@
 namespace DirtSim {
 namespace SensoryUtils {
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 TemplateMatch findTemplate(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     const SensoryTemplate& template_pattern)
 {
     for (int row = 0; row <= GridSize - template_pattern.height; ++row) {
         for (int col = 0; col <= GridSize - template_pattern.width; ++col) {
-            if (matchesTemplate<GridSize, NumMaterials>(histograms, template_pattern, col, row)) {
+            if (matchesTemplate<GridSize, NumMaterials, HistogramValueType>(
+                    histograms, template_pattern, col, row)) {
                 return TemplateMatch{ .found = true, .col = col, .row = row };
             }
         }
@@ -21,9 +23,10 @@ TemplateMatch findTemplate(
     return TemplateMatch{ .found = false };
 }
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool matchesTemplate(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row)
@@ -148,11 +151,12 @@ bool matchesTemplate(
     return true;
 }
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 void gatherMaterialHistograms(
     const World& world,
     Vector2i center,
-    std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     Vector2i& world_offset)
 {
     const WorldData& data = world.getData();
@@ -168,7 +172,7 @@ void gatherMaterialHistograms(
     // Clear histograms.
     for (auto& row : histograms) {
         for (auto& cell : row) {
-            cell.fill(0.0);
+            cell.fill(static_cast<HistogramValueType>(0.0f));
         }
     }
 
@@ -183,7 +187,7 @@ void gatherMaterialHistograms(
                 // Out of bounds - treat as WALL so organisms can detect world edges.
                 int wall_idx = static_cast<int>(Material::EnumType::Wall);
                 if (wall_idx >= 0 && wall_idx < NumMaterials) {
-                    histograms[ny][nx][wall_idx] = 1.0;
+                    histograms[ny][nx][wall_idx] = static_cast<HistogramValueType>(1.0f);
                 }
                 continue;
             }
@@ -191,15 +195,16 @@ void gatherMaterialHistograms(
             const Cell& cell = data.at(wx, wy);
             int material_idx = static_cast<int>(cell.material_type);
             if (material_idx >= 0 && material_idx < NumMaterials) {
-                histograms[ny][nx][material_idx] = cell.fill_ratio;
+                histograms[ny][nx][material_idx] = static_cast<HistogramValueType>(cell.fill_ratio);
             }
         }
     }
 }
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 Material::EnumType getDominantMaterial(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy)
 {
@@ -218,19 +223,22 @@ Material::EnumType getDominantMaterial(
     return static_cast<Material::EnumType>(max_idx);
 }
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool isSolid(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy)
 {
-    Material::EnumType mat = getDominantMaterial<GridSize, NumMaterials>(histograms, gx, gy);
+    Material::EnumType mat =
+        getDominantMaterial<GridSize, NumMaterials, HistogramValueType>(histograms, gx, gy);
     return mat != Material::EnumType::Air && mat != Material::EnumType::Water;
 }
 
-template <int GridSize, int NumMaterials>
+template <int GridSize, int NumMaterials, typename HistogramValueType>
 bool isEmpty(
-    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const std::array<std::array<std::array<HistogramValueType, NumMaterials>, GridSize>, GridSize>&
+        histograms,
     int gx,
     int gy)
 {
@@ -246,53 +254,78 @@ bool isEmpty(
 }
 
 // Explicit instantiations for common sizes.
-template void gatherMaterialHistograms<15, 10>(
+template void gatherMaterialHistograms<15, 10, double>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     Vector2i& world_offset);
 
-template void gatherMaterialHistograms<9, 10>(
+template void gatherMaterialHistograms<21, 10, float>(
+    const World& world,
+    Vector2i center,
+    std::array<std::array<std::array<float, 10>, 21>, 21>& histograms,
+    Vector2i& world_offset);
+
+template void gatherMaterialHistograms<9, 10, double>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
     Vector2i& world_offset);
 
-template Material::EnumType getDominantMaterial<15, 10>(
+template Material::EnumType getDominantMaterial<15, 10, double>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
-template Material::EnumType getDominantMaterial<9, 10>(
+template Material::EnumType getDominantMaterial<21, 10, float>(
+    const std::array<std::array<std::array<float, 10>, 21>, 21>& histograms, int gx, int gy);
+
+template Material::EnumType getDominantMaterial<9, 10, double>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
-template bool isSolid<15, 10>(
+template bool isSolid<15, 10, double>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
-template bool isSolid<9, 10>(
+template bool isSolid<21, 10, float>(
+    const std::array<std::array<std::array<float, 10>, 21>, 21>& histograms, int gx, int gy);
+
+template bool isSolid<9, 10, double>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
-template bool isEmpty<15, 10>(
+template bool isEmpty<15, 10, double>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
-template bool isEmpty<9, 10>(
+template bool isEmpty<21, 10, float>(
+    const std::array<std::array<std::array<float, 10>, 21>, 21>& histograms, int gx, int gy);
+
+template bool isEmpty<9, 10, double>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
-template bool matchesTemplate<15, 10>(
+template bool matchesTemplate<15, 10, double>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row);
 
-template bool matchesTemplate<9, 10>(
+template bool matchesTemplate<21, 10, float>(
+    const std::array<std::array<std::array<float, 10>, 21>, 21>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row);
+
+template bool matchesTemplate<9, 10, double>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row);
 
-template TemplateMatch findTemplate<15, 10>(
+template TemplateMatch findTemplate<15, 10, double>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
     const SensoryTemplate& template_pattern);
 
-template TemplateMatch findTemplate<9, 10>(
+template TemplateMatch findTemplate<21, 10, float>(
+    const std::array<std::array<std::array<float, 10>, 21>, 21>& histograms,
+    const SensoryTemplate& template_pattern);
+
+template TemplateMatch findTemplate<9, 10, double>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
     const SensoryTemplate& template_pattern);
 

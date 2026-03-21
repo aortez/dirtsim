@@ -40,6 +40,10 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_label_set_text(titleLabel_, config_.title.c_str());
     lv_obj_set_style_text_color(titleLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(titleLabel_, &lv_font_montserrat_12, 0);
+    if (!config_.showTitle) {
+        lv_obj_add_flag(titleLabel_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(titleLabel_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
 
     chart_ = lv_chart_create(container_);
     lv_obj_set_size(chart_, LV_PCT(100), 0);
@@ -187,9 +191,9 @@ void TimeSeriesPlotWidget::clear()
         return;
     }
 
-    chartValues_.assign(minPointCount_, 0);
+    chartValues_.assign(minPointCount_, LV_CHART_POINT_NONE);
     lv_chart_set_point_count(chart_, minPointCount_);
-    lv_chart_set_all_values(chart_, series_, 0);
+    lv_chart_set_all_values(chart_, series_, LV_CHART_POINT_NONE);
     if (secondarySeries_) {
         lv_chart_set_all_values(chart_, secondarySeries_, LV_CHART_POINT_NONE);
     }
@@ -459,7 +463,17 @@ void TimeSeriesPlotWidget::updateYAxisRange(
     }
     const float range = std::max(maxValue - minValue, minAxisPadding);
     const float padding = std::max(range * axisPaddingRatio, minAxisPadding);
-    setYAxisRange(minValue - padding, maxValue + padding);
+    float axisMin = minValue - padding;
+    float axisMax = maxValue + padding;
+    if (config_.autoScaleClampToZero) {
+        if (minValue >= 0.0f) {
+            axisMin = 0.0f;
+        }
+        if (maxValue <= 0.0f) {
+            axisMax = 0.0f;
+        }
+    }
+    setYAxisRange(axisMin, axisMax);
 }
 
 void TimeSeriesPlotWidget::updateYAxisRangeLabels(float minValue, float maxValue)

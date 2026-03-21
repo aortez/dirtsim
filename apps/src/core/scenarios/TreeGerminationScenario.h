@@ -9,7 +9,7 @@ namespace DirtSim {
 class GenomeRepository;
 
 /**
- * Tree Germination scenario - 9x9 world with balanced tree-growth terrain.
+ * Tree Germination scenario with balanced tree-growth terrain.
  * Organism spawning is handled externally (training or UI controls).
  */
 class TreeGerminationScenario : public ScenarioRunner {

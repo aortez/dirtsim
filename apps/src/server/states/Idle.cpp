@@ -185,6 +185,16 @@ int computeWarmStartSeedTargetCount(
     return std::min(randomCount, std::max(0, warmStartSeedCount));
 }
 
+int resolveWarmStartMinRobustEvalCount(
+    const Api::EvolutionStart::Command& command, const ScenarioMetadata& scenarioMetadata)
+{
+    if (scenarioMetadata.deterministicEvaluation) {
+        return 1;
+    }
+
+    return std::max(1, command.evolution.warmStartMinRobustEvalCount);
+}
+
 double computeWarmSeedFitnessFloor(
     const std::vector<const WarmSeedCandidate*>& compatibleCandidates, double floorPercentile)
 {
@@ -360,6 +370,12 @@ std::optional<ApiError> validateTrainingConfig(
         outSpec.population.push_back(defaultSpec);
     }
 
+    const ScenarioMetadata* scenarioMetadata = registry.getMetadata(outSpec.scenarioId);
+    if (!scenarioMetadata) {
+        return ApiError(
+            std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
+    }
+
     TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
     std::vector<WarmSeedCandidate> warmSeedCandidates;
     const bool warmStartAlwaysIncludeBest = command.evolution.warmStartAlwaysIncludeBest;
@@ -371,7 +387,7 @@ std::optional<ApiError> validateTrainingConfig(
     const double warmStartSeedPercent =
         std::clamp(command.evolution.warmStartSeedPercent, 0.0, 100.0);
     const int warmStartMinRobustEvalCount =
-        std::max(1, command.evolution.warmStartMinRobustEvalCount);
+        resolveWarmStartMinRobustEvalCount(command, *scenarioMetadata);
     std::mt19937 warmSeedSamplingRng(std::random_device{}());
     if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
         warmSeedCandidates = collectWarmSeedCandidates(repo, warmStartMinRobustEvalCount);
@@ -379,11 +395,6 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
-        const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
-        if (!metadata) {
-            return ApiError(
-                std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
-        }
         if (spec.count <= 0) {
             return ApiError("Population entry count must be > 0");
         }
@@ -407,6 +418,8 @@ std::optional<ApiError> validateTrainingConfig(
                 const int maxSeedsToInject = computeWarmStartSeedTargetCount(
                     spec.randomCount, warmStartSeedPercent, warmStartSeedCount);
                 if (maxSeedsToInject > 0) {
+                    std::unordered_map<GenomeId, std::optional<Genome>> genomeCache;
+                    genomeCache.reserve(warmSeedCandidates.size() + spec.seedGenomes.size());
                     std::vector<const WarmSeedCandidate*> compatibleCandidates;
                     compatibleCandidates.reserve(warmSeedCandidates.size());
                     for (const auto& candidate : warmSeedCandidates) {
@@ -414,7 +427,7 @@ std::optional<ApiError> validateTrainingConfig(
                                 candidate.metadata,
                                 outSpec.organismType,
                                 spec,
-                                metadata->genomePoolId)) {
+                                scenarioMetadata->genomePoolId)) {
                             continue;
                         }
                         if (std::find(
@@ -422,13 +435,18 @@ std::optional<ApiError> validateTrainingConfig(
                             != spec.seedGenomes.end()) {
                             continue;
                         }
+                        if (entry->isGenomeCompatible) {
+                            const Genome* genome = loadWarmGenome(repo, candidate.id, genomeCache);
+                            if (genome == nullptr || !entry->isGenomeCompatible(*genome)) {
+                                continue;
+                            }
+                        }
                         compatibleCandidates.push_back(&candidate);
                     }
 
                     if (!compatibleCandidates.empty()) {
                         std::vector<bool> selectedMask(compatibleCandidates.size(), false);
                         std::vector<GenomeId> selectedSeedIds = spec.seedGenomes;
-                        std::unordered_map<GenomeId, std::optional<Genome>> genomeCache;
                         genomeCache.reserve(compatibleCandidates.size() + selectedSeedIds.size());
 
                         int injectedForSpec = 0;
@@ -663,8 +681,18 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         cwc.command.max_steps,
         newState.frameLimit);
 
+    const WorldData* worldData = newState.session.getWorldData();
+    DIRTSIM_ASSERT(worldData != nullptr, "Idle: SimRun started without world data");
+
     // Send response: running=false if starting paused.
-    cwc.sendResponse(Api::SimRun::Response::okay({ !cwc.command.start_paused, 0 }));
+    cwc.sendResponse(
+        Api::SimRun::Response::okay(
+            {
+                !cwc.command.start_paused,
+                0,
+                static_cast<int16_t>(worldData->width),
+                static_cast<int16_t>(worldData->height),
+            }));
 
     // Transition to SimRunning or SimPaused based on start_paused flag.
     if (cwc.command.start_paused) {

@@ -38,25 +38,6 @@ struct WorldData;
  */
 class ClockScenario : public ScenarioRunner {
 public:
-    struct TimezoneInfo {
-        const char* name;
-        const char* label;
-        int offset_hours;
-    };
-
-    static constexpr std::array<TimezoneInfo, 10> TIMEZONES = { {
-        { "Local", "Local System Time", 0 },
-        { "UTC", "UTC (Universal)", 0 },
-        { "PST", "Los Angeles (PST)", -8 },
-        { "MST", "Denver (MST)", -7 },
-        { "CST", "Chicago (CST)", -6 },
-        { "EST", "New York (EST)", -5 },
-        { "GMT", "London (GMT)", 0 },
-        { "CET", "Paris (CET)", +1 },
-        { "JST", "Tokyo (JST)", +9 },
-        { "AEST", "Sydney (AEST)", +10 },
-    } };
-
     // Specifies a wall cell's position and visual appearance.
     struct WallSpec {
         int16_t x;
@@ -69,6 +50,10 @@ public:
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
+    ScenarioConfig resolveInitialConfig(
+        const ScenarioConfig& config, const Vector2s& containerSize) const override;
+    Vector2i resolveInitialWorldSize(
+        const ScenarioConfig& config, const Vector2i& defaultWorldSize) const override;
     void setConfig(const ScenarioConfig& newConfig, World& world) override;
     void setup(World& world) override;
     void reset(World& world) override;

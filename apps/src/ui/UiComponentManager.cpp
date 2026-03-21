@@ -86,27 +86,6 @@ lv_obj_t* UiComponentManager::getSimulationContainer()
     return simulationScreen;
 }
 
-lv_obj_t* UiComponentManager::getCoreControlsContainer()
-{
-    getSimulationContainer(); // Ensure layout is created.
-    // Deprecated: return panel content area for backward compatibility.
-    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
-}
-
-lv_obj_t* UiComponentManager::getScenarioControlsContainer()
-{
-    getSimulationContainer(); // Ensure layout is created.
-    // Deprecated: return panel content area for backward compatibility.
-    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
-}
-
-lv_obj_t* UiComponentManager::getPhysicsControlsContainer()
-{
-    getSimulationContainer(); // Ensure layout is created.
-    // Deprecated: return panel content area for backward compatibility.
-    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
-}
-
 lv_obj_t* UiComponentManager::getWorldDisplayArea()
 {
     getSimulationContainer(); // Ensure layout is created.

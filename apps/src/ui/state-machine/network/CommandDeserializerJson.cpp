@@ -11,6 +11,10 @@
 #include "ui/state-machine/api/MouseDown.h"
 #include "ui/state-machine/api/MouseMove.h"
 #include "ui/state-machine/api/MouseUp.h"
+#include "ui/state-machine/api/NetworkConnectCancelPress.h"
+#include "ui/state-machine/api/NetworkConnectPress.h"
+#include "ui/state-machine/api/NetworkDiagnosticsGet.h"
+#include "ui/state-machine/api/NetworkPasswordSubmit.h"
 #include "ui/state-machine/api/PlantSeed.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
 #include "ui/state-machine/api/ScreenGrab.h"
@@ -106,6 +110,30 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::MouseUp::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::MouseUp::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkConnectCancelPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkConnectCancelPress::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkConnectPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkConnectPress::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkDiagnosticsGet::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkDiagnosticsGet::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkPasswordSubmit::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkPasswordSubmit::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkScannerEnterPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkScannerEnterPress::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::NetworkScannerExitPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::NetworkScannerExitPress::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::PlantSeed::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::PlantSeed::Command::fromJson(cmd));

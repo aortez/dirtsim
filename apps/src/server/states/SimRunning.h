@@ -36,6 +36,21 @@ struct FingerSession {
     bool active = false;    // Whether this finger is currently touching.
 };
 
+struct NesFrameDelayScheduler {
+    bool enabled = false;
+    bool hasNextPeriodStart = false;
+    double delayMs = 0.0;
+    double totalPeriodOverrunMs = 0.0;
+    double totalStartLatenessMs = 0.0;
+    double maxPeriodOverrunMs = 0.0;
+    double maxStartLatenessMs = 0.0;
+    uint32_t lateStartCount = 0;
+    uint32_t periodOverrunCount = 0;
+    uint32_t skippedPeriodCount = 0;
+    uint32_t statsFrameCount = 0;
+    std::chrono::steady_clock::time_point nextPeriodStart;
+};
+
 /**
  * @brief Active simulation state - owns either a GridWorld (World+Scenario) or an NES runtime.
  */
@@ -66,6 +81,7 @@ struct SimRunning {
     std::map<size_t, bool> prev_back_button_;  // For edge detection of reset.
     std::map<size_t, bool> prev_y_button_;     // For edge detection of debug toggle.
     std::optional<uint8_t> nes_controller1_override_;
+    NesFrameDelayScheduler nesFrameDelayScheduler;
 
     SimRunning() = default;
     SimRunning(const SimRunning&) = delete;
@@ -134,7 +150,6 @@ struct SimRunning {
     Any onEvent(const SpawnDirtBallCommand& cmd, StateMachine& dsm);
     Any onEvent(const SetFragmentationCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleWaterColumnCommand& cmd, StateMachine& dsm);
-    Any onEvent(const ToggleLeftThrowCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleRightThrowCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleQuadrantCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleFrameLimitCommand& cmd, StateMachine& dsm);

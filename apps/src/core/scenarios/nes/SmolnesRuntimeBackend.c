@@ -36,6 +36,7 @@ struct SmolnesRuntimeHandle {
     bool stopRequested;
     bool threadJoinable;
     bool threadRunning;
+    bool waitingForInitialFrameRequest;
 
     uint64_t latestFrameId;
     uint64_t renderedFrames;
@@ -68,7 +69,23 @@ struct SmolnesRuntimeHandle {
     double memorySnapshotCopyMs;
     uint64_t memorySnapshotCopyCalls;
 
-    uint8_t controller1State;
+    uint8_t latchedController1State;
+    uint8_t pendingController1State;
+    uint64_t pendingController1ObservedTimestampNs;
+    uint64_t pendingController1RequestTimestampNs;
+    uint64_t pendingController1SequenceId;
+    uint64_t latchedController1ObservedTimestampNs;
+    uint64_t latchedController1LatchTimestampNs;
+    uint64_t latchedController1AppliedFrameId;
+    uint64_t latchedController1RequestTimestampNs;
+    uint64_t latchedController1SequenceId;
+    uint64_t latestFrameController1AppliedFrameId;
+    uint64_t latestFrameController1ObservedTimestampNs;
+    uint64_t latestFrameController1LatchTimestampNs;
+    uint64_t latestFrameController1RequestTimestampNs;
+    uint64_t latestFrameController1SequenceId;
+    uint8_t latestFrameController1State;
+    uint64_t nextController1SequenceId;
     uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
     uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
     uint8_t latestPaletteFrame[SMOLNES_RUNTIME_PALETTE_FRAME_BYTES];
@@ -89,9 +106,9 @@ struct SmolnesRuntimeHandle {
     SmolnesApuSampleCallback apuSampleCallback;
     void* apuSampleCallbackUserdata;
 
-    bool selfPacing;
-    double selfPacingOriginMs;
-    uint64_t selfPacingOriginFrame;
+    SmolnesRuntimePacingModeValue pacingMode;
+    double realtimePacingOriginMs;
+    uint64_t realtimePacingOriginFrame;
 };
 
 // NTSC NES frame period: CPU clock 1789773 Hz / 29780.5 cycles per frame ≈ 60.0988 fps.
@@ -169,17 +186,27 @@ static void mapController1StateToKeyboard(uint8_t controller1State, uint8_t* key
     keyboardState[SDL_SCANCODE_RIGHT] = (controller1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
 }
 
-static void refreshThreadKeyboardStateFromRuntime(SmolnesRuntimeHandle* runtime)
+static void recordIdleWaitLocked(SmolnesRuntimeHandle* runtime, double waitMs)
+{
+    runtime->runtimeThreadIdleWaitMs += waitMs;
+    runtime->runtimeThreadIdleWaitCalls++;
+}
+
+static bool isRealtimePacingMode(const SmolnesRuntimeHandle* runtime)
+{
+    return runtime != NULL && runtime->pacingMode == SMOLNES_RUNTIME_PACING_MODE_REALTIME;
+}
+
+static uint8_t latchThreadKeyboardStateFromRuntime(SmolnesRuntimeHandle* runtime)
 {
     if (runtime == NULL) {
         memset(gThreadKeyboardState, 0, SDL_NUM_SCANCODES * sizeof(uint8_t));
-        return;
+        return 0;
     }
 
-    pthread_mutex_lock(&runtime->runtimeMutex);
-    const uint8_t controller1State = runtime->controller1State;
-    pthread_mutex_unlock(&runtime->runtimeMutex);
+    const uint8_t controller1State = runtime->latchedController1State;
     mapController1StateToKeyboard(controller1State, gThreadKeyboardState);
+    return controller1State;
 }
 
 static struct timespec buildDeadline(uint32_t timeoutMs)
@@ -203,6 +230,13 @@ static double monotonicNowMs(void)
     return ((double)now.tv_sec * 1000.0) + ((double)now.tv_nsec / 1000000.0);
 }
 
+static uint64_t monotonicNowNs(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return ((uint64_t)now.tv_sec * 1000000000ull) + (uint64_t)now.tv_nsec;
+}
+
 static void resetPpuPhaseBreakdown(void)
 {
     gPpuPhaseBucket = SmolnesPpuPhaseBucketNone;
@@ -224,25 +258,25 @@ static void accumulatePpuPhaseDuration(SmolnesPpuPhaseBucket phase, double durat
     }
 
     switch (phase) {
-    case SmolnesPpuPhaseBucketVisiblePixels:
-        gPpuVisiblePixelsAccumMs += durationMs;
-        gPpuVisiblePixelsAccumCalls++;
-        break;
-    case SmolnesPpuPhaseBucketSpriteEval:
-        gPpuSpriteEvalAccumMs += durationMs;
-        gPpuSpriteEvalAccumCalls++;
-        break;
-    case SmolnesPpuPhaseBucketPrefetch:
-        gPpuPrefetchAccumMs += durationMs;
-        gPpuPrefetchAccumCalls++;
-        break;
-    case SmolnesPpuPhaseBucketOther:
-        gPpuOtherAccumMs += durationMs;
-        gPpuOtherAccumCalls++;
-        break;
-    case SmolnesPpuPhaseBucketNone:
-    default:
-        break;
+        case SmolnesPpuPhaseBucketVisiblePixels:
+            gPpuVisiblePixelsAccumMs += durationMs;
+            gPpuVisiblePixelsAccumCalls++;
+            break;
+        case SmolnesPpuPhaseBucketSpriteEval:
+            gPpuSpriteEvalAccumMs += durationMs;
+            gPpuSpriteEvalAccumCalls++;
+            break;
+        case SmolnesPpuPhaseBucketPrefetch:
+            gPpuPrefetchAccumMs += durationMs;
+            gPpuPrefetchAccumCalls++;
+            break;
+        case SmolnesPpuPhaseBucketOther:
+            gPpuOtherAccumMs += durationMs;
+            gPpuOtherAccumCalls++;
+            break;
+        case SmolnesPpuPhaseBucketNone:
+        default:
+            break;
     }
 }
 
@@ -338,7 +372,7 @@ const Uint8* smolnesRuntimeWrappedGetKeyboardState(int* numkeys)
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
-    const uint8_t controller1State = runtime->controller1State;
+    const uint8_t controller1State = runtime->latchedController1State;
     pthread_mutex_unlock(&runtime->runtimeMutex);
     mapController1StateToKeyboard(controller1State, gThreadKeyboardState);
     return gThreadKeyboardState;
@@ -418,8 +452,7 @@ int smolnesRuntimeWrappedUpdateTexture(
         uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
         memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
     }
-    const uint8_t* paletteSrc =
-        frame_buffer_palette + (SMOLNES_RUNTIME_FRAME_WIDTH * 8u);
+    const uint8_t* paletteSrc = frame_buffer_palette + (SMOLNES_RUNTIME_FRAME_WIDTH * 8u);
     for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
         const uint8_t* src = paletteSrc + (row * SMOLNES_RUNTIME_FRAME_WIDTH);
         uint8_t* dst = runtime->latestPaletteFrame + (row * SMOLNES_RUNTIME_FRAME_WIDTH);
@@ -480,7 +513,27 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
         return;
     }
 
-    refreshThreadKeyboardStateFromRuntime(runtime);
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    while (runtime->waitingForInitialFrameRequest && !runtime->stopRequested
+           && !isRealtimePacingMode(runtime) && runtime->renderedFrames >= runtime->targetFrames) {
+        const double waitStartMs = monotonicNowMs();
+        pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
+        recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
+    }
+    runtime->waitingForInitialFrameRequest = false;
+    if (runtime->pendingController1SequenceId != runtime->latchedController1SequenceId) {
+        runtime->latchedController1State = runtime->pendingController1State;
+        runtime->latchedController1ObservedTimestampNs =
+            runtime->pendingController1ObservedTimestampNs;
+        runtime->latchedController1RequestTimestampNs = runtime->pendingController1RequestTimestampNs;
+        runtime->latchedController1SequenceId = runtime->pendingController1SequenceId;
+        runtime->latchedController1AppliedFrameId =
+            (runtime->latchedController1SequenceId == 0) ? 0 : (runtime->renderedFrames + 1);
+        runtime->latchedController1LatchTimestampNs =
+            (runtime->latchedController1SequenceId == 0) ? 0 : monotonicNowNs();
+    }
+    latchThreadKeyboardStateFromRuntime(runtime);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
     gFrameExecutionStartMs = monotonicNowMs();
     gFrameExecutionActive = true;
 }
@@ -556,21 +609,21 @@ void smolnesRuntimeWrappedPpuPhaseSet(uint32_t phaseId)
 
     SmolnesPpuPhaseBucket nextPhase = SmolnesPpuPhaseBucketOther;
     switch (phaseId) {
-    case 1u:
-        nextPhase = SmolnesPpuPhaseBucketVisiblePixels;
-        break;
-    case 2u:
-        nextPhase = SmolnesPpuPhaseBucketPrefetch;
-        break;
-    case 3u:
-        nextPhase = SmolnesPpuPhaseBucketOther;
-        break;
-    case 4u:
-        nextPhase = SmolnesPpuPhaseBucketSpriteEval;
-        break;
-    default:
-        nextPhase = SmolnesPpuPhaseBucketNone;
-        break;
+        case 1u:
+            nextPhase = SmolnesPpuPhaseBucketVisiblePixels;
+            break;
+        case 2u:
+            nextPhase = SmolnesPpuPhaseBucketPrefetch;
+            break;
+        case 3u:
+            nextPhase = SmolnesPpuPhaseBucketOther;
+            break;
+        case 4u:
+            nextPhase = SmolnesPpuPhaseBucketSpriteEval;
+            break;
+        default:
+            nextPhase = SmolnesPpuPhaseBucketNone;
+            break;
     }
     setPpuPhaseBucket(nextPhase);
 }
@@ -658,7 +711,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
 
     pthread_mutex_lock(&runtime->runtimeMutex);
 
-    if (runtime->selfPacing) {
+    if (isRealtimePacingMode(runtime)) {
         double sleepMs = 0.0;
         if (!runtime->stopRequested) {
             gApuState.sampleCallback = runtime->apuSampleCallback;
@@ -667,6 +720,16 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             refreshMemorySnapshotLocked(runtime);
             ++runtime->renderedFrames;
             runtime->latestFrameId = runtime->renderedFrames;
+            runtime->latestFrameController1AppliedFrameId =
+                runtime->latchedController1AppliedFrameId;
+            runtime->latestFrameController1ObservedTimestampNs =
+                runtime->latchedController1ObservedTimestampNs;
+            runtime->latestFrameController1LatchTimestampNs =
+                runtime->latchedController1LatchTimestampNs;
+            runtime->latestFrameController1RequestTimestampNs =
+                runtime->latchedController1RequestTimestampNs;
+            runtime->latestFrameController1SequenceId = runtime->latchedController1SequenceId;
+            runtime->latestFrameController1State = runtime->latchedController1State;
             if (runtime->targetFrames < runtime->renderedFrames) {
                 runtime->targetFrames = runtime->renderedFrames;
             }
@@ -674,14 +737,14 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
 
-            if (runtime->selfPacingOriginMs == 0.0) {
-                runtime->selfPacingOriginMs = presentStartMs;
-                runtime->selfPacingOriginFrame = runtime->renderedFrames;
+            if (runtime->realtimePacingOriginMs == 0.0) {
+                runtime->realtimePacingOriginMs = presentStartMs;
+                runtime->realtimePacingOriginFrame = runtime->renderedFrames;
             }
             const double elapsed =
-                (double)(runtime->renderedFrames - runtime->selfPacingOriginFrame);
+                (double)(runtime->renderedFrames - runtime->realtimePacingOriginFrame);
             const double nextFrameMs =
-                runtime->selfPacingOriginMs + elapsed * kNtscFramePeriodMs;
+                runtime->realtimePacingOriginMs + elapsed * kNtscFramePeriodMs;
             sleepMs = nextFrameMs - monotonicNowMs();
         }
         pthread_mutex_unlock(&runtime->runtimeMutex);
@@ -694,23 +757,32 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
         }
     }
     else {
-        while (!runtime->stopRequested && !runtime->selfPacing
-            && runtime->renderedFrames >= runtime->targetFrames) {
-            const double waitStartMs = monotonicNowMs();
-            pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
-            runtime->runtimeThreadIdleWaitMs += monotonicNowMs() - waitStartMs;
-            runtime->runtimeThreadIdleWaitCalls++;
-        }
-        if (!runtime->stopRequested && !runtime->selfPacing) {
+        if (!runtime->stopRequested && !isRealtimePacingMode(runtime)) {
             gApuState.sampleCallback = runtime->apuSampleCallback;
             gApuState.sampleCallbackUserdata = runtime->apuSampleCallbackUserdata;
             const double presentStartMs = monotonicNowMs();
             refreshMemorySnapshotLocked(runtime);
             ++runtime->renderedFrames;
             runtime->latestFrameId = runtime->renderedFrames;
+            runtime->latestFrameController1AppliedFrameId =
+                runtime->latchedController1AppliedFrameId;
+            runtime->latestFrameController1ObservedTimestampNs =
+                runtime->latchedController1ObservedTimestampNs;
+            runtime->latestFrameController1LatchTimestampNs =
+                runtime->latchedController1LatchTimestampNs;
+            runtime->latestFrameController1RequestTimestampNs =
+                runtime->latchedController1RequestTimestampNs;
+            runtime->latestFrameController1SequenceId = runtime->latchedController1SequenceId;
+            runtime->latestFrameController1State = runtime->latchedController1State;
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
+            while (!runtime->stopRequested && !isRealtimePacingMode(runtime)
+                   && runtime->renderedFrames >= runtime->targetFrames) {
+                const double waitStartMs = monotonicNowMs();
+                pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
+                recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
+            }
         }
         pthread_mutex_unlock(&runtime->runtimeMutex);
     }
@@ -832,8 +904,7 @@ static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
 
 SmolnesRuntimeHandle* smolnesRuntimeCreate(void)
 {
-    SmolnesRuntimeHandle* runtime =
-        (SmolnesRuntimeHandle*)calloc(1u, sizeof(SmolnesRuntimeHandle));
+    SmolnesRuntimeHandle* runtime = (SmolnesRuntimeHandle*)calloc(1u, sizeof(SmolnesRuntimeHandle));
     if (runtime == NULL) {
         return NULL;
     }
@@ -940,13 +1011,31 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->apuSampleBufferLastIndex = 0;
     runtime->apuSampleCallback = NULL;
     runtime->apuSampleCallbackUserdata = NULL;
-    runtime->selfPacing = false;
-    runtime->selfPacingOriginMs = 0.0;
-    runtime->selfPacingOriginFrame = 0;
-    runtime->controller1State = 0;
+    runtime->pacingMode = SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP;
+    runtime->realtimePacingOriginMs = 0.0;
+    runtime->realtimePacingOriginFrame = 0;
+    runtime->waitingForInitialFrameRequest = true;
+    runtime->latchedController1State = 0;
+    runtime->pendingController1State = 0;
+    runtime->pendingController1ObservedTimestampNs = 0;
+    runtime->pendingController1RequestTimestampNs = 0;
+    runtime->pendingController1SequenceId = 0;
+    runtime->latchedController1ObservedTimestampNs = 0;
+    runtime->latchedController1LatchTimestampNs = 0;
+    runtime->latchedController1AppliedFrameId = 0;
+    runtime->latchedController1RequestTimestampNs = 0;
+    runtime->latchedController1SequenceId = 0;
+    runtime->latestFrameController1AppliedFrameId = 0;
+    runtime->latestFrameController1ObservedTimestampNs = 0;
+    runtime->latestFrameController1LatchTimestampNs = 0;
+    runtime->latestFrameController1RequestTimestampNs = 0;
+    runtime->latestFrameController1SequenceId = 0;
+    runtime->latestFrameController1State = 0;
+    runtime->nextController1SequenceId = 1;
     runtime->threadRunning = true;
 
-    const int createResult = pthread_create(&runtime->runtimeThread, NULL, runtimeThreadMain, runtime);
+    const int createResult =
+        pthread_create(&runtime->runtimeThread, NULL, runtimeThreadMain, runtime);
     if (createResult != 0) {
         runtime->threadRunning = false;
         runtime->healthy = false;
@@ -982,14 +1071,16 @@ bool smolnesRuntimeRunFrames(SmolnesRuntimeHandle* runtime, uint32_t frameCount,
     pthread_cond_broadcast(&runtime->runtimeCond);
 
     const struct timespec deadline = buildDeadline(timeoutMs);
-    while (runtime->renderedFrames < requestedFrames && runtime->threadRunning && runtime->healthy) {
+    while (runtime->renderedFrames < requestedFrames && runtime->threadRunning
+           && runtime->healthy) {
         const double waitStartMs = monotonicNowMs();
         int waitResult = 0;
         if (timeoutMs == 0) {
             waitResult = pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
         }
         else {
-            waitResult = pthread_cond_timedwait(&runtime->runtimeCond, &runtime->runtimeMutex, &deadline);
+            waitResult =
+                pthread_cond_timedwait(&runtime->runtimeCond, &runtime->runtimeMutex, &deadline);
         }
         runtime->runFramesWaitMs += monotonicNowMs() - waitStartMs;
         runtime->runFramesWaitCalls++;
@@ -1079,12 +1170,26 @@ uint64_t smolnesRuntimeGetRenderedFrameCount(const SmolnesRuntimeHandle* runtime
 
 void smolnesRuntimeSetController1State(SmolnesRuntimeHandle* runtime, uint8_t buttonMask)
 {
+    smolnesRuntimeSetController1StateObserved(runtime, buttonMask, 0);
+}
+
+void smolnesRuntimeSetController1StateObserved(
+    SmolnesRuntimeHandle* runtime, uint8_t buttonMask, uint64_t observedTimestampNs)
+{
     if (runtime == NULL) {
         return;
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
-    runtime->controller1State = buttonMask;
+    if (runtime->pendingController1State != buttonMask) {
+        runtime->pendingController1State = buttonMask;
+        runtime->pendingController1ObservedTimestampNs = observedTimestampNs;
+        runtime->pendingController1RequestTimestampNs = monotonicNowNs();
+        runtime->pendingController1SequenceId = runtime->nextController1SequenceId++;
+        if (runtime->nextController1SequenceId == 0) {
+            runtime->nextController1SequenceId = 1;
+        }
+    }
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
@@ -1132,7 +1237,8 @@ bool smolnesRuntimeCopyLatestPaletteIndices(
     return true;
 }
 
-bool smolnesRuntimeCopyCpuRam(const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
+bool smolnesRuntimeCopyCpuRam(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
     if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES) {
         return false;
@@ -1140,7 +1246,8 @@ bool smolnesRuntimeCopyCpuRam(const SmolnesRuntimeHandle* runtime, uint8_t* buff
 
     SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
     pthread_mutex_lock(&mutableRuntime->runtimeMutex);
-    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasMemorySnapshot) {
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasMemorySnapshot) {
         pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
@@ -1150,7 +1257,39 @@ bool smolnesRuntimeCopyCpuRam(const SmolnesRuntimeHandle* runtime, uint8_t* buff
     return true;
 }
 
-bool smolnesRuntimeCopyPrgRam(const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
+bool smolnesRuntimeCopyMemorySnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId)
+{
+    if (runtime == NULL || cpuRamBuffer == NULL || prgRamBuffer == NULL
+        || cpuRamBufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES
+        || prgRamBufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(cpuRamBuffer, mutableRuntime->cpuRamSnapshot, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    memcpy(prgRamBuffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    if (frameId != NULL) {
+        *frameId = mutableRuntime->latestFrameId;
+    }
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyPrgRam(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
     if (runtime == NULL || buffer == NULL || bufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
         return false;
@@ -1158,7 +1297,8 @@ bool smolnesRuntimeCopyPrgRam(const SmolnesRuntimeHandle* runtime, uint8_t* buff
 
     SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
     pthread_mutex_lock(&mutableRuntime->runtimeMutex);
-    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasMemorySnapshot) {
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasMemorySnapshot) {
         pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
@@ -1184,13 +1324,17 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->runtime_thread_cpu_step_ms = mutableRuntime->runtimeThreadCpuStepMs;
     snapshotOut->runtime_thread_cpu_step_calls = mutableRuntime->runtimeThreadCpuStepCalls;
     snapshotOut->runtime_thread_frame_execution_ms = mutableRuntime->runtimeThreadFrameExecutionMs;
-    snapshotOut->runtime_thread_frame_execution_calls = mutableRuntime->runtimeThreadFrameExecutionCalls;
+    snapshotOut->runtime_thread_frame_execution_calls =
+        mutableRuntime->runtimeThreadFrameExecutionCalls;
     snapshotOut->runtime_thread_ppu_step_ms = mutableRuntime->runtimeThreadPpuStepMs;
     snapshotOut->runtime_thread_ppu_step_calls = mutableRuntime->runtimeThreadPpuStepCalls;
-    snapshotOut->runtime_thread_ppu_visible_pixels_ms = mutableRuntime->runtimeThreadPpuVisiblePixelsMs;
-    snapshotOut->runtime_thread_ppu_visible_pixels_calls = mutableRuntime->runtimeThreadPpuVisiblePixelsCalls;
+    snapshotOut->runtime_thread_ppu_visible_pixels_ms =
+        mutableRuntime->runtimeThreadPpuVisiblePixelsMs;
+    snapshotOut->runtime_thread_ppu_visible_pixels_calls =
+        mutableRuntime->runtimeThreadPpuVisiblePixelsCalls;
     snapshotOut->runtime_thread_ppu_sprite_eval_ms = mutableRuntime->runtimeThreadPpuSpriteEvalMs;
-    snapshotOut->runtime_thread_ppu_sprite_eval_calls = mutableRuntime->runtimeThreadPpuSpriteEvalCalls;
+    snapshotOut->runtime_thread_ppu_sprite_eval_calls =
+        mutableRuntime->runtimeThreadPpuSpriteEvalCalls;
     snapshotOut->runtime_thread_ppu_prefetch_ms = mutableRuntime->runtimeThreadPpuPrefetchMs;
     snapshotOut->runtime_thread_ppu_prefetch_calls = mutableRuntime->runtimeThreadPpuPrefetchCalls;
     snapshotOut->runtime_thread_ppu_other_ms = mutableRuntime->runtimeThreadPpuOtherMs;
@@ -1203,6 +1347,87 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->runtime_thread_present_calls = mutableRuntime->runtimeThreadPresentCalls;
     snapshotOut->memory_snapshot_copy_ms = mutableRuntime->memorySnapshotCopyMs;
     snapshotOut->memory_snapshot_copy_calls = mutableRuntime->memorySnapshotCopyCalls;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyControllerSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimeControllerSnapshot* snapshotOut)
+{
+    if (runtime == NULL || snapshotOut == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->hasLatestFrame) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    snapshotOut->latest_frame_id = mutableRuntime->latestFrameId;
+    snapshotOut->controller1_applied_frame_id =
+        mutableRuntime->latestFrameController1AppliedFrameId;
+    snapshotOut->controller1_observed_timestamp_ns =
+        mutableRuntime->latestFrameController1ObservedTimestampNs;
+    snapshotOut->controller1_latch_timestamp_ns =
+        mutableRuntime->latestFrameController1LatchTimestampNs;
+    snapshotOut->controller1_request_timestamp_ns =
+        mutableRuntime->latestFrameController1RequestTimestampNs;
+    snapshotOut->controller1_sequence_id = mutableRuntime->latestFrameController1SequenceId;
+    snapshotOut->controller1_state = mutableRuntime->latestFrameController1State;
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopyLiveSnapshot(
+    const SmolnesRuntimeHandle* runtime,
+    uint8_t* frameBuffer,
+    uint32_t frameBufferSize,
+    uint8_t* paletteBuffer,
+    uint32_t paletteBufferSize,
+    uint8_t* cpuRamBuffer,
+    uint32_t cpuRamBufferSize,
+    uint8_t* prgRamBuffer,
+    uint32_t prgRamBufferSize,
+    uint64_t* frameId,
+    SmolnesRuntimeControllerSnapshot* controllerSnapshotOut)
+{
+    if (runtime == NULL || frameBuffer == NULL || paletteBuffer == NULL || cpuRamBuffer == NULL
+        || prgRamBuffer == NULL || controllerSnapshotOut == NULL
+        || frameBufferSize < SMOLNES_RUNTIME_FRAME_BYTES
+        || paletteBufferSize < SMOLNES_RUNTIME_PALETTE_FRAME_BYTES
+        || cpuRamBufferSize < SMOLNES_RUNTIME_CPU_RAM_BYTES
+        || prgRamBufferSize < SMOLNES_RUNTIME_PRG_RAM_BYTES) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasLatestFrame
+        || !mutableRuntime->hasLatestPaletteFrame || !mutableRuntime->hasMemorySnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(frameBuffer, mutableRuntime->latestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
+    memcpy(paletteBuffer, mutableRuntime->latestPaletteFrame, SMOLNES_RUNTIME_PALETTE_FRAME_BYTES);
+    memcpy(cpuRamBuffer, mutableRuntime->cpuRamSnapshot, SMOLNES_RUNTIME_CPU_RAM_BYTES);
+    memcpy(prgRamBuffer, mutableRuntime->prgRamSnapshot, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    if (frameId != NULL) {
+        *frameId = mutableRuntime->latestFrameId;
+    }
+    controllerSnapshotOut->latest_frame_id = mutableRuntime->latestFrameId;
+    controllerSnapshotOut->controller1_applied_frame_id =
+        mutableRuntime->latestFrameController1AppliedFrameId;
+    controllerSnapshotOut->controller1_observed_timestamp_ns =
+        mutableRuntime->latestFrameController1ObservedTimestampNs;
+    controllerSnapshotOut->controller1_latch_timestamp_ns =
+        mutableRuntime->latestFrameController1LatchTimestampNs;
+    controllerSnapshotOut->controller1_request_timestamp_ns =
+        mutableRuntime->latestFrameController1RequestTimestampNs;
+    controllerSnapshotOut->controller1_sequence_id = mutableRuntime->latestFrameController1SequenceId;
+    controllerSnapshotOut->controller1_state = mutableRuntime->latestFrameController1State;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;
 }
@@ -1245,10 +1470,7 @@ bool smolnesRuntimeCopyApuSnapshot(
 }
 
 bool smolnesRuntimeCopyApuSamples(
-    const SmolnesRuntimeHandle* runtime,
-    float* buffer,
-    uint32_t maxSamples,
-    uint32_t* samplesOut)
+    const SmolnesRuntimeHandle* runtime, float* buffer, uint32_t maxSamples, uint32_t* samplesOut)
 {
     if (runtime == NULL || buffer == NULL || samplesOut == NULL) {
         return false;
@@ -1273,9 +1495,7 @@ bool smolnesRuntimeCopyApuSamples(
 }
 
 void smolnesRuntimeSetApuSampleCallback(
-    SmolnesRuntimeHandle* runtime,
-    SmolnesApuSampleCallback callback,
-    void* userdata)
+    SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata)
 {
     if (runtime == NULL) {
         return;
@@ -1286,15 +1506,15 @@ void smolnesRuntimeSetApuSampleCallback(
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
-void smolnesRuntimeSetSelfPacing(SmolnesRuntimeHandle* runtime, bool enabled)
+void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode)
 {
     if (runtime == NULL) {
         return;
     }
     pthread_mutex_lock(&runtime->runtimeMutex);
-    runtime->selfPacing = enabled;
-    runtime->selfPacingOriginMs = 0.0;
-    runtime->selfPacingOriginFrame = 0;
+    runtime->pacingMode = mode;
+    runtime->realtimePacingOriginMs = 0.0;
+    runtime->realtimePacingOriginFrame = 0;
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }

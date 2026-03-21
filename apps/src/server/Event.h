@@ -17,6 +17,7 @@
 #include "api/GenomeSet.h"
 #include "api/GravitySet.h"
 #include "api/NesApuGet.h"
+#include "api/NesFrameDelaySet.h"
 #include "api/NesInputSet.h"
 #include "api/PerfStatsGet.h"
 #include "api/PhysicsSettingsGet.h"
@@ -300,10 +301,6 @@ struct ToggleWaterColumnCommand {
     static constexpr const char* name() { return "ToggleWaterColumnCommand"; }
 };
 
-struct ToggleLeftThrowCommand {
-    static constexpr const char* name() { return "ToggleLeftThrowCommand"; }
-};
-
 struct ToggleRightThrowCommand {
     static constexpr const char* name() { return "ToggleRightThrowCommand"; }
 };
@@ -408,7 +405,6 @@ public:
         SetFragmentationCommand,
         ToggleWallsCommand,
         ToggleWaterColumnCommand,
-        ToggleLeftThrowCommand,
         ToggleRightThrowCommand,
         ToggleQuadrantCommand,
         ToggleFrameLimitCommand,
@@ -438,6 +434,7 @@ public:
         DirtSim::Api::GenomeSet::Cwc,
         DirtSim::Api::GravitySet::Cwc,
         DirtSim::Api::NesApuGet::Cwc,
+        DirtSim::Api::NesFrameDelaySet::Cwc,
         DirtSim::Api::NesInputSet::Cwc,
         DirtSim::Api::PerfStatsGet::Cwc,
         DirtSim::Api::PhysicsSettingsGet::Cwc,

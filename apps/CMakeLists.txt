@@ -140,7 +140,7 @@ foreach(BACKEND_NAME "SDL" "LINUX_DRM" "LINUX_FBDEV" "X11" "WAYLAND" "OPENGLES")
 
 endforeach()
 
-#Uncomment if the program needs debugging
+# Uncomment if the program needs debugging.
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -ggdb")
 
 set(CMAKE_C_STANDARD 99) # LVGL officially supports C99 and above
@@ -182,7 +182,7 @@ if (LV_USE_WAYLAND)
     list(APPEND PKG_CONFIG_LIB ${WAYLAND_CURSOR_LIBRARIES})
     list(APPEND PKG_CONFIG_LIB ${XKBCOMMON_LIBRARIES})
 
-#Wayland protocols
+    # Wayland protocols.
     pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.25)
     pkg_get_variable(WAYLAND_PROTOCOLS_BASE wayland-protocols pkgdatadir)
 
@@ -208,7 +208,7 @@ endif()
 
 if (LV_USE_LINUX_FBDEV)
 
-#FBDEV has no dependencies
+    # FBDEV has no dependencies.
     message("Including FBDEV support")
     list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/fbdev.cpp)
 
@@ -301,6 +301,7 @@ set(DIRTSIM_CORE_SOURCES
     # Network layer.
     src/core/network/WebSocketService.cpp
     src/core/network/WifiManager.cpp
+    src/core/network/WifiManagerLibNm.cpp
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
@@ -329,7 +330,12 @@ add_library(dirtsim-server-lib STATIC
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
+    src/server/UserSettingsDiskCompat.cpp
     src/server/EventProcessor.cpp
+    src/server/evolution/EvaluationExecutor.cpp
+    src/server/evolution/FitnessModelBundle.cpp
+    src/server/evolution/FitnessPresentationGenerator.cpp
+    src/server/evolution/TrainingBestSnapshotGenerator.cpp
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
     src/server/states/Idle.cpp
@@ -350,7 +356,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
-    src/server/api/FitnessBreakdownReport.cpp
+    src/server/api/FitnessPresentation.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
@@ -394,10 +400,12 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/ClockTimezone.cpp
     src/core/scenarios/RainingConfig.cpp
     src/core/scenarios/SandboxConfig.cpp
     src/core/scenarios/TreeGerminationConfig.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
+    src/core/scenarios/clock_scenario/ClockTimeResolver.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorEntrySpawn.cpp
@@ -416,6 +424,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/nes/NesAudioPlayer.cpp
+    src/core/scenarios/nes/NesControllerTelemetry.cpp
     src/core/scenarios/nes/NesDuckSensoryBuilder.cpp
     src/core/scenarios/nes/NesGameAdapterRegistry.cpp
     src/core/scenarios/nes/NesSmolnesScenarioDriver.cpp
@@ -423,6 +432,11 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosGameAdapter.cpp
     src/core/scenarios/nes/NesFlappyBirdEvaluator.cpp
     src/core/scenarios/nes/NesFlappyParatroopaRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosEvaluator.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosRamExtractor.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosResponseProbe.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
@@ -473,7 +487,6 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/Genome.cpp
 	    src/core/organisms/brains/DuckNeuralNetBrain.cpp
-	    src/core/organisms/brains/DuckNeuralNetRecurrentBrain.cpp
 	    src/core/organisms/brains/DuckNeuralNetRecurrentBrainV2.cpp
 	    src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
@@ -543,8 +556,11 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/MouseDown.cpp
     src/ui/state-machine/api/MouseMove.cpp
     src/ui/state-machine/api/MouseUp.cpp
+    src/ui/state-machine/api/NetworkConnectCancelPress.cpp
+    src/ui/state-machine/api/NetworkConnectPress.cpp
+    src/ui/state-machine/api/NetworkDiagnosticsGet.cpp
+    src/ui/state-machine/api/NetworkPasswordSubmit.cpp
     src/ui/state-machine/api/PlantSeed.cpp
-    src/ui/state-machine/api/PixelRendererToggle.cpp
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
     src/ui/state-machine/api/SimPause.cpp
@@ -603,6 +619,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/GenomeBrowserPanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/LogPanel.cpp
+    src/ui/controls/NesSettingsPanel.cpp
     src/ui/controls/NetworkDiagnosticsPanel.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsPanel.cpp
@@ -686,6 +703,8 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
@@ -699,6 +718,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp
@@ -752,6 +772,8 @@ add_executable(cli
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
@@ -773,14 +795,20 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
     src/audio/AudioEngine.cpp
+    src/server/tests/EvaluationExecutor_test.cpp
+    src/server/tests/FitnessModelBundle_test.cpp
+    src/server/tests/FitnessPresentationGenerator_test.cpp
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/server/tests/TestStateMachineFixture.cpp
+    src/server/tests/TrainingBestSnapshotGenerator_test.cpp
+    src/server/tests/TrainingBestSnapshotCache_test.cpp
     src/server/tests/UserSettings_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp
+    src/ui/state-machine/tests/StateSimRunning_test.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
@@ -801,6 +829,8 @@ add_executable(dirtsim-tests
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerModeEnter.cpp
+    src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
@@ -814,6 +844,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/NetworkService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
     src/os-manager/network/PeerInfoJson.cpp
@@ -865,12 +896,17 @@ add_executable(dirtsim-tests
 
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
+    src/core/scenarios/clock_scenario/tests/ClockTimeResolver_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
     src/core/scenarios/tests/NesGameAdapterRegistry_test.cpp
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
+    src/core/scenarios/tests/NesSmolnesScenarioDriver_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosResponseProbe_test.cpp
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaScenario_test.cpp
@@ -892,7 +928,6 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckHealth_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
-	    src/core/organisms/tests/DuckNeuralNetRecurrentBrain_test.cpp
 	    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
 	    src/core/organisms/tests/DuckWings_test.cpp
 	    src/core/organisms/tests/Genome_test.cpp
@@ -912,6 +947,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
+    src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 
     # Core tests.
     src/core/tests/FontSampler_test.cpp

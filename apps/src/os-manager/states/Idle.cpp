@@ -24,6 +24,20 @@ void Idle::onExit(OperatingSystemManager& /*osm*/)
     LOG_INFO(State, "Exiting Idle state");
 }
 
+Any Idle::onEvent(const OsApi::NetworkDiagnosticsModeSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "NetworkDiagnosticsModeSet command received");
+    cwc.sendResponse(osm.setNetworkDiagnosticsMode(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::NetworkSnapshotGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "NetworkSnapshotGet command received");
+    cwc.sendResponse(osm.getNetworkSnapshot(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& /*osm*/)
 {
     LOG_INFO(State, "Reboot command received");
@@ -72,6 +86,20 @@ Any Idle::onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "RestartUi command received");
     cwc.sendResponse(osm.restartService(kUiService));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::ScannerModeEnter::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerModeEnter command received");
+    cwc.sendResponse(osm.enterScannerMode());
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerModeExit command received");
+    cwc.sendResponse(osm.exitScannerMode());
     return Idle{};
 }
 
@@ -142,6 +170,41 @@ Any Idle::onEvent(const OsApi::UntrustPeer::Cwc& cwc, OperatingSystemManager& os
 {
     LOG_INFO(State, "UntrustPeer command received");
     cwc.sendResponse(osm.untrustPeer(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::WifiConnectCancel::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiConnectCancel command received");
+    cwc.sendResponse(osm.wifiConnectCancel(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::WifiConnect::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiConnect command received");
+    osm.wifiConnectAsync(cwc);
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::WifiDisconnect::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiDisconnect command received");
+    cwc.sendResponse(osm.wifiDisconnect(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::WifiForget::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiForget command received");
+    cwc.sendResponse(osm.wifiForget(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::WifiScanRequest::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WifiScanRequest command received");
+    cwc.sendResponse(osm.wifiScanRequest(cwc.command));
     return Idle{};
 }
 

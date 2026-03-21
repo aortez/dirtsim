@@ -108,15 +108,15 @@ NesRamProbeFrame NesRamProbeStepper::step(std::optional<uint8_t> controllerMask)
     }
 
     (void)deltaTimeSeconds_;
-    driver_.setController1State(controllerMask_);
-    driver_.tick(timers_, scenarioVideoFrame_);
+    const NesSmolnesScenarioDriver::StepResult stepResult = driver_.step(timers_, controllerMask_);
+    scenarioVideoFrame_ = stepResult.scenarioVideoFrame;
 
     NesRamProbeFrame frame;
     frame.frame = frameIndex_;
     frame.controllerMask = controllerMask_;
     frame.cpuRamValues.resize(cpuAddresses_.size(), 0u);
 
-    lastMemorySnapshot_ = driver_.copyRuntimeMemorySnapshot();
+    lastMemorySnapshot_ = stepResult.memorySnapshot;
     if (lastMemorySnapshot_.has_value()) {
         for (size_t addrIndex = 0; addrIndex < cpuAddresses_.size(); ++addrIndex) {
             const uint16_t address = cpuAddresses_[addrIndex].address;

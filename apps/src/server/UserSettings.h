@@ -9,6 +9,7 @@
 #include "core/scenarios/SandboxConfig.h"
 #include "core/scenarios/TreeGerminationConfig.h"
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -23,8 +24,16 @@ struct UiTrainingConfig {
     int streamIntervalMs = 16;
     bool bestPlaybackEnabled = false;
     int bestPlaybackIntervalMs = 16;
+    std::optional<bool> nesControllerOverlayEnabled = std::nullopt;
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
+};
+
+struct NesSessionSettings {
+    bool frameDelayEnabled = false;
+    double frameDelayMs = 0.0;
+
+    using serialize = zpp::bits::members<2>;
 };
 
 struct UserSettings {
@@ -32,6 +41,7 @@ struct UserSettings {
     Config::Sandbox sandboxScenarioConfig;
     Config::Raining rainingScenarioConfig;
     Config::TreeGermination treeGerminationScenarioConfig;
+    NesSessionSettings nesSessionSettings;
     int volumePercent = 20;
     Scenario::EnumType defaultScenario = Scenario::EnumType::Sandbox;
     StartMenuIdleAction startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -41,12 +51,16 @@ struct UserSettings {
     MutationConfig mutationConfig;
     TrainingResumePolicy trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
     UiTrainingConfig uiTraining;
+    bool networkLiveScanPreferred = false;
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<15>;
 };
 
 void from_json(const nlohmann::json& j, UiTrainingConfig& settings);
 void to_json(nlohmann::json& j, const UiTrainingConfig& settings);
+
+void from_json(const nlohmann::json& j, NesSessionSettings& settings);
+void to_json(nlohmann::json& j, const NesSessionSettings& settings);
 
 void from_json(const nlohmann::json& j, UserSettings& settings);
 void to_json(nlohmann::json& j, const UserSettings& settings);
