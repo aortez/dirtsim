@@ -1156,7 +1156,7 @@ int main(int argc, char** argv)
             && testName != "canApplyClockTimezoneFromUserSettings"
             && testName != "canCancelWifiConnect" && testName != "canPlaySynthKeys"
             && testName != "canSwitchWifiNetworks" && testName != "canExerciseWifiAndScanner"
-            && testName != "verifyTraining") {
+            && testName != "canExerciseWifiAndScannerBackendOnly" && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
@@ -1168,6 +1168,7 @@ int main(int argc, char** argv)
                          "canApplyClockTimezoneFromUserSettings, canCancelWifiConnect, "
                          "canPlaySynthKeys, canSwitchWifiNetworks, "
                          "canExerciseWifiAndScanner, "
+                         "canExerciseWifiAndScannerBackendOnly, "
                          "verifyTraining\n";
             return 1;
         }
@@ -1274,6 +1275,15 @@ int main(int argc, char** argv)
                 return 1;
             }
             summary = runner.runCanExerciseWifiAndScanner(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canExerciseWifiAndScannerBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canExerciseWifiAndScannerBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanExerciseWifiAndScannerBackendOnly(
                 uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
         }
         else if (testName == "verifyTraining") {

@@ -128,6 +128,12 @@ public:
         const std::string& osManagerAddress,
         const std::string& wifiConfigPath,
         int timeoutMs);
+    FunctionalTestSummary runCanExerciseWifiAndScannerBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
     FunctionalTestSummary runVerifyTraining(
         const std::string& uiAddress,
         const std::string& serverAddress,
