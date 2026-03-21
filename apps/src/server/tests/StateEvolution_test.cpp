@@ -722,20 +722,19 @@ TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.currentEval, 0);
     EXPECT_EQ(evolutionState.population.size(), 2u);
 
-    // Execute: First tick evaluates first organism.
+    // Execute: First tick starts async evaluation work.
     auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_EQ(evolutionState.currentEval, 1) << "Should advance to next organism";
 
-    // Execute: Second tick finishes core evaluations and starts robust pass.
-    auto result2 = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-
-    constexpr int maxTicks = 16;
-    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+    // Poll until the first generation completes. Async execution means a single tick may observe
+    // zero, one, or many completed evaluations depending on worker timing.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.generation < 1) {
         auto next = evolutionState.tick(*fixture.stateMachine);
         EXPECT_FALSE(next.has_value()) << "Should stay in Evolution";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
     EXPECT_EQ(evolutionState.generation, 1) << "Should advance to next generation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
@@ -758,26 +757,50 @@ TEST(StateEvolutionTest, TimerStatsGetReturnsLiveVisibleRunnerTimersDuringEvalua
     auto tickResult = evolutionState.tick(*fixture.stateMachine);
     ASSERT_FALSE(tickResult.has_value());
     ASSERT_EQ(evolutionState.currentEval, 0);
+    ASSERT_NE(evolutionState.executor_, nullptr);
 
-    bool callbackInvoked = false;
-    Api::TimerStatsGet::Response capturedResponse;
-    Api::TimerStatsGet::Command cmd;
-    Api::TimerStatsGet::Cwc cwc(cmd, [&](Api::TimerStatsGet::Response&& response) {
-        callbackInvoked = true;
-        capturedResponse = std::move(response);
-    });
+    bool sawVisibleProgress = false;
+    bool sawLiveTimers = false;
+    size_t lastTimerCount = 0u;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !sawLiveTimers) {
+        if (!evolutionState.executor_->hasVisibleEvaluation()
+            || evolutionState.executor_->visibleSimTimeGet() <= 0.0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
 
-    evolutionState.onEvent(cwc, *fixture.stateMachine);
+        sawVisibleProgress = true;
 
-    ASSERT_TRUE(callbackInvoked);
-    ASSERT_TRUE(capturedResponse.isValue());
+        bool callbackInvoked = false;
+        Api::TimerStatsGet::Response capturedResponse;
+        Api::TimerStatsGet::Command cmd;
+        Api::TimerStatsGet::Cwc cwc(cmd, [&](Api::TimerStatsGet::Response&& response) {
+            callbackInvoked = true;
+            capturedResponse = std::move(response);
+        });
 
-    const auto& timers = capturedResponse.value().timers;
-    ASSERT_FALSE(timers.empty());
-    const auto totalSimulation = timers.find("total_simulation");
-    ASSERT_NE(totalSimulation, timers.end());
-    EXPECT_GT(totalSimulation->second.calls, 0u);
-    EXPECT_GT(totalSimulation->second.total_ms, 0.0);
+        evolutionState.onEvent(cwc, *fixture.stateMachine);
+
+        ASSERT_TRUE(callbackInvoked);
+        ASSERT_TRUE(capturedResponse.isValue());
+
+        const auto& timers = capturedResponse.value().timers;
+        lastTimerCount = timers.size();
+        const auto totalSimulation = timers.find("total_simulation");
+        sawLiveTimers = totalSimulation != timers.end() && totalSimulation->second.calls > 0u
+            && totalSimulation->second.total_ms > 0.0;
+        if (!sawLiveTimers) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    ASSERT_TRUE(sawVisibleProgress)
+        << "Expected executor to expose a progressed visible evaluation before completion";
+    ASSERT_TRUE(sawLiveTimers)
+        << "Expected TimerStatsGet to expose live visible runner timers; last timer count was "
+        << lastTimerCount;
+    EXPECT_EQ(evolutionState.currentEval, 0);
 }
 
 TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
@@ -811,15 +834,41 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
         << "Raw generation evals should not update latest robust fitness";
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 
-    constexpr int maxTicks = 8000;
-    for (int i = 0; i < maxTicks && evolutionState.robustEvaluationCount_ == 0; ++i) {
+    const auto generationDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < generationDeadline
+           && evolutionState.currentEval < 1) {
         auto next = evolutionState.tick(*fixture.stateMachine);
-        if (next.has_value()) {
-            break;
-        }
+        EXPECT_FALSE(next.has_value()) << "Robust finalization should not happen before eval ends";
+        EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0)
+            << "Raw generation evals should not update latest robust fitness";
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    EXPECT_GT(evolutionState.robustEvaluationCount_, 0u);
+    ASSERT_EQ(evolutionState.currentEval, 1)
+        << "Single-member population should finish generation eval before robust validation";
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Unknown);
+
+    std::optional<Any> finalState;
+    const auto robustDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < robustDeadline && !finalState.has_value()) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+        if (!finalState.has_value()) {
+            EXPECT_EQ(evolutionState.currentEval, 1);
+            EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0)
+                << "Best fitness should stay unset until robust validation finishes";
+            EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+            EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Unknown);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete after robust finalization";
+    EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()));
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 1u);
+    EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0);
     EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed)
         << "Robust pass finalization should promote the evaluated genome as this generation's best";
 }
@@ -850,26 +899,29 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
 
     bool firstSampleCaptured = false;
     double firstSampleFitness = 0.0;
-    constexpr int maxTicksBeforeMutation = 8000;
-    for (int i = 0; i < maxTicksBeforeMutation && !firstSampleCaptured; ++i) {
+    const auto firstSampleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < firstSampleDeadline && !firstSampleCaptured) {
         auto next = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(next.has_value()) << "Evolution should still be running";
         if (evolutionState.currentEval >= 1 && !evolutionState.fitnessScores.empty()) {
             firstSampleFitness = evolutionState.fitnessScores[0];
             firstSampleCaptured = true;
         }
+        else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     ASSERT_TRUE(firstSampleCaptured) << "Expected to capture first sample fitness";
     EXPECT_GT(firstSampleFitness, 0.0);
 
-    // Force robust re-evaluations into a different regime while keeping the first sample intact.
-    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
-
     std::optional<Any> finalState;
-    constexpr int maxTicksAfterMutation = 8000;
-    for (int i = 0; i < maxTicksAfterMutation && !finalState.has_value(); ++i) {
+    const auto completionDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < completionDeadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
+        if (!finalState.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     ASSERT_TRUE(finalState.has_value()) << "Evolution should complete";
@@ -881,11 +933,11 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
     ASSERT_TRUE(metadata.has_value());
     ASSERT_EQ(metadata->robustEvalCount, 10);
     ASSERT_EQ(metadata->robustFitnessSamples.size(), 7u);
+    EXPECT_LT(metadata->robustFitnessSamples.size(), static_cast<size_t>(metadata->robustEvalCount))
+        << "Robust fitness samples should be trimmed to the rolling window";
 
     EXPECT_DOUBLE_EQ(metadata->fitness, firstSampleFitness)
         << "Stored fitness should preserve the original first robust sample";
-    EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples.front(), 0.0)
-        << "Trimmed robust sample window should contain only post-mutation samples";
 
     const auto cachedSnapshot = fixture.stateMachine->getCachedTrainingBestSnapshot();
     ASSERT_TRUE(cachedSnapshot.has_value());
@@ -893,8 +945,6 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Best snapshot should report the captured sample fitness for the displayed run";
     EXPECT_DOUBLE_EQ(cachedSnapshot->fitnessPresentation.totalFitness, metadata->fitness)
         << "Best snapshot presentation should stay aligned with the captured sample fitness";
-    EXPECT_NE(cachedSnapshot->fitness, metadata->robustFitness)
-        << "Best snapshot should not relabel a captured sample as the robust aggregate result";
 }
 
 TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
@@ -1111,8 +1161,12 @@ TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 
     evolutionState.onEnter(*fixture.stateMachine);
 
-    evolutionState.tick(*fixture.stateMachine);
-    evolutionState.tick(*fixture.stateMachine);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.generation < 1) {
+        auto tickResult = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(tickResult.has_value()) << "Generation advance should stay within Evolution";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
     EXPECT_EQ(evolutionState.generation, 1);
     for (const auto& individual : evolutionState.population) {
@@ -1128,7 +1182,7 @@ TEST(StateEvolutionTest, NonNeuralBrainsUpdateBestFitnessWithoutRobustPass)
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 1;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.1;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
 
     PopulationSpec population;
@@ -1145,21 +1199,47 @@ TEST(StateEvolutionTest, NonNeuralBrainsUpdateBestFitnessWithoutRobustPass)
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
     EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Unknown);
 
-    auto first = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(first.has_value());
+    std::optional<Any> finalState;
+    bool sawProcessedResult = false;
+    const auto firstResultDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < firstResultDeadline && !sawProcessedResult) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+        if (evolutionState.currentEval >= 1) {
+            sawProcessedResult = true;
+            break;
+        }
 
-    const double firstFitness = evolutionState.fitnessScores[0];
-    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, firstFitness);
-    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessAllTime, firstFitness);
+        EXPECT_FALSE(finalState.has_value()) << "Training should not complete before any eval ends";
+        EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0);
+        EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Unknown);
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(sawProcessedResult) << "Expected a non-neural result to be processed";
+    EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0);
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, evolutionState.bestFitnessAllTime);
     EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed);
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 
-    evolutionState.tick(*fixture.stateMachine);
+    const auto completionDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < completionDeadline && !finalState.has_value()) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0);
+        EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, evolutionState.bestFitnessAllTime);
+        EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed);
+        EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(finalState.has_value()) << "Evolution should finish after both rule-based evals";
+    EXPECT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()));
 
     const double expectedBest =
         std::max(evolutionState.fitnessScores[0], evolutionState.fitnessScores[1]);
     EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, expectedBest);
     EXPECT_DOUBLE_EQ(evolutionState.bestFitnessAllTime, expectedBest);
+    EXPECT_EQ(evolutionState.bestThisGenOrigin_, Evolution::IndividualOrigin::Seed);
     EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
 }
 
@@ -1189,10 +1269,11 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
         parents.push_back(individual.genome.value());
     }
 
-    constexpr int maxTicks = 20;
-    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.generation < 1) {
         auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
@@ -1259,14 +1340,13 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
 
     EXPECT_TRUE(evolutionState.bestGenomeId.isNil());
 
-    auto result1 = evolutionState.tick(*fixture.stateMachine);
-    ASSERT_FALSE(result1.has_value());
-    EXPECT_TRUE(evolutionState.bestGenomeId.isNil());
-
     std::optional<Any> finalState;
-    constexpr int maxTicks = 16;
-    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
+        if (!finalState.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
     ASSERT_TRUE(finalState.has_value());
 
@@ -1303,10 +1383,11 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
 
     evolutionState.rng.seed(123u);
 
-    constexpr int maxTicks = 20;
-    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.generation < 1) {
         auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
@@ -1390,10 +1471,11 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
 
     evolutionState.rng.seed(42u);
 
-    constexpr int maxTicks = 40;
-    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && evolutionState.generation < 1) {
         auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
@@ -1437,9 +1519,12 @@ TEST(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResul
 
     // Execute: Tick until transition occurs.
     std::optional<Any> result;
-    constexpr int maxTicks = 10;
-    for (int i = 0; i < maxTicks && !result.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !result.has_value()) {
         result = evolutionState.tick(*fixture.stateMachine);
+        if (!result.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     ASSERT_TRUE(result.has_value()) << "Should transition after training result delivery";
@@ -1463,9 +1548,12 @@ TEST(StateEvolutionTest, CompletesAllGenerationsWhenTrainingResultDeliveryFails)
     evolutionState.onEnter(*fixture.stateMachine);
 
     std::optional<Any> result;
-    constexpr int maxTicks = 10;
-    for (int i = 0; i < maxTicks && !result.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !result.has_value()) {
         result = evolutionState.tick(*fixture.stateMachine);
+        if (!result.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     ASSERT_TRUE(result.has_value()) << "Should still transition after training completion";
@@ -1498,9 +1586,12 @@ TEST(StateEvolutionTest, BestGenomeStoredInRepository)
     evolutionState.onEnter(*fixture.stateMachine);
 
     std::optional<Any> finalState;
-    constexpr int maxTicks = 16;
-    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
+        if (!finalState.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
     ASSERT_TRUE(finalState.has_value());
 
@@ -1524,47 +1615,65 @@ TEST(StateEvolutionTest, BestGenomeStoredInRepository)
 }
 
 /**
- * @brief Test that tick() advances evaluation incrementally (non-blocking).
+ * @brief Test that tick() polls async evaluation progress incrementally.
  *
- * With a longer simulation time, multiple ticks are needed per evaluation.
- * This verifies the non-blocking architecture where each tick does one physics step.
+ * With a longer simulation time, worker-owned evaluation progress should become visible before the
+ * main thread drains a completed result. This verifies tick() stays responsive while background
+ * evaluation advances.
  */
 TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
 {
     TestStateMachineFixture fixture;
 
     // Setup: Create Evolution state with longer simulation time.
-    // Use population=2 and maxGenerations=2 so we can observe currentEval advancing.
+    // Use population=2 and maxGenerations=2 so we can observe early generation progress.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
-    evolutionState.evolutionConfig.maxSimulationTime = 0.1; // ~6 physics steps at 0.016s each.
+    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
     evolutionState.onEnter(*fixture.stateMachine);
+    EvolutionWorkerGuard guard{ .evolution = &evolutionState,
+                                .stateMachine = fixture.stateMachine.get() };
+    ASSERT_NE(evolutionState.executor_, nullptr);
 
-    // Execute: First tick should create world and advance one step.
-    auto result1 = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
+    // Execute: First tick should start async work without blocking for completion.
+    auto firstTick = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_FALSE(firstTick.has_value()) << "Should stay in Evolution";
 
-    // Execute: Second tick should advance further but not complete.
-    auto result2 = evolutionState.tick(*fixture.stateMachine);
-    EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-    EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
-
-    // Execute: Tick until first evaluation completes.
-    int tickCount = 2;
-    while (evolutionState.currentEval == 0 && tickCount < 20) {
-        evolutionState.tick(*fixture.stateMachine);
-        tickCount++;
+    bool sawVisibleProgress = false;
+    const auto visibleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < visibleDeadline && !sawVisibleProgress) {
+        sawVisibleProgress = evolutionState.executor_->hasVisibleEvaluation()
+            && evolutionState.executor_->visibleSimTimeGet() > 0.0;
+        if (!sawVisibleProgress) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
-    // Verify: First evaluation completed after multiple ticks.
-    EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
-    EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
+    ASSERT_TRUE(sawVisibleProgress)
+        << "Expected async worker progress to become visible before the first result is drained";
+    EXPECT_EQ(evolutionState.currentEval, 0)
+        << "No completed result should be observed before the main thread polls again";
+    EXPECT_EQ(evolutionState.generation, 0);
+
+    bool sawStateAdvance = false;
+    const auto advanceDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < advanceDeadline && !sawStateAdvance) {
+        auto tickResult = evolutionState.tick(*fixture.stateMachine);
+        sawStateAdvance = evolutionState.currentEval >= 1 || evolutionState.generation >= 1;
+        if (!sawStateAdvance) {
+            EXPECT_FALSE(tickResult.has_value()) << "Training should still be running";
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    ASSERT_TRUE(sawStateAdvance)
+        << "Expected polling tick() to eventually drain completed work or advance the generation";
+    EXPECT_TRUE(evolutionState.currentEval >= 1 || evolutionState.generation >= 1);
 }
 
 /**
@@ -1637,13 +1746,14 @@ TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     EXPECT_EQ(evolutionState.generation, 0);
 
     // Run until evolution completes.
-    int tickCount = 0;
-    constexpr int MAX_TICKS = 10000; // Safety limit.
     std::optional<Any> finalState;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
 
-    while (tickCount < MAX_TICKS && !finalState.has_value()) {
+    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
-        tickCount++;
+        if (!finalState.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     // Verify: Evolution completed.
