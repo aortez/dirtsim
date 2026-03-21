@@ -140,7 +140,7 @@ foreach(BACKEND_NAME "SDL" "LINUX_DRM" "LINUX_FBDEV" "X11" "WAYLAND" "OPENGLES")
 
 endforeach()
 
-# Uncomment if the program needs debugging.
+#Uncomment if the program needs debugging.
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -ggdb")
 
 set(CMAKE_C_STANDARD 99) # LVGL officially supports C99 and above
@@ -182,7 +182,7 @@ if (LV_USE_WAYLAND)
     list(APPEND PKG_CONFIG_LIB ${WAYLAND_CURSOR_LIBRARIES})
     list(APPEND PKG_CONFIG_LIB ${XKBCOMMON_LIBRARIES})
 
-    # Wayland protocols.
+#Wayland protocols.
     pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.25)
     pkg_get_variable(WAYLAND_PROTOCOLS_BASE wayland-protocols pkgdatadir)
 
@@ -208,7 +208,7 @@ endif()
 
 if (LV_USE_LINUX_FBDEV)
 
-    # FBDEV has no dependencies.
+#FBDEV has no dependencies.
     message("Including FBDEV support")
     list(APPEND LV_LINUX_BACKEND_SRC src/ui/lib/display_backends/fbdev.cpp)
 
@@ -492,6 +492,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
     src/core/organisms/evolution/DuckEvaluator.cpp
+    src/core/organisms/evolution/DuckClockEvaluationTracker.cpp
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
@@ -946,6 +947,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
+    src/core/organisms/evolution/tests/DuckClockEvaluationTracker_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
     src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 

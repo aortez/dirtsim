@@ -10,16 +10,25 @@ using namespace DirtSim::Server::EvolutionSupport;
 
 namespace {
 
-FitnessEvaluation makeDuckEvaluation(double totalFitness, double wingUpSeconds, double exitDoorRaw)
+FitnessEvaluation makeDuckEvaluation(
+    double totalFitness,
+    double wingUpSeconds,
+    double exitDoorRaw,
+    double fullTraversals,
+    double bestExitDoorDistanceCells)
 {
     return FitnessEvaluation{
         .totalFitness = totalFitness,
         .details =
             DuckFitnessBreakdown{
                 .wingUpSeconds = wingUpSeconds,
-                .exitedThroughDoor = exitDoorRaw >= 0.5,
+                .fullTraversals = fullTraversals,
+                .exitDoorDistanceObserved = bestExitDoorDistanceCells >= 0.0,
+                .exitedThroughDoor = exitDoorRaw >= 1.0,
+                .bestExitDoorDistanceCells =
+                    bestExitDoorDistanceCells >= 0.0 ? bestExitDoorDistanceCells : 0.0,
                 .exitDoorRaw = exitDoorRaw,
-                .exitDoorBonus = exitDoorRaw >= 0.5 ? 0.5 : 0.0,
+                .exitDoorBonus = exitDoorRaw >= 1.0 ? 0.5 : 0.0,
                 .totalFitness = totalFitness,
             },
     };
@@ -75,10 +84,10 @@ TEST(FitnessModelBundleTest, DuckClockBundleMergesSelectedSideDetails)
     ASSERT_NE(bundle.mergePasses, nullptr);
 
     const std::array<FitnessEvaluation, 4> evaluations{
-        makeDuckEvaluation(1.0, 2.0, 0.0),
-        makeDuckEvaluation(5.0, 10.0, 1.0),
-        makeDuckEvaluation(1.4, 4.0, 0.0),
-        makeDuckEvaluation(4.6, 12.0, 1.0),
+        makeDuckEvaluation(1.0, 2.0, 0.0, 1.0, 6.0),
+        makeDuckEvaluation(5.0, 10.0, 1.0, 5.0, 0.0),
+        makeDuckEvaluation(1.4, 4.0, 0.0, 3.0, 4.0),
+        makeDuckEvaluation(4.6, 12.0, 1.0, 7.0, 0.0),
     };
 
     const FitnessEvaluation merged = bundle.mergePasses(evaluations);
@@ -86,8 +95,11 @@ TEST(FitnessModelBundleTest, DuckClockBundleMergesSelectedSideDetails)
     ASSERT_NE(breakdown, nullptr);
     EXPECT_DOUBLE_EQ(merged.totalFitness, 1.2);
     EXPECT_DOUBLE_EQ(breakdown->wingUpSeconds, 3.0);
+    EXPECT_DOUBLE_EQ(breakdown->fullTraversals, 2.0);
     EXPECT_DOUBLE_EQ(breakdown->exitDoorRaw, 0.0);
     EXPECT_DOUBLE_EQ(breakdown->exitDoorTime, 0.0);
+    EXPECT_TRUE(breakdown->exitDoorDistanceObserved);
+    EXPECT_DOUBLE_EQ(breakdown->bestExitDoorDistanceCells, 5.0);
     EXPECT_FALSE(breakdown->exitedThroughDoor);
     EXPECT_DOUBLE_EQ(breakdown->totalFitness, 1.2);
 

@@ -149,7 +149,7 @@ Api::FitnessPresentation duckPresentationBuild(
         .sections = {},
     };
 
-    presentation.sections.reserve(includeClockExit ? 6u : 5u);
+    presentation.sections.reserve(includeClockExit ? 7u : 5u);
     presentation.sections.push_back(makeSection(
         "survival",
         "Survival",
@@ -299,25 +299,169 @@ Api::FitnessPresentation duckPresentationBuild(
         }));
     if (includeClockExit) {
         presentation.sections.push_back(makeSection(
-            "clock_exit",
-            "Clock Exit",
-            duck.exitDoorBonus,
+            "clock_course",
+            "Clock Course",
+            duck.traversalBonus + duck.obstacleBonus,
             {
                 makeMetric(
-                    "exit_door_raw",
-                    "Exit Door Raw",
-                    duck.exitDoorRaw,
+                    "left_wall_touches",
+                    "Left Wall Touches",
+                    duck.leftWallTouches,
+                    std::nullopt,
+                    std::nullopt,
+                    "touches"),
+                makeMetric(
+                    "right_wall_touches",
+                    "Right Wall Touches",
+                    duck.rightWallTouches,
+                    std::nullopt,
+                    std::nullopt,
+                    "touches"),
+                makeMetric(
+                    "full_traversals",
+                    "Full Traversals",
+                    duck.fullTraversals,
+                    std::nullopt,
+                    std::nullopt,
+                    "traversals"),
+                makeMetric(
+                    "traversal_bonus",
+                    "Traversal Bonus",
+                    duck.traversalBonus,
                     std::nullopt,
                     std::nullopt,
                     "score"),
                 makeMetric(
-                    "exit_door_time",
-                    "Exit Door Time",
-                    duck.exitDoorTime,
+                    "traversal_score",
+                    "Traversal Score",
+                    duck.traversalScore,
                     std::nullopt,
                     std::nullopt,
-                    "seconds"),
+                    "score"),
+                makeMetric(
+                    "pit_clears",
+                    "Pit Clears",
+                    duck.pitClears,
+                    std::nullopt,
+                    std::nullopt,
+                    "clears"),
+                makeMetric(
+                    "pit_clear_bonus",
+                    "Pit Clear Bonus",
+                    duck.pitClearBonus,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "pit_opportunities",
+                    "Pit Opportunities",
+                    duck.pitOpportunities,
+                    std::nullopt,
+                    std::nullopt,
+                    "opportunities"),
+                makeMetric(
+                    "pit_clear_score",
+                    "Pit Clear Score",
+                    duck.pitClearScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "hurdle_clears",
+                    "Hurdle Clears",
+                    duck.hurdleClears,
+                    std::nullopt,
+                    std::nullopt,
+                    "clears"),
+                makeMetric(
+                    "hurdle_clear_bonus",
+                    "Hurdle Clear Bonus",
+                    duck.hurdleClearBonus,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "hurdle_opportunities",
+                    "Hurdle Opportunities",
+                    duck.hurdleOpportunities,
+                    std::nullopt,
+                    std::nullopt,
+                    "opportunities"),
+                makeMetric(
+                    "hurdle_clear_score",
+                    "Hurdle Clear Score",
+                    duck.hurdleClearScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "obstacle_score",
+                    "Obstacle Score",
+                    duck.obstacleScore,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
+                makeMetric(
+                    "obstacle_bonus",
+                    "Obstacle Bonus",
+                    duck.obstacleBonus,
+                    std::nullopt,
+                    std::nullopt,
+                    "score"),
             }));
+
+        std::vector<Api::FitnessPresentationMetric> clockExitMetrics{
+            makeMetric(
+                "exit_door_raw",
+                "Exit Door Raw",
+                duck.exitDoorRaw,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "exit_door_proximity_score",
+                "Exit Door Proximity",
+                duck.exitDoorProximityScore,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "exit_door_proximity_bonus",
+                "Exit Door Proximity Bonus",
+                duck.exitDoorProximityBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "exit_door_bonus",
+                "Exit Door Completion Bonus",
+                duck.exitDoorBonus,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "exit_door_time",
+                "Exit Door Time",
+                duck.exitDoorTime,
+                std::nullopt,
+                std::nullopt,
+                "seconds"),
+        };
+        if (duck.exitDoorDistanceObserved) {
+            clockExitMetrics.push_back(makeMetric(
+                "best_exit_door_distance_cells",
+                "Best Exit Distance",
+                duck.bestExitDoorDistanceCells,
+                10.0,
+                std::nullopt,
+                "cells"));
+        }
+
+        presentation.sections.push_back(makeSection(
+            "clock_exit",
+            "Clock Exit",
+            duck.exitDoorBonus + duck.exitDoorProximityBonus,
+            std::move(clockExitMetrics)));
     }
 
     return presentation;

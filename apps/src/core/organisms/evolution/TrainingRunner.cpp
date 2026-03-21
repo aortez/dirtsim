@@ -357,10 +357,14 @@ TrainingRunner::Status TrainingRunner::step(int frames)
         if (trainingSpec_.organismType == OrganismType::DUCK) {
             Duck* duck = world_->getOrganismManager().getDuck(organismId_);
             if (duck && duck->isDead()) {
-                snapshotDuckStats();
+                updateDuckClockEvaluationTracker(*duck);
+                snapshotDuckEvaluationArtifacts();
                 world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
                 state_ = State::OrganismDied;
                 break;
+            }
+            if (duck) {
+                updateDuckClockEvaluationTracker(*duck);
             }
         }
 
@@ -543,30 +547,53 @@ double TrainingRunner::getCurrentMaxEnergy() const
     return treeEvaluator_.getMaxEnergy();
 }
 
-const DuckStatsSnapshot* TrainingRunner::getDuckStatsSnapshot() const
+std::optional<DuckEvaluationArtifacts> TrainingRunner::getDuckEvaluationArtifacts() const
 {
-    return duckStatsSnapshot_.has_value() ? &duckStatsSnapshot_.value() : nullptr;
+    if (duckEvaluationArtifacts_.has_value()) {
+        return duckEvaluationArtifacts_;
+    }
+
+    if (trainingSpec_.organismType != OrganismType::DUCK || !world_) {
+        return std::nullopt;
+    }
+
+    const Duck* duck = world_->getOrganismManager().getDuck(organismId_);
+    if (!duck) {
+        return std::nullopt;
+    }
+
+    return buildDuckEvaluationArtifacts(*duck);
 }
 
-void TrainingRunner::snapshotDuckStats()
+std::optional<DuckEvaluationArtifacts> TrainingRunner::buildDuckEvaluationArtifacts(
+    const Duck& duck) const
+{
+    DuckEvaluationArtifacts artifacts{
+        .collisionDamageTotal = duck.getCollisionDamageTotal(),
+        .damageTotal = duck.getDamageTotal(),
+        .effortAbsMoveInputTotal = duck.getEffortAbsMoveInputTotal(),
+        .effortJumpHeldTotal = duck.getEffortJumpHeldTotal(),
+        .energyAverage = duck.getEnergyAverage(),
+        .energyConsumedTotal = duck.getEnergyConsumedTotal(),
+        .energyLimitedSeconds = duck.getEnergyLimitedSeconds(),
+        .healthAverage = duck.getHealthAverage(),
+        .wingDownSeconds = duck.getWingDownSeconds(),
+        .wingUpSeconds = duck.getWingUpSeconds(),
+        .effortSampleCount = duck.getEffortSampleCount(),
+    };
+    if (duckClockEvaluationTracker_.has_value()) {
+        artifacts.clock = duckClockEvaluationTracker_->buildArtifacts();
+    }
+    return artifacts;
+}
+
+void TrainingRunner::snapshotDuckEvaluationArtifacts()
 {
     Duck* duck = world_->getOrganismManager().getDuck(organismId_);
     if (!duck) {
         return;
     }
-    duckStatsSnapshot_ = DuckStatsSnapshot{
-        .collisionDamageTotal = duck->getCollisionDamageTotal(),
-        .damageTotal = duck->getDamageTotal(),
-        .effortAbsMoveInputTotal = duck->getEffortAbsMoveInputTotal(),
-        .effortJumpHeldTotal = duck->getEffortJumpHeldTotal(),
-        .energyAverage = duck->getEnergyAverage(),
-        .energyConsumedTotal = duck->getEnergyConsumedTotal(),
-        .energyLimitedSeconds = duck->getEnergyLimitedSeconds(),
-        .healthAverage = duck->getHealthAverage(),
-        .wingDownSeconds = duck->getWingDownSeconds(),
-        .wingUpSeconds = duck->getWingUpSeconds(),
-        .effortSampleCount = duck->getEffortSampleCount(),
-    };
+    duckEvaluationArtifacts_ = buildDuckEvaluationArtifacts(*duck);
 }
 
 const Organism::Body* TrainingRunner::getOrganism() const
@@ -699,6 +726,36 @@ void TrainingRunner::initDuckClockDoors()
     doors.clockScenario = clockScenario;
     doors.exitDoorOpenTime = std::max(0.0, maxTime_ - 10.0);
     duckClockDoors_ = doors;
+    duckClockEvaluationTracker_.emplace();
+    duckClockEvaluationTracker_->reset();
+}
+
+void TrainingRunner::updateDuckClockEvaluationTracker(const Duck& duck)
+{
+    if (!duckClockEvaluationTracker_.has_value() || !duckClockDoors_ || !world_) {
+        return;
+    }
+
+    const auto& doors = *duckClockDoors_;
+    DoorManager& doorMgr = doors.clockScenario->getDoorManager();
+    const WorldData& data = world_->getData();
+    const bool exitDoorActive = doors.exitDoorOpened && doorMgr.isValidDoor(doors.exitDoorId)
+        && doorMgr.isOpen(doors.exitDoorId);
+    std::optional<Vector2i> exitDoorCell = std::nullopt;
+    if (exitDoorActive) {
+        exitDoorCell = doorMgr.getDoorPosition(doors.exitDoorId, data);
+    }
+
+    duckClockEvaluationTracker_->update(
+        DuckClockTrackerFrame{
+            .simTime = simTime_,
+            .worldWidth = data.width,
+            .duckAnchorCell = duck.getAnchorCell(),
+            .duckOnGround = duck.isOnGround(),
+            .exitDoorActive = exitDoorActive,
+            .exitDoorCell = exitDoorCell,
+            .obstacles = doors.clockScenario->obstacle_manager.getObstacles(),
+        });
 }
 
 void TrainingRunner::updateDuckClockDoors()
@@ -767,7 +824,11 @@ void TrainingRunner::updateDuckClockDoors()
             if (pastMiddle) {
                 doors.duckExitedThroughDoor = true;
                 doors.exitDoorTime = simTime_;
-                snapshotDuckStats();
+                updateDuckClockEvaluationTracker(*duck);
+                if (duckClockEvaluationTracker_.has_value()) {
+                    duckClockEvaluationTracker_->markExitedThroughDoor(simTime_);
+                }
+                snapshotDuckEvaluationArtifacts();
                 world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
             }
         }
@@ -1052,6 +1113,10 @@ void TrainingRunner::spawnEvaluationOrganism()
 
     const Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
     DIRTSIM_ASSERT(organism != nullptr, "TrainingRunner: Spawned organism not found");
+    duckEvaluationArtifacts_.reset();
+    if (duckClockEvaluationTracker_.has_value()) {
+        duckClockEvaluationTracker_->reset();
+    }
     organismTracker_.reset();
     organismTracker_.track(simTime_, organism->position);
     if (trainingSpec_.organismType == OrganismType::TREE) {

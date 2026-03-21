@@ -10,6 +10,7 @@
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/OrganismTracker.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include <cmath>
 #include <gtest/gtest.h>
 #include <initializer_list>
 #include <memory>
@@ -605,6 +606,105 @@ TEST(FitnessCalculatorTest, DuckEffortPenaltyMakesJumpCostlierThanFullRunInput)
     EXPECT_GT(jumpBreakdown.effortScore, runBreakdown.effortScore);
     EXPECT_GT(jumpBreakdown.effortPenaltyScore, runBreakdown.effortPenaltyScore);
     EXPECT_LT(jumpBreakdown.totalFitness, runBreakdown.totalFitness);
+}
+
+TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndProximityBonuses)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 2.0, 0.0 },
+        });
+
+    const FitnessContext baseContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &history,
+    };
+    const FitnessContext boostedContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .fullTraversals = 2,
+                        .hurdleClears = 1,
+                        .hurdleOpportunities = 1,
+                        .pitClears = 1,
+                        .pitOpportunities = 1,
+                        .exitDoorDistanceObserved = true,
+                        .bestExitDoorDistanceCells = 5.0,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+
+    const DuckFitnessBreakdown baseBreakdown = DuckEvaluator::evaluateWithBreakdown(baseContext);
+    const DuckFitnessBreakdown boostedBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(boostedContext);
+
+    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalScore, 1.0 - std::exp(-1.0));
+    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalBonus, 0.45 * (1.0 - std::exp(-1.0)));
+    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearScore, 1.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearBonus, 0.12);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearScore, 1.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearBonus, 0.18);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleScore, 1.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleBonus, 0.3);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityScore, 0.5);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityBonus, 0.125);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorBonus, 0.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.clockBonus, 0.425 + (0.45 * (1.0 - std::exp(-1.0))));
+    EXPECT_DOUBLE_EQ(
+        boostedBreakdown.totalFitness - baseBreakdown.totalFitness,
+        0.425 + (0.45 * (1.0 - std::exp(-1.0))));
+}
+
+TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesFullExitBonus)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+        });
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .exitDoorDistanceObserved = true,
+                        .exitedThroughDoor = true,
+                        .bestExitDoorDistanceCells = 1.0,
+                        .exitDoorTime = 8.0,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+
+    const DuckFitnessBreakdown breakdown = DuckEvaluator::evaluateWithBreakdown(context);
+    EXPECT_TRUE(breakdown.exitedThroughDoor);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorRaw, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityBonus, 0.25);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorBonus, 0.5);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorTime, 8.0);
+    EXPECT_DOUBLE_EQ(breakdown.clockBonus, 0.25);
 }
 
 } // namespace DirtSim

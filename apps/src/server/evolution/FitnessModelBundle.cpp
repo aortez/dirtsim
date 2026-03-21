@@ -128,9 +128,46 @@ double averageDouble(double left, double right)
     return 0.5 * (left + right);
 }
 
+struct ObservedDoubleAverage {
+    bool observed = false;
+    double value = 0.0;
+};
+
+ObservedDoubleAverage averageObservedDouble(
+    bool firstObserved, double firstValue, bool secondObserved, double secondValue)
+{
+    if (firstObserved && secondObserved) {
+        return ObservedDoubleAverage{
+            .observed = true,
+            .value = averageDouble(firstValue, secondValue),
+        };
+    }
+    if (firstObserved) {
+        return ObservedDoubleAverage{
+            .observed = true,
+            .value = firstValue,
+        };
+    }
+    if (secondObserved) {
+        return ObservedDoubleAverage{
+            .observed = true,
+            .value = secondValue,
+        };
+    }
+    return {};
+}
+
 DuckFitnessBreakdown duckFitnessBreakdownAverage(
     const DuckFitnessBreakdown& first, const DuckFitnessBreakdown& second, double totalFitness)
 {
+    const ObservedDoubleAverage exitDoorDistance = averageObservedDouble(
+        first.exitDoorDistanceObserved,
+        first.bestExitDoorDistanceCells,
+        second.exitDoorDistanceObserved,
+        second.bestExitDoorDistanceCells);
+    const ObservedDoubleAverage exitDoorTime = averageObservedDouble(
+        first.exitedThroughDoor, first.exitDoorTime, second.exitedThroughDoor, second.exitDoorTime);
+
     DuckFitnessBreakdown merged;
     merged.survivalRaw = averageDouble(first.survivalRaw, second.survivalRaw);
     merged.survivalReference = averageDouble(first.survivalReference, second.survivalReference);
@@ -168,11 +205,34 @@ DuckFitnessBreakdown duckFitnessBreakdownAverage(
     merged.collisionDamageTotal =
         averageDouble(first.collisionDamageTotal, second.collisionDamageTotal);
     merged.damageTotal = averageDouble(first.damageTotal, second.damageTotal);
+    merged.fullTraversals = averageDouble(first.fullTraversals, second.fullTraversals);
+    merged.hurdleClearScore = averageDouble(first.hurdleClearScore, second.hurdleClearScore);
+    merged.hurdleClears = averageDouble(first.hurdleClears, second.hurdleClears);
+    merged.hurdleClearBonus = averageDouble(first.hurdleClearBonus, second.hurdleClearBonus);
+    merged.hurdleOpportunities =
+        averageDouble(first.hurdleOpportunities, second.hurdleOpportunities);
+    merged.leftWallTouches = averageDouble(first.leftWallTouches, second.leftWallTouches);
+    merged.obstacleBonus = averageDouble(first.obstacleBonus, second.obstacleBonus);
+    merged.obstacleScore = averageDouble(first.obstacleScore, second.obstacleScore);
+    merged.pitClearScore = averageDouble(first.pitClearScore, second.pitClearScore);
+    merged.pitClears = averageDouble(first.pitClears, second.pitClears);
+    merged.pitClearBonus = averageDouble(first.pitClearBonus, second.pitClearBonus);
+    merged.pitOpportunities = averageDouble(first.pitOpportunities, second.pitOpportunities);
+    merged.rightWallTouches = averageDouble(first.rightWallTouches, second.rightWallTouches);
+    merged.traversalScore = averageDouble(first.traversalScore, second.traversalScore);
+    merged.traversalBonus = averageDouble(first.traversalBonus, second.traversalBonus);
+    merged.exitDoorDistanceObserved = exitDoorDistance.observed;
+    merged.bestExitDoorDistanceCells = exitDoorDistance.value;
+    merged.exitDoorProximityBonus =
+        averageDouble(first.exitDoorProximityBonus, second.exitDoorProximityBonus);
+    merged.exitDoorProximityScore =
+        averageDouble(first.exitDoorProximityScore, second.exitDoorProximityScore);
     merged.exitDoorRaw = averageDouble(first.exitDoorRaw, second.exitDoorRaw);
-    merged.exitedThroughDoor = merged.exitDoorRaw >= 0.5;
-    merged.exitDoorTime = averageDouble(first.exitDoorTime, second.exitDoorTime);
+    merged.exitedThroughDoor = first.exitedThroughDoor || second.exitedThroughDoor;
+    merged.exitDoorTime = exitDoorTime.value;
     merged.healthAverage = averageDouble(first.healthAverage, second.healthAverage);
     merged.exitDoorBonus = averageDouble(first.exitDoorBonus, second.exitDoorBonus);
+    merged.clockBonus = averageDouble(first.clockBonus, second.clockBonus);
     merged.totalFitness = totalFitness;
     return merged;
 }

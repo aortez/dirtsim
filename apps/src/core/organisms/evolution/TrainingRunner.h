@@ -7,6 +7,7 @@
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/DuckNeuralNetRecurrentBrainV2.h"
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/evolution/DuckClockEvaluationTracker.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
@@ -158,7 +159,7 @@ public:
     ScenarioConfig getScenarioConfig() const;
     Result<std::monostate, std::string> setScenarioConfig(const ScenarioConfig& config);
 
-    const DuckStatsSnapshot* getDuckStatsSnapshot() const;
+    std::optional<DuckEvaluationArtifacts> getDuckEvaluationArtifacts() const;
     const Organism::Body* getOrganism() const;
     const OrganismTrackingHistory& getOrganismTrackingHistory() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
@@ -193,8 +194,11 @@ private:
     NesFrameTrace runScenarioDrivenStep();
     DuckSensoryData makeNesDuckSensoryData() const;
     uint8_t inferNesControllerMask();
+    std::optional<DuckEvaluationArtifacts> buildDuckEvaluationArtifacts(const Duck& duck) const;
+    void snapshotDuckEvaluationArtifacts();
     void spawnEvaluationOrganism();
     void initDuckClockDoors();
+    void updateDuckClockEvaluationTracker(const Duck& duck);
     void updateDuckClockDoors();
     static Config makeDefaultConfig();
     ScenarioConfig buildEffectiveScenarioConfig(const ScenarioConfig& config) const;
@@ -252,7 +256,8 @@ private:
         double exitDoorTime = 0.0;
     };
     std::optional<DuckClockDoorState> duckClockDoors_;
-    std::optional<DuckStatsSnapshot> duckStatsSnapshot_;
+    std::optional<DuckClockEvaluationTracker> duckClockEvaluationTracker_;
+    std::optional<DuckEvaluationArtifacts> duckEvaluationArtifacts_;
 
     struct ChildSeedState {
         OrganismId id = INVALID_ORGANISM_ID;
@@ -262,8 +267,6 @@ private:
         bool landed = false;
     };
     std::vector<ChildSeedState> childSeeds_;
-
-    void snapshotDuckStats();
 };
 
 } // namespace DirtSim
