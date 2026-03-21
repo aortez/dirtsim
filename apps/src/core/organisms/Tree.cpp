@@ -535,9 +535,10 @@ void Tree::updateResources(const World& world, double deltaTime)
 
                 const Cell& neighbor_cell = data.at(neighbor.x, neighbor.y);
                 const double fill = neighbor_cell.fill_ratio;
+                const double waterAmount = world.getBulkWaterAmountAtCell(neighbor.x, neighbor.y);
 
-                if (neighbor_cell.material_type == Material::EnumType::Water) {
-                    water_gain += kWaterFromWater * fill;
+                if (waterAmount > 0.0) {
+                    water_gain += kWaterFromWater * waterAmount;
                 }
                 else if (
                     neighbor_cell.material_type == Material::EnumType::Dirt

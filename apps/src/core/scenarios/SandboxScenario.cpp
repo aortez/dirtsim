@@ -6,7 +6,6 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
-#include "core/water/WaterVolumeView.h"
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <cmath>
@@ -95,13 +94,7 @@ void SandboxScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
-
-    WaterVolumeMutableView waterVolume{};
-    if (world.tryGetMutableWaterVolumeView(waterVolume)
-        && waterVolume.width == world.getData().width
-        && waterVolume.height == world.getData().height) {
-        std::fill(waterVolume.volume.begin(), waterVolume.volume.end(), 0.0f);
-    }
+    world.clearAllBulkWater();
 
     world.getOrganismManager().clear();
 
@@ -204,7 +197,7 @@ void SandboxScenario::addWaterColumn(World& world)
     // Add water column on left side.
     for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
         for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
-            world.addMaterialAtCell(x, y, Material::EnumType::Water, 1.0f);
+            world.addBulkWaterAtCell(x, y, 1.0f);
         }
     }
     spdlog::info("Added water column ({} wide × {} tall) on left side", columnWidth, columnHeight);
@@ -219,14 +212,7 @@ void SandboxScenario::clearWaterColumn(World& world)
     // Clear water from the water column area.
     for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
         for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
-            const Vector2s pos{ static_cast<int16_t>(x), static_cast<int16_t>(y) };
-            const Cell& cell = world.getData().at(x, y);
-            if (cell.material_type == Material::EnumType::Water) {
-                world.replaceMaterialAtCell(pos, Material::EnumType::Air);
-            }
-            else if (cell.isEmpty()) {
-                world.clearCellAtPosition(pos);
-            }
+            world.setBulkWaterAmountAtCell(x, y, 0.0f);
         }
     }
     spdlog::info("Cleared water column");
@@ -272,9 +258,8 @@ void SandboxScenario::refillWaterColumn(World& world)
     for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
         for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             Cell& cell = world.getData().at(x, y);
-            if (cell.material_type == Material::EnumType::Air
-                || cell.material_type == Material::EnumType::Water) {
-                world.addMaterialAtCell(x, y, Material::EnumType::Water, 1.0f);
+            if (cell.material_type == Material::EnumType::Air || world.hasBulkWaterAtCell(x, y)) {
+                world.addBulkWaterAtCell(x, y, 1.0f);
             }
         }
     }

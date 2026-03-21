@@ -107,6 +107,30 @@ TEST(CellSerializationTest, RenderMessageSerializationIncludesScenarioVideoFrame
     EXPECT_EQ(decoded.region_debug[1].wake_reason, original.region_debug[1].wake_reason);
 }
 
+TEST(CellSerializationTest, RenderMessageSerializationIncludesWaterVolumeOverlay)
+{
+    RenderMessage original;
+    original.format = RenderFormat::EnumType::Debug;
+    original.width = 3;
+    original.height = 2;
+    original.timestep = 7;
+    original.water_volume = std::vector<uint8_t>{ 0, 64, 128, 192, 255, 17 };
+
+    std::vector<std::byte> buffer;
+    auto out = zpp::bits::out(buffer);
+    out(original).or_throw();
+
+    RenderMessage decoded;
+    auto in = zpp::bits::in(buffer);
+    in(decoded).or_throw();
+
+    ASSERT_TRUE(decoded.water_volume.has_value());
+    EXPECT_EQ(decoded.water_volume.value(), original.water_volume.value());
+    EXPECT_EQ(decoded.width, original.width);
+    EXPECT_EQ(decoded.height, original.height);
+    EXPECT_EQ(decoded.timestep, original.timestep);
+}
+
 TEST(CellSerializationTest, TrainingBestSnapshotSerializationIncludesScenarioVideoFrame)
 {
     Api::TrainingBestSnapshot original;

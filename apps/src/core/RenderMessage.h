@@ -104,6 +104,9 @@ struct RenderMessage {
     // Format-specific cell data (either BasicCell[] or DebugCell[]).
     std::vector<std::byte> payload;
 
+    // Optional quantized separate-layer water overlay [0, 255] for streamed reconstruction.
+    std::optional<std::vector<uint8_t>> water_volume;
+
     // Sparse organism tracking (only cells with organism_id != 0).
     std::vector<OrganismData> organisms;
 
@@ -121,7 +124,7 @@ struct RenderMessage {
     // Optional scenario-native video frame (RGB565) for direct display.
     std::optional<ScenarioVideoFrame> scenario_video_frame;
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 void to_json(nlohmann::json& j, const BasicCell& cell);

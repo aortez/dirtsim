@@ -46,7 +46,7 @@ void GlowManager::apply(
     if (config.waterIntensity > 0.0f) {
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
-                if (data.at(x, y).material_type == Material::EnumType::Water) {
+                if (world.hasBulkWaterAtCell(x, y)) {
                     lightCalc.setEmissive(x, y, ColorNames::waterDark(), config.waterIntensity);
                 }
             }

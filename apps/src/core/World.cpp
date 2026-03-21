@@ -62,7 +62,22 @@ constexpr float kGranularCompressionCandidateFillRatioMinimum = 0.95f;
 constexpr float kGranularCompressionCandidateLoadEpsilon = 0.001f;
 constexpr float kFluidSupportCandidateCapacityEpsilon = 0.02f;
 constexpr float kFluidSupportCandidateFillRatioMinimum = 0.95f;
+constexpr float kBulkWaterVolumeEpsilon = 0.0001f;
 constexpr float kGeneratedMoveZeroAmountEpsilon = 0.0001f;
+
+bool shouldEnforceRegionSleep(
+    const DirtSim::WorldRegionActivityTracker& tracker, const DirtSim::Cell& cell, int x, int y)
+{
+    if (cell.isEmpty() || cell.isWall()) {
+        return false;
+    }
+
+    if (cell.material_type == DirtSim::Material::EnumType::Water) {
+        return false;
+    }
+
+    return !tracker.isCellActive(x, y);
+}
 
 bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
 {
@@ -520,6 +535,8 @@ struct World::Impl {
     WorldCollisionCalculator collision_calculator_;
     WorldPressureCalculator pressure_calculator_;
     WorldRegionActivityTracker region_activity_tracker_;
+    std::vector<uint8_t> sleep_force_processing_skipped_;
+    std::vector<uint8_t> sleep_move_generation_skipped_;
     WorldStaticLoadCalculator static_load_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
     WaterSimSystem water_sim_system_;
@@ -564,6 +581,23 @@ void resizeRegionDebugTracking(World::Impl& impl, int world_width, int world_hei
     const int blocks_y = computeRegionBlockCount(world_height);
     impl.region_activity_tracker_.resize(world_width, world_height, blocks_x, blocks_y);
     exportRegionDebugInfo(impl);
+}
+
+void resetSleepEnforcementDebugTracking(World::Impl& impl)
+{
+    std::fill(
+        impl.sleep_force_processing_skipped_.begin(),
+        impl.sleep_force_processing_skipped_.end(),
+        0);
+    std::fill(
+        impl.sleep_move_generation_skipped_.begin(), impl.sleep_move_generation_skipped_.end(), 0);
+}
+
+void resizeSleepEnforcementDebugTracking(World::Impl& impl, int world_width, int world_height)
+{
+    const size_t cell_count = static_cast<size_t>(world_width) * world_height;
+    impl.sleep_force_processing_skipped_.assign(cell_count, 0);
+    impl.sleep_move_generation_skipped_.assign(cell_count, 0);
 }
 
 World::World() : World(1, 1)
@@ -611,6 +645,7 @@ World::World(int width, int height)
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
     resizeRegionDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
+    resizeSleepEnforcementDebugTracking(*pImpl, pImpl->data_.width, pImpl->data_.height);
     // Force refresh on first simulation step after scenario setup mutates world data.
     pImpl->is_grid_cache_dirty_ = true;
 
@@ -733,6 +768,28 @@ const WorldRegionActivityTracker& World::getRegionActivityTracker() const
     return pImpl->region_activity_tracker_;
 }
 
+bool World::wasSleepForceProcessingSkippedAtCell(int x, int y) const
+{
+    if (!pImpl->data_.inBounds(x, y)) {
+        return false;
+    }
+
+    const size_t idx = static_cast<size_t>(y) * pImpl->data_.width + x;
+    return idx < pImpl->sleep_force_processing_skipped_.size()
+        && pImpl->sleep_force_processing_skipped_[idx] != 0;
+}
+
+bool World::wasSleepMoveGenerationSkippedAtCell(int x, int y) const
+{
+    if (!pImpl->data_.inBounds(x, y)) {
+        return false;
+    }
+
+    const size_t idx = static_cast<size_t>(y) * pImpl->data_.width + x;
+    return idx < pImpl->sleep_move_generation_skipped_.size()
+        && pImpl->sleep_move_generation_skipped_[idx] != 0;
+}
+
 void World::ensureGridCacheFresh(const char* timerName)
 {
     if (!pImpl->is_grid_cache_dirty_) {
@@ -778,6 +835,196 @@ PhysicsSettings& World::getPhysicsSettings()
 const PhysicsSettings& World::getPhysicsSettings() const
 {
     return pImpl->physicsSettings_;
+}
+
+void World::addBulkWaterAtCell(Vector2s pos, float amount)
+{
+    if (amount <= 0.0f) {
+        return;
+    }
+
+    setBulkWaterAmountAtCell(pos, getBulkWaterAmountAtCell(pos) + amount);
+}
+
+void World::addBulkWaterAtCell(int x, int y, float amount)
+{
+    addBulkWaterAtCell(Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) }, amount);
+}
+
+void World::clearAllBulkWater()
+{
+    const int width = pImpl->data_.width;
+    const int height = pImpl->data_.height;
+    bool cellChanged = false;
+
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        pImpl->water_sim_system_.syncToSettings(pImpl->physicsSettings_, width, height);
+
+        WaterVolumeMutableView volumeMutable{};
+        if (pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)
+            && volumeMutable.width == width && volumeMutable.height == height) {
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    const size_t idx = static_cast<size_t>(y) * width + x;
+                    if (volumeMutable.volume[idx] <= kBulkWaterVolumeEpsilon) {
+                        continue;
+                    }
+
+                    volumeMutable.volume[idx] = 0.0f;
+                    pImpl->region_activity_tracker_.noteWakeAtCell(
+                        x, y, WakeReason::ExternalMutation);
+                }
+            }
+        }
+    }
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            Cell& cell = pImpl->data_.at(x, y);
+            if (cell.material_type != Material::EnumType::Water) {
+                continue;
+            }
+
+            cell.clear();
+            cellChanged = true;
+            pImpl->region_activity_tracker_.noteWakeAtCell(x, y, WakeReason::ExternalMutation);
+        }
+    }
+
+    if (cellChanged) {
+        markGridCacheDirty();
+    }
+}
+
+float World::getBulkWaterAmountAtCell(Vector2s pos) const
+{
+    return getBulkWaterAmountAtCell(pos.x, pos.y);
+}
+
+float World::getBulkWaterAmountAtCell(int x, int y) const
+{
+    if (!pImpl->data_.inBounds(x, y)) {
+        return 0.0f;
+    }
+
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        WaterVolumeView waterVolume{};
+        if (pImpl->water_sim_system_.tryGetWaterVolumeView(waterVolume)
+            && waterVolume.width == pImpl->data_.width
+            && waterVolume.height == pImpl->data_.height) {
+            const size_t idx = static_cast<size_t>(y) * pImpl->data_.width + x;
+            if (idx < waterVolume.volume.size()) {
+                const float amount = std::clamp(waterVolume.volume[idx], 0.0f, 1.0f);
+                if (amount > kBulkWaterVolumeEpsilon) {
+                    return amount;
+                }
+            }
+        }
+    }
+
+    const Cell& cell = pImpl->data_.at(x, y);
+    if (cell.material_type != Material::EnumType::Water) {
+        return 0.0f;
+    }
+
+    return std::clamp(cell.fill_ratio, 0.0f, 1.0f);
+}
+
+bool World::hasBulkWaterAtCell(Vector2s pos, float minAmount) const
+{
+    return hasBulkWaterAtCell(pos.x, pos.y, minAmount);
+}
+
+bool World::hasBulkWaterAtCell(int x, int y, float minAmount) const
+{
+    return getBulkWaterAmountAtCell(x, y) >= minAmount;
+}
+
+void World::setBulkWaterAmountAtCell(Vector2s pos, float amount)
+{
+    if (!isValidCell(pos)) {
+        return;
+    }
+
+    if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
+        return;
+    }
+
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    bool changed = false;
+    bool cellChanged = false;
+    Cell& cell = pImpl->data_.at(pos.x, pos.y);
+
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        pImpl->water_sim_system_.syncToSettings(
+            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+
+        WaterVolumeMutableView volumeMutable{};
+        if (pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)
+            && volumeMutable.width == pImpl->data_.width
+            && volumeMutable.height == pImpl->data_.height) {
+            const bool blockedBySolid = amount > kBulkWaterVolumeEpsilon && !cell.isEmpty()
+                && cell.material_type != Material::EnumType::Air
+                && cell.material_type != Material::EnumType::Water;
+            if (blockedBySolid) {
+                return;
+            }
+
+            const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
+            if (idx < volumeMutable.volume.size()) {
+                const float current = std::clamp(volumeMutable.volume[idx], 0.0f, 1.0f);
+                if (std::abs(current - amount) > kBulkWaterVolumeEpsilon) {
+                    volumeMutable.volume[idx] = amount;
+                    changed = true;
+                }
+            }
+
+            if (cell.material_type == Material::EnumType::Water) {
+                cell.clear();
+                cellChanged = true;
+                changed = true;
+            }
+        }
+    }
+    else {
+        if (amount <= kBulkWaterVolumeEpsilon) {
+            if (cell.material_type == Material::EnumType::Water) {
+                cell.clear();
+                cellChanged = true;
+                changed = true;
+            }
+        }
+        else {
+            const bool blockedBySolid = !cell.isEmpty()
+                && cell.material_type != Material::EnumType::Air
+                && cell.material_type != Material::EnumType::Water;
+            if (blockedBySolid) {
+                return;
+            }
+
+            if (cell.material_type != Material::EnumType::Water
+                || std::abs(cell.fill_ratio - amount) > kBulkWaterVolumeEpsilon) {
+                cell.replaceMaterial(Material::EnumType::Water, amount);
+                cellChanged = true;
+                changed = true;
+            }
+        }
+    }
+
+    if (!changed) {
+        return;
+    }
+
+    if (cellChanged) {
+        markGridCacheDirty();
+    }
+
+    pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
+}
+
+void World::setBulkWaterAmountAtCell(int x, int y, float amount)
+{
+    setBulkWaterAmountAtCell(Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) }, amount);
 }
 
 bool World::tryGetWaterVolumeView(WaterVolumeView& out) const
@@ -1014,6 +1261,7 @@ void World::advanceTime(double deltaTimeSeconds)
     }
     pImpl->region_activity_tracker_.beginFrame(
         *this, grid, static_cast<uint32_t>(pImpl->data_.timestep));
+    resetSleepEnforcementDebugTracking(*pImpl);
 
     for (CellDebug& debug : pImpl->data_.debug_info) {
         debug.dynamic_pressure_reflection_injection_amount = 0.0f;
@@ -1524,6 +1772,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
     resizeRegionDebugTracking(*pImpl, newWidth, newHeight);
+    resizeSleepEnforcementDebugTracking(*pImpl, newWidth, newHeight);
 
     // Resize light calculator emissive overlay to match new dimensions.
     pImpl->light_calculator_->resize(newWidth, newHeight);
@@ -1564,6 +1813,7 @@ void World::applyGravity()
     WorldData& data = pImpl->data_;
     std::vector<CellDebug>& debug_info = data.debug_info;
     const PhysicsSettings& settings = pImpl->physicsSettings_;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
     const double gravity = settings.gravity;
     const float gravityMagnitude = static_cast<float>(std::abs(gravity));
 
@@ -1574,10 +1824,16 @@ void World::applyGravity()
         for (int x = 0; x < data.width; ++x) {
             const size_t idx = static_cast<size_t>(y) * data.width + x;
             Cell& cell = data.at(x, y);
-            debug_info[idx].accumulated_gravity_force = {};
-            debug_info[idx].carries_transmitted_granular_load = false;
-            debug_info[idx].gravity_skipped_for_support = false;
-            debug_info[idx].has_granular_support_path = false;
+            CellDebug& debug = debug_info[idx];
+            debug.accumulated_gravity_force = {};
+            debug.carries_transmitted_granular_load = false;
+            debug.gravity_skipped_for_support = false;
+            debug.has_granular_support_path = false;
+
+            if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                pImpl->sleep_force_processing_skipped_[idx] = 1;
+                continue;
+            }
 
             if (!cell.isEmpty() && !cell.isWall()) {
                 if (gravityMagnitude > 0.0001f && isLoadBearingGranularCell(cell)) {
@@ -1587,11 +1843,11 @@ void World::applyGravity()
                     const bool hasSupportPath =
                         hasSupportedGranularPath(data, x, y, supportOffsetY, granularSupportCache);
 
-                    debug_info[idx].carries_transmitted_granular_load = carriesTransmittedLoad;
-                    debug_info[idx].has_granular_support_path = hasSupportPath;
+                    debug.carries_transmitted_granular_load = carriesTransmittedLoad;
+                    debug.has_granular_support_path = hasSupportPath;
 
                     if (carriesTransmittedLoad && hasSupportPath) {
-                        debug_info[idx].gravity_skipped_for_support = true;
+                        debug.gravity_skipped_for_support = true;
                         continue;
                     }
                 }
@@ -1611,7 +1867,7 @@ void World::applyGravity()
                         && std::abs(cell.velocity.x) < 0.2f && std::abs(normalVelocity) < 0.2f;
 
                     if (hasSupportPath && (isBuriedWater || isRestingSurfaceWater)) {
-                        debug_info[idx].gravity_skipped_for_support = true;
+                        debug.gravity_skipped_for_support = true;
                         continue;
                     }
                 }
@@ -1625,7 +1881,7 @@ void World::applyGravity()
                 cell.addPendingForce(gravityForce);
 
                 // Debug tracking.
-                debug_info[idx].accumulated_gravity_force = gravityForce;
+                debug.accumulated_gravity_force = gravityForce;
             }
         }
     }
@@ -1795,14 +2051,21 @@ void World::applyAirResistance()
 
     // Cache pImpl members as local references.
     WorldData& data = pImpl->data_;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
 
     WorldAirResistanceCalculator air_resistance_calculator{};
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
             Cell& cell = data.at(x, y);
 
             if (!cell.isEmpty() && !cell.isWall()) {
+                if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                    pImpl->sleep_force_processing_skipped_[idx] = 1;
+                    continue;
+                }
+
                 // Skip rigid body organism cells - they compute their own air resistance.
                 OrganismId org_id =
                     organism_manager_->at(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
@@ -1828,6 +2091,12 @@ void World::applyCohesionForces(const GridOfCells& grid)
     Timers& timers = pImpl->timers_;
     WorldData& data = pImpl->data_;
     WorldAdhesionCalculator& adhesion_calc = pImpl->adhesion_calculator_;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
+
+    for (CellDebug& debug : data.debug_info) {
+        debug.accumulated_adhesion_force = {};
+        debug.accumulated_com_cohesion_force = {};
+    }
 
     if (settings.cohesion_strength <= 0.0) {
         return;
@@ -1847,8 +2116,15 @@ void World::applyCohesionForces(const GridOfCells& grid)
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
                 Cell& cell = data.at(x, y);
+                CellDebug& debug = const_cast<GridOfCells&>(grid).debugAt(x, y);
 
                 if (cell.isEmpty() || cell.isWall()) {
+                    continue;
+                }
+
+                if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                    const size_t idx = static_cast<size_t>(y) * data.width + x;
+                    pImpl->sleep_force_processing_skipped_[idx] = 1;
                     continue;
                 }
 
@@ -1875,8 +2151,7 @@ void World::applyCohesionForces(const GridOfCells& grid)
                     cell.addPendingForce(com_cohesion_force);
                 }
                 // Store for visualization in GridOfCells debug info.
-                const_cast<GridOfCells&>(grid).debugAt(x, y).accumulated_com_cohesion_force =
-                    com_cohesion_force;
+                debug.accumulated_com_cohesion_force = com_cohesion_force;
             }
         }
     }
@@ -1893,8 +2168,15 @@ void World::applyCohesionForces(const GridOfCells& grid)
         for (int y = 0; y < data.height; ++y) {
             for (int x = 0; x < data.width; ++x) {
                 Cell& cell = data.at(x, y);
+                CellDebug& cell_debug = const_cast<GridOfCells&>(grid).debugAt(x, y);
 
                 if (cell.isEmpty() || cell.isWall()) {
+                    continue;
+                }
+
+                if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                    const size_t idx = static_cast<size_t>(y) * data.width + x;
+                    pImpl->sleep_force_processing_skipped_[idx] = 1;
                     continue;
                 }
 
@@ -1904,20 +2186,18 @@ void World::applyCohesionForces(const GridOfCells& grid)
                     adhesion_calc.calculateAdhesionForce(*this, x, y, mat_n);
                 Vector2d adhesion_force = adhesion.force_direction * adhesion.force_magnitude
                     * settings.adhesion_strength;
-                const CellDebug& debug = grid.debugAt(x, y);
-                if (isLoadBearingGranularCell(cell) && debug.has_granular_support_path
+                if (isLoadBearingGranularCell(cell) && cell_debug.has_granular_support_path
                     && isGranularSupportSinkMaterial(adhesion.target_material)) {
                     adhesion_force = {};
                 }
                 if (cell.material_type == Material::EnumType::Water
-                    && debug.gravity_skipped_for_support
+                    && cell_debug.gravity_skipped_for_support
                     && isFluidSupportSinkMaterial(adhesion.target_material)) {
                     adhesion_force = {};
                 }
                 cell.addPendingForce(adhesion_force);
                 // Store for visualization in GridOfCells debug info.
-                const_cast<GridOfCells&>(grid).debugAt(x, y).accumulated_adhesion_force =
-                    adhesion_force;
+                cell_debug.accumulated_adhesion_force = adhesion_force;
             }
         }
     }
@@ -1929,6 +2209,7 @@ void World::applyPressureForces()
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
     WorldPressureCalculator& pressure_calc = pImpl->pressure_calculator_;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
 
     for (CellDebug& debug : data.debug_info) {
         debug.accumulated_pressure_force = {};
@@ -1947,10 +2228,16 @@ void World::applyPressureForces()
 #endif
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * data.width + x;
             Cell& cell = data.at(x, y);
 
             // Skip empty cells and walls.
             if (cell.isEmpty() || cell.isWall()) {
+                continue;
+            }
+
+            if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                pImpl->sleep_force_processing_skipped_[idx] = 1;
                 continue;
             }
 
@@ -1973,7 +2260,6 @@ void World::applyPressureForces()
 
                 Vector2d pressure_force = gradient * settings.pressure_scale * hydrostatic_weight;
                 cell.addPendingForce(pressure_force);
-                const size_t idx = static_cast<size_t>(y) * data.width + x;
                 data.debug_info[idx].accumulated_pressure_force = pressure_force;
 
                 spdlog::debug(
@@ -2000,6 +2286,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
     std::vector<Cell>& cells = data.cells;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
 
     ScopeTimer timer(timers, "resolve_forces");
 
@@ -2086,6 +2373,11 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                     continue;
                 }
 
+                if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                    pImpl->sleep_force_processing_skipped_[idx] = 1;
+                    continue;
+                }
+
                 if (debug.gravity_skipped_for_support) {
                     continue;
                 }
@@ -2116,11 +2408,17 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                     continue;
                 }
 
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
                 Cell& cell = data.at(x, y);
 
                 // Skip organism cells - they're handled by resolveRigidBodies().
                 if (organism_manager_->hasOrganism(
                         Vector2i{ static_cast<int>(x), static_cast<int>(y) })) {
+                    continue;
+                }
+
+                if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                    pImpl->sleep_force_processing_skipped_[idx] = 1;
                     continue;
                 }
 
@@ -2417,6 +2715,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     const double gravity = pImpl->physicsSettings_.gravity;
     const float gravityMagnitude = static_cast<float>(std::abs(gravity));
     const int supportOffsetY = gravity > 0.0 ? 1 : -1;
+    const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
 
     // Pre-allocate moves vector based on previous frame's count.
     static size_t last_move_count = 0;
@@ -2469,10 +2768,17 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
+            const size_t cellIndex = static_cast<size_t>(y) * data.width + x;
             Cell& cell = data.at(x, y);
+            CellDebug& debug = data.debug_info[cellIndex];
 
             // Skip empty, wall, and air cells - they don't generate material moves.
             if (cell.isEmpty() || cell.isWall() || cell.isAir()) {
+                continue;
+            }
+
+            if (shouldEnforceRegionSleep(region_activity_tracker, cell, x, y)) {
+                pImpl->sleep_move_generation_skipped_[cellIndex] = 1;
                 continue;
             }
 
@@ -2540,8 +2846,6 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                 Vector2i targetPos = Vector2i(x, y) + direction;
 
                 if (isValidCell(targetPos)) {
-                    const size_t cellIndex = static_cast<size_t>(y) * data.width + x;
-                    CellDebug& debug = data.debug_info[cellIndex];
                     const uint8_t directionMask = directionToMask(direction);
                     const bool isGravityCompressionCandidate =
                         isSupportedGranularCompressionCandidate(

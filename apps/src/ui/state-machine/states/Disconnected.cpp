@@ -35,6 +35,7 @@ constexpr int ICON_RAIL_WIDTH = 80;
 constexpr int STATUS_HEIGHT = 60;
 constexpr uint32_t BG_COLOR = 0x202020;
 constexpr uint32_t RAIL_COLOR = 0x303030;
+constexpr float WATER_VOLUME_RENDER_EPSILON = 0.0001f;
 
 State::Any selectPostConnectState(StateMachine& sm)
 {
@@ -70,6 +71,42 @@ State::Any selectPostConnectState(StateMachine& sm)
 
     LOG_INFO(State, "Server not in evolution, transitioning to StartMenu");
     return StartMenu{};
+}
+
+void applyStreamedWaterOverlay(const RenderMessage& renderMsg, WorldData& worldData)
+{
+    if (!renderMsg.water_volume.has_value()) {
+        return;
+    }
+
+    const size_t cellCount = static_cast<size_t>(renderMsg.width) * renderMsg.height;
+    if (renderMsg.water_volume->size() != cellCount || worldData.cells.size() != cellCount) {
+        return;
+    }
+
+    worldData.water_volume.emplace(cellCount, 0.0f);
+
+    for (size_t idx = 0; idx < cellCount; ++idx) {
+        const float volume = (*renderMsg.water_volume)[idx] / 255.0f;
+        if (volume <= WATER_VOLUME_RENDER_EPSILON) {
+            continue;
+        }
+
+        (*worldData.water_volume)[idx] = volume;
+
+        Cell& cell = worldData.cells[idx];
+        if (!cell.isEmpty() && cell.material_type != Material::EnumType::Air) {
+            continue;
+        }
+
+        cell.material_type = Material::EnumType::Water;
+        cell.fill_ratio = volume;
+        cell.render_as = -1;
+
+        if (idx < worldData.colors.size()) {
+            worldData.colors.data[idx] = ColorNames::toRgbF(ColorNames::water());
+        }
+    }
 }
 
 } // namespace
@@ -425,6 +462,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     }
                 }
             }
+
+            applyStreamedWaterOverlay(renderMsg, worldData);
 
             // Apply sparse organism data.
             worldData.organism_ids =

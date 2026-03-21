@@ -1910,10 +1910,7 @@ double ClockScenario::countWaterInBottomThird(const World& world) const
 
     for (int y = bottom_third_start; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
-            const Cell& cell = data.at(x, y);
-            if (cell.material_type == Material::EnumType::Water) {
-                total_water += cell.fill_ratio;
-            }
+            total_water += world.getBulkWaterAmountAtCell(x, y);
         }
     }
 
@@ -1930,10 +1927,7 @@ double ClockScenario::countWaterInTopThird(const World& world) const
 
     for (int y = 1; y < top_third_end; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
-            const Cell& cell = data.at(x, y);
-            if (cell.material_type == Material::EnumType::Water) {
-                total_water += cell.fill_ratio;
-            }
+            total_water += world.getBulkWaterAmountAtCell(x, y);
         }
     }
 

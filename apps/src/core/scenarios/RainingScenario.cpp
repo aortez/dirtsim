@@ -6,6 +6,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "spdlog/spdlog.h"
+#include <algorithm>
 
 namespace DirtSim {
 
@@ -54,6 +55,7 @@ void RainingScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
+    world.clearAllBulkWater();
 
     // Add a solid floor of walls.
     uint32_t bottomY = world.getData().height - 1;
@@ -85,6 +87,12 @@ void RainingScenario::tick(World& world, double deltaTime)
         for (int y = 0; y < world.getData().height; ++y) {
             for (int x = 0; x < world.getData().width; ++x) {
                 const Cell& cell = world.getData().at(x, y);
+                const float waterAmount = world.getBulkWaterAmountAtCell(x, y);
+                if (waterAmount > 0.0f) {
+                    totalFill += waterAmount;
+                    continue;
+                }
+
                 if (cell.material_type != Material::EnumType::Air) {
                     totalFill += cell.fill_ratio;
                 }
@@ -101,12 +109,12 @@ void RainingScenario::tick(World& world, double deltaTime)
 
             for (int y = 0; y < world.getData().height; ++y) {
                 for (int x = 0; x < world.getData().width; ++x) {
-                    Cell& cell = world.getData().at(x, y);
-                    if (cell.material_type == Material::EnumType::Water) {
-                        cell.fill_ratio -= evaporationRate * deltaTime;
-                        if (cell.fill_ratio < 0.01) {
-                            cell.replaceMaterial(Material::EnumType::Air, 0.0);
-                        }
+                    const float waterAmount = world.getBulkWaterAmountAtCell(x, y);
+                    if (waterAmount > 0.0f) {
+                        const float evaporationAmount =
+                            static_cast<float>(evaporationRate * deltaTime);
+                        const float nextAmount = std::max(0.0f, waterAmount - evaporationAmount);
+                        world.setBulkWaterAmountAtCell(x, y, nextAmount);
                     }
                 }
             }
@@ -122,8 +130,7 @@ void RainingScenario::tick(World& world, double deltaTime)
         uint32_t y = 1; // Start near top.
 
         // Add water at the position.
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Water, 0.5);
+        world.addBulkWaterAtCell({ static_cast<int16_t>(x), static_cast<int16_t>(y) }, 0.5f);
     }
 
     // Manage drain opening in the floor and evaporate water in the drain.
@@ -145,12 +152,9 @@ void RainingScenario::tick(World& world, double deltaTime)
             if (cell.material_type == Material::EnumType::Wall) {
                 cell.replaceMaterial(Material::EnumType::Air, 0.0);
             }
-            else if (cell.material_type == Material::EnumType::Water) {
-                // Evaporate water at 10% per tick.
-                cell.fill_ratio -= 0.1;
-                if (cell.fill_ratio < 0.01) {
-                    cell.replaceMaterial(Material::EnumType::Air, 0.0);
-                }
+            else if (world.hasBulkWaterAtCell(x, bottomY)) {
+                const float waterAmount = world.getBulkWaterAmountAtCell(x, bottomY);
+                world.setBulkWaterAmountAtCell(x, bottomY, std::max(0.0f, waterAmount - 0.1f));
             }
         }
         else {

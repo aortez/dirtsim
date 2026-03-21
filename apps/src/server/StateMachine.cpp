@@ -113,6 +113,19 @@ uint64_t steadyClockNowNs()
                                      .count());
 }
 
+std::vector<uint8_t> quantizeWaterVolume(const WaterVolumeView& waterVolumeView)
+{
+    std::vector<uint8_t> quantized;
+    quantized.reserve(waterVolumeView.volume.size());
+
+    for (const float volume : waterVolumeView.volume) {
+        const float clamped = std::clamp(volume, 0.0f, 1.0f);
+        quantized.push_back(static_cast<uint8_t>(std::lround(clamped * 255.0f)));
+    }
+
+    return quantized;
+}
+
 bool persistUserSettingsToDisk(
     const std::filesystem::path& filePath, const UserSettings& userSettings)
 {
@@ -2144,6 +2157,10 @@ void StateMachine::broadcastRenderMessage(
             && waterVolumeView->width == msg.width && waterVolumeView->height == msg.height
             && static_cast<size_t>(waterVolumeView->width) * waterVolumeView->height
                 == waterVolumeView->volume.size()) {
+            if (msg.format == RenderFormat::EnumType::Debug) {
+                msg.water_volume = quantizeWaterVolume(*waterVolumeView);
+            }
+
             if (msg.format == RenderFormat::EnumType::Basic) {
                 const size_t cellCount = static_cast<size_t>(msg.width) * msg.height;
                 if (msg.payload.size() == cellCount * sizeof(BasicCell)) {

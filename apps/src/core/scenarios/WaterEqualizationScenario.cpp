@@ -55,12 +55,13 @@ void WaterEqualizationScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
+    world.clearAllBulkWater();
 
     // Setup world geometry only - preserve user's physics settings.
     // 3x6 world with water on left, wall separator in middle, air on right.
     // Left column (x=0): fill with water.
     for (int y = 0; y < 6; y++) {
-        world.addMaterialAtCell({ 0, static_cast<int16_t>(y) }, Material::EnumType::Water, 1.0);
+        world.addBulkWaterAtCell({ 0, static_cast<int16_t>(y) }, 1.0f);
     }
 
     // Middle column (x=1): wall barrier with bottom cell open for flow.

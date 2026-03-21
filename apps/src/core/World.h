@@ -231,10 +231,22 @@ public:
     GridOfCells& getGrid();
     const GridOfCells& getGrid() const;
     const WorldRegionActivityTracker& getRegionActivityTracker() const;
+    bool wasSleepForceProcessingSkippedAtCell(int x, int y) const;
+    bool wasSleepMoveGenerationSkippedAtCell(int x, int y) const;
 
     // Physics settings - public accessors for Pimpl-stored settings.
     PhysicsSettings& getPhysicsSettings();
     const PhysicsSettings& getPhysicsSettings() const;
+
+    void addBulkWaterAtCell(Vector2s pos, float amount = 1.0f);
+    void addBulkWaterAtCell(int x, int y, float amount = 1.0f);
+    void clearAllBulkWater();
+    float getBulkWaterAmountAtCell(Vector2s pos) const;
+    float getBulkWaterAmountAtCell(int x, int y) const;
+    bool hasBulkWaterAtCell(Vector2s pos, float minAmount = 0.0001f) const;
+    bool hasBulkWaterAtCell(int x, int y, float minAmount = 0.0001f) const;
+    void setBulkWaterAmountAtCell(Vector2s pos, float amount);
+    void setBulkWaterAmountAtCell(int x, int y, float amount);
 
     bool tryGetWaterVolumeView(WaterVolumeView& out) const;
     bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out);

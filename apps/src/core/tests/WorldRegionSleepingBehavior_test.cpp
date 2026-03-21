@@ -61,6 +61,8 @@ struct RegionFrameSample {
     int near_bottom_cells = 0;
     int near_top_cells = 0;
     int gravity_skipped_cells = 0;
+    int sleep_skipped_force_processing_cells = 0;
+    int sleep_skipped_move_generation_cells = 0;
     int support_path_cells = 0;
     int carrying_load_cells = 0;
     int generated_move_cells = 0;
@@ -957,6 +959,8 @@ std::string dumpSandboxDirtRegionDetails(const World& world, const SandboxRegion
             << " role=" << role << " state=" << regionStateToChar(sample.state)
             << " wake=" << wakeReasonToChar(sample.wake_reason) << " meanV=" << sample.mean_velocity
             << " maxV=" << sample.max_velocity
+            << " skipF=" << sample.sleep_skipped_force_processing_cells
+            << " skipM=" << sample.sleep_skipped_move_generation_cells
             << " moves=" << sample.generated_moves + sample.received_moves
             << " ok=" << sample.successful_outgoing_transfers + sample.successful_incoming_transfers
             << " empty=" << summary.has_empty_adjacency << " mixed=" << summary.has_mixed_material
@@ -3302,6 +3306,12 @@ RegionFrameSample sampleRegionFrame(const World& world, RegionCoord region, int 
             if (debug.gravity_skipped_for_support) {
                 sample.gravity_skipped_cells++;
             }
+            if (world.wasSleepForceProcessingSkippedAtCell(x, y)) {
+                sample.sleep_skipped_force_processing_cells++;
+            }
+            if (world.wasSleepMoveGenerationSkippedAtCell(x, y)) {
+                sample.sleep_skipped_move_generation_cells++;
+            }
             if (debug.has_granular_support_path) {
                 sample.support_path_cells++;
             }
@@ -4281,6 +4291,65 @@ TEST(WorldRegionSleepingBehaviorTest, SandboxQuadrantWallOnlyMixesDoNotCountAsMi
     EXPECT_GE(static_cast<int>(buckets.interior_dirt_regions.size()), 4)
         << "Expected wall-backed dirt regions to become interior candidates once wall-only mixes"
         << " stop forcing Awake.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, SandboxInteriorDirtSleepEnforcementSkipsDryForceAndMoveWork)
+{
+    constexpr int kSleepEnforcementSettleSteps = kSettleSteps + 48;
+
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    initializeSandboxQuadrantWorld(world);
+
+    settleWorld(world, kSleepEnforcementSettleSteps);
+
+    const GridOfCells grid = makeGrid(world);
+    const SandboxRegionBuckets buckets = classifySandboxDirtRegions(world, grid);
+
+    SCOPED_TRACE(dumpSandboxDirtRoleMap(world, buckets));
+    SCOPED_TRACE(dumpSandboxDirtRegionDetails(world, buckets));
+
+    ASSERT_FALSE(buckets.interior_dirt_regions.empty())
+        << "Expected sandbox quadrant world to contain interior dirt regions.";
+    ASSERT_FALSE(buckets.exposed_dirt_regions.empty())
+        << "Expected sandbox quadrant world to contain exposed dirt regions.";
+
+    int sleeping_interior_regions = 0;
+    int skipped_force_interior_regions = 0;
+    int skipped_move_interior_regions = 0;
+
+    for (const RegionCoord& region : buckets.interior_dirt_regions) {
+        const RegionFrameSample sample =
+            sampleRegionFrame(world, region, kSleepEnforcementSettleSteps);
+        if (sample.state != RegionState::Sleeping) {
+            continue;
+        }
+
+        sleeping_interior_regions++;
+        if (sample.sleep_skipped_force_processing_cells > 0) {
+            skipped_force_interior_regions++;
+        }
+        if (sample.sleep_skipped_move_generation_cells > 0) {
+            skipped_move_interior_regions++;
+        }
+    }
+
+    for (const RegionCoord& region : buckets.exposed_dirt_regions) {
+        const RegionFrameSample sample =
+            sampleRegionFrame(world, region, kSleepEnforcementSettleSteps);
+        EXPECT_EQ(sample.sleep_skipped_force_processing_cells, 0)
+            << "Expected exposed dirt region (" << region.x << "," << region.y
+            << ") to remain tracked-only during the first enforced sleeping slice.";
+        EXPECT_EQ(sample.sleep_skipped_move_generation_cells, 0)
+            << "Expected exposed dirt region (" << region.x << "," << region.y
+            << ") to keep generating moves normally during the first enforced sleeping slice.";
+    }
+
+    EXPECT_GT(sleeping_interior_regions, 0)
+        << "Expected at least one interior dirt region to reach Sleeping state.";
+    EXPECT_GT(skipped_force_interior_regions, 0)
+        << "Expected at least one sleeping interior dirt region to skip force processing.";
+    EXPECT_GT(skipped_move_interior_regions, 0)
+        << "Expected at least one sleeping interior dirt region to skip move generation.";
 }
 
 TEST_P(WorldRegionSleepingBehaviorParamTest, BuriedRegionQuietStateMatchesGravityMode)
