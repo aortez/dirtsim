@@ -10,6 +10,7 @@ BUILD_DIR := build-debug  # Default to debug for backward compatibility.
 BIN_DIR := bin
 ROOT_DIR := $(abspath ..)
 NES_TEST_ROM_PATH := testdata/roms/Flappy.Paratroopa.World.Unl.nes
+NES_SMB_TEST_ROM_PATH ?= testdata/roms/smb.nes
 NES_TEST_ROM_FETCH_SCRIPT := scripts/fetch_nes_test_rom.sh
 
 # Cross-compilation directories (aarch64).
@@ -71,9 +72,15 @@ endef
 # Test binary names.
 TEST_BINARY := dirtsim-tests
 TEST_SLOW_BINARY := dirtsim-tests-slow
+TEST_SLOW_PHYSICS_BINARY := dirtsim-tests-slow-physics
+TEST_DIAGNOSTIC_BINARY := dirtsim-tests-diagnostic
 MAIN_BINARY := dirtsim
 
-.PHONY: all clean debug release asan build-tests build-tests-slow fetch-nes-test-rom test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
+FAST_TEST_EXCLUDES := CacheCorrectnessTest.CachedAndNonCachedProduceIdenticalResults:DuckNeuralNetRecurrentBrainV2Test.RandomGenomesProduceCommandDiversity:DuckHealthTest.Calibration*:CalibrationDrops/*
+SLOW_TEST_FILTER := CacheCorrectnessTest.CachedAndNonCachedProduceIdenticalResults
+DIAGNOSTIC_TEST_FILTER := DiagonalWaterLevelingTest.*:DuckNeuralNetRecurrentBrainV2Test.RandomGenomesProduceCommandDiversity:TreeNeuralNetworkTest.*:NesSuperMarioBrosRamProbeTest.*:SmolnesPpuPerformance.*:DuckHealthTest.Calibration*:CalibrationDrops/*:TrainingRunnerTest.TreeScenarioBrainHarness
+
+.PHONY: all clean debug release asan build-tests build-tests-slow build-tests-slow-physics build-tests-diagnostic fetch-nes-test-rom test test-slow test-slow-core test-slow-physics test-diagnostic test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
 
 all: release
 
@@ -87,8 +94,9 @@ release:
 	$(call show_build_stats)
 
 release-verify: release
+	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests to verify build..."
-	@./$(BUILD_RELEASE_DIR)/$(BIN_DIR)/$(TEST_BINARY)
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ./$(BUILD_RELEASE_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='-$(FAST_TEST_EXCLUDES)'
 
 debug:
 	@echo "Building debug version..."
@@ -119,25 +127,42 @@ build-tests: debug
 build-tests-slow: debug
 	@echo "Slow test binary built successfully: $(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_BINARY)"
 
+build-tests-slow-physics: debug
+	@echo "Slow physics test binary built successfully: $(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_PHYSICS_BINARY)"
+
+build-tests-diagnostic: debug
+	@echo "Diagnostic test binary built successfully: $(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_DIAGNOSTIC_BINARY)"
+
 test: build-tests
 	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests..."
-	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='-$(FAST_TEST_EXCLUDES)' $(ARGS)
 
 fetch-nes-test-rom:
 	@echo "Preparing NES test ROM..."
 	@./$(NES_TEST_ROM_FETCH_SCRIPT)
 
-test-slow: build-tests-slow
+test-slow-core: build-tests-slow
 	@echo "Running slow tests..."
-	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_BINARY) $(ARGS)
+	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_BINARY) --gtest_filter='$(SLOW_TEST_FILTER)' $(ARGS)
+
+test-slow-physics: build-tests-slow-physics
+	@echo "Running slow physics tests..."
+	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_SLOW_PHYSICS_BINARY) $(ARGS)
+
+test-slow: test-slow-core test-slow-physics
+
+test-diagnostic: build-tests-diagnostic
+	@$(MAKE) fetch-nes-test-rom
+	@echo "Running diagnostic tests..."
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" DIRTSIM_NES_SMB_TEST_ROM_PATH="$(NES_SMB_TEST_ROM_PATH)" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_DIAGNOSTIC_BINARY) --gtest_filter='$(DIAGNOSTIC_TEST_FILTER)' $(ARGS)
 
 test-asan: asan
 	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests with AddressSanitizer..."
-	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:print_stats=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:print_stats=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='-$(FAST_TEST_EXCLUDES)' $(ARGS)
 
-test-all: test test-slow visual-tests
+test-all: test test-slow test-diagnostic visual-tests
 
 visual-tests:
 	@echo "Running visual tests..."
@@ -148,7 +173,7 @@ visual-tests:
 	@if [ -z "$$DISPLAY" ] && [ -z "$$WAYLAND_DISPLAY" ]; then \
 		echo "Warning: No display detected. Visual tests may not work properly."; \
 	fi
-	@SPARKLE_DUCK_VISUAL_TESTS=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) $(ARGS)
+	@SPARKLE_DUCK_VISUAL_TESTS=1 ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='-$(FAST_TEST_EXCLUDES)' $(ARGS)
 
 run:
 	@echo "Running dirtsim (debug)..."
@@ -195,7 +220,7 @@ format-check:
 
 check: format-check lint build-tests
 	@echo "Running unit tests..."
-	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_brief=1
+	@$(MAKE) test ARGS='--gtest_brief=1'
 	@echo ""
 	@echo "✅ All checks passed!"
 
@@ -248,11 +273,16 @@ help:
 	@echo "  asan           - Build debug version with AddressSanitizer enabled"
 	@echo "  build-tests    - Build test binary without running tests"
 	@echo "  build-tests-slow - Build slow test binary"
+	@echo "  build-tests-slow-physics - Build slow physics test binary"
+	@echo "  build-tests-diagnostic - Build diagnostic test binary"
 	@echo "  fetch-nes-test-rom - Download MIT-licensed NES ROM fixture for tests"
 	@echo "  test           - Build debug and run unit tests (fast)"
-	@echo "  test-slow      - Run slow integration/stress tests"
+	@echo "  test-slow      - Run all CI-covered slow tests"
+	@echo "  test-slow-core - Run non-physics CI slow tests"
+	@echo "  test-slow-physics - Run CI slow physics regression tests"
+	@echo "  test-diagnostic - Run local-only diagnostic/calibration tests"
 	@echo "  test-asan      - Build and run tests with AddressSanitizer"
-	@echo "  test-all       - Run all tests (unit + slow + visual)"
+	@echo "  test-all       - Run fast, slow, diagnostic, and visual tests"
 	@echo "  visual-tests   - Run tests with visual output enabled"
 	@echo "  run            - Run the main dirtsim executable"
 	@echo "  run-asan       - Run with AddressSanitizer to detect memory errors"

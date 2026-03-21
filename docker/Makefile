@@ -9,7 +9,7 @@
 #   make clean-image    # Remove Docker image
 #   make help           # Show this help
 
-.PHONY: help build-image build-debug build-release test format format-check lint ccache-stats shell clean-image print-image docs-screenshots
+.PHONY: help build-image build-debug build-release test test-slow test-slow-physics test-diagnostic format format-check lint ccache-stats shell clean-image print-image docs-screenshots
 
 # Image name and tag.
 IMAGE_NAME := dirtsim-builder
@@ -62,7 +62,10 @@ help:
 	@echo "  make build-image    - Build the Docker image with all dependencies"
 	@echo "  make build-debug    - Build dirtsim (debug) inside Docker container"
 	@echo "  make build-release  - Build dirtsim (release) inside Docker container"
-	@echo "  make test           - Run unit tests inside Docker container"
+	@echo "  make test           - Run fast tests inside Docker container"
+	@echo "  make test-slow      - Run all CI slow tests inside Docker container"
+	@echo "  make test-slow-physics - Run slow physics tests inside Docker container"
+	@echo "  make test-diagnostic - Run local-only diagnostic tests inside Docker container"
 	@echo "  make format         - Format code inside Docker container"
 	@echo "  make format-check   - Check code formatting inside Docker container"
 	@echo "  make lint           - Run JavaScript lint inside Docker container"
@@ -92,7 +95,19 @@ build-release: build-image
 
 test: build-image
 	@echo "Running tests in Docker..."
-	$(DOCKER_RUN) ./build-debug/bin/dirtsim-tests
+	$(DOCKER_RUN) make test
+
+test-slow: build-image
+	@echo "Running slow tests in Docker..."
+	$(DOCKER_RUN) make test-slow
+
+test-slow-physics: build-image
+	@echo "Running slow physics tests in Docker..."
+	$(DOCKER_RUN) make test-slow-physics
+
+test-diagnostic: build-image
+	@echo "Running diagnostic tests in Docker..."
+	$(DOCKER_RUN) make test-diagnostic
 
 format: build-image
 	@echo "Formatting code in Docker..."

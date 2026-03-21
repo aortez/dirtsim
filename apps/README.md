@@ -105,10 +105,19 @@ Backend selection is done at runtime via the `-b` flag.
 ## Testing
 
 ```bash
-# Run all unit tests
+# Run the fast unit-test lane
 make test
 
-# Download/update MIT-licensed NES ROM fixture used by NES tests
+# Run the slow CI-covered regression/stress lane
+make test-slow
+
+# Run the slow physics regression lane directly
+make test-slow-physics
+
+# Run local-only diagnostic, calibration, and probe tests
+make test-diagnostic
+
+# Download/update the MIT-licensed NES ROM fixture used by Flappy NES tests
 make fetch-nes-test-rom
 
 # Run specific test
@@ -117,6 +126,8 @@ make test ARGS='--gtest_filter=StateIdle*'
 # Run with AddressSanitizer (memory error detection)
 make test-asan
 ```
+
+`make test` and `make test-slow` are the CI lanes. `make test-slow` is the umbrella over the CI slow subgroups, including `make test-slow-physics`. `make test-diagnostic` is intentionally local-only and includes probe/calibration/performance coverage that may require extra local fixtures such as `testdata/roms/smb.nes` or `DIRTSIM_NES_SMB_TEST_ROM_PATH`.
 
 ## CLI Tool
 

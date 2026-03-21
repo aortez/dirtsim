@@ -68,9 +68,13 @@ jobs:
         make ccache-stats >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
-    - name: Run unit tests
+    - name: Run fast tests
       working-directory: docker
       run: make test
+
+    - name: Run slow tests
+      working-directory: docker
+      run: make test-slow
 
     - name: Prepare Yocto cache
       run: |

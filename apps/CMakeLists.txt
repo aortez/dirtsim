@@ -874,7 +874,6 @@ add_executable(dirtsim-tests
     src/tests/WaterEqualization_test.cpp
     src/tests/WaterMacBuoyancy_test.cpp
     src/tests/WaterMacQuadrantEqualization_test.cpp
-    src/tests/WaterMacStability_test.cpp
     src/tests/WorldRigidBodyCalculator_test.cpp
 
     # Bitmap tests.
@@ -890,7 +889,6 @@ add_executable(dirtsim-tests
     src/core/tests/LightPropagator_test.cpp
     src/core/tests/UUID_test.cpp
     src/core/tests/WorldRegionActivityTracker_test.cpp
-    src/core/tests/WorldRegionSleepingBehavior_test.cpp
     src/core/tests/WorldStaticLoadCalculator_test.cpp
 
     src/core/tests/WorldResize_test.cpp
@@ -906,7 +904,6 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesSmolnesScenarioDriver_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamExtractor_test.cpp
-    src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosResponseProbe_test.cpp
     src/core/scenarios/tests/NesSuperTiltBroRamProbe_test.cpp
     src/core/scenarios/tests/NesFlappyParatroopaRamExtractor_test.cpp
@@ -914,7 +911,6 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/SmolnesApu_test.cpp
     src/core/scenarios/tests/SmolnesApuRegisterCapture_test.cpp
     src/core/scenarios/tests/SmolnesApuSampleBuffer_test.cpp
-    src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp
@@ -929,9 +925,9 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckHealth_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
-	    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
-	    src/core/organisms/tests/DuckWings_test.cpp
-	    src/core/organisms/tests/Genome_test.cpp
+    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
+    src/core/organisms/tests/DuckWings_test.cpp
+    src/core/organisms/tests/Genome_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp
@@ -940,7 +936,6 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/NeuralNetBrain_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp
-    src/core/organisms/tests/TreeNeuralNetwork_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
     src/core/organisms/evolution/tests/FitnessCalculator_test.cpp
     src/core/organisms/evolution/tests/FitnessResult_test.cpp
@@ -968,9 +963,9 @@ target_link_libraries(dirtsim-tests
 target_include_directories(dirtsim-tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-tests PRIVATE ${DIRTSIM_WARNINGS})
 
-# Slow test executable (integration/stress tests that take a long time).
+# Slow test executable (CI-covered integration and stress tests that take a long time).
 add_executable(dirtsim-tests-slow
-    src/tests/DiagonalWaterLeveling_test.cpp
+    src/tests/CacheCorrectness_test.cpp
 )
 target_link_libraries(dirtsim-tests-slow
     PRIVATE
@@ -978,13 +973,60 @@ target_link_libraries(dirtsim-tests-slow
     dirtsim-ui-lib
     GTest::gtest_main
     GTest::gmock_main
+    ${AVAHI_LIBRARIES}
+    ${LIBSSH2_TARGET}
     m
     pthread
 )
-target_include_directories(dirtsim-tests-slow PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR})
+target_include_directories(dirtsim-tests-slow PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-tests-slow PRIVATE ${DIRTSIM_WARNINGS})
+
+# Slow physics regression executable (CI-covered simulation-heavy physics tests).
+add_executable(dirtsim-tests-slow-physics
+    src/tests/WaterMacStability_test.cpp
+    src/core/tests/WorldRegionSleepingBehavior_test.cpp
+)
+target_link_libraries(dirtsim-tests-slow-physics
+    PRIVATE
+    dirtsim-server-lib
+    dirtsim-ui-lib
+    GTest::gtest_main
+    GTest::gmock_main
+    ${AVAHI_LIBRARIES}
+    ${LIBSSH2_TARGET}
+    m
+    pthread
+)
+target_include_directories(dirtsim-tests-slow-physics PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
+target_compile_options(dirtsim-tests-slow-physics PRIVATE ${DIRTSIM_WARNINGS})
+
+# Diagnostic test executable (local-only calibration, performance, probe, and harness tests).
+add_executable(dirtsim-tests-diagnostic
+    src/tests/DiagonalWaterLeveling_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
+    src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
+    src/core/organisms/tests/DuckHealth_test.cpp
+    src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp
+    src/core/organisms/tests/TreeNeuralNetwork_test.cpp
+    src/core/organisms/evolution/tests/TrainingRunnerTreeHarness_test.cpp
+)
+target_link_libraries(dirtsim-tests-diagnostic
+    PRIVATE
+    dirtsim-server-lib
+    dirtsim-ui-lib
+    GTest::gtest_main
+    GTest::gmock_main
+    ${AVAHI_LIBRARIES}
+    ${LIBSSH2_TARGET}
+    m
+    pthread
+)
+target_include_directories(dirtsim-tests-diagnostic PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
+target_compile_options(dirtsim-tests-diagnostic PRIVATE ${DIRTSIM_WARNINGS})
 
 # Enable testing.
 enable_testing()
 add_test(NAME dirtsim-tests COMMAND dirtsim-tests)
 add_test(NAME dirtsim-tests-slow COMMAND dirtsim-tests-slow)
+add_test(NAME dirtsim-tests-slow-physics COMMAND dirtsim-tests-slow-physics)
+# Diagnostic tests are intentionally local-only and are not registered with CTest.
