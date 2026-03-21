@@ -39,6 +39,17 @@ consistent.
 - Tests exist for: opening flow equalization, 50×50 quadrant equalization, resting pool stability,
   and basic solid displacement volume conservation.
 
+### Current Migration State (as of 2026-03-21)
+
+- The default mode flipped globally before the legacy `Cell.material_type == Water` codepaths were
+  fully retired.
+- Some scenarios and helpers still assume water is stored directly in `Cell`, so compatibility work
+  is still incomplete.
+- Scenario setup and reset code must clear or repopulate the separate `waterVolume` layer
+  explicitly; clearing only the cell grid is not sufficient when a `World` instance is reused.
+- Streamed **Debug** render still does not carry the separate water layer; only **Basic** render
+  gets the server-side water overlay, while `StateGet` exposes `water_volume` directly.
+
 ### Known Issues / Needs Work
 
 - Water motion can be unstable/jittery in Sandbox; wall pile-ups and “floating” artifacts can
@@ -147,6 +158,13 @@ The key is keeping a stable boundary between `World` and the water subsystem:
   - equalization through a 1-cell opening,
   - resting pool stability.
 
+Historical note:
+
+- The implementation has moved past this narrow sandbox-only phase in one important sense:
+  `WaterSimMode::MacProjection` is now the global default.
+- The migration is still incomplete, though, so parts of the codebase continue to behave as if this
+  phase and the later legacy-retirement phase are overlapping.
+
 ### Phase 2 (Cell coupling + displacement)
 
 - When solids are placed/removed, update obstacle mask and displace water.
@@ -163,9 +181,13 @@ The key is keeping a stable boundary between `World` and the water subsystem:
 - **Stability tests:** sealed tank with flat surface converges to near-zero motion.
 - **Regression harness:** compare volume conservation and convergence time across modes.
 
+## Current Serialization Rule
+
+- `waterVolume` is already serialized for transport and save/load in the current implementation.
+- Backwards compatibility is **explicitly not supported** and is not planned.
+- The format may change at any time without version tags, migrations, or compatibility shims.
+
 ## Open Questions
 
-- Serialization format for `waterVolume` (binary transport + save/load). Backwards compatibility is
-  **explicitly not supported**; save formats may change/break without version tags.
 - How to best represent “wetness” or mixing if dirt absorbs water (separate system vs coupling).
 - Whether to support negative pressure / cavitation-like artifacts or clamp for stability.

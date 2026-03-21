@@ -313,7 +313,8 @@ The first implementation should always keep a boundary shell awake:
 
 - any region touching empty space,
 - any region touching water,
-- any region with mixed materials,
+- any region with mixed materials, except wall-only dirt/sand plus static-wall mixes, which should
+  not force `Awake` by themselves,
 - any region touched by a recent edit, move, swap, or collision,
 - any 1-block halo around the above regions.
 
@@ -508,6 +509,15 @@ Important rollout constraint:
   more selective.
 - Steps 6 and 7 are the first places that should actually skip work.
 
+Current branch status as of 2026-03-21:
+
+- region metadata, wake reasons, and debug overlays exist,
+- `static_load` is computed and fed into several awake-solver mechanics,
+- the active-region mask is still not wired into the main force-accumulation and move-generation
+  loops,
+- regions can therefore report `LoadedQuiet` or `Sleeping` without yet reducing the core
+  per-frame work.
+
 That keeps water correctness safer while still attacking the expensive dirt-interior loops.
 
 ### Phase 0: Instrumentation and Scaffolding
@@ -542,7 +552,8 @@ Acceptance criteria:
 
 - the UI can show both `static_load` and live pressure separately,
 - wake reasons can be logged or inspected,
-- no physics behavior changes yet.
+- this milestone originally targeted no physics behavior changes yet, but that is now obsolete:
+  later solver iterations in this branch already changed awake-physics behavior.
 
 ### Phase 1a: Static Load Data Path
 
@@ -1180,7 +1191,10 @@ Recommended automated coverage:
 - A transfer-quiet scheduler heuristic may be useful even if the underlying mechanics are still
   somewhat jittery, but wake thresholds will need careful tuning to avoid visible pops.
 - Global `GridOfCells` cache rebuilds still limit maximum performance until dirty tracking is added.
-- The UI debug path currently assumes one unified pressure value and must be updated carefully.
+- The UI debug path no longer assumes one unified pressure value; it already transports and displays
+  `static_load` separately from live pressure.
+- The remaining UI gap is the separate water-layer debug/render path: `StateGet` exposes
+  `water_volume`, but streamed debug render still needs explicit support.
 - The existing pressure settings and material-property names still reflect older terminology and
   should be cleaned up as part of implementation.
 
