@@ -166,6 +166,70 @@ TEST(DuckClockEvaluationTrackerTest, DoesNotRewardFallingAcrossPitWithoutJumpLif
     EXPECT_EQ(artifacts.pitOpportunities, 1);
 }
 
+TEST(DuckClockEvaluationTrackerTest, RearmsObstacleOpportunityAfterOppositeWallTraversal)
+{
+    DuckClockEvaluationTracker tracker;
+    tracker.reset();
+
+    const std::array<FloorObstacle, 1> pit{
+        FloorObstacle{
+            .start_x = 5,
+            .width = 2,
+            .type = FloorObstacleType::PIT,
+        },
+    };
+
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 1, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 4, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 8, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 4, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+
+    DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
+    EXPECT_EQ(artifacts.pitOpportunities, 1);
+
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 18, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 7, 8 },
+            .duckOnGround = true,
+            .obstacles = pit,
+        });
+
+    artifacts = tracker.buildArtifacts();
+    EXPECT_EQ(artifacts.pitOpportunities, 2);
+}
+
 TEST(DuckClockEvaluationTrackerTest, MarkExitedThroughDoorSetsFullExitState)
 {
     DuckClockEvaluationTracker tracker;

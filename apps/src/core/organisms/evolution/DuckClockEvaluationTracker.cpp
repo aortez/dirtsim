@@ -246,6 +246,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             ++artifacts_.leftWallTouches;
             if (lastTouchedWallZone_ == WallZone::Right) {
                 ++artifacts_.fullTraversals;
+                activeOpportunityObstacles_.clear();
             }
             lastTouchedWallZone_ = WallZone::Left;
             break;
@@ -253,6 +254,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             ++artifacts_.rightWallTouches;
             if (lastTouchedWallZone_ == WallZone::Left) {
                 ++artifacts_.fullTraversals;
+                activeOpportunityObstacles_.clear();
             }
             lastTouchedWallZone_ = WallZone::Right;
             break;
