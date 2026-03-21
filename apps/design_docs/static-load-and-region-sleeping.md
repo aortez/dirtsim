@@ -1,5 +1,9 @@
 # Static Load and Region Sleeping
 
+Current execution/rollout plan:
+
+- `apps/design_docs/sleep-water-completion-plan.md`
+
 ## Overview
 
 This document proposes adding a derived `static_load` field for load-bearing granular materials

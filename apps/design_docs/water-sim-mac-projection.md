@@ -1,5 +1,9 @@
 # Water Simulation Rewrite: MAC Projection + Separate Water Layer
 
+Current execution/rollout plan:
+
+- `apps/design_docs/sleep-water-completion-plan.md`
+
 ## Context
 
 The current water implementation is entangled with the per-cell COM transfer solver.
