@@ -249,7 +249,8 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     move.collision_type =
         determineCollisionType(fromCell.material_type, toCell.material_type, move.collision_energy);
 
-    if (isFluidBlockedContactCandidate(fromCell, toCell, fromPos, toPos, move.amount)) {
+    if (world.getPhysicsSettings().water_sim_mode == WaterSimMode::MacProjection
+        && isFluidBlockedContactCandidate(fromCell, toCell, fromPos, toPos, move.amount)) {
         move.collision_type = CollisionType::FLUID_BLOCKED_CONTACT;
         move.pressure_from_excess = 0.0f;
         move.restitution_coefficient = 0.0f;

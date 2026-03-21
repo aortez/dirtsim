@@ -91,7 +91,8 @@ TEST(WorldRegionActivityTrackerTest, WaterAdjacencyPreventsSleeping)
 {
     World world(8, 8);
     fillWorld(world, Material::EnumType::Dirt);
-    world.replaceMaterialAtCell(Vector2s{ 4, 4 }, Material::EnumType::Water);
+    world.clearCellAtPosition(Vector2s{ 4, 4 });
+    world.addMaterialAtCell(Vector2s{ 4, 4 }, Material::EnumType::Water, 1.0f);
 
     GridOfCells grid = makeGrid(world);
     WorldRegionActivityTracker tracker;
@@ -103,6 +104,7 @@ TEST(WorldRegionActivityTrackerTest, WaterAdjacencyPreventsSleeping)
             .live_pressure_delta_epsilon = 0.02f,
             .static_load_delta_epsilon = 0.02f,
             .velocity_epsilon = 0.01f,
+            .keep_empty_adjacent_awake = false,
         });
 
     tracker.beginFrame(world, grid, 0);

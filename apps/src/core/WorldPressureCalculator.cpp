@@ -125,6 +125,7 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
                 weight * props.pressure_injection_weight * hydrostatic_strength * deltaTime;
 
             const size_t below_idx = static_cast<size_t>(y + 1) * data.width + x;
+            dynamic_pressure_[below_idx] += pressure_contribution;
             hydrostatic_pressure_[below_idx] += pressure_contribution;
             CellDebug& debug = data.debug_info[below_idx];
             incrementSaturating(debug.hydrostatic_pressure_injection_count);
@@ -142,7 +143,8 @@ void WorldPressureCalculator::finalizePressureFrame(World& world)
         for (int x = 0; x < data.width; ++x) {
             const size_t idx = static_cast<size_t>(y) * data.width + x;
             Cell& cell = data.at(x, y);
-            cell.pressure = std::max(0.0f, dynamic_pressure_[idx] + hydrostatic_pressure_[idx]);
+            dynamic_pressure_[idx] = std::max(0.0f, dynamic_pressure_[idx]);
+            cell.pressure = dynamic_pressure_[idx];
         }
     }
 

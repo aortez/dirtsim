@@ -6,6 +6,7 @@
 #include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
+#include "core/water/WaterVolumeView.h"
 #include "organisms/OrganismManager.h"
 #include "organisms/OrganismType.h"
 
@@ -43,6 +44,36 @@ bool isActiveState(RegionState state)
 bool isWaterCell(const Cell& cell)
 {
     return !cell.isEmpty() && cell.material_type == EnumType::Water;
+}
+
+bool hasWaterVolumeAt(const DirtSim::WaterVolumeView& waterView, int x, int y)
+{
+    constexpr float kWaterVolumeEpsilon = 0.0001f;
+
+    if (x < 0 || y < 0 || x >= waterView.width || y >= waterView.height) {
+        return false;
+    }
+
+    const size_t idx =
+        static_cast<size_t>(y) * static_cast<size_t>(waterView.width) + static_cast<size_t>(x);
+    if (idx >= waterView.volume.size()) {
+        return false;
+    }
+
+    return waterView.volume[idx] > kWaterVolumeEpsilon;
+}
+
+bool hasWaterVolumeAdjacency(const DirtSim::WaterVolumeView& waterView, int x, int y)
+{
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if (hasWaterVolumeAt(waterView, x + dx, y + dy)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 bool shouldForceAwake(
@@ -197,6 +228,9 @@ void WorldRegionActivityTracker::summarizeFrame(
 
     const WorldData& data = world.getData();
     const auto& organism_grid = world.getOrganismManager().getGrid();
+    WaterVolumeView waterView{};
+    const bool hasWaterVolume = world.tryGetWaterVolumeView(waterView)
+        && waterView.width == data.width && waterView.height == data.height;
 
     region_summary_.assign(region_summary_.size(), RegionSummary{});
     std::vector<int> region_primary_material(region_meta_.size(), -1);
@@ -227,6 +261,10 @@ void WorldRegionActivityTracker::summarizeFrame(
                 summary.has_organism = true;
             }
 
+            if (hasWaterVolume && hasWaterVolumeAdjacency(waterView, x, y)) {
+                summary.has_water_adjacency = true;
+            }
+
             if (cell.isEmpty()) {
                 continue;
             }
@@ -237,7 +275,8 @@ void WorldRegionActivityTracker::summarizeFrame(
             }
 
             const MaterialNeighborhood material_neighborhood = grid.getMaterialNeighborhood(x, y);
-            if (isWaterCell(cell) || material_neighborhood.countMaterial(EnumType::Water) > 0) {
+            if (summary.has_water_adjacency || isWaterCell(cell)
+                || material_neighborhood.countMaterial(EnumType::Water) > 0) {
                 summary.has_water_adjacency = true;
             }
 

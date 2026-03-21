@@ -1563,7 +1563,8 @@ void World::applyGravity()
     // Cache pImpl members as local references.
     WorldData& data = pImpl->data_;
     std::vector<CellDebug>& debug_info = data.debug_info;
-    const double gravity = pImpl->physicsSettings_.gravity;
+    const PhysicsSettings& settings = pImpl->physicsSettings_;
+    const double gravity = settings.gravity;
     const float gravityMagnitude = static_cast<float>(std::abs(gravity));
 
     std::vector<int8_t> granularSupportCache(data.cells.size(), -1);
@@ -1595,7 +1596,9 @@ void World::applyGravity()
                     }
                 }
 
-                if (gravityMagnitude > 0.0001f && cell.material_type == Material::EnumType::Water) {
+                if (settings.water_sim_mode == WaterSimMode::MacProjection
+                    && gravityMagnitude > 0.0001f
+                    && cell.material_type == Material::EnumType::Water) {
                     const int supportOffsetY = gravity > 0.0 ? 1 : -1;
                     const bool hasSupportPath =
                         hasSupportedFluidPath(data, x, y, supportOffsetY, fluidSupportCache);

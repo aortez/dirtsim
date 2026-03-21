@@ -2,9 +2,45 @@
 #include "core/Cell.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/water/WaterVolumeView.h"
+
+#include <algorithm>
 
 namespace DirtSim {
 namespace SensoryUtils {
+
+namespace {
+
+bool tryGetUsableWaterVolumeView(
+    const World& world, const WorldData& data, WaterVolumeView& waterView)
+{
+    return world.tryGetWaterVolumeView(waterView) && waterView.width == data.width
+        && waterView.height == data.height;
+}
+
+float getWaterVolumeAt(const WaterVolumeView& waterView, int x, int y)
+{
+    constexpr float kWaterVolumeEpsilon = 0.0001f;
+
+    if (x < 0 || y < 0 || x >= waterView.width || y >= waterView.height) {
+        return 0.0f;
+    }
+
+    const size_t idx =
+        static_cast<size_t>(y) * static_cast<size_t>(waterView.width) + static_cast<size_t>(x);
+    if (idx >= waterView.volume.size()) {
+        return 0.0f;
+    }
+
+    const float waterVolume = std::clamp(waterView.volume[idx], 0.0f, 1.0f);
+    if (waterVolume <= kWaterVolumeEpsilon) {
+        return 0.0f;
+    }
+
+    return waterVolume;
+}
+
+} // namespace
 
 template <int GridSize, int NumMaterials, typename HistogramValueType>
 TemplateMatch findTemplate(
@@ -160,6 +196,8 @@ void gatherMaterialHistograms(
     Vector2i& world_offset)
 {
     const WorldData& data = world.getData();
+    WaterVolumeView waterView{};
+    const bool hasWaterVolume = tryGetUsableWaterVolumeView(world, data, waterView);
 
     int half_window = GridSize / 2;
     int offset_x = center.x - half_window;
@@ -193,9 +231,22 @@ void gatherMaterialHistograms(
             }
 
             const Cell& cell = data.at(wx, wy);
+            if (hasWaterVolume) {
+                const float waterVolume = getWaterVolumeAt(waterView, wx, wy);
+                if (waterVolume > 0.0f) {
+                    const int waterIdx = static_cast<int>(Material::EnumType::Water);
+                    if (waterIdx >= 0 && waterIdx < NumMaterials) {
+                        histograms[ny][nx][waterIdx] = static_cast<HistogramValueType>(waterVolume);
+                    }
+                }
+            }
+
             int material_idx = static_cast<int>(cell.material_type);
             if (material_idx >= 0 && material_idx < NumMaterials) {
-                histograms[ny][nx][material_idx] = static_cast<HistogramValueType>(cell.fill_ratio);
+                const HistogramValueType existingValue = histograms[ny][nx][material_idx];
+                const HistogramValueType cellValue =
+                    static_cast<HistogramValueType>(cell.fill_ratio);
+                histograms[ny][nx][material_idx] = std::max(existingValue, cellValue);
             }
         }
     }
