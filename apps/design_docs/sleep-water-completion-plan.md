@@ -149,6 +149,9 @@ The target end state is:
   bulk-water conversion, query, and removal are in scope, but fake MAC suction or spray heuristics
   are not. Legacy-only force and spray behavior can remain limited to legacy mode until a real
   transient spray/disturbance system exists.
+- If a scenario still needs authored drain guidance in MAC mode, prefer a reusable guided-drain
+  primitive with an explicit guide band and mouth band over a world-scale attractor or ad hoc
+  cell-water hacks.
 
 #### Acceptance
 

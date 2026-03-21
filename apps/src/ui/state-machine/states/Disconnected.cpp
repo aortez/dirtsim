@@ -35,7 +35,7 @@ constexpr int ICON_RAIL_WIDTH = 80;
 constexpr int STATUS_HEIGHT = 60;
 constexpr uint32_t BG_COLOR = 0x202020;
 constexpr uint32_t RAIL_COLOR = 0x303030;
-constexpr float WATER_VOLUME_RENDER_EPSILON = 0.0001f;
+constexpr float WATER_VOLUME_RENDER_EPSILON = 0.00001f;
 
 State::Any selectPostConnectState(StateMachine& sm)
 {

@@ -8,6 +8,8 @@
 #include "TrainRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
+#include "core/RenderMessageFull.h"
+#include "core/RenderMessageUtils.h"
 #include "core/Result.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
@@ -41,6 +43,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -63,6 +66,7 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <variant>
+#include <zpp_bits.h>
 
 using namespace DirtSim;
 
@@ -329,6 +333,193 @@ Result<OkayT, std::string> sendBinaryCommand(
     }
 }
 
+std::string renderFormatToString(RenderFormat::EnumType value)
+{
+    return std::string(reflect::enum_name(value));
+}
+
+Result<RenderFormat::EnumType, std::string> parseRenderFormatOption(const std::string& value)
+{
+    for (const auto& [enumValue, enumName] : reflect::enumerators<RenderFormat::EnumType>) {
+        if (enumName == value) {
+            return Result<RenderFormat::EnumType, std::string>::okay(
+                static_cast<RenderFormat::EnumType>(enumValue));
+        }
+    }
+
+    return Result<RenderFormat::EnumType, std::string>::error(
+        "Invalid render format: " + value + " (expected Basic or Debug)");
+}
+
+nlohmann::json summarizeWaterRow(
+    const std::vector<uint8_t>& waterVolume, int16_t width, int16_t height, int row)
+{
+    nlohmann::json result;
+    result["y"] = row;
+
+    if (row < 0 || row >= height) {
+        result["error"] = "row_out_of_bounds";
+        return result;
+    }
+
+    nlohmann::json cells = nlohmann::json::array();
+    for (int x = 0; x < width; ++x) {
+        const size_t idx = static_cast<size_t>(row) * width + x;
+        const uint8_t quantized = waterVolume[idx];
+        cells.push_back(
+            {
+                { "decoded", quantized / 255.0f },
+                { "quantized", quantized },
+                { "x", x },
+            });
+    }
+
+    result["cells"] = std::move(cells);
+    return result;
+}
+
+nlohmann::json summarizeBasicCellsRow(
+    const std::vector<std::byte>& payload, int16_t width, int16_t height, int row)
+{
+    nlohmann::json result;
+    result["format"] = "Basic";
+    result["y"] = row;
+
+    if (row < 0 || row >= height) {
+        result["error"] = "row_out_of_bounds";
+        return result;
+    }
+
+    const size_t cellCount = static_cast<size_t>(width) * height;
+    if (payload.size() != cellCount * sizeof(BasicCell)) {
+        result["error"] = "payload_size_mismatch";
+        return result;
+    }
+
+    const auto* basicCells = reinterpret_cast<const BasicCell*>(payload.data());
+    nlohmann::json cells = nlohmann::json::array();
+    for (int x = 0; x < width; ++x) {
+        const size_t idx = static_cast<size_t>(row) * width + x;
+        Material::EnumType material;
+        double fillRatio;
+        int8_t renderAs;
+        uint32_t color;
+        RenderMessageUtils::unpackBasicCell(basicCells[idx], material, fillRatio, renderAs, color);
+
+        std::ostringstream colorHex;
+        colorHex << "0x" << std::hex << std::setw(8) << std::setfill('0') << color;
+
+        cells.push_back(
+            {
+                { "color", colorHex.str() },
+                { "fill_ratio", fillRatio },
+                { "material", std::string(reflect::enum_name(material)) },
+                { "render_as", renderAs },
+                { "x", x },
+            });
+    }
+
+    result["cells"] = std::move(cells);
+    return result;
+}
+
+nlohmann::json summarizeDebugCellsRow(
+    const std::vector<std::byte>& payload, int16_t width, int16_t height, int row)
+{
+    nlohmann::json result;
+    result["format"] = "Debug";
+    result["y"] = row;
+
+    if (row < 0 || row >= height) {
+        result["error"] = "row_out_of_bounds";
+        return result;
+    }
+
+    const size_t cellCount = static_cast<size_t>(width) * height;
+    if (payload.size() != cellCount * sizeof(DebugCell)) {
+        result["error"] = "payload_size_mismatch";
+        return result;
+    }
+
+    const auto* debugCells = reinterpret_cast<const DebugCell*>(payload.data());
+    nlohmann::json cells = nlohmann::json::array();
+    for (int x = 0; x < width; ++x) {
+        const size_t idx = static_cast<size_t>(row) * width + x;
+        const auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[idx]);
+
+        cells.push_back(
+            {
+                { "fill_ratio", unpacked.fill_ratio },
+                { "material", std::string(reflect::enum_name(unpacked.material_type)) },
+                { "pressure_dynamic", unpacked.pressure_dynamic },
+                { "pressure_hydro", unpacked.pressure_hydro },
+                { "render_as", unpacked.render_as },
+                { "x", x },
+            });
+    }
+
+    result["cells"] = std::move(cells);
+    return result;
+}
+
+nlohmann::json summarizeCellsRow(const RenderMessage& renderData, std::optional<int> cellsRow)
+{
+    if (!cellsRow.has_value()) {
+        return nullptr;
+    }
+
+    if (renderData.format == RenderFormat::EnumType::Basic) {
+        return summarizeBasicCellsRow(
+            renderData.payload, renderData.width, renderData.height, *cellsRow);
+    }
+
+    return summarizeDebugCellsRow(
+        renderData.payload, renderData.width, renderData.height, *cellsRow);
+}
+
+nlohmann::json summarizeRenderFrame(
+    const RenderMessageFull& fullMessage, std::optional<int> waterRow, std::optional<int> cellsRow)
+{
+    const RenderMessage& renderData = fullMessage.render_data;
+
+    nlohmann::json summary{
+        { "format", renderFormatToString(renderData.format) },
+        { "height", renderData.height },
+        { "payload_size", renderData.payload.size() },
+        { "scenario_id", Scenario::toString(fullMessage.scenario_id) },
+        { "timestep", renderData.timestep },
+        { "water_volume_present", renderData.water_volume.has_value() },
+        { "width", renderData.width },
+    };
+
+    summary["cells_row"] = summarizeCellsRow(renderData, cellsRow);
+
+    if (renderData.water_volume.has_value()) {
+        int nonzeroCount = 0;
+        uint8_t maxQuantized = 0;
+        for (const uint8_t value : *renderData.water_volume) {
+            if (value > 0) {
+                ++nonzeroCount;
+            }
+            maxQuantized = std::max(maxQuantized, value);
+        }
+
+        summary["water_volume_max_decoded"] = maxQuantized / 255.0f;
+        summary["water_volume_max_quantized"] = maxQuantized;
+        summary["water_volume_nonzero_count"] = nonzeroCount;
+
+        if (waterRow.has_value()) {
+            summary["water_row"] = summarizeWaterRow(
+                *renderData.water_volume, renderData.width, renderData.height, *waterRow);
+        }
+    }
+    else if (waterRow.has_value()) {
+        summary["water_row"] = nullptr;
+    }
+
+    return summary;
+}
+
 bool isTrainingModalVisible(const UiApi::StatusGet::Okay& status)
 {
     return status.state == "TrainingUnsavedResult";
@@ -381,6 +572,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
     { "progress", "Watch evolution progress broadcasts in a concise text stream" },
+    { "render-dump", "Subscribe to render frames and dump decoded JSON summaries" },
     { "run-all", "Launch server + UI + audio and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
@@ -443,6 +635,7 @@ std::string getGlobalHelp()
     help += "  network\n";
     help += "  os-manager\n";
     help += "  progress\n";
+    help += "  render-dump\n";
     help += "  run-all\n";
     help += "  screenshot\n";
     help += "  server\n";
@@ -549,6 +742,25 @@ std::string getNetworkHelp()
     return help;
 }
 
+std::string getRenderDumpHelp()
+{
+    std::string help;
+    help += "Usage: cli render-dump [options]\n\n";
+    help += "Options:\n";
+    help += "  --address=ws://host:8080   Override default server WebSocket URL\n";
+    help += "  --format=Basic|Debug       Render format to subscribe to (default: Debug)\n";
+    help += "  --cells-row=Y              Dump decoded streamed cells for a specific row\n";
+    help += "  --frames=N                 Number of frames to capture (default: 1)\n";
+    help += "  --water-row=Y              Dump quantized water bytes for a specific row\n";
+    help += "  --timeout=MS               Wait timeout in milliseconds (default: 5000)\n\n";
+    help += "Examples:\n";
+    help += "  cli render-dump\n";
+    help += "  cli render-dump --format Basic --cells-row 28\n";
+    help += "  cli render-dump --format Debug --water-row 28\n";
+    help += "  cli --address ws://dirtsim.local:8080 render-dump --frames 3\n";
+    return help;
+}
+
 std::string getTargetHelp(const std::string& targetName)
 {
     if (targetName == "server") {
@@ -565,6 +777,9 @@ std::string getTargetHelp(const std::string& targetName)
     }
     if (targetName == "network") {
         return getNetworkHelp();
+    }
+    if (targetName == "render-dump") {
+        return getRenderDumpHelp();
     }
     return getGlobalHelp();
 }
@@ -592,6 +807,8 @@ std::string getExamplesHelp()
     examples += "  cli run-all\n";
     examples += "  cli network status\n";
     examples += "  cli --address ws://dirtsim.local:8080 progress\n";
+    examples += "  cli render-dump --format Basic --cells-row 28\n";
+    examples += "  cli render-dump --format Debug --water-row 28\n";
     examples += "  cli docs-screenshots /tmp/dirtsim-ui-docs\n";
 
     // Screenshot examples.
@@ -903,6 +1120,14 @@ int main(int argc, char** argv)
         100);
     args::ValueFlag<std::string> networkPassword(
         parser, "password", "Network: WiFi password for connect", { 'p', "password" });
+    args::ValueFlag<int> renderDumpFrames(
+        parser, "frames", "Render dump: number of frames to capture", { "frames" }, 1);
+    args::ValueFlag<std::string> renderDumpFormat(
+        parser, "format", "Render dump: render format (Basic or Debug)", { "format" }, "Debug");
+    args::ValueFlag<int> renderDumpCellsRow(
+        parser, "cells-row", "Render dump: dump decoded streamed cells for a row", { "cells-row" });
+    args::ValueFlag<int> renderDumpWaterRow(
+        parser, "water-row", "Render dump: dump quantized water bytes for a row", { "water-row" });
 
     args::Positional<std::string> target(
         parser, "target", "Target: 'server', 'ui', 'os-manager', or a CLI command like 'network'");
@@ -2344,6 +2569,112 @@ int main(int argc, char** argv)
         }
 
         client.disconnect();
+        return 0;
+    }
+
+    if (targetName == "render-dump") {
+        if (command && args::get(command) == "help") {
+            std::cout << getRenderDumpHelp();
+            return 0;
+        }
+
+        const std::string serverAddress =
+            addressOverride ? args::get(addressOverride) : "ws://localhost:8080";
+        const int timeoutMs = timeout ? args::get(timeout) : 5000;
+        const int frameCount = renderDumpFrames ? args::get(renderDumpFrames) : 1;
+        const std::string formatString = renderDumpFormat ? args::get(renderDumpFormat) : "Debug";
+        const std::optional<int> cellsRow =
+            renderDumpCellsRow ? std::optional<int>(args::get(renderDumpCellsRow)) : std::nullopt;
+        const std::optional<int> waterRow =
+            renderDumpWaterRow ? std::optional<int>(args::get(renderDumpWaterRow)) : std::nullopt;
+
+        if (frameCount <= 0) {
+            std::cerr << "Error: --frames must be positive" << std::endl;
+            return 1;
+        }
+
+        const auto formatResult = parseRenderFormatOption(formatString);
+        if (formatResult.isError()) {
+            std::cerr << formatResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        std::cerr << "Connecting to " << serverAddress << " for render dump..." << std::endl;
+
+        Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::vector<nlohmann::json> frames;
+        std::string parseError;
+
+        client.onBinary([&](const std::vector<std::byte>& payload) {
+            try {
+                RenderMessageFull fullMessage;
+                zpp::bits::in in(payload);
+                in(fullMessage).or_throw();
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (static_cast<int>(frames.size()) < frameCount) {
+                        frames.push_back(summarizeRenderFrame(fullMessage, waterRow, cellsRow));
+                    }
+                }
+
+                cv.notify_all();
+            }
+            catch (const std::exception& e) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (parseError.empty()) {
+                        parseError = e.what();
+                    }
+                }
+                cv.notify_all();
+            }
+        });
+
+        const auto connectResult = client.connect(serverAddress, timeoutMs);
+        if (connectResult.isError()) {
+            std::cerr << "Failed to connect: " << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        Api::RenderFormatSet::Command renderCmd{
+            .format = formatResult.value(),
+            .connectionId = "",
+        };
+        const auto renderResult =
+            sendBinaryCommand<Api::RenderFormatSet::Command, Api::RenderFormatSet::Okay>(
+                client, renderCmd, timeoutMs);
+        if (renderResult.isError()) {
+            std::cerr << "RenderFormatSet failed: " << renderResult.errorValue() << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            const bool completed = cv.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&]() {
+                return !parseError.empty() || static_cast<int>(frames.size()) >= frameCount;
+            });
+
+            if (!completed) {
+                std::cerr << "Timed out waiting for render frames" << std::endl;
+                client.disconnect();
+                return 1;
+            }
+
+            if (!parseError.empty()) {
+                std::cerr << "Failed to decode render frame: " << parseError << std::endl;
+                client.disconnect();
+                return 1;
+            }
+        }
+
+        client.disconnect();
+        std::cout << nlohmann::json(frames).dump(2) << std::endl;
         return 0;
     }
 

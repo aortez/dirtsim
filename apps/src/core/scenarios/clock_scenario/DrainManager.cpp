@@ -6,11 +6,19 @@
 #include "core/Vector2.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/water/WaterSim.h"
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
+namespace {
+
+constexpr float kGuidedDrainGuideSpeed = 8.0f;
+constexpr float kGuidedDrainMouthDownwardSpeed = 12.0f;
+constexpr float kGuidedDrainRatePerSecond = 6.0f;
+
+} // namespace
 
 void DrainManager::reset()
 {
@@ -171,7 +179,25 @@ void DrainManager::updateCells(
                 world.addBulkWaterAtCell(x, drainY, convertedAmount);
             }
         }
+    }
 
+    if (world.getPhysicsSettings().water_sim_mode == WaterSimMode::MacProjection) {
+        world.queueGuidedWaterDrain(
+            GuidedWaterDrain{
+                .guideStartX = 1,
+                .guideEndX = static_cast<int16_t>(data.width - 2),
+                .guideY = static_cast<int16_t>(drainY - 1),
+                .mouthStartX = startX_,
+                .mouthEndX = endX_,
+                .mouthY = static_cast<int16_t>(drainY),
+                .guideSpeed = kGuidedDrainGuideSpeed,
+                .mouthDownwardSpeed = kGuidedDrainMouthDownwardSpeed,
+                .drainRatePerSecond = kGuidedDrainRatePerSecond,
+            });
+        return;
+    }
+
+    for (int16_t x = startX_; x <= endX_; ++x) {
         const float waterAmount = world.getBulkWaterAmountAtCell(x, drainY);
         if (waterAmount < World::MIN_MATTER_THRESHOLD) {
             if (waterAmount > 0.0f) {

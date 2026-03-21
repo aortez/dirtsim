@@ -49,6 +49,15 @@ void WaterSimSystem::advanceTime(World& world, double deltaTimeSeconds)
     sim_->advanceTime(world, deltaTimeSeconds);
 }
 
+void WaterSimSystem::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
+{
+    if (!sim_) {
+        return;
+    }
+
+    sim_->queueGuidedWaterDrain(drain);
+}
+
 bool WaterSimSystem::tryGetWaterVolumeView(WaterVolumeView& out) const
 {
     if (!sim_) {

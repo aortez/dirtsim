@@ -26,6 +26,7 @@ public:
     void reset() override;
     void resize(int worldWidth, int worldHeight) override;
     void advanceTime(World& world, double deltaTimeSeconds) override;
+    void queueGuidedWaterDrain(const GuidedWaterDrain& drain) override;
     void syncToSettings(const PhysicsSettings& settings) override;
 
     bool tryGetWaterVolumeView(WaterVolumeView& out) const override;
@@ -35,9 +36,13 @@ public:
     const Parameters& getParametersForTesting() const { return parameters_; }
 
 private:
+    void applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt);
+    void applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain);
+
     int width_ = 0;
     int height_ = 0;
     Parameters parameters_{};
+    std::vector<GuidedWaterDrain> pendingGuidedWaterDrains_;
 
     std::vector<float> waterVolume_;
     std::vector<float> uFaceVelocity_;

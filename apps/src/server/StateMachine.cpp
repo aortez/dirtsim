@@ -86,6 +86,7 @@ constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 constexpr double kNtscNesFramePeriodMs = 1000.0 / 60.0988;
 constexpr double kNtscNesFrameDelayMaxMs = kNtscNesFramePeriodMs - 0.001;
+constexpr float kWaterVolumeRenderEpsilon = 0.00001f;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -1706,13 +1707,6 @@ void StateMachine::handleEvent(const Event& event)
         const std::string& connectionId = cwc.command.connectionId;
         assert(!connectionId.empty() && "RenderFormatSet: connectionId must be populated!");
 
-        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
-            cwc.sendResponse(
-                Api::RenderFormatSet::Response::error(
-                    ApiError{ "Client did not request render updates" }));
-            return;
-        }
-
         // Add or update client subscription.
         auto it = std::find_if(
             pImpl->subscribedClients_.begin(),
@@ -1756,13 +1750,6 @@ void StateMachine::handleEvent(const Event& event)
             cwc.sendResponse(
                 Api::RenderStreamConfigSet::Response::error(
                     ApiError{ "renderEveryN must be >= 1" }));
-            return;
-        }
-
-        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
-            cwc.sendResponse(
-                Api::RenderStreamConfigSet::Response::error(
-                    ApiError{ "Client did not request render updates" }));
             return;
         }
 
@@ -2125,9 +2112,6 @@ void StateMachine::broadcastRenderMessage(
 
     bool hasEligibleClient = false;
     for (const auto& client : pImpl->subscribedClients_) {
-        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(client.connectionId)) {
-            continue;
-        }
         if (shouldSendForClient(client)) {
             hasEligibleClient = true;
             break;
@@ -2143,9 +2127,6 @@ void StateMachine::broadcastRenderMessage(
         data.timestep);
 
     for (const auto& client : pImpl->subscribedClients_) {
-        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(client.connectionId)) {
-            continue;
-        }
         if (!shouldSendForClient(client)) {
             continue;
         }
@@ -2167,7 +2148,7 @@ void StateMachine::broadcastRenderMessage(
                     auto* cells = reinterpret_cast<BasicCell*>(msg.payload.data());
                     for (size_t idx = 0; idx < cellCount; ++idx) {
                         const float volume = (*waterVolumeView).volume[idx];
-                        if (volume <= 0.0f) {
+                        if (volume <= kWaterVolumeRenderEpsilon) {
                             continue;
                         }
 
@@ -2185,7 +2166,7 @@ void StateMachine::broadcastRenderMessage(
                         cell.fill_ratio =
                             static_cast<uint8_t>(std::clamp(t * 255.0f, 0.0f, 255.0f));
                         cell.render_as = -1;
-                        cell.color = ColorNames::lerp(background, waterTinted, t);
+                        cell.color = waterTinted;
                     }
                 }
             }

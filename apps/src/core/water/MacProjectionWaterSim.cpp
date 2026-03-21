@@ -30,6 +30,7 @@ size_t vFaceIndex(int width, int x, int y)
 
 void MacProjectionWaterSim::reset()
 {
+    pendingGuidedWaterDrains_.clear();
     std::fill(waterVolume_.begin(), waterVolume_.end(), 0.0f);
     std::fill(uFaceVelocity_.begin(), uFaceVelocity_.end(), 0.0f);
     std::fill(vFaceVelocity_.begin(), vFaceVelocity_.end(), 0.0f);
@@ -48,6 +49,7 @@ void MacProjectionWaterSim::resize(int worldWidth, int worldHeight)
 {
     width_ = worldWidth;
     height_ = worldHeight;
+    pendingGuidedWaterDrains_.clear();
 
     const size_t cellCount = static_cast<size_t>(width_) * height_;
     const size_t uFaceCount = static_cast<size_t>(width_ + 1) * height_;
@@ -89,6 +91,11 @@ bool MacProjectionWaterSim::tryGetMutableWaterVolumeView(WaterVolumeMutableView&
     out.height = height_;
     out.volume = waterVolume_;
     return true;
+}
+
+void MacProjectionWaterSim::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
+{
+    pendingGuidedWaterDrains_.push_back(drain);
 }
 
 void MacProjectionWaterSim::syncToSettings(const PhysicsSettings& settings)
@@ -226,6 +233,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     }
 
     if (totalWaterVolume <= 0.0f) {
+        pendingGuidedWaterDrains_.clear();
         std::fill(uFaceVelocity_.begin(), uFaceVelocity_.end(), 0.0f);
         std::fill(vFaceVelocity_.begin(), vFaceVelocity_.end(), 0.0f);
         return;
@@ -462,6 +470,10 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
         }
     }
 
+    for (const GuidedWaterDrain& drain : pendingGuidedWaterDrains_) {
+        applyGuidedWaterDrainVelocityBias(drain);
+    }
+
     const float dampingFactor =
         std::clamp(1.0f - parameters.velocityDampingPerSecond * dt, 0.0f, 1.0f);
     const float maxFaceSpeed = parameters.velocityCflLimit / dt;
@@ -607,6 +619,91 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
 
             waterVolume_[idx] = std::clamp(volumeScratch_[idx], 0.0f, 1.0f);
         }
+    }
+
+    for (const GuidedWaterDrain& drain : pendingGuidedWaterDrains_) {
+        applyGuidedWaterDrainOutflow(drain, dt);
+    }
+    pendingGuidedWaterDrains_.clear();
+}
+
+void MacProjectionWaterSim::applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt)
+{
+    if (drain.drainRatePerSecond <= 0.0f || drain.mouthY < 0 || drain.mouthY >= height_) {
+        return;
+    }
+
+    const int mouthStartX = std::max(0, static_cast<int>(drain.mouthStartX));
+    const int mouthEndX = std::min(width_ - 1, static_cast<int>(drain.mouthEndX));
+    if (mouthStartX > mouthEndX) {
+        return;
+    }
+
+    const float drainAmount = drain.drainRatePerSecond * dt;
+    if (drainAmount <= 0.0f) {
+        return;
+    }
+
+    for (int x = mouthStartX; x <= mouthEndX; ++x) {
+        const size_t idx = cellIndex(width_, x, drain.mouthY);
+        if (solidMask_[idx] != 0) {
+            continue;
+        }
+
+        waterVolume_[idx] = std::max(0.0f, waterVolume_[idx] - drainAmount);
+    }
+}
+
+void MacProjectionWaterSim::applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain)
+{
+    if (drain.guideSpeed <= 0.0f && drain.mouthDownwardSpeed <= 0.0f) {
+        return;
+    }
+
+    if (drain.guideY < 0 || drain.guideY >= height_) {
+        return;
+    }
+
+    const int guideStartX = std::max(0, static_cast<int>(drain.guideStartX));
+    const int guideEndX = std::min(width_ - 1, static_cast<int>(drain.guideEndX));
+    const int mouthStartX = std::max(0, static_cast<int>(drain.mouthStartX));
+    const int mouthEndX = std::min(width_ - 1, static_cast<int>(drain.mouthEndX));
+    if (guideStartX > guideEndX || mouthStartX > mouthEndX) {
+        return;
+    }
+
+    const int guideY = drain.guideY;
+    for (int faceX = guideStartX + 1; faceX <= guideEndX; ++faceX) {
+        const int leftX = faceX - 1;
+        const int rightX = faceX;
+        const size_t leftIdx = cellIndex(width_, leftX, guideY);
+        const size_t rightIdx = cellIndex(width_, rightX, guideY);
+        if (solidMask_[leftIdx] != 0 || solidMask_[rightIdx] != 0) {
+            continue;
+        }
+
+        const size_t faceIdx = uFaceIndex(width_, faceX, guideY);
+        if (faceX <= mouthStartX) {
+            uFaceVelocity_[faceIdx] = std::max(uFaceVelocity_[faceIdx], drain.guideSpeed);
+        }
+        else if (faceX > mouthEndX) {
+            uFaceVelocity_[faceIdx] = std::min(uFaceVelocity_[faceIdx], -drain.guideSpeed);
+        }
+    }
+
+    if (drain.mouthDownwardSpeed <= 0.0f || drain.mouthY <= 0 || drain.mouthY > height_ - 1) {
+        return;
+    }
+
+    for (int x = mouthStartX; x <= mouthEndX; ++x) {
+        const size_t topIdx = cellIndex(width_, x, drain.mouthY - 1);
+        const size_t bottomIdx = cellIndex(width_, x, drain.mouthY);
+        if (solidMask_[topIdx] != 0 || solidMask_[bottomIdx] != 0) {
+            continue;
+        }
+
+        const size_t faceIdx = vFaceIndex(width_, x, drain.mouthY);
+        vFaceVelocity_[faceIdx] = std::max(vFaceVelocity_[faceIdx], drain.mouthDownwardSpeed);
     }
 }
 

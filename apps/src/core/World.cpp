@@ -940,6 +940,41 @@ bool World::hasBulkWaterAtCell(int x, int y, float minAmount) const
     return getBulkWaterAmountAtCell(x, y) >= minAmount;
 }
 
+void World::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
+{
+    if (pImpl->physicsSettings_.water_sim_mode != WaterSimMode::MacProjection) {
+        return;
+    }
+
+    pImpl->water_sim_system_.syncToSettings(
+        pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
+    pImpl->water_sim_system_.queueGuidedWaterDrain(drain);
+
+    const auto noteWakeSpan = [&](int startX, int endX, int y) {
+        if (y < 0 || y >= pImpl->data_.height) {
+            return;
+        }
+
+        const int clampedStartX = std::max(0, startX);
+        const int clampedEndX = std::min(pImpl->data_.width - 1, endX);
+        if (clampedStartX > clampedEndX) {
+            return;
+        }
+
+        for (int x = clampedStartX; x <= clampedEndX; ++x) {
+            pImpl->region_activity_tracker_.noteWakeAtCell(x, y, WakeReason::ExternalMutation);
+        }
+    };
+
+    if (drain.guideSpeed > 0.0f) {
+        noteWakeSpan(drain.guideStartX, drain.guideEndX, drain.guideY);
+    }
+
+    if (drain.mouthDownwardSpeed > 0.0f || drain.drainRatePerSecond > 0.0f) {
+        noteWakeSpan(drain.mouthStartX, drain.mouthEndX, drain.mouthY);
+    }
+}
+
 void World::setBulkWaterAmountAtCell(Vector2s pos, float amount)
 {
     if (!isValidCell(pos)) {
