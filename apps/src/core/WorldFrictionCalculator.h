@@ -64,7 +64,7 @@ private:
      * @brief Accumulate friction forces from all contact interfaces (cached path).
      * @param world World providing access to grid and cells.
      */
-    void accumulateFrictionForces(World& world);
+    void accumulateFrictionForces(World& world, float deltaTime);
 
     /**
      * @brief Detect all contact interfaces in the world.
@@ -118,7 +118,7 @@ private:
      * @param contacts Vector of contact interfaces with calculated properties.
      */
     void accumulateFrictionFromContacts(
-        World& world, const std::vector<ContactInterface>& contacts);
+        World& world, const std::vector<ContactInterface>& contacts, float deltaTime);
 
     GridOfCells& grid_; // Reference to grid for debug info storage.
 

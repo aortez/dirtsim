@@ -3,6 +3,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/water/WaterVolumeView.h"
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <cstdlib>
@@ -63,6 +64,13 @@ void BenchmarkScenario::setup(World& world)
         }
     }
 
+    WaterVolumeMutableView waterVolume{};
+    if (world.tryGetMutableWaterVolumeView(waterVolume)
+        && waterVolume.width == world.getData().width
+        && waterVolume.height == world.getData().height) {
+        std::fill(waterVolume.volume.begin(), waterVolume.volume.end(), 0.0f);
+    }
+
     // Create boundary walls (no top wall - allows sunlight to illuminate the world).
     for (int x = 0; x < world.getData().width; ++x) {
         world.getData()
@@ -73,7 +81,9 @@ void BenchmarkScenario::setup(World& world)
     int waterStartY = world.getData().height - (world.getData().height / 3);
     for (int y = waterStartY; y < world.getData().height - 1; ++y) {
         for (int x = 1; x < world.getData().width - 1; ++x) {
-            world.getData().at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
+            world.replaceMaterialAtCell(
+                Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::Water);
         }
     }
     spdlog::info(

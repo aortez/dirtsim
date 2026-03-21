@@ -24,6 +24,7 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterVolumeView.h"
 #include "server/EventProcessor.h"
 #include "server/StateMachine.h"
 #include "server/UserSettings.h"
@@ -236,6 +237,19 @@ void populateOrganismDebug(World& world, WorldData& data)
 
         data.organism_debug.push_back(std::move(debug));
     });
+}
+
+void populateWaterVolumeSnapshot(World& world, WorldData& data)
+{
+    WaterVolumeView waterVolumeView{};
+    if (world.tryGetWaterVolumeView(waterVolumeView) && waterVolumeView.width == data.width
+        && waterVolumeView.height == data.height) {
+        data.water_volume =
+            std::vector<float>(waterVolumeView.volume.begin(), waterVolumeView.volume.end());
+        return;
+    }
+
+    data.water_volume.reset();
 }
 
 std::chrono::steady_clock::duration steadyDurationFromMs(double ms)
@@ -848,6 +862,7 @@ void SimRunning::tick(StateMachine& dsm)
 
     WorldData cachedData = world->getData();
     populateOrganismDebug(*world, cachedData);
+    populateWaterVolumeSnapshot(*world, cachedData);
     dsm.updateCachedWorldData(cachedData);
     dsm.getTimers().stopTimer("cache_update");
 
@@ -856,6 +871,10 @@ void SimRunning::tick(StateMachine& dsm)
     // Send frame to UI clients after every physics update.
     if (dsm.getWebSocketService()) {
         auto& timers = dsm.getTimers();
+
+        WaterVolumeView waterVolumeView{};
+        const WaterVolumeView* waterVolumeViewPtr =
+            world->tryGetWaterVolumeView(waterVolumeView) ? &waterVolumeView : nullptr;
 
         auto broadcastStart = std::chrono::steady_clock::now();
         timers.startTimer("broadcast_render_message");
@@ -866,7 +885,9 @@ void SimRunning::tick(StateMachine& dsm)
             session.getScenarioId(),
             scenario->getConfig(),
             std::nullopt,
-            std::nullopt);
+            std::nullopt,
+            std::nullopt,
+            waterVolumeViewPtr);
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -1437,6 +1458,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
     if (World* world = session.getWorld()) {
         populateOrganismDebug(*world, responseData.worldData);
+        populateWaterVolumeSnapshot(*world, responseData.worldData);
     }
 
     cwc.sendResponse(Response::okay(std::move(responseData)));

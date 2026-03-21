@@ -18,6 +18,13 @@ static bool almostEqual(double a, double b, double epsilon = 1e-6)
     return std::abs(a - b) < epsilon;
 }
 
+static std::unique_ptr<World> makeLegacyBuoyancyWorld(int width, int height)
+{
+    auto world = std::make_unique<World>(width, height);
+    world->getPhysicsSettings().water_sim_mode = WaterSimMode::LegacyCell;
+    return world;
+}
+
 /**
  * @brief Test fixture for buoyancy physics tests.
  *
@@ -30,7 +37,7 @@ protected:
         spdlog::set_level(spdlog::level::info);
 
         // Create minimal 1D world for testing (1 cell wide, 5 cells tall).
-        world = std::make_unique<World>(1, 5);
+        world = makeLegacyBuoyancyWorld(1, 5);
 
         // Disable boundary walls for buoyancy testing (materials need to reach y=0).
         world->setWallsEnabled(false);
@@ -314,7 +321,7 @@ TEST_F(BuoyancyTest, NetForceCalculation)
         spdlog::info("  Test Case B: Wood in water");
 
         // Clear previous setup.
-        world = std::make_unique<World>(1, 5);
+        world = makeLegacyBuoyancyWorld(1, 5);
         world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
         world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
         world->getPhysicsSettings().gravity = 1.0;
@@ -507,7 +514,7 @@ protected:
         spdlog::set_level(spdlog::level::debug); // Enable debug to see swap denials.
 
         // Create 1x5 world for testing.
-        world = std::make_unique<World>(1, 5);
+        world = makeLegacyBuoyancyWorld(1, 5);
 
         // Disable boundary walls for buoyancy testing (materials need to reach y=0).
         world->setWallsEnabled(false);
@@ -814,7 +821,7 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
     spdlog::info("Starting BuoyancyTest::WoodCanRiseIn3x3World");
 
     // Create 3x3 world to allow horizontal water flow.
-    world = std::make_unique<World>(3, 3);
+    world = makeLegacyBuoyancyWorld(3, 3);
     world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
     world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
     world->getPhysicsSettings().gravity = 1.0;
@@ -1014,7 +1021,7 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
     spdlog::info("Starting BuoyancyTest::WaterColumnFalls");
 
     // Create 2x4 world with water in top 2x2 cells.
-    world = std::make_unique<World>(2, 4);
+    world = makeLegacyBuoyancyWorld(2, 4);
     world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
     world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
     world->getPhysicsSettings().gravity = 9.81; // Real gravity
@@ -1121,7 +1128,7 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
     spdlog::info("Starting BuoyancyTest::DirtSinksThroughWater");
 
     // Create 1x6 world: dirt at top, water column below.
-    world = std::make_unique<World>(1, 6);
+    world = makeLegacyBuoyancyWorld(1, 6);
     world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
     world->getPhysicsSettings().pressure_hydrostatic_strength = 0.3; // Sandbox default.
     world->getPhysicsSettings().swap_enabled = true; // Enable material swapping for sinking.
@@ -1248,7 +1255,7 @@ TEST_F(BuoyancyTest, DirtShouldSinkNotFloat)
     spdlog::info("Starting BuoyancyTest::DirtShouldSinkNotFloat");
 
     // Setup: Dirt surrounded by water (1x3 column).
-    world = std::make_unique<World>(1, 3);
+    world = makeLegacyBuoyancyWorld(1, 3);
     world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
     world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
     world->getPhysicsSettings().gravity = 9.81;

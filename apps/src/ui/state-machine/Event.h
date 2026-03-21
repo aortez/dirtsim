@@ -2,6 +2,7 @@
 
 #include "ui/controls/IconRail.h"
 
+#include "api/DebugVisualizationSelect.h"
 #include "api/DrawDebugToggle.h"
 #include "api/Exit.h"
 #include "api/GenomeBrowserOpen.h"
@@ -332,6 +333,7 @@ using Event = std::variant<
     // API commands (local from LVGL or remote from WebSocket)
     DirtSim::Api::TrainingResult::Cwc,
     DirtSim::UiApi::DrawDebugToggle::Cwc,
+    DirtSim::UiApi::DebugVisualizationSelect::Cwc,
     DirtSim::UiApi::Exit::Cwc,
     DirtSim::UiApi::GenomeBrowserOpen::Cwc,
     DirtSim::UiApi::GenomeDetailLoad::Cwc,

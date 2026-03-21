@@ -29,6 +29,7 @@ namespace DirtSim {
 class GamepadManager;
 class GenomeRepository;
 struct UserSettings;
+struct WaterVolumeView;
 struct WorldData;
 
 namespace Api {
@@ -115,7 +116,8 @@ public:
         const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
         const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
         const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry =
-            std::nullopt);
+            std::nullopt,
+        const WaterVolumeView* waterVolumeView = nullptr);
 
     void broadcastCommand(const std::string& messageType);
     void broadcastEventData(const std::string& messageType, const std::vector<std::byte>& payload);

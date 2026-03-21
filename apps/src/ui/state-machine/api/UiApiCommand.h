@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DebugVisualizationSelect.h"
 #include "DrawDebugToggle.h"
 #include "Exit.h"
 #include "GenomeBrowserOpen.h"
@@ -46,6 +47,7 @@ namespace Ui {
  * @brief Variant containing all UI API command types.
  */
 using UiApiCommand = std::variant<
+    UiApi::DebugVisualizationSelect::Command,
     UiApi::DrawDebugToggle::Command,
     UiApi::Exit::Command,
     UiApi::GenomeBrowserOpen::Command,

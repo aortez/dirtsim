@@ -6,7 +6,10 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/water/WaterVolumeView.h"
 #include "spdlog/spdlog.h"
+
+#include <algorithm>
 
 namespace DirtSim {
 
@@ -53,6 +56,13 @@ void LightsScenario::setup(World& world)
         }
     }
 
+    WaterVolumeMutableView waterVolume{};
+    if (world.tryGetMutableWaterVolumeView(waterVolume)
+        && waterVolume.width == world.getData().width
+        && waterVolume.height == world.getData().height) {
+        std::fill(waterVolume.volume.begin(), waterVolume.volume.end(), 0.0f);
+    }
+
     // Enable sun with full light.
     world.getPhysicsSettings().light.sun_intensity = 1.0;
 
@@ -61,7 +71,9 @@ void LightsScenario::setup(World& world)
     for (int y = 15; y <= 19; ++y) {
         for (int x = 0; x <= 4; ++x) {
             if (world.getData().inBounds(x, y)) {
-                world.getData().at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
+                world.replaceMaterialAtCell(
+                    Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::Water);
             }
         }
     }

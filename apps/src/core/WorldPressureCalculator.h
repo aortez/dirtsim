@@ -26,7 +26,7 @@ public:
      */
     enum class PressureGradientDirections { Four, Eight };
 
-    // Default constructor - calculator is stateless.
+    // Default constructor.
     WorldPressureCalculator() = default;
 
     // Blocked transfer data for dynamic pressure accumulation.
@@ -44,7 +44,13 @@ public:
     static constexpr double DYNAMIC_MULTIPLIER = 1;
     static constexpr double MIN_PRESSURE_THRESHOLD = 0.001; // Ignore pressures below this.
 
+    void beginPressureFrame(World& world);
+
     void injectGravityPressure(World& world, float deltaTime);
+
+    void finalizePressureFrame(World& world);
+
+    void accumulateDynamicPressure(World& world, int x, int y, float amount);
 
     /**
      * @brief Queue a blocked transfer for dynamic pressure accumulation.
@@ -141,6 +147,11 @@ private:
     // Constants for pressure-driven flow.
     static constexpr double PRESSURE_FLOW_RATE = 1.0;     // Flow rate multiplier.
     static constexpr double BACKGROUND_DECAY_RATE = 0.02; // 2% decay per timestep.
+
+    std::vector<float> dynamic_pressure_;
+    std::vector<float> hydrostatic_pressure_;
+
+    void ensurePressureBuffers(const World& world);
 
     /**
      * @brief Get surrounding fluid density for buoyancy calculation.

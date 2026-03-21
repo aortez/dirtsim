@@ -1,4 +1,5 @@
 #include "StateMachine.h"
+#include "api/DebugVisualizationSelect.h"
 #include "api/GenomeBrowserOpen.h"
 #include "api/GenomeDetailLoad.h"
 #include "api/GenomeDetailOpen.h"
@@ -209,6 +210,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::NetworkScannerExitPress::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::DebugVisualizationSelect::Cwc>(
+        [this](UiApi::DebugVisualizationSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::RenderModeSelect::Cwc>(
@@ -270,6 +273,7 @@ void StateMachine::setupWebSocketService()
     }
 
             // Dispatch all UI commands.
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::DebugVisualizationSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::DrawDebugToggle);
             DISPATCH_UI_CMD_EMPTY(UiApi::Exit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeBrowserOpen);

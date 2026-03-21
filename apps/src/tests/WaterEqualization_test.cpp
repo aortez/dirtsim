@@ -1,206 +1,157 @@
-#include "core/Cell.h"
-#include "core/GridOfCells.h"
-#include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/water/MacProjectionWaterSim.h"
 
+#include <cmath>
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
 
 using namespace DirtSim;
 
-/**
- * @brief Test fixture for water equalization tests.
- *
- * Tests hydrostatic pressure-driven flow through openings to verify
- * that water can flow horizontally and upward to equalize between columns.
- */
-class WaterEqualizationTest : public ::testing::Test {
-protected:
-    void SetUp() override
-    {
-        // Create 3x6 world for water equalization test.
-        world = std::make_unique<World>(3, 6);
+namespace {
+
+float sumColumnVolume(const WaterVolumeView& view, int x)
+{
+    float total = 0.0f;
+    for (int y = 0; y < view.height; ++y) {
+        total += view.volume[static_cast<size_t>(y) * view.width + x];
     }
+    return total;
+}
 
-    void TearDown() override { world.reset(); }
-
-    /**
-     * @brief Set up the U-tube configuration.
-     *
-     * Creates:
-     * - Left column (x=0): Full water column (6 cells)
-     * - Middle column (x=1): Wall with bottom cell open
-     * - Right column (x=2): Empty
-     */
-    void setupUTube()
-    {
-        // Left column: fill with water.
-        for (int y = 0; y < 6; y++) {
-            world->addMaterialAtCell(
-                { 0, static_cast<int16_t>(y) }, Material::EnumType::Water, 1.0);
-        }
-
-        // Middle column: wall barrier with bottom cell open for flow.
-        for (int y = 0; y < 5; y++) { // Only y=0 to y=4 (leave y=5 open).
-            world->addMaterialAtCell({ 1, static_cast<int16_t>(y) }, Material::EnumType::Wall, 1.0);
-        }
-        // Bottom cell at (1, 5) is left empty for water to flow through.
-
-        // Right column: empty (air) - no need to explicitly set.
-    }
-
-    /**
-     * @brief Count water cells in a column.
-     */
-    uint32_t countWaterInColumn(uint32_t x) const
-    {
-        uint32_t count = 0;
-        for (int y = 0; y < world->getData().height; ++y) {
-            const Cell& cell = world->getData().at(x, y);
-            if (cell.material_type == Material::EnumType::Water && cell.fill_ratio > 0.5) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    /**
-     * @brief Print world state for debugging.
-     */
-    void printWorld() const
-    {
-        spdlog::info("World state:");
-        for (int y = 0; y < world->getData().height; ++y) {
-            std::string row = "  y=" + std::to_string(y) + ": ";
-            for (int x = 0; x < world->getData().width; ++x) {
-                const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == Material::EnumType::Water) {
-                    row += "[W]";
-                }
-                else if (cell.material_type == Material::EnumType::Wall) {
-                    row += "[#]";
-                }
-                else {
-                    row += "[ ]";
-                }
-            }
-            spdlog::info("{}", row);
-        }
-    }
-
-    std::unique_ptr<World> world;
+struct SideVolumes {
+    float left = 0.0f;
+    float wall = 0.0f;
+    float right = 0.0f;
+    float total = 0.0f;
 };
 
-/**
- * @brief Test that water flows from left column through opening to right column.
- *
- * Expected behavior:
- * - Left column starts with 6 water cells.
- * - Right column starts with 0 water cells.
- * - After sufficient simulation steps, water should flow through bottom opening.
- * - Eventually both columns should have approximately 3 cells each (equalized).
- */
-TEST_F(WaterEqualizationTest, WaterFlowsThroughOpening)
+SideVolumes sumVolumesByWall(const WaterVolumeView& view, int wallX)
 {
-    spdlog::info("Starting WaterEqualizationTest::WaterFlowsThroughOpening");
-
-    // Setup U-tube configuration.
-    setupUTube();
-
-    spdlog::info("Initial state:");
-    printWorld();
-
-    uint32_t left_initial = countWaterInColumn(0);
-    uint32_t right_initial = countWaterInColumn(2);
-
-    spdlog::info("Initial water counts - Left: {}, Right: {}", left_initial, right_initial);
-
-    EXPECT_EQ(left_initial, 6);
-    EXPECT_EQ(right_initial, 0);
-
-    // Run simulation for many steps to allow equalization.
-    const double deltaTime = 0.016; // ~60 FPS.
-    const int num_steps = 1000;     // Run for ~16 seconds of simulation time.
-
-    for (int step = 0; step < num_steps; ++step) {
-        world->advanceTime(deltaTime);
-
-        // Log progress every 100 steps (and every 10 steps from 190-310 to catch velocity flip).
-        bool should_log = (step % 100 == 0) || (step >= 190 && step <= 310 && step % 10 == 0);
-
-        if (should_log) {
-            uint32_t left = countWaterInColumn(0);
-            uint32_t right = countWaterInColumn(2);
-            spdlog::info("Step {}: Left: {}, Right: {}", step, left, right);
-
-            // Log detailed state of bottom row.
-            if (step >= 100) {
-                const Cell& cell_0_5 = world->getData().at(0, 5);
-                const Cell& cell_1_5 = world->getData().at(1, 5);
-                const Cell& cell_2_5 = world->getData().at(2, 5);
-                const CellDebug& debug_2_5 = world->getGrid().debugAt(2, 5);
-
-                spdlog::info(
-                    "  Cell(0,5): pressure={:.3f}, gradient=({:.3f},{:.3f})",
-                    cell_0_5.pressure,
-                    cell_0_5.pressure_gradient.x,
-                    cell_0_5.pressure_gradient.y);
-                spdlog::info(
-                    "  Cell(1,5): pressure={:.3f}, gradient=({:.3f},{:.3f})",
-                    cell_1_5.pressure,
-                    cell_1_5.pressure_gradient.x,
-                    cell_1_5.pressure_gradient.y);
-                spdlog::info(
-                    "  Step {}: WATER at (2,5), vel=({:.3f},{:.3f}), com=({:.3f},{:.3f}), "
-                    "fill={:.3f}",
-                    step,
-                    cell_2_5.velocity.x,
-                    cell_2_5.velocity.y,
-                    cell_2_5.com.x,
-                    cell_2_5.com.y,
-                    cell_2_5.fill_ratio);
-                spdlog::info(
-                    "    Pressure: total={:.3f}, gradient=({:.3f},{:.3f})",
-                    cell_2_5.pressure,
-                    cell_2_5.pressure_gradient.x,
-                    cell_2_5.pressure_gradient.y);
-                spdlog::info(
-                    "    Forces: viscous=({:.3f},{:.3f}), adhesion=({:.3f},{:.3f}), "
-                    "cohesion=({:.3f},{:.3f}), friction=({:.3f},{:.3f}), pending=({:.3f},{:.3f})",
-                    debug_2_5.accumulated_viscous_force.x,
-                    debug_2_5.accumulated_viscous_force.y,
-                    debug_2_5.accumulated_adhesion_force.x,
-                    debug_2_5.accumulated_adhesion_force.y,
-                    debug_2_5.accumulated_com_cohesion_force.x,
-                    debug_2_5.accumulated_com_cohesion_force.y,
-                    debug_2_5.accumulated_friction_force.x,
-                    debug_2_5.accumulated_friction_force.y,
-                    cell_2_5.pending_force.x,
-                    cell_2_5.pending_force.y);
-                spdlog::info("    friction_coeff={:.3f}", debug_2_5.cached_friction_coefficient);
+    SideVolumes sums{};
+    for (int y = 0; y < view.height; ++y) {
+        for (int x = 0; x < view.width; ++x) {
+            const float v = view.volume[static_cast<size_t>(y) * view.width + x];
+            sums.total += v;
+            if (x < wallX) {
+                sums.left += v;
+            }
+            else if (x > wallX) {
+                sums.right += v;
+            }
+            else {
+                sums.wall += v;
             }
         }
     }
+    return sums;
+}
 
-    spdlog::info("Final state:");
-    printWorld();
+} // namespace
 
-    uint32_t left_final = countWaterInColumn(0);
-    uint32_t right_final = countWaterInColumn(2);
+/**
+ * @brief Test that MAC-projected water volume equalizes through a bottom opening.
+ */
+TEST(WaterEqualizationTest, WaterFlowsThroughOpening)
+{
+    World world(3, 6);
+    WorldData& data = world.getData();
 
-    spdlog::info("Final water counts - Left: {}, Right: {}", left_final, right_final);
+    for (int y = 0; y < 5; ++y) {
+        data.at(1, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
 
-    // Verify that water has moved from left to right.
-    EXPECT_LT(left_final, left_initial) << "Water should have left the left column";
-    EXPECT_GT(right_final, right_initial) << "Water should have entered the right column";
+    MacProjectionWaterSim sim;
+    sim.resize(data.width, data.height);
+    sim.reset();
 
-    // Verify approximate equalization (within 1 cell tolerance).
-    // Expected: both columns around 3 cells each.
-    EXPECT_NEAR(left_final, 3, 1) << "Left column should have ~3 cells";
-    EXPECT_NEAR(right_final, 3, 1) << "Right column should have ~3 cells";
+    WaterVolumeMutableView volumeMutable{};
+    ASSERT_TRUE(sim.tryGetMutableWaterVolumeView(volumeMutable));
+    for (int y = 1; y < volumeMutable.height; ++y) {
+        volumeMutable.volume[static_cast<size_t>(y) * volumeMutable.width] = 1.0f;
+    }
 
-    // Total water should be conserved (6 cells total).
-    uint32_t total = left_final + right_final;
-    EXPECT_NEAR(total, 6, 1) << "Total water should be conserved";
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const float leftInitial = sumColumnVolume(volumeView, 0);
+    const float rightInitial = sumColumnVolume(volumeView, 2);
+    EXPECT_NEAR(leftInitial, 5.0f, 0.001f);
+    EXPECT_NEAR(rightInitial, 0.0f, 0.001f);
+
+    const double deltaTime = 0.02;
+    constexpr int kSteps = 600;
+    for (int step = 0; step < kSteps; ++step) {
+        sim.advanceTime(world, deltaTime);
+    }
+
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const float leftFinal = sumColumnVolume(volumeView, 0);
+    const float rightFinal = sumColumnVolume(volumeView, 2);
+    const float middleFinal = sumColumnVolume(volumeView, 1);
+    const float totalFinal = leftFinal + middleFinal + rightFinal;
+
+    EXPECT_GT(rightFinal, 0.5f);
+    EXPECT_LT(leftFinal, leftInitial);
+    EXPECT_NEAR(totalFinal, leftInitial, 0.01f);
+}
+
+/**
+ * @brief Test that MAC-projected water volume transfers through a narrow wall gap at larger scale.
+ */
+TEST(WaterEqualizationTest, WaterFlowsThroughOpeningLargeWorld)
+{
+    constexpr int kWidth = 51;
+    constexpr int kHeight = 51;
+    constexpr int kWallX = kWidth / 2;
+    constexpr int kGapHeight = 2;
+
+    World world(kWidth, kHeight);
+    WorldData& data = world.getData();
+
+    for (int y = 0; y < kHeight - kGapHeight; ++y) {
+        data.at(kWallX, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    MacProjectionWaterSim sim;
+    sim.resize(kWidth, kHeight);
+    sim.reset();
+
+    WaterVolumeMutableView volumeMutable{};
+    ASSERT_TRUE(sim.tryGetMutableWaterVolumeView(volumeMutable));
+
+    const int fillStartY = (kHeight / 2) + 1;
+    for (int y = fillStartY; y < kHeight; ++y) {
+        for (int x = kWallX + 1; x < kWidth; ++x) {
+            volumeMutable.volume[static_cast<size_t>(y) * kWidth + x] = 1.0f;
+        }
+    }
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const SideVolumes initialSums = sumVolumesByWall(volumeView, kWallX);
+    ASSERT_NEAR(initialSums.total, 625.0f, 0.001f);
+    ASSERT_NEAR(initialSums.left, 0.0f, 0.001f);
+
+    const double deltaTime = 0.02;
+    constexpr int kSteps = 1000;
+    for (int step = 0; step < kSteps; ++step) {
+        sim.advanceTime(world, deltaTime);
+        if (step == 199) {
+            ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+            const SideVolumes checkpoint = sumVolumesByWall(volumeView, kWallX);
+            EXPECT_GT(checkpoint.left, 2.0f);
+            EXPECT_NEAR(checkpoint.total, initialSums.total, 0.02f);
+        }
+        if (step == 399) {
+            ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+            const SideVolumes checkpoint = sumVolumesByWall(volumeView, kWallX);
+            EXPECT_GT(checkpoint.left, initialSums.total * 0.05f);
+            EXPECT_NEAR(checkpoint.total, initialSums.total, 0.02f);
+        }
+    }
+
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const SideVolumes finalSums = sumVolumesByWall(volumeView, kWallX);
+
+    EXPECT_NEAR(finalSums.total, initialSums.total, 0.05f);
+    EXPECT_GT(finalSums.left, initialSums.total * 0.075f);
 }

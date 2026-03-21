@@ -3,6 +3,7 @@
 #include "core/World.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterVolumeView.h"
 #include "server/UserSettings.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -237,6 +238,10 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
     // Scenario ID is tracked by the active ScenarioSession.
     EXPECT_EQ(updatedState.session.getScenarioId(), Scenario::EnumType::Sandbox);
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
+    ASSERT_TRUE(worldData.water_volume.has_value());
+    EXPECT_EQ(
+        worldData.water_volume->size(),
+        static_cast<size_t>(expected_width) * static_cast<size_t>(expected_height));
 }
 
 /**
@@ -253,12 +258,15 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
     ScenarioRunner* scenario = simRunning.session.getScenarioRunner();
     ASSERT_NE(scenario, nullptr);
 
-    // Verify: Water column initially exists (check a few cells).
-    // Water column height = world.height / 3 = 28 / 3 = 9, so check y=5 (middle of column).
-    const Cell& waterCell = world->getData().at(3, 5);
-    EXPECT_EQ(waterCell.material_type, Material::EnumType::Water)
-        << "Water column should exist initially";
-    EXPECT_GT(waterCell.fill_ratio, 0.5) << "Water column cells should be filled";
+    // Verify: Water column initially exists (check a cell in the column).
+    WaterVolumeView waterView{};
+    ASSERT_TRUE(world->tryGetWaterVolumeView(waterView));
+    ASSERT_EQ(waterView.width, world->getData().width);
+    ASSERT_EQ(waterView.height, world->getData().height);
+
+    const float initialColumnVolume =
+        waterView.volume[static_cast<size_t>(5) * waterView.width + 3];
+    EXPECT_GT(initialColumnVolume, 0.5f) << "Water column should exist initially";
 
     // Execute: Toggle water column OFF.
     Config::Sandbox configOff;
@@ -271,11 +279,11 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
     scenario->setConfig(configOff, *world);
 
     // Verify: Water column removed.
+    ASSERT_TRUE(world->tryGetWaterVolumeView(waterView));
     for (uint32_t y = 0; y < 20; ++y) {
         for (uint32_t x = 1; x <= 5; ++x) {
-            const Cell& cell = world->getData().at(x, y);
-            EXPECT_TRUE(cell.material_type != Material::EnumType::Water || cell.fill_ratio < 0.1)
-                << "Water column cells should be cleared at (" << x << "," << y << ")";
+            const float v = waterView.volume[static_cast<size_t>(y) * waterView.width + x];
+            EXPECT_LT(v, 0.1f) << "Water column should be cleared at (" << x << "," << y << ")";
         }
     }
 
@@ -285,10 +293,10 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesWaterColumn)
     scenario->setConfig(configOn, *world);
 
     // Verify: Water column restored.
-    const Cell& restoredWaterCell = world->getData().at(3, 5);
-    EXPECT_EQ(restoredWaterCell.material_type, Material::EnumType::Water)
-        << "Water column should be restored";
-    EXPECT_GT(restoredWaterCell.fill_ratio, 0.9) << "Water should be nearly full";
+    ASSERT_TRUE(world->tryGetWaterVolumeView(waterView));
+    const float restoredColumnVolume =
+        waterView.volume[static_cast<size_t>(5) * waterView.width + 3];
+    EXPECT_GT(restoredColumnVolume, 0.9f) << "Water column should be restored";
 }
 
 /**

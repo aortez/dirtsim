@@ -12,11 +12,13 @@ namespace DirtSim {
  * movement in the World physics simulation.
  */
 enum class CollisionType : uint8_t {
-    TRANSFER_ONLY,       // Material moves between cells (default behavior)
-    ELASTIC_REFLECTION,  // Bouncing with energy conservation
-    INELASTIC_COLLISION, // Bouncing with energy loss
-    FRAGMENTATION,       // Break apart into smaller pieces
-    ABSORPTION           // One material absorbs the other
+    TRANSFER_ONLY,         // Material moves between cells (default behavior)
+    COMPRESSION_CONTACT,   // Supported loaded contact resolved without transport
+    FLUID_BLOCKED_CONTACT, // Full fluid contact resolved without transport
+    ELASTIC_REFLECTION,    // Bouncing with energy conservation
+    INELASTIC_COLLISION,   // Bouncing with energy loss
+    FRAGMENTATION,         // Break apart into smaller pieces
+    ABSORPTION             // One material absorbs the other
 };
 
 /**

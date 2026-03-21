@@ -400,6 +400,18 @@ State::Any SimRunning::onEvent(const RailModeChangedEvent& evt, StateMachine& /*
     return std::move(*this);
 }
 
+State::Any SimRunning::onEvent(
+    const UiApi::DebugVisualizationSelect::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::DebugVisualizationSelect::Response;
+
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->setDebugVisualizationMode(cwc.command.mode);
+
+    cwc.sendResponse(Response::okay(UiApi::DebugVisualizationSelect::Okay{ cwc.command.mode }));
+    return std::move(*this);
+}
+
 State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMachine& sm)
 {
     using Response = UiApi::DrawDebugToggle::Response;

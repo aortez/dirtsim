@@ -37,6 +37,7 @@
 #include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterVolumeView.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/HttpServer.h"
 #include "states/State.h"
@@ -2090,7 +2091,8 @@ void StateMachine::broadcastRenderMessage(
     const ScenarioConfig& scenario_config,
     const std::optional<NesControllerTelemetry>& nesControllerTelemetry,
     const std::optional<ScenarioVideoFrame>& scenarioVideoFrame,
-    const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry)
+    const std::optional<NesSuperMarioBrosResponseTelemetry>& nesSmbResponseTelemetry,
+    const WaterVolumeView* waterVolumeView)
 {
     if (pImpl->subscribedClients_.empty()) {
         spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
@@ -2137,6 +2139,40 @@ void StateMachine::broadcastRenderMessage(
 
         RenderMessage msg = RenderMessageUtils::packRenderMessage(
             data, client.renderFormat, organism_grid, scenarioVideoFrame);
+
+        if (waterVolumeView && !msg.scenario_video_frame.has_value()
+            && waterVolumeView->width == msg.width && waterVolumeView->height == msg.height
+            && static_cast<size_t>(waterVolumeView->width) * waterVolumeView->height
+                == waterVolumeView->volume.size()) {
+            if (msg.format == RenderFormat::EnumType::Basic) {
+                const size_t cellCount = static_cast<size_t>(msg.width) * msg.height;
+                if (msg.payload.size() == cellCount * sizeof(BasicCell)) {
+                    auto* cells = reinterpret_cast<BasicCell*>(msg.payload.data());
+                    for (size_t idx = 0; idx < cellCount; ++idx) {
+                        const float volume = (*waterVolumeView).volume[idx];
+                        if (volume <= 0.0f) {
+                            continue;
+                        }
+
+                        BasicCell& cell = cells[idx];
+                        if (cell.material_type != static_cast<uint8_t>(Material::EnumType::Air)) {
+                            continue;
+                        }
+
+                        const uint32_t background = cell.color;
+                        const uint32_t waterTinted =
+                            ColorNames::multiply(background, ColorNames::water());
+                        const float t = std::clamp(volume, 0.0f, 1.0f);
+
+                        cell.material_type = static_cast<uint8_t>(Material::EnumType::Water);
+                        cell.fill_ratio =
+                            static_cast<uint8_t>(std::clamp(t * 255.0f, 0.0f, 255.0f));
+                        cell.render_as = -1;
+                        cell.color = ColorNames::lerp(background, waterTinted, t);
+                    }
+                }
+            }
+        }
 
         // Bundle with scenario metadata for transport.
         RenderMessageFull fullMsg;

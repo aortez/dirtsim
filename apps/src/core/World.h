@@ -17,6 +17,8 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
+struct WaterVolumeMutableView;
+struct WaterVolumeView;
 class LightCalculatorBase;
 class LightManager;
 class WorldAdhesionCalculator;
@@ -24,6 +26,7 @@ class WorldCollisionCalculator;
 class WorldFrictionCalculator;
 
 class WorldPressureCalculator;
+class WorldRegionActivityTracker;
 class WorldViscosityCalculator;
 class GridOfCells;
 struct LightBuffer;
@@ -227,10 +230,14 @@ public:
     // Grid cache for debug info access.
     GridOfCells& getGrid();
     const GridOfCells& getGrid() const;
+    const WorldRegionActivityTracker& getRegionActivityTracker() const;
 
     // Physics settings - public accessors for Pimpl-stored settings.
     PhysicsSettings& getPhysicsSettings();
     const PhysicsSettings& getPhysicsSettings() const;
+
+    bool tryGetWaterVolumeView(WaterVolumeView& out) const;
+    bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out);
 
     const LightBuffer& getRawLightBuffer() const;
 
@@ -273,6 +280,7 @@ private:
 
     void clearPendingForces();
     void applyGravity();
+    void applyMacWaterCouplingForces();
     void applyAirResistance();
     void applyCohesionForces(const GridOfCells& grid);
     void applyPressureForces();
@@ -284,8 +292,10 @@ private:
     void processMaterialMoves();
     void setupBoundaryWalls();
     void ensureGridCacheFresh(const char* timerName);
+    bool isStaticLoadRecomputeNeeded() const;
     void rebuildGridCache(const char* timerName);
     void markGridCacheDirty();
+    void recomputeStaticLoad(const char* timerName);
 
     // Coordinate conversion helpers (can be public if needed).
     void pixelToCell(int pixelX, int pixelY, int& cellX, int& cellY) const;

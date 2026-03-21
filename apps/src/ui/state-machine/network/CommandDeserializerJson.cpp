@@ -1,4 +1,5 @@
 #include "CommandDeserializerJson.h"
+#include "ui/state-machine/api/DebugVisualizationSelect.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/GenomeBrowserOpen.h"
@@ -70,6 +71,10 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         if (commandName == UiApi::DrawDebugToggle::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::DrawDebugToggle::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::DebugVisualizationSelect::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::DebugVisualizationSelect::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::Exit::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::Exit::Command::fromJson(cmd));

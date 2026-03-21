@@ -38,6 +38,7 @@ struct Cell {
 
     // Unified pressure system.
     float pressure = 0.0f;
+    float static_load = 0.0f;
     Vector2f pressure_gradient = {};
 
     // Physics force accumulation.
@@ -123,7 +124,6 @@ struct Cell {
 
     // Basic material addition.
     void addDirt(float amount);
-    void addWater(float amount);
 
     // Advanced material addition with physics.
     void addDirtWithVelocity(float amount, const Vector2f& newVel);

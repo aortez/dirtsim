@@ -42,7 +42,7 @@ inline BasicCell packBasicCell(const Cell& cell, uint32_t color)
  * Quantizes all floating-point values to fixed-point integers.
  * - COM: [-1.0, 1.0] → int16_t [-32767, 32767]
  * - Velocity: [-10.0, 10.0] → int16_t [-32767, 32767]
- * - Pressure: [0, 1000] → uint16_t [0, 65535]
+ * - Static load / live pressure: [0, 1000] → uint16_t [0, 65535]
  */
 inline DebugCell packDebugCell(const Cell& cell)
 {
@@ -62,11 +62,12 @@ inline DebugCell packDebugCell(const Cell& cell)
     result.velocity_y =
         static_cast<int16_t>(std::clamp(cell.velocity.y * velocity_scale, -32767.0, 32767.0));
 
-    // Pressure: [0, 1000] → [0, 65535]. Unified pressure goes to hydro, dynamic is deprecated.
+    // Debug transport still uses the legacy split slots.
     constexpr double pressure_scale = 65535.0 / 1000.0;
     result.pressure_hydro =
+        static_cast<uint16_t>(std::clamp(cell.static_load * pressure_scale, 0.0, 65535.0));
+    result.pressure_dynamic =
         static_cast<uint16_t>(std::clamp(cell.pressure * pressure_scale, 0.0, 65535.0));
-    result.pressure_dynamic = 0;
 
     // Pressure gradient: stored as float directly.
     result.pressure_gradient.x = static_cast<float>(cell.pressure_gradient.x);
@@ -160,6 +161,9 @@ inline RenderMessage packRenderMessage(
     msg.height = data.height;
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
+    msg.region_blocks_x = data.region_debug_blocks_x;
+    msg.region_blocks_y = data.region_debug_blocks_y;
+    msg.region_debug = data.region_debug;
     msg.tree_vision = data.tree_vision;
     msg.scenario_video_frame = scenarioVideoFrame;
 

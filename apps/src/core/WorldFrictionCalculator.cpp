@@ -9,10 +9,71 @@
 
 using namespace DirtSim;
 
+namespace {
+
+float calculateTangentialSlipCancellationForce(
+    const Cell& cellA, const Cell& cellB, float tangential_speed, float deltaTime)
+{
+    if (deltaTime <= 0.0f) {
+        return 0.0f;
+    }
+
+    const bool cellA_static = cellA.isWall();
+    const bool cellB_static = cellB.isWall();
+
+    float effective_mass = 0.0f;
+    if (cellA_static && !cellB_static) {
+        effective_mass = cellB.getMass();
+    }
+    else if (!cellA_static && cellB_static) {
+        effective_mass = cellA.getMass();
+    }
+    else {
+        const float massA = cellA.getMass();
+        const float massB = cellB.getMass();
+        const float combined_mass = massA + massB;
+        if (combined_mass > 0.0f) {
+            effective_mass = (massA * massB) / combined_mass;
+        }
+    }
+
+    if (effective_mass <= 0.0f) {
+        return 0.0f;
+    }
+
+    return effective_mass * tangential_speed / deltaTime;
+}
+
+void noteStrongestFrictionContact(
+    CellDebug& debug,
+    const Vector2s& neighbor_pos,
+    const Vector2f& interface_normal,
+    float normal_force,
+    float tangential_speed,
+    float friction_coefficient,
+    const Vector2f& friction_force)
+{
+    const float force_magnitude = friction_force.magnitude();
+    if (force_magnitude <= debug.strongest_friction_contact_force_magnitude) {
+        return;
+    }
+
+    debug.strongest_friction_contact_force = friction_force;
+    debug.strongest_friction_contact_normal = interface_normal;
+    debug.strongest_friction_contact_coefficient = friction_coefficient;
+    debug.strongest_friction_contact_force_magnitude = force_magnitude;
+    debug.strongest_friction_contact_normal_force = normal_force;
+    debug.strongest_friction_contact_tangential_speed = tangential_speed;
+    debug.strongest_friction_contact_neighbor_x = neighbor_pos.x;
+    debug.strongest_friction_contact_neighbor_y = neighbor_pos.y;
+}
+
+} // namespace
+
 WorldFrictionCalculator::WorldFrictionCalculator(GridOfCells& grid) : grid_(grid)
 {}
 
-void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, float /* deltaTime */)
+void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, float deltaTime)
 {
     if (friction_strength_ <= 0.0f) {
         return;
@@ -21,17 +82,26 @@ void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, floa
     // Clear friction forces from previous frame.
     for (int y = 0; y < grid_.getHeight(); ++y) {
         for (int x = 0; x < grid_.getWidth(); ++x) {
-            grid_.debugAt(x, y).accumulated_friction_force = Vector2f{};
+            CellDebug& debug = grid_.debugAt(x, y);
+            debug.accumulated_friction_force = Vector2f{};
+            debug.strongest_friction_contact_force = {};
+            debug.strongest_friction_contact_normal = {};
+            debug.strongest_friction_contact_coefficient = 0.0;
+            debug.strongest_friction_contact_force_magnitude = 0.0;
+            debug.strongest_friction_contact_normal_force = 0.0;
+            debug.strongest_friction_contact_tangential_speed = 0.0;
+            debug.strongest_friction_contact_neighbor_x = -1;
+            debug.strongest_friction_contact_neighbor_y = -1;
         }
     }
 
     // STEP 1: Calculate friction forces and accumulate in debug info.
     if (GridOfCells::USE_CACHE) {
-        accumulateFrictionForces(world);
+        accumulateFrictionForces(world, deltaTime);
     }
     else {
         std::vector<ContactInterface> contacts = detectContactInterfaces(world);
-        accumulateFrictionFromContacts(world, contacts);
+        accumulateFrictionFromContacts(world, contacts, deltaTime);
     }
 
     // Apply accumulated friction forces to cells with constraint.
@@ -76,7 +146,7 @@ void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, floa
     }
 }
 
-void WorldFrictionCalculator::accumulateFrictionForces(World& world)
+void WorldFrictionCalculator::accumulateFrictionForces(World& world, float deltaTime)
 {
     // Cache data reference to avoid Pimpl indirection in inner loop.
     WorldData& data = world.getData();
@@ -156,9 +226,17 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     const float friction_coefficient =
                         calculateFrictionCoefficient(tangential_speed, propsA, propsB);
 
-                    // Calculate and apply friction force immediately.
-                    const float accumulated_friction_force_magnitude =
+                    const float coulomb_force_magnitude =
                         friction_coefficient * normal_force * friction_strength_;
+                    const float cancellation_force_magnitude =
+                        calculateTangentialSlipCancellationForce(
+                            cellA, cellB, tangential_speed, deltaTime);
+                    const float accumulated_friction_force_magnitude =
+                        std::min(coulomb_force_magnitude, cancellation_force_magnitude);
+
+                    if (accumulated_friction_force_magnitude <= 0.0f) {
+                        continue;
+                    }
 
                     const Vector2f friction_direction = tangential_velocity.normalize() * -1.0f;
                     const Vector2f accumulated_friction_force =
@@ -169,6 +247,22 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     grid_.debugAt(x, y).accumulated_friction_force += accumulated_friction_force;
                     grid_.debugAt(nx, ny).accumulated_friction_force +=
                         (-accumulated_friction_force);
+                    noteStrongestFrictionContact(
+                        grid_.debugAt(x, y),
+                        Vector2s(nx, ny),
+                        interface_normal,
+                        normal_force,
+                        tangential_speed,
+                        friction_coefficient,
+                        accumulated_friction_force);
+                    noteStrongestFrictionContact(
+                        grid_.debugAt(nx, ny),
+                        Vector2s(x, y),
+                        -interface_normal,
+                        normal_force,
+                        tangential_speed,
+                        friction_coefficient,
+                        -accumulated_friction_force);
 
                     spdlog::trace(
                         "Friction force: ({},{}) <-> ({},{}): normal_force={:.4f}, mu={:.3f}, "
@@ -384,13 +478,22 @@ Vector2f WorldFrictionCalculator::calculateTangentialVelocity(
 }
 
 void WorldFrictionCalculator::accumulateFrictionFromContacts(
-    World& world, const std::vector<ContactInterface>& contacts)
+    World& world, const std::vector<ContactInterface>& contacts, float deltaTime)
 {
-    (void)world;
+    WorldData& data = world.getData();
     for (const ContactInterface& contact : contacts) {
-        // Calculate friction force magnitude.
-        const float accumulated_friction_force_magnitude =
+        const Cell& cellA = data.at(contact.cell_A_pos.x, contact.cell_A_pos.y);
+        const Cell& cellB = data.at(contact.cell_B_pos.x, contact.cell_B_pos.y);
+        const float coulomb_force_magnitude =
             contact.friction_coefficient * contact.normal_force * friction_strength_;
+        const float cancellation_force_magnitude = calculateTangentialSlipCancellationForce(
+            cellA, cellB, contact.tangential_velocity.magnitude(), deltaTime);
+        const float accumulated_friction_force_magnitude =
+            std::min(coulomb_force_magnitude, cancellation_force_magnitude);
+
+        if (accumulated_friction_force_magnitude <= 0.0f) {
+            continue;
+        }
 
         // Direction: opposite to tangential relative velocity.
         const Vector2f friction_direction = contact.tangential_velocity.normalize() * -1.0f;
@@ -403,6 +506,22 @@ void WorldFrictionCalculator::accumulateFrictionFromContacts(
             accumulated_friction_force;
         grid_.debugAt(contact.cell_B_pos.x, contact.cell_B_pos.y).accumulated_friction_force +=
             (-accumulated_friction_force);
+        noteStrongestFrictionContact(
+            grid_.debugAt(contact.cell_A_pos.x, contact.cell_A_pos.y),
+            contact.cell_B_pos,
+            contact.interface_normal,
+            contact.normal_force,
+            contact.tangential_velocity.magnitude(),
+            contact.friction_coefficient,
+            accumulated_friction_force);
+        noteStrongestFrictionContact(
+            grid_.debugAt(contact.cell_B_pos.x, contact.cell_B_pos.y),
+            contact.cell_A_pos,
+            -contact.interface_normal,
+            contact.normal_force,
+            contact.tangential_velocity.magnitude(),
+            contact.friction_coefficient,
+            -accumulated_friction_force);
 
         spdlog::trace(
             "Friction force: ({},{}) <-> ({},{}): normal_force={:.4f}, mu={:.3f}, "

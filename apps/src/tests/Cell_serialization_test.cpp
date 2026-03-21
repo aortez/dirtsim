@@ -38,6 +38,7 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     cell.fill_ratio = 0.8;
     cell.com = Vector2d{ 0.5, -0.3 };
     cell.velocity = Vector2d{ 1.5, -2.0 };
+    cell.static_load = 35.0;
     cell.pressure = 50.0;
     cell.pressure_gradient = Vector2d{ 0.1, -0.2 };
 
@@ -50,7 +51,8 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     EXPECT_NEAR(unpacked.com.y, -0.3, 0.01);
     EXPECT_NEAR(unpacked.velocity.x, 1.5, 0.1);
     EXPECT_NEAR(unpacked.velocity.y, -2.0, 0.1);
-    EXPECT_NEAR(unpacked.pressure_hydro, 50.0, 1.0);
+    EXPECT_NEAR(unpacked.pressure_hydro, 35.0, 1.0);
+    EXPECT_NEAR(unpacked.pressure_dynamic, 50.0, 1.0);
     EXPECT_NEAR(unpacked.pressure_gradient.x, 0.1, 0.01);
     EXPECT_NEAR(unpacked.pressure_gradient.y, -0.2, 0.01);
 }
@@ -63,6 +65,18 @@ TEST(CellSerializationTest, RenderMessageSerializationIncludesScenarioVideoFrame
     original.height = 30;
     original.timestep = 123;
     original.fps_server = 60.0;
+    original.region_blocks_x = 2;
+    original.region_blocks_y = 1;
+    original.region_debug = {
+        RegionDebugInfo{
+            .state = static_cast<uint8_t>(RegionState::Sleeping),
+            .wake_reason = static_cast<uint8_t>(WakeReason::Move),
+        },
+        RegionDebugInfo{
+            .state = static_cast<uint8_t>(RegionState::Awake),
+            .wake_reason = static_cast<uint8_t>(WakeReason::BlockedTransfer),
+        },
+    };
 
     ScenarioVideoFrame frame;
     frame.width = 256;
@@ -84,6 +98,13 @@ TEST(CellSerializationTest, RenderMessageSerializationIncludesScenarioVideoFrame
     EXPECT_EQ(decoded.scenario_video_frame->height, frame.height);
     EXPECT_EQ(decoded.scenario_video_frame->frame_id, frame.frame_id);
     EXPECT_EQ(decoded.scenario_video_frame->pixels, frame.pixels);
+    EXPECT_EQ(decoded.region_blocks_x, original.region_blocks_x);
+    EXPECT_EQ(decoded.region_blocks_y, original.region_blocks_y);
+    ASSERT_EQ(decoded.region_debug.size(), original.region_debug.size());
+    EXPECT_EQ(decoded.region_debug[0].state, original.region_debug[0].state);
+    EXPECT_EQ(decoded.region_debug[0].wake_reason, original.region_debug[0].wake_reason);
+    EXPECT_EQ(decoded.region_debug[1].state, original.region_debug[1].state);
+    EXPECT_EQ(decoded.region_debug[1].wake_reason, original.region_debug[1].wake_reason);
 }
 
 TEST(CellSerializationTest, TrainingBestSnapshotSerializationIncludesScenarioVideoFrame)
