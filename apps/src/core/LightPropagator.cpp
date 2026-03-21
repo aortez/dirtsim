@@ -386,6 +386,11 @@ void LightPropagator::calculate(
     }
 
     ensureBufferSizes(data.width, data.height);
+    const bool inFlatBasicMode = config.mode == LightMode::FlatBasic;
+    if (inFlatBasicMode && !inFlatBasicMode_) {
+        clearPropagatedState();
+    }
+    inFlatBasicMode_ = inFlatBasicMode;
 
     switch (config.mode) {
         case LightMode::Propagated:
@@ -423,7 +428,6 @@ void LightPropagator::calculate(
         }
         case LightMode::FlatBasic: {
             ScopeTimer t(timers, "light_flat_basic");
-            clearPropagatedState();
             applyFlatBasic(data);
             break;
         }
