@@ -80,11 +80,6 @@ bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioI
     return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
 }
 
-LightMode resolveVisibleLightMode(OrganismType organismType)
-{
-    return organismType == OrganismType::TREE ? LightMode::Fast : LightMode::FlatBasic;
-}
-
 int resolveRobustnessPassSampleCount(int configuredCount)
 {
     if (configuredCount <= 0) {
@@ -1831,11 +1826,6 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
             evolutionConfig,
             dsm.getGenomeRepository(),
             runnerConfig);
-        if (World* world = bestPlayback_.runner->getWorld()) {
-            applyLightModePreset(
-                world->getPhysicsSettings().light,
-                resolveVisibleLightMode(trainingSpec.organismType));
-        }
     };
 
     const bool duckClockScenario =

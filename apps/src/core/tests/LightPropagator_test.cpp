@@ -320,6 +320,52 @@ TEST_F(LightPropagatorTest, FlatBasicUsesLegacyMaterialColorsAndRenderOverrides)
     EXPECT_EQ(rawLight.at(3, 1), packedLegacyColor(Material::EnumType::Water));
 }
 
+TEST_F(LightPropagatorTest, FlatBasicIncludesEmissiveOverlay)
+{
+    World world(4, 4);
+    WorldData& data = world.getData();
+
+    config.mode = LightMode::FlatBasic;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.sun_intensity = 0.0f;
+
+    prop.resize(4, 4);
+    prop.calculate(world, world.getGrid(), config, timers);
+    const float without = ColorNames::brightness(data.colors.at(2, 2));
+
+    prop.setEmissive(2, 2, ColorNames::white(), 0.5f);
+    prop.calculate(world, world.getGrid(), config, timers);
+    const float with = ColorNames::brightness(data.colors.at(2, 2));
+
+    EXPECT_GT(with, without + 0.1f)
+        << "FlatBasic should include emissive overlay. Without=" << without << " With=" << with;
+    EXPECT_GT(ColorNames::brightness(ColorNames::toRgbF(prop.getRawLightBuffer().at(2, 2))), 0.1f);
+}
+
+TEST_F(LightPropagatorTest, FlatBasicConsumesAmbientBoostForSingleFrame)
+{
+    World world(4, 4);
+    WorldData& data = world.getData();
+
+    config.mode = LightMode::FlatBasic;
+    config.ambient_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.sun_intensity = 0.0f;
+
+    prop.setAmbientBoost({ 0.25f, 0.25f, 0.25f });
+    prop.calculate(world, world.getGrid(), config, timers);
+    const float boosted = ColorNames::brightness(data.colors.at(1, 1));
+
+    prop.calculate(world, world.getGrid(), config, timers);
+    const float after = ColorNames::brightness(data.colors.at(1, 1));
+
+    EXPECT_GT(boosted, 0.1f) << "FlatBasic should include ambient boost for the current frame";
+    EXPECT_LT(after, boosted - 0.1f)
+        << "Ambient boost should be consumed after one FlatBasic frame. After=" << after
+        << " Boosted=" << boosted;
+}
+
 TEST_F(LightPropagatorTest, FlatBasicClearsPropagatedStateBeforeReturningToFastMode)
 {
     World world(8, 8);

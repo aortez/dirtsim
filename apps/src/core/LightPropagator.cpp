@@ -69,7 +69,16 @@ void LightPropagator::applyFlatBasic(WorldData& data)
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
             const Material::EnumType renderMaterial =
                 cell.isEmpty() ? Material::EnumType::Air : cell.getRenderMaterial();
-            data.colors.at(x, y) = ColorNames::toRgbF(getLegacyMaterialColor(renderMaterial));
+
+            ColorNames::RgbF color = ColorNames::toRgbF(getLegacyMaterialColor(renderMaterial));
+            color += ambient_boost_;
+
+            const ColorNames::RgbF& overlay = emissive_overlay_.at(x, y);
+            if (overlay.r > 0.0f || overlay.g > 0.0f || overlay.b > 0.0f) {
+                color += overlay;
+            }
+
+            data.colors.at(x, y) = color;
         }
     }
 }
@@ -78,7 +87,6 @@ void LightPropagator::clearPropagatedState()
 {
     light_field_.clear();
     light_field_next_.clear();
-    ambient_boost_ = {};
 }
 
 void LightPropagator::ensureBufferSizes(int width, int height)
@@ -429,6 +437,7 @@ void LightPropagator::calculate(
         case LightMode::FlatBasic: {
             ScopeTimer t(timers, "light_flat_basic");
             applyFlatBasic(data);
+            ambient_boost_ = {};
             break;
         }
     }
