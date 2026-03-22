@@ -347,6 +347,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/UnsavedTrainingResult.cpp
 
     # Server API commands.
+    src/server/api/BulkWaterSet.cpp
     src/server/api/CellGet.cpp
     src/server/api/CellSet.cpp
     src/server/api/ClockEventTrigger.cpp
@@ -378,6 +379,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/SimRun.cpp
     src/server/api/SimStop.cpp
     src/server/api/SpawnDirtBall.cpp
+    src/server/api/SpawnWaterBall.cpp
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp

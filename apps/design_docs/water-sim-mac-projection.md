@@ -35,8 +35,8 @@ consistent.
 
 - `WaterSimMode::MacProjection` is the **default** water simulation mode.
 - Water is tracked in a separate-layer `waterVolume[x,y] ∈ [0,1]` (canonical state).
-- Scenario water spawning uses `World::addMaterialAtCell(..., Water, ...)` which writes into
-  `waterVolume` when MAC mode is active.
+- Scenario and editor water authoring use explicit bulk-water APIs and commands rather than
+  `Material::Water` cell mutation.
 - Rendering: server overlays water volume onto **Basic** render messages (water tint + fill) for air
   cells.
 - `StateGet` includes `WorldData.water_volume` so clients/tools can inspect the volume field.

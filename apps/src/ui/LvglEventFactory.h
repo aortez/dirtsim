@@ -45,12 +45,6 @@ public:
     static void drawAreaMouseCallback(lv_event_t* e);
 
     /**
-     * @brief Create callback for material selection.
-     * Generates SelectMaterialCommand.
-     */
-    static void materialButtonCallback(lv_event_t* e);
-
-    /**
      * @brief Create callback for gravity toggle.
      * Generates SetGravityCommand.
      */

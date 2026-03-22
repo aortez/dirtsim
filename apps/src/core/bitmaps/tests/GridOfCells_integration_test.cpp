@@ -134,7 +134,7 @@ TEST(GridOfCellsTest, EmptyCellBitmapMatchesCellState)
 
     // Add some materials at known locations.
     world.addMaterialAtCell({ 5, 5 }, Material::EnumType::Dirt, 1.0);
-    world.addMaterialAtCell({ 10, 10 }, Material::EnumType::Water, 0.5);
+    world.addBulkWaterAtCell({ 10, 10 }, 0.5f);
     world.addMaterialAtCell({ 15, 15 }, Material::EnumType::Metal, 0.8);
 
     // Build grid cache.
@@ -207,23 +207,33 @@ TEST(GridOfCellsTest, SinglePassMatchesSeparatePasses)
 
     // Populate with varied materials including edges and corners.
     world.addMaterialAtCell({ 1, 1 }, Material::EnumType::Dirt, 1.0);
-    world.addMaterialAtCell({ 5, 5 }, Material::EnumType::Water, 0.7f);
+    world.addBulkWaterAtCell({ 5, 5 }, 0.7f);
     world.addMaterialAtCell({ 10, 3 }, Material::EnumType::Metal, 0.9f);
     world.addMaterialAtCell({ 15, 15 }, Material::EnumType::Sand, 0.5f);
     world.addMaterialAtCell({ 28, 28 }, Material::EnumType::Dirt, 0.8f);
-    world.addMaterialAtCell({ 0, 15 }, Material::EnumType::Water, 0.6f);
+    world.addBulkWaterAtCell({ 0, 15 }, 0.6f);
     world.addMaterialAtCell({ 29, 0 }, Material::EnumType::Metal, 1.0);
 
     // Scatter more materials with RNG.
     std::mt19937 rng(99);
     std::uniform_int_distribution<> coord_dist(0, 29);
-    std::uniform_int_distribution<> mat_dist(1, 8);
     std::uniform_real_distribution<> fill_dist(0.2, 1.0);
+    const std::array<Material::EnumType, 8> materials{ {
+        Material::EnumType::Dirt,
+        Material::EnumType::Leaf,
+        Material::EnumType::Metal,
+        Material::EnumType::Root,
+        Material::EnumType::Sand,
+        Material::EnumType::Seed,
+        Material::EnumType::Wall,
+        Material::EnumType::Wood,
+    } };
+    std::uniform_int_distribution<size_t> materialIndexDist(0, materials.size() - 1);
 
     for (int i = 0; i < 50; ++i) {
         int16_t x = static_cast<int16_t>(coord_dist(rng));
         int16_t y = static_cast<int16_t>(coord_dist(rng));
-        Material::EnumType mat = static_cast<Material::EnumType>(mat_dist(rng));
+        const Material::EnumType mat = materials[materialIndexDist(rng)];
         float fill = static_cast<float>(fill_dist(rng));
         world.addMaterialAtCell({ x, y }, mat, fill);
     }

@@ -341,8 +341,13 @@ void fillHorizontalSpan(
     World& world, int y, int x_begin, int x_end, Material::EnumType material_type)
 {
     for (int x = x_begin; x <= x_end; ++x) {
-        world.replaceMaterialAtCell(
-            Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) }, material_type);
+        const Vector2s pos{ static_cast<int16_t>(x), static_cast<int16_t>(y) };
+        if (material_type == Material::EnumType::Water) {
+            world.setBulkWaterAmountAtCell(pos, 1.0f);
+        }
+        else {
+            world.replaceMaterialAtCell(pos, material_type);
+        }
     }
 }
 

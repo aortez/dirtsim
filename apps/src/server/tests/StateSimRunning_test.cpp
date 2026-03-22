@@ -5,6 +5,10 @@
 #include "core/scenarios/ScenarioRegistry.h"
 #include "core/water/WaterVolumeView.h"
 #include "server/UserSettings.h"
+#include "server/api/BulkWaterSet.h"
+#include "server/api/CellSet.h"
+#include "server/api/SpawnDirtBall.h"
+#include "server/api/SpawnWaterBall.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
@@ -54,6 +58,35 @@ void applyCleanScenario(SimRunning& simRunning)
     ASSERT_NE(scenario, nullptr);
     ASSERT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox);
     scenario->setConfig(cleanConfig, *world);
+}
+
+bool hasLegacyWaterCells(const World& world)
+{
+    const WorldData& data = world.getData();
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            if (data.at(x, y).material_type == Material::EnumType::Water) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+int countMaterialCells(const World& world, Material::EnumType material)
+{
+    const WorldData& data = world.getData();
+    int count = 0;
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            if (data.at(x, y).material_type == material) {
+                ++count;
+            }
+        }
+    }
+
+    return count;
 }
 
 } // namespace
@@ -347,6 +380,173 @@ TEST(StateSimRunningTest, SandboxConfig_TogglesDirtQuadrant)
     EXPECT_EQ(restoredCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should be restored";
     EXPECT_GT(restoredCell.fill_ratio, 0.9) << "Quadrant cells should be filled";
+}
+
+TEST(StateSimRunningTest, CellSet_WaterIsRejected)
+{
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    const int testX = 14;
+    const int testY = 14;
+
+    bool callbackInvoked = false;
+    Api::CellSet::Command cmd{
+        .x = testX,
+        .y = testY,
+        .material = Material::EnumType::Water,
+    };
+    Api::CellSet::Cwc cwc(cmd, [&](Api::CellSet::Response&& response) {
+        callbackInvoked = true;
+        ASSERT_TRUE(response.isError()) << "CellSet should reject WATER";
+        EXPECT_NE(response.errorValue().message.find("BulkWaterSet"), std::string::npos);
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked) << "BulkWaterSet callback should be invoked";
+
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_NEAR(world->getBulkWaterAmountAtCell(testX, testY), 0.0f, 1e-6f);
+    EXPECT_EQ(world->getData().at(testX, testY).material_type, Material::EnumType::Air);
+}
+
+TEST(StateSimRunningTest, BulkWaterSet_SetsBulkWaterAmountInMacMode)
+{
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    const int testX = 14;
+    const int testY = 14;
+
+    bool callbackInvoked = false;
+    Api::BulkWaterSet::Command cmd{
+        .x = testX,
+        .y = testY,
+        .amount = 0.25,
+    };
+    Api::BulkWaterSet::Cwc cwc(cmd, [&](Api::BulkWaterSet::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "BulkWaterSet should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked) << "CellSet callback should be invoked";
+
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_NEAR(world->getBulkWaterAmountAtCell(testX, testY), 0.25f, 1e-6f);
+    EXPECT_EQ(world->getData().at(testX, testY).material_type, Material::EnumType::Air);
+}
+
+TEST(StateSimRunningTest, CellSet_AirClearsBulkWaterInMacMode)
+{
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    const int testX = 14;
+    const int testY = 14;
+    world->setBulkWaterAmountAtCell(testX, testY, 0.75f);
+    ASSERT_NEAR(world->getBulkWaterAmountAtCell(testX, testY), 0.75f, 1e-6f);
+
+    bool callbackInvoked = false;
+    Api::CellSet::Command cmd{
+        .x = testX,
+        .y = testY,
+        .material = Material::EnumType::Air,
+    };
+    Api::CellSet::Cwc cwc(cmd, [&](Api::CellSet::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "CellSet should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked) << "CellSet callback should be invoked";
+
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_NEAR(world->getBulkWaterAmountAtCell(testX, testY), 0.0f, 1e-6f);
+    EXPECT_EQ(world->getData().at(testX, testY).material_type, Material::EnumType::Air);
+}
+
+TEST(StateSimRunningTest, SpawnDirtBall_SpawnsDirt)
+{
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    const int dirtCountBefore = countMaterialCells(*world, Material::EnumType::Dirt);
+
+    bool callbackInvoked = false;
+    Api::SpawnDirtBall::Command cmd{};
+    Api::SpawnDirtBall::Cwc cwc(cmd, [&](Api::SpawnDirtBall::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SpawnDirtBall should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked) << "SpawnDirtBall callback should be invoked";
+
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+    EXPECT_GT(countMaterialCells(*world, Material::EnumType::Dirt), dirtCountBefore);
+}
+
+TEST(StateSimRunningTest, SpawnWaterBall_UsesBulkWaterInMacMode)
+{
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    bool callbackInvoked = false;
+    Api::SpawnWaterBall::Command cmd{};
+    Api::SpawnWaterBall::Cwc cwc(cmd, [&](Api::SpawnWaterBall::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SpawnWaterBall should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked) << "SpawnWaterBall callback should be invoked";
+
+    world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world->tryGetWaterVolumeView(volumeView));
+    float totalVolume = 0.0f;
+    for (float volume : volumeView.volume) {
+        totalVolume += volume;
+    }
+
+    EXPECT_GT(totalVolume, 1.0f);
+    EXPECT_FALSE(hasLegacyWaterCells(*world));
 }
 
 /**

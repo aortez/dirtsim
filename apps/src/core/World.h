@@ -78,14 +78,6 @@ public:
     void clearCellAtPosition(Vector2s pos);
 
     // =================================================================
-    // MATERIAL ADDITION
-    // =================================================================
-
-    // Material selection state management (for UI/API coordination).
-    void setSelectedMaterial(Material::EnumType type);
-    Material::EnumType getSelectedMaterial() const;
-
-    // =================================================================
     // PHYSICS PARAMETERS
     // =================================================================
 
@@ -272,7 +264,6 @@ public:
     int com_cohesion_range_;
     bool air_resistance_enabled_;
     double air_resistance_strength_;
-    Material::EnumType selected_material_;
 
     struct Impl;
     Pimpl<Impl> pImpl;

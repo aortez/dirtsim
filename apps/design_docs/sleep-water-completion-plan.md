@@ -25,8 +25,8 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 
 ## Near-Term Priority Order
 
-1. Finish MAC water ownership and replace the remaining behavior-coupled legacy-water paths.
-2. Remove legacy bulk-water APIs and call patterns once migrated replacements exist.
+1. Finish the remaining gameplay/setup paths that still treat legacy water cells as bulk water.
+2. Make `waterVolume` setup/reset fully explicit when a `World` is reused.
 3. Add MAC-based quiet metrics and allow calm pool interiors to sleep.
 4. Gate MAC water work by active regions if profiling shows it is still needed.
 5. Add an optional transient spray/droplet layer.
@@ -48,18 +48,35 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 
 - `WaterSimMode::MacProjection` is the global default.
 - Separate-layer `waterVolume` is the canonical bulk-water state in MAC mode.
-- `World::addMaterialAtCell(..., Water, ...)`, `replaceMaterialAtCell(..., Water)`, clear, and
-  serialization paths know about `waterVolume`.
+- Explicit bulk-water APIs, clear, and serialization paths know about `waterVolume`.
 - `StateGet` includes `WorldData.water_volume`.
 - Basic render overlays `waterVolume` onto air cells.
 - Streamed Debug render carries an explicit MAC-water overlay.
+- Production scenario water sources now author bulk water through explicit bulk-water APIs instead
+  of instantiating legacy water cells in MAC mode.
+- Generic material mutation no longer authors bulk water in MAC mode.
+- Editor/server water commands now use explicit `BulkWaterSet` / `SpawnWaterBall` paths instead of
+  overloading solid-material commands.
+- `CellSet` is back to meaning air/solid cell edits only; it no longer carries a hidden water
+  payload path.
+- `SpawnDirtBall` is literal dirt again; water spawning is an explicit peer command rather than a
+  selected-material special case.
 
 ### Remaining Water Migration Gaps
 
 - Some gameplay and scenario logic still assumes `Cell.material_type == Water`.
-- Some code paths still create legacy water cells while MAC mode is active.
 - Scenario setup and reset are inconsistent about clearing or repopulating `waterVolume` when a
   `World` instance is reused.
+
+### Current Phase 2 Exit Line
+
+Phase 2 should be considered complete when:
+
+- production MAC bulk-water behavior no longer depends on legacy water cells,
+- reused worlds do not carry stale `waterVolume`,
+- no active public/editor command path overloads solid-material APIs to mean bulk water,
+- any remaining legacy-water code is either truly legacy-mode-only or explicitly out of the bulk
+  MAC ownership path.
 
 ## Guiding Decisions
 
@@ -130,11 +147,17 @@ The target end state is:
   `World`.
 - Remove bulk-water creation paths that still instantiate legacy water cells while MAC mode is
   active.
+- Keep the command/editor surface explicit:
+  - cell material edits stay separate from bulk-water edits,
+  - dirt spawn and water spawn stay separate,
+  - no new mixed "selected material" or `CellSet(WATER)` style paths are added.
 
 #### Notes
 
 - This does not require designing water sleeping yet.
 - The goal is to establish one authoritative bulk-water representation before adding more behavior.
+- The command-surface cleanup is effectively done; the remaining work is mainly gameplay logic,
+  scenario reset/setup consistency, and any lingering legacy-water assumptions behind helper paths.
 - In practice this phase splits into two kinds of work:
   - straightforward bulk-water migration, such as scenario setup/reset, bulk-water counting,
     hydration, and simple add/remove paths;
@@ -142,6 +165,8 @@ The target end state is:
     collision fragmentation, which need MAC-native replacements rather than mechanical renames.
 - Once the migrated helper path exists, old bulk-water APIs and direct legacy-water access patterns
   should be removed rather than left as parallel options.
+- Legacy-mode-only tests or scaffolding do not define the MAC ownership boundary. They can remain
+  temporarily if they are clearly outside the active MAC bulk-water path.
 - The behavior-coupled paths should not be papered over with new compatibility shims. They should
   either become explicit MAC bulk-water operations or move to a separate transient spray/droplet
   system.
@@ -159,6 +184,7 @@ The target end state is:
 - Scenario reset/setup does not leave stale `waterVolume` behind.
 - Bulk-water behavior no longer depends on surviving legacy water cells.
 - Production MAC bulk-water behavior no longer depends on generic water-material mutation paths.
+- Public/editor command surfaces do not overload solid-material commands to author bulk water.
 
 ### Phase 3: Add Water Quiet Metrics And Sleep Calm Pool Interiors
 

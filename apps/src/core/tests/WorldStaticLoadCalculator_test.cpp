@@ -76,7 +76,7 @@ TEST(WorldStaticLoadCalculatorTest, DoesNotAccumulateStaticLoadForWater)
 {
     World world(5, 6);
     world.getPhysicsSettings().gravity = 10.0;
-    world.addMaterialAtCell(2, 1, Material::EnumType::Water);
+    world.setBulkWaterAmountAtCell(2, 1, 1.0f);
     world.addMaterialAtCell(2, 2, Material::EnumType::Dirt);
 
     WorldStaticLoadCalculator calculator;

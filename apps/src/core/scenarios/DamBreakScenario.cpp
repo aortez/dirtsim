@@ -56,6 +56,7 @@ void DamBreakScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
+    world.clearAllBulkWater();
 
     // Reset state.
     damBroken_ = false;
@@ -73,10 +74,7 @@ void DamBreakScenario::setup(World& world)
     // Create water column on left side - full height.
     for (int x = 0; x < 2; x++) {
         for (int y = 0; y < 6; y++) {
-            world.addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                Material::EnumType::Water,
-                1.0);
+            world.addBulkWaterAtCell({ static_cast<int16_t>(x), static_cast<int16_t>(y) }, 1.0f);
         }
     }
 

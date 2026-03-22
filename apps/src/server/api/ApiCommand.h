@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ApiMacros.h"
+#include "BulkWaterSet.h"
 #include "CellGet.h"
 #include "CellSet.h"
 #include "ClockEventTrigger.h"
@@ -33,6 +34,7 @@
 #include "SimRun.h"
 #include "SimStop.h"
 #include "SpawnDirtBall.h"
+#include "SpawnWaterBall.h"
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "TimerStatsGet.h"
@@ -77,6 +79,7 @@ concept ApiCommandType = requires(T cmd) {
  * @brief Variant containing all API command types.
  */
 using ApiCommand = std::variant<
+    Api::BulkWaterSet::Command,
     Api::CellGet::Command,
     Api::CellSet::Command,
     Api::ClockEventTrigger::Command,
@@ -109,6 +112,7 @@ using ApiCommand = std::variant<
     Api::SimRun::Command,
     Api::SimStop::Command,
     Api::SpawnDirtBall::Command,
+    Api::SpawnWaterBall::Command,
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,

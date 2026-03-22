@@ -1025,10 +1025,42 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
         return std::move(*this);
     }
 
-    // Replace material (organism-aware). AIR clears the cell.
-    world->replaceMaterialAtCell(
-        { static_cast<int16_t>(cwc.command.x), static_cast<int16_t>(cwc.command.y) },
-        cwc.command.material);
+    const Vector2s pos{ static_cast<int16_t>(cwc.command.x), static_cast<int16_t>(cwc.command.y) };
+
+    if (cwc.command.material == Material::EnumType::Air) {
+        world->clearCellAtPosition(pos);
+    }
+    else if (cwc.command.material == Material::EnumType::Water) {
+        cwc.sendResponse(
+            Response::error(ApiError("CellSet does not accept WATER; use BulkWaterSet")));
+        return std::move(*this);
+    }
+    else {
+        world->replaceMaterialAtCell(pos, cwc.command.material);
+    }
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::BulkWaterSet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::BulkWaterSet::Response;
+
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
+
+    if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
+        cwc.sendResponse(Response::error(ApiError("Invalid coordinates")));
+        return std::move(*this);
+    }
+
+    const Vector2s pos{ static_cast<int16_t>(cwc.command.x), static_cast<int16_t>(cwc.command.y) };
+    world->setBulkWaterAmountAtCell(pos, static_cast<float>(cwc.command.amount));
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -1379,16 +1411,32 @@ State::Any SimRunning::onEvent(const Api::SpawnDirtBall::Cwc& cwc, StateMachine&
     }
     World* world = grid.value().world;
 
-    // Spawn a dirt ball at top center.
     int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
-    int16_t topY = 2; // Start at row 2 to avoid the very top edge.
+    int16_t topY = 2;
 
     spdlog::info("SpawnDirtBall: Spawning dirt ball at ({}, {})", centerX, topY);
+    world->spawnMaterialBall(Material::EnumType::Dirt, { centerX, topY });
 
-    // Spawn a ball of the currently selected material.
-    // Radius is calculated automatically as 15% of world width.
-    Material::EnumType selectedMaterial = world->getSelectedMaterial();
-    world->spawnMaterialBall(selectedMaterial, { centerX, topY });
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::SpawnWaterBall::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::SpawnWaterBall::Response;
+
+    const auto grid = session.requireGridWorld();
+    if (grid.isError()) {
+        cwc.sendResponse(Response::error(grid.errorValue()));
+        return std::move(*this);
+    }
+    World* world = grid.value().world;
+
+    int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
+    int16_t topY = 2;
+
+    spdlog::info("SpawnWaterBall: Spawning water ball at ({}, {})", centerX, topY);
+    world->spawnMaterialBall(Material::EnumType::Water, { centerX, topY });
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -1556,15 +1604,6 @@ State::Any SimRunning::onEvent(const MouseMoveEvent& /*evt*/, StateMachine& /*ds
 State::Any SimRunning::onEvent(const MouseUpEvent& /*evt*/, StateMachine& /*dsm*/)
 {
     spdlog::debug("SimRunning: Mouse events not handled by headless server");
-    return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const SelectMaterialCommand& cmd, StateMachine& /*dsm*/)
-{
-    if (World* world = session.getWorld()) {
-        world->setSelectedMaterial(cmd.material);
-        spdlog::debug("SimRunning: Selected material {}", static_cast<int>(cmd.material));
-    }
     return std::move(*this);
 }
 
@@ -1754,26 +1793,6 @@ State::Any SimRunning::onEvent(const PrintAsciiDiagramCommand& /*cmd*/, StateMac
     }
     else {
         spdlog::warn("PrintAsciiDiagramCommand: No world available");
-    }
-
-    return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const SpawnDirtBallCommand& /*cmd*/, StateMachine& /*dsm*/)
-{
-    // Get the current world and spawn a ball at top center.
-    if (World* world = session.getWorld()) {
-        // Calculate the top center position.
-        int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
-        int16_t topY = 2; // Start at row 2 to avoid the very top edge.
-
-        // Spawn a ball of the currently selected material.
-        // Radius is calculated automatically as 15% of world width.
-        Material::EnumType selectedMaterial = world->getSelectedMaterial();
-        world->spawnMaterialBall(selectedMaterial, { centerX, topY });
-    }
-    else {
-        spdlog::warn("SpawnDirtBallCommand: No world available");
     }
 
     return std::move(*this);

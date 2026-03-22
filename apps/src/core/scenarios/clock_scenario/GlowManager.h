@@ -12,7 +12,7 @@ class World;
  * Manages emissive cell glow for the clock scenario.
  *
  * Stateless utility that applies emissiveness to specified cell positions.
- * Water cells are auto-detected by material type.
+ * Water glow is auto-detected from bulk-water presence.
  *
  * Call apply() late in the tick cycle, after all cell modifications complete.
  */

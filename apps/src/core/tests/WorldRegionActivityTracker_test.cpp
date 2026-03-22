@@ -92,7 +92,7 @@ TEST(WorldRegionActivityTrackerTest, WaterAdjacencyPreventsSleeping)
     World world(8, 8);
     fillWorld(world, Material::EnumType::Dirt);
     world.clearCellAtPosition(Vector2s{ 4, 4 });
-    world.addMaterialAtCell(Vector2s{ 4, 4 }, Material::EnumType::Water, 1.0f);
+    world.setBulkWaterAmountAtCell(Vector2s{ 4, 4 }, 1.0f);
 
     GridOfCells grid = makeGrid(world);
     WorldRegionActivityTracker tracker;

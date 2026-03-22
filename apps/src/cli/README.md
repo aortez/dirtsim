@@ -56,7 +56,15 @@ Send commands to the server, UI, audio, or os-manager:
 
 # Commands with JSON parameters
 ./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 10}'
-./build-debug/bin/cli server CellSet '{"x": 50, "y": 50, "material": "WATER", "fill": 1.0}'
+./build-debug/bin/cli server CellSet '{"x": 50, "y": 50, "material": "WALL"}'
+./build-debug/bin/cli server BulkWaterSet '{"x": 50, "y": 50, "amount": 1.0}'
+./build-debug/bin/cli server SpawnDirtBall
+./build-debug/bin/cli server SpawnWaterBall
+
+# CellSet notes:
+# - AIR clears the cell.
+# - Solid materials use full-cell replacement semantics.
+# - WATER is not accepted by CellSet; use BulkWaterSet instead.
 
 # Get default JSON for a command
 ./build-debug/bin/cli server SimRun --example

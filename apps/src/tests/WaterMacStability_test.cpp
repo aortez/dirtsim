@@ -2,7 +2,9 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/SandboxScenario.h"
+#include "core/scenarios/clock_scenario/RainEvent.h"
 #include "core/water/MacProjectionWaterSim.h"
 
 #include <algorithm>
@@ -84,6 +86,20 @@ int countCellsAtOrAbove(
         }
     }
     return count;
+}
+
+bool hasLegacyWaterCells(const World& world)
+{
+    const WorldData& data = world.getData();
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            if (data.at(x, y).material_type == Material::EnumType::Water) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 struct WaterShapeMetrics {
@@ -265,7 +281,7 @@ void refillWaterSourceRect(World& world, const WaterSourceRect& sourceRect)
 {
     for (int y = sourceRect.yBeginInclusive; y < sourceRect.yEndExclusive; ++y) {
         for (int x = sourceRect.xBeginInclusive; x < sourceRect.xEndExclusive; ++x) {
-            world.addMaterialAtCell(x, y, Material::EnumType::Water, 1.0f);
+            world.addBulkWaterAtCell(x, y, 1.0f);
         }
     }
 }
@@ -819,6 +835,71 @@ TEST(WaterMacStabilityTest, ResidualMistSettlesDownIntoTheBasin)
 
     EXPECT_LT(aboveBottomRow, 1e-7f);
     EXPECT_NEAR(bottomRow, totalInitial, 1e-7f);
+}
+
+TEST(WaterMacStabilityTest, ClockRainEventWritesBulkWaterWithoutLegacyWaterCellsInMacMode)
+{
+    constexpr int kWidth = 20;
+    constexpr int kHeight = 10;
+
+    World world(kWidth, kHeight);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    setupDirectEmptyBasin(world);
+
+    std::mt19937 rng(1234);
+    std::uniform_real_distribution<double> uniformDist(0.0, 1.0);
+
+    ClockEvents::updateRain(world, 1.0, rng, uniformDist);
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
+    EXPECT_NEAR(sumVolume(volumeView), 0.5f, 1e-6f);
+    EXPECT_FALSE(hasLegacyWaterCells(world));
+}
+
+TEST(WaterMacStabilityTest, DamBreakScenarioSetupClearsPriorMacWaterAndUsesBulkWater)
+{
+    World world(6, 6);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    world.setBulkWaterAmountAtCell(4, 4, 0.75f);
+
+    DamBreakScenario scenario;
+    scenario.setup(world);
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
+    EXPECT_NEAR(sumVolume(volumeView), 12.0f, 1e-6f);
+    EXPECT_NEAR(world.getBulkWaterAmountAtCell(4, 4), 0.0f, 1e-6f);
+    EXPECT_FALSE(hasLegacyWaterCells(world));
+
+    for (int y = 0; y < 6; ++y) {
+        EXPECT_NEAR(world.getBulkWaterAmountAtCell(0, y), 1.0f, 1e-6f);
+        EXPECT_NEAR(world.getBulkWaterAmountAtCell(1, y), 1.0f, 1e-6f);
+        EXPECT_EQ(world.getData().at(2, y).material_type, Material::EnumType::Wall);
+    }
+}
+
+TEST(WaterMacStabilityTest, SandboxRainWritesBulkWaterWithoutLegacyWaterCellsInMacMode)
+{
+    World world(47, 30);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+
+    SandboxScenario scenario;
+    Config::Sandbox config{};
+    config.quadrantEnabled = false;
+    config.waterColumnEnabled = false;
+    config.rightThrowEnabled = false;
+    config.rainRate = 10.0;
+    scenario.setConfig(config, world);
+    world.setScenario(&scenario);
+    scenario.setup(world);
+
+    scenario.tick(world, 1.0);
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
+    EXPECT_GT(sumVolume(volumeView), 1.0f);
+    EXPECT_FALSE(hasLegacyWaterCells(world));
 }
 
 TEST(WaterMacStabilityTest, SandboxColumnFallsInsteadOfRemainingSuspended)

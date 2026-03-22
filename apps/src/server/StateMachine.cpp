@@ -892,6 +892,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
         return;                                                                             \
     }
+        DISPATCH_JSON_CMD_EMPTY(Api::BulkWaterSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::CellGet);
         DISPATCH_JSON_CMD_EMPTY(Api::CellSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::DiagramGet);
@@ -910,6 +911,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::SimRun);
         DISPATCH_JSON_CMD_EMPTY(Api::SimStop);
         DISPATCH_JSON_CMD_EMPTY(Api::SpawnDirtBall);
+        DISPATCH_JSON_CMD_EMPTY(Api::SpawnWaterBall);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TrainingBestSnapshotGet);
@@ -1117,6 +1119,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     // All queued commands follow the same pattern: queue CWC to state machine.
     // State machine routes to current state's onEvent() handler.
 
+    service.registerHandler<Api::BulkWaterSet::Cwc>(
+        [this](Api::BulkWaterSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::CellGet::Cwc>([this](Api::CellGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::CellSet::Cwc>([this](Api::CellSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ClockEventTrigger::Cwc>(
@@ -1166,6 +1170,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     service.registerHandler<Api::SimStop::Cwc>([this](Api::SimStop::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SpawnDirtBall::Cwc>(
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SpawnWaterBall::Cwc>(
+        [this](Api::SpawnWaterBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::UserSettingsGet::Cwc>(

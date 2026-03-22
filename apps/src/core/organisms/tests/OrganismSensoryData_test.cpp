@@ -32,7 +32,7 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
 
     // Place known materials at specific positions.
     world->addMaterialAtCell({ 7, 7 }, Material::EnumType::Dirt, 1.0);  // Center.
-    world->addMaterialAtCell({ 5, 7 }, Material::EnumType::Water, 0.8); // Left of center.
+    world->addBulkWaterAtCell({ 5, 7 }, 0.8f);                          // Left of center.
     world->addMaterialAtCell({ 9, 7 }, Material::EnumType::Sand, 0.6);  // Right of center.
     world->addMaterialAtCell({ 7, 5 }, Material::EnumType::Wood, 1.0);  // Above center.
     world->addMaterialAtCell({ 7, 9 }, Material::EnumType::Metal, 1.0); // Below center.
@@ -387,7 +387,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     }
 
     // Add water pool to the left.
-    world->addMaterialAtCell({ 4, 12 }, Material::EnumType::Water, 1.0);
+    world->addBulkWaterAtCell({ 4, 12 }, 1.0f);
 
     // Create duck at (7, 12).
     OrganismId duck_id = world->getOrganismManager().createDuck(*world, 7, 12);

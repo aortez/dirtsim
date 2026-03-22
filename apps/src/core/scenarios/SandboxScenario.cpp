@@ -363,8 +363,7 @@ void SandboxScenario::spawnWaterDrop(
 
             // If within radius, add water with specified fill amount.
             if (distance <= radius) {
-                world.addMaterialAtCell(
-                    x, y, Material::EnumType::Water, static_cast<float>(fillAmount));
+                world.addBulkWaterAtCell(x, y, static_cast<float>(fillAmount));
             }
         }
     }

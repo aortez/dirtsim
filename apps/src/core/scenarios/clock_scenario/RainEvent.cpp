@@ -1,5 +1,4 @@
 #include "RainEvent.h"
-#include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 
@@ -21,8 +20,7 @@ void updateRain(
         uint32_t x = x_dist(rng);
         uint32_t y = 2;
 
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Water, 0.5);
+        world.addBulkWaterAtCell({ static_cast<int16_t>(x), static_cast<int16_t>(y) }, 0.5f);
     }
 
     // Water drainage is handled by updateDrain() in ClockScenario::tick().

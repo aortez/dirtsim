@@ -6,11 +6,13 @@
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
 #include "server/Event.h"
+#include "server/api/BulkWaterSet.h"
 #include "server/api/ClockEventTrigger.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/NesInputSet.h"
+#include "server/api/SpawnWaterBall.h"
 #include "server/states/ScenarioSession.h"
 
 #include <chrono>
@@ -97,6 +99,7 @@ struct SimRunning {
     void tick(StateMachine& dsm);
 
     Any onEvent(const ApplyScenarioCommand& cmd, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::BulkWaterSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::CellGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::CellSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::ClockEventTrigger::Cwc& cwc, StateMachine& dsm);
@@ -120,13 +123,13 @@ struct SimRunning {
     Any onEvent(const DirtSim::Api::SimRun::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::SimStop::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::SpawnDirtBall::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::SpawnWaterBall::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::StateGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const PauseCommand& cmd, StateMachine& dsm);
     Any onEvent(const ResetSimulationCommand& cmd, StateMachine& dsm);
     Any onEvent(const MouseDownEvent& evt, StateMachine& dsm);
     Any onEvent(const MouseMoveEvent& evt, StateMachine& dsm);
     Any onEvent(const MouseUpEvent& evt, StateMachine& dsm);
-    Any onEvent(const SelectMaterialCommand& cmd, StateMachine& dsm);
     Any onEvent(const SetTimescaleCommand& cmd, StateMachine& dsm);
     Any onEvent(const SetElasticityCommand& cmd, StateMachine& dsm);
     Any onEvent(const SetDynamicStrengthCommand& cmd, StateMachine& dsm);
@@ -147,7 +150,6 @@ struct SimRunning {
     Any onEvent(const ToggleCohesionForceCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleTimeHistoryCommand& cmd, StateMachine& dsm);
     Any onEvent(const PrintAsciiDiagramCommand& cmd, StateMachine& dsm);
-    Any onEvent(const SpawnDirtBallCommand& cmd, StateMachine& dsm);
     Any onEvent(const SetFragmentationCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleWaterColumnCommand& cmd, StateMachine& dsm);
     Any onEvent(const ToggleRightThrowCommand& cmd, StateMachine& dsm);

@@ -15,6 +15,7 @@
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
 #include "rendering/VideoSurface.h"
+#include "server/api/BulkWaterSet.h"
 #include "server/api/CellSet.h"
 #include "server/api/UserSettingsPatch.h"
 #include "state-machine/EventSink.h"
@@ -572,24 +573,30 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
     }
     self->lastPaintedCell_ = *cell;
 
-    // DRAW mode places the selected material, ERASE mode places AIR.
-    Material::EnumType material = (mode == InteractionMode::ERASE)
-        ? Material::EnumType::Air
-        : self->coreControlsState_.drawMaterial;
-    double fillRatio = (mode == InteractionMode::ERASE) ? 0.0 : 1.0;
-
     static std::atomic<uint64_t> nextId{ 1 };
-    Api::CellSet::Command cmd{ cell->x, cell->y, material, fillRatio };
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-    self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+    const auto sendCommand = [&](const auto& cmd) {
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+    };
 
-    LOG_INFO(
-        Controls,
-        "{} ({}, {}) -> {}",
-        (mode == InteractionMode::ERASE) ? "Erase" : "Draw",
-        cell->x,
-        cell->y,
-        toString(material));
+    if (mode == InteractionMode::ERASE) {
+        Api::CellSet::Command cmd{ cell->x, cell->y, Material::EnumType::Air };
+        sendCommand(cmd);
+        LOG_INFO(Controls, "Erase ({}, {})", cell->x, cell->y);
+        return;
+    }
+
+    const Material::EnumType material = self->coreControlsState_.drawMaterial;
+    if (material == Material::EnumType::Water) {
+        Api::BulkWaterSet::Command cmd{ cell->x, cell->y, 1.0 };
+        sendCommand(cmd);
+        LOG_INFO(Controls, "Draw ({}, {}) -> BulkWater", cell->x, cell->y);
+        return;
+    }
+
+    Api::CellSet::Command cmd{ cell->x, cell->y, material };
+    sendCommand(cmd);
+    LOG_INFO(Controls, "Draw ({}, {}) -> {}", cell->x, cell->y, toString(material));
 }
 
 } // namespace Ui

@@ -1,4 +1,5 @@
 #include "CommandDeserializerJson.h"
+#include "server/api/BulkWaterSet.h"
 #include "server/api/CellGet.h"
 #include "server/api/CellSet.h"
 #include "server/api/ClockEventTrigger.h"
@@ -21,6 +22,7 @@
 #include "server/api/SimRun.h"
 #include "server/api/SimStop.h"
 #include "server/api/SpawnDirtBall.h"
+#include "server/api/SpawnWaterBall.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"
 #include "server/api/TrainingBestSnapshotGet.h"
@@ -68,7 +70,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
 
     // Dispatch to appropriate handler.
     try {
-        if (commandName == Api::CellGet::Command::name()) {
+        if (commandName == Api::BulkWaterSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::BulkWaterSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::CellGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::CellGet::Command::fromJson(cmd));
         }
         else if (commandName == Api::CellSet::Command::name()) {
@@ -137,6 +142,9 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::SpawnDirtBall::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SpawnDirtBall::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SpawnWaterBall::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::SpawnWaterBall::Command::fromJson(cmd));
         }
         else if (commandName == Api::StateGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::StateGet::Command::fromJson(cmd));

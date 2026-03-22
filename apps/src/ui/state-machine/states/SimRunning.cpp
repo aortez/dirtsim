@@ -485,7 +485,7 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
+            Api::CellSet::Command cmd{ cell->x, cell->y, material };
             auto envelope = DirtSim::Network::make_command_envelope(
                 sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
@@ -522,7 +522,7 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
                 ? Material::EnumType::Wall
                 : Material::EnumType::Air;
 
-            Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
+            Api::CellSet::Command cmd{ cell->x, cell->y, material };
             auto envelope = DirtSim::Network::make_command_envelope(
                 sm.getWebSocketService().allocateRequestId(), cmd);
             sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));

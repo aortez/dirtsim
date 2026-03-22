@@ -49,7 +49,7 @@ TEST(WaterMacBuoyancyTest, WoodRisesAndDirtSinks)
     constexpr int kWaterTop = 8;
     for (int y = kWaterTop; y < kHeight; ++y) {
         for (int x = 0; x < kWidth; ++x) {
-            world.addMaterialAtCell(x, y, Material::EnumType::Water, 1.0f);
+            world.addBulkWaterAtCell(x, y, 1.0f);
         }
     }
 

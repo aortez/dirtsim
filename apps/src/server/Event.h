@@ -1,5 +1,6 @@
 #pragma once
 
+#include "api/BulkWaterSet.h"
 #include "api/CellGet.h"
 #include "api/CellSet.h"
 #include "api/ClockEventTrigger.h"
@@ -32,6 +33,7 @@
 #include "api/SimRun.h"
 #include "api/SimStop.h"
 #include "api/SpawnDirtBall.h"
+#include "api/SpawnWaterBall.h"
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
 #include "api/TimerStatsGet.h"
@@ -329,18 +331,6 @@ struct PrintAsciiDiagramCommand {
     static constexpr const char* name() { return "PrintAsciiDiagramCommand"; }
 };
 
-struct SpawnDirtBallCommand {
-    static constexpr const char* name() { return "SpawnDirtBallCommand"; }
-};
-
-/**
- * @brief Change selected material type.
- */
-struct SelectMaterialCommand {
-    Material::EnumType material;
-    static constexpr const char* name() { return "SelectMaterialCommand"; }
-};
-
 // =================================================================
 // STATE TRANSITION EVENTS
 // =================================================================
@@ -413,10 +403,8 @@ public:
         CaptureScreenshotCommand,
         QuitApplicationCommand,
         PrintAsciiDiagramCommand,
-        SpawnDirtBallCommand,
-        SelectMaterialCommand,
-
         // API commands (network/remote control).
+        DirtSim::Api::BulkWaterSet::Cwc,
         DirtSim::Api::CellGet::Cwc,
         DirtSim::Api::CellSet::Cwc,
         DirtSim::Api::ClockEventTrigger::Cwc,
@@ -449,6 +437,7 @@ public:
         DirtSim::Api::SimRun::Cwc,
         DirtSim::Api::SimStop::Cwc,
         DirtSim::Api::SpawnDirtBall::Cwc,
+        DirtSim::Api::SpawnWaterBall::Cwc,
         DirtSim::Api::StateGet::Cwc,
         DirtSim::Api::StatusGet::Cwc,
         DirtSim::Api::TimerStatsGet::Cwc,

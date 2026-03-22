@@ -3,7 +3,6 @@
 #include "ApiError.h"
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
-#include "core/MaterialType.h"
 #include "core/Result.h"
 #include <nlohmann/json.hpp>
 #include <variant>
@@ -12,15 +11,15 @@
 namespace DirtSim {
 namespace Api {
 
-namespace CellSet {
+namespace BulkWaterSet {
 
-DEFINE_API_NAME(CellSet);
+DEFINE_API_NAME(BulkWaterSet);
 
 struct Command {
     API_COMMAND_T(std::monostate);
     int x;
     int y;
-    Material::EnumType material;
+    double amount = 1.0;
 
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
@@ -32,6 +31,6 @@ using OkayType = std::monostate;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace CellSet
+} // namespace BulkWaterSet
 } // namespace Api
 } // namespace DirtSim

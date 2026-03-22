@@ -609,7 +609,6 @@ World::World(int width, int height)
       com_cohesion_range_(1),
       air_resistance_enabled_(true),
       air_resistance_strength_(0.1),
-      selected_material_(Material::EnumType::Dirt),
       pImpl(),
       organism_manager_(std::make_unique<OrganismManager>()),
       rng_(std::make_unique<std::mt19937>(std::random_device{}()))
@@ -1098,20 +1097,6 @@ bool World::tryGetMutableWaterVolumeView(WaterVolumeMutableView& out)
     return pImpl->water_sim_system_.tryGetMutableWaterVolumeView(out);
 }
 
-// =================================================================
-// SIMPLE GETTERS/SETTERS (moved from inline in header)
-// =================================================================
-
-void World::setSelectedMaterial(Material::EnumType type)
-{
-    selected_material_ = type;
-}
-
-Material::EnumType World::getSelectedMaterial() const
-{
-    return selected_material_;
-}
-
 void World::setDirtFragmentationFactor(double /* factor */)
 {
     // No-op for World.
@@ -1446,31 +1431,10 @@ void World::addMaterialAtCell(Vector2s pos, Material::EnumType type, float amoun
 
     if (type == Material::EnumType::Water
         && pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
-        pImpl->water_sim_system_.syncToSettings(
-            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
-
-        WaterVolumeMutableView volumeMutable{};
-        if (!pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)) {
-            return;
-        }
-
-        const Cell& cell = pImpl->data_.at(pos.x, pos.y);
-        const bool isBlockedBySolid =
-            !cell.isEmpty() && cell.material_type != Material::EnumType::Air;
-        if (isBlockedBySolid) {
-            return;
-        }
-
-        const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
-        const float current = volumeMutable.volume[idx];
-        const float added = std::min(amount, std::max(0.0f, 1.0f - current));
-        if (added <= 0.0f) {
-            return;
-        }
-
-        volumeMutable.volume[idx] = current + added;
-        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
-        spdlog::trace("Added {:.3f} {} (mac) at cell ({},{})", added, toString(type), pos.x, pos.y);
+        spdlog::error(
+            "addMaterialAtCell({}, {}, Water) is unsupported in MAC mode; use addBulkWaterAtCell",
+            pos.x,
+            pos.y);
         return;
     }
 
@@ -1547,33 +1511,11 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
 
     if (material == Material::EnumType::Water
         && pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
-        if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
-            return;
-        }
-
-        pImpl->water_sim_system_.syncToSettings(
-            pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
-
-        WaterVolumeMutableView volumeMutable{};
-        if (!pImpl->water_sim_system_.tryGetMutableWaterVolumeView(volumeMutable)) {
-            return;
-        }
-
-        const Cell& cell = pImpl->data_.at(pos.x, pos.y);
-        const bool isBlockedBySolid =
-            !cell.isEmpty() && cell.material_type != Material::EnumType::Air;
-        if (isBlockedBySolid) {
-            return;
-        }
-
-        const size_t idx = static_cast<size_t>(pos.y) * pImpl->data_.width + pos.x;
-        if (idx >= volumeMutable.volume.size()) {
-            return;
-        }
-
-        volumeMutable.volume[idx] = 1.0f;
-        pImpl->region_activity_tracker_.noteWakeAtCell(pos.x, pos.y, WakeReason::ExternalMutation);
-        spdlog::trace("Replaced with {} (mac) at cell ({},{})", toString(material), pos.x, pos.y);
+        spdlog::error(
+            "replaceMaterialAtCell({}, {}, Water) is unsupported in MAC mode; use "
+            "setBulkWaterAmountAtCell",
+            pos.x,
+            pos.y);
         return;
     }
 
@@ -3545,7 +3487,12 @@ void World::spawnMaterialBall(Material::EnumType material, Vector2s center)
 
             // If within radius, fill the cell.
             if (distance <= radius) {
-                addMaterialAtCell({ x, y }, material, 1.0f);
+                if (material == Material::EnumType::Water) {
+                    addBulkWaterAtCell({ x, y }, 1.0f);
+                }
+                else {
+                    addMaterialAtCell({ x, y }, material, 1.0f);
+                }
             }
         }
     }

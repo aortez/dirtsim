@@ -63,7 +63,7 @@ TEST_F(DuckBuoyancyTest, DISABLED_DuckFloatsInWater)
     //   . W .   y=5
     for (int16_t y = 0; y < 6; ++y) {
         if (y != 3) {
-            world->addMaterialAtCell({ 1, y }, Material::EnumType::Water, 1.0f);
+            world->addBulkWaterAtCell({ 1, y }, 1.0f);
         }
     }
 
