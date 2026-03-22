@@ -504,6 +504,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/OrganismTracker.cpp
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
+    src/core/organisms/evolution/TrainingPhaseTracker.cpp
     src/core/organisms/evolution/TrainingRunner.cpp
     src/core/organisms/evolution/TreeEvaluator.cpp
     src/core/organisms/components/LightHandHeld.cpp
@@ -945,6 +946,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
     src/core/organisms/evolution/tests/DuckClockEvaluationTracker_test.cpp
+    src/core/organisms/evolution/tests/TrainingPhaseTracker_test.cpp
     src/core/organisms/evolution/tests/TrainingRunner_test.cpp
     src/core/organisms/evolution/tests/TrainingRunnerTraceHarness_test.cpp
 

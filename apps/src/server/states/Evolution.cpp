@@ -42,6 +42,21 @@ constexpr size_t kFitnessDistributionBinCount = 16;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
 constexpr size_t kRobustFitnessSampleWindow = 7;
 
+constexpr std::string_view trainingPhaseName(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return "normal";
+        case TrainingPhase::Plateau:
+            return "plateau";
+        case TrainingPhase::Stuck:
+            return "stuck";
+        case TrainingPhase::Recovery:
+            return "recovery";
+    }
+    return "unknown";
+}
+
 uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
 {
     constexpr uint64_t kOffsetBasis = 14695981039346656037ull;
@@ -826,6 +841,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     sumFitnessThisGen_ = 0.0;
     pendingBest_.reset();
     robustnessPass_.reset();
+    trainingPhaseTracker_.reset();
     bestPlayback_.reset();
 }
 
@@ -1388,6 +1404,7 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
         finalizeRobustnessPass(dsm);
     }
 
+    updateTrainingPhaseTelemetry();
     captureLastGenerationFitnessDistribution();
     captureLastGenerationTelemetry();
 
@@ -1752,6 +1769,28 @@ void Evolution::captureLastGenerationTelemetry()
     lastGenTelemetry_.phenotypeNovelOffspringMutatedCount = novelOffspringMutated;
 }
 
+void Evolution::updateTrainingPhaseTelemetry()
+{
+    const TrainingPhaseUpdate update = trainingPhaseTracker_.updateCompletedGeneration(
+        generation, bestFitnessThisGen, evolutionConfig);
+    if (!update.phaseChanged) {
+        return;
+    }
+
+    const TrainingPhaseStatus& status = trainingPhaseTracker_.status();
+    LOG_INFO(
+        State,
+        "Evolution: training phase {} -> {} at generation {} "
+        "(best={:.4f}, since_improvement={}, stagnation_level={}, recovery_level={})",
+        trainingPhaseName(update.previousPhase),
+        trainingPhaseName(update.phase),
+        generation,
+        bestFitnessThisGen,
+        status.generationsSinceImprovement,
+        status.stagnationLevel,
+        status.recoveryLevel);
+}
+
 void Evolution::adjustConcurrency()
 {
     if (evolutionConfig.targetCpuPercent <= 0 || !executor_ || cpuSamples_.empty()) {
@@ -1935,6 +1974,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     const int validatingBestCompletedSamples =
         validatingBest ? robustnessPass_.completedSamples : 0;
     const int validatingBestTargetSamples = validatingBest ? robustnessPass_.targetEvalCount : 0;
+    const TrainingPhaseStatus& trainingPhaseStatus = trainingPhaseTracker_.status();
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
@@ -1962,6 +2002,11 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .validatingBest = validatingBest,
         .validatingBestCompletedSamples = validatingBestCompletedSamples,
         .validatingBestTargetSamples = validatingBestTargetSamples,
+        .trainingPhase = trainingPhaseStatus.phase,
+        .generationsSinceImprovement = trainingPhaseStatus.generationsSinceImprovement,
+        .lastImprovementGeneration = trainingPhaseStatus.lastImprovementGeneration,
+        .stagnationLevel = trainingPhaseStatus.stagnationLevel,
+        .recoveryLevel = trainingPhaseStatus.recoveryLevel,
         .averageFitness = avgFitness,
         .lastCompletedGeneration = lastCompletedGeneration_,
         .lastGenerationAverageFitness = lastGenerationAverageFitness_,

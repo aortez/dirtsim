@@ -239,6 +239,11 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.validatingBest = true;
     evt.progress.validatingBestCompletedSamples = 1;
     evt.progress.validatingBestTargetSamples = 3;
+    evt.progress.trainingPhase = TrainingPhase::Plateau;
+    evt.progress.generationsSinceImprovement = 6;
+    evt.progress.lastImprovementGeneration = 2;
+    evt.progress.stagnationLevel = 1;
+    evt.progress.recoveryLevel = 0;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -257,6 +262,11 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_TRUE(trainingState.progress.validatingBest);
     EXPECT_EQ(trainingState.progress.validatingBestCompletedSamples, 1);
     EXPECT_EQ(trainingState.progress.validatingBestTargetSamples, 3);
+    EXPECT_EQ(trainingState.progress.trainingPhase, TrainingPhase::Plateau);
+    EXPECT_EQ(trainingState.progress.generationsSinceImprovement, 6);
+    EXPECT_EQ(trainingState.progress.lastImprovementGeneration, 2);
+    EXPECT_EQ(trainingState.progress.stagnationLevel, 1);
+    EXPECT_EQ(trainingState.progress.recoveryLevel, 0);
 
     trainingState.view_.reset();
 }

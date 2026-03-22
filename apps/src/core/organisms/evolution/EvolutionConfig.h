@@ -30,6 +30,12 @@ struct EvolutionConfig {
     double warmStartNoveltyWeight = 0.3;    // Blend of novelty bias in warm-seed sampling [0, 1].
     double warmStartFitnessFloorPercentile =
         60.0; // Minimum robust-fitness percentile allowed for stochastic warm-seed sampling.
+    double stagnationImprovementEpsilon =
+        0.001; // Minimum robust-best gain required to reset stagnation tracking.
+    int stagnationWindowGenerations =
+        5; // Generations without meaningful improvement before plateau begins.
+    int recoveryWindowGenerations =
+        3; // Generations spent decaying out of recovery after improvement resumes.
 
     // Evaluation settings.
     double maxSimulationTime = 1000.0; // Seconds of sim time per organism.

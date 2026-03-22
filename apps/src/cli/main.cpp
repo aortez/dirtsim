@@ -69,6 +69,21 @@ using namespace DirtSim;
 namespace {
 constexpr int kProgressFitnessPrecision = 6;
 
+const char* trainingPhaseLabel(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return "normal";
+        case TrainingPhase::Plateau:
+            return "plateau";
+        case TrainingPhase::Stuck:
+            return "stuck";
+        case TrainingPhase::Recovery:
+            return "recovery";
+    }
+    return "unknown";
+}
+
 std::string commandTypeFromSignature(const std::string& signature)
 {
     const std::string_view delimiter = " -> ";
@@ -2239,6 +2254,13 @@ int main(int argc, char** argv)
                      << progress.bestFitnessAllTime;
                 line << " avg=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
                      << progress.averageFitness;
+                line << " phase=" << trainingPhaseLabel(progress.trainingPhase);
+                line << " sinceImp=" << progress.generationsSinceImprovement;
+                line << " stagnation=" << progress.stagnationLevel;
+                line << " recovery=" << progress.recoveryLevel;
+                if (progress.lastImprovementGeneration >= 0) {
+                    line << " lastImpGen=" << progress.lastImprovementGeneration;
+                }
                 line << " src=" << progress.bestThisGenSource;
                 if (!progress.bestGenomeId.isNil()) {
                     const std::string genomeId = progress.bestGenomeId.toString();

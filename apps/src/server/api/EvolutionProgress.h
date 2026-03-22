@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingPhase.h"
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -29,6 +30,11 @@ struct EvolutionProgress {
     bool validatingBest = false;
     int validatingBestCompletedSamples = 0;
     int validatingBestTargetSamples = 0;
+    TrainingPhase trainingPhase = TrainingPhase::Normal;
+    int generationsSinceImprovement = 0;
+    int lastImprovementGeneration = -1;
+    int stagnationLevel = 0;
+    int recoveryLevel = 0;
     // Running average fitness for the currently evaluated generation.
     double averageFitness = 0.0;
     int lastCompletedGeneration = -1;
@@ -72,7 +78,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<45>;
+    using serialize = zpp::bits::members<50>;
 };
 
 } // namespace Api

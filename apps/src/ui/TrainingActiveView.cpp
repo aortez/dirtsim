@@ -38,6 +38,36 @@ constexpr std::array<const char*, 8> kNesButtonLabels{ "U", "D", "L", "R", "A", 
 constexpr std::array<const char*, 4> kNesOutputLabels{ "X", "Y", "A", "B" };
 constexpr float kNesOutputBarMaxMagnitude = 4.0f;
 
+const char* trainingPhaseLabel(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return "Normal";
+        case TrainingPhase::Plateau:
+            return "Plateau";
+        case TrainingPhase::Stuck:
+            return "Stuck";
+        case TrainingPhase::Recovery:
+            return "Recovery";
+    }
+    return "Unknown";
+}
+
+lv_color_t trainingPhaseTextColor(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return lv_color_hex(0x00CC66);
+        case TrainingPhase::Plateau:
+            return lv_color_hex(0xFFAA33);
+        case TrainingPhase::Stuck:
+            return lv_color_hex(0xFF6666);
+        case TrainingPhase::Recovery:
+            return lv_color_hex(0x66CCFF);
+    }
+    return lv_color_hex(0x888888);
+}
+
 struct BestRenderRequest {
     TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
@@ -1633,8 +1663,16 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x66CCFF), 0);
         }
         else if (evolutionStarted_) {
-            lv_label_set_text(statusLabel_, "Training...");
-            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
+            if (progress.trainingPhase == TrainingPhase::Normal) {
+                lv_label_set_text(statusLabel_, "Training...");
+            }
+            else {
+                std::string label = "Training: ";
+                label += trainingPhaseLabel(progress.trainingPhase);
+                lv_label_set_text(statusLabel_, label.c_str());
+            }
+            lv_obj_set_style_text_color(
+                statusLabel_, trainingPhaseTextColor(progress.trainingPhase), 0);
         }
         else {
             lv_label_set_text(statusLabel_, "Ready");

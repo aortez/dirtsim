@@ -13,6 +13,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingPhaseTracker.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
@@ -94,6 +95,7 @@ struct Evolution {
     GenomeId bestGenomeId{};
     uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    TrainingPhaseTracker trainingPhaseTracker_;
     int lastCompletedGeneration_ = -1;
     double lastGenerationAverageFitness_ = 0.0;
     double lastGenerationFitnessMin_ = 0.0;
@@ -265,6 +267,7 @@ private:
     void drainResults(StateMachine& dsm);
     void captureLastGenerationFitnessDistribution();
     void captureLastGenerationTelemetry();
+    void updateTrainingPhaseTelemetry();
     void processResult(StateMachine& dsm, EvolutionSupport::CompletedEvaluation result);
     void maybeCompleteGeneration(StateMachine& dsm);
     void finalizePendingBestWithoutRobustnessPass(StateMachine& dsm);
