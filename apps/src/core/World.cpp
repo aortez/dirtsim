@@ -937,7 +937,24 @@ bool World::hasBulkWaterAtCell(Vector2s pos, float minAmount) const
 
 bool World::hasBulkWaterAtCell(int x, int y, float minAmount) const
 {
-    return getBulkWaterAmountAtCell(x, y) >= minAmount;
+    if (!pImpl->data_.inBounds(x, y)) {
+        return false;
+    }
+
+    if (pImpl->physicsSettings_.water_sim_mode == WaterSimMode::MacProjection) {
+        WaterVolumeView waterVolume{};
+        if (pImpl->water_sim_system_.tryGetWaterVolumeView(waterVolume)
+            && waterVolume.width == pImpl->data_.width
+            && waterVolume.height == pImpl->data_.height) {
+            const size_t idx = static_cast<size_t>(y) * pImpl->data_.width + x;
+            if (idx < waterVolume.volume.size()) {
+                const float amount = std::clamp(waterVolume.volume[idx], 0.0f, 1.0f);
+                return amount > minAmount;
+            }
+        }
+    }
+
+    return getBulkWaterAmountAtCell(x, y) > minAmount;
 }
 
 void World::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
@@ -966,8 +983,12 @@ void World::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
         }
     };
 
-    if (drain.guideSpeed > 0.0f) {
-        noteWakeSpan(drain.guideStartX, drain.guideEndX, drain.guideY);
+    if (drain.guideDownwardSpeed > 0.0f || drain.guideLateralSpeed > 0.0f) {
+        const int topY = std::min(drain.guideTopY, drain.guideBottomY);
+        const int bottomY = std::max(drain.guideTopY, drain.guideBottomY);
+        for (int y = topY; y <= bottomY; ++y) {
+            noteWakeSpan(drain.guideStartX, drain.guideEndX, y);
+        }
     }
 
     if (drain.mouthDownwardSpeed > 0.0f || drain.drainRatePerSecond > 0.0f) {

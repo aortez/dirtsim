@@ -13,11 +13,13 @@ struct PhysicsSettings;
 struct GuidedWaterDrain {
     int16_t guideStartX = 0;
     int16_t guideEndX = -1;
-    int16_t guideY = 0;
+    int16_t guideTopY = 0;
+    int16_t guideBottomY = -1;
     int16_t mouthStartX = 0;
     int16_t mouthEndX = -1;
     int16_t mouthY = 0;
-    float guideSpeed = 0.0f;
+    float guideDownwardSpeed = 0.0f;
+    float guideLateralSpeed = 0.0f;
     float mouthDownwardSpeed = 0.0f;
     float drainRatePerSecond = 0.0f;
 };

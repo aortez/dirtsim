@@ -8,11 +8,13 @@
 #include "core/scenarios/clock_scenario/MeltdownEvent.h"
 #include "core/water/WaterSim.h"
 
+#include <chrono>
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <thread>
 
 using namespace DirtSim;
 using namespace DirtSim::Test;
@@ -41,11 +43,13 @@ GuidedWaterDrain makeBottomRowGuidedDrain(const World& world, int mouthStartX, i
     return GuidedWaterDrain{
         .guideStartX = 1,
         .guideEndX = static_cast<int16_t>(world.getData().width - 2),
-        .guideY = static_cast<int16_t>(drainY - 1),
+        .guideTopY = static_cast<int16_t>(drainY - 1),
+        .guideBottomY = static_cast<int16_t>(drainY - 1),
         .mouthStartX = static_cast<int16_t>(mouthStartX),
         .mouthEndX = static_cast<int16_t>(mouthEndX),
         .mouthY = static_cast<int16_t>(drainY),
-        .guideSpeed = 8.0f,
+        .guideDownwardSpeed = 0.0f,
+        .guideLateralSpeed = 8.0f,
         .mouthDownwardSpeed = 12.0f,
         .drainRatePerSecond = 6.0f,
     };
@@ -339,6 +343,24 @@ TEST(ClockWaterTransitionTest, DrainDissipatesBulkWaterAtOpenDrainCells)
     EXPECT_LT(world.getBulkWaterAmountAtCell(drainX, drainY), 1.0f);
 }
 
+TEST(ClockWaterTransitionTest, DrainStaysOpenWhileGuideAreaStillContainsBulkWater)
+{
+    World world(11, 8);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+
+    DrainManager drain;
+    drain.update(world, 0.1, 1.0, std::nullopt);
+    ASSERT_TRUE(drain.isOpen());
+
+    const int guideTopY = world.getData().height - 5;
+    world.addBulkWaterAtCell(2, guideTopY, 1.0f);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    drain.update(world, 0.1, 0.0, std::nullopt);
+
+    EXPECT_TRUE(drain.isOpen());
+}
+
 TEST(ClockWaterTransitionTest, GuidedWaterDrainPullsBottomRowWaterTowardOpenMouth)
 {
     World world(11, 8);
@@ -359,11 +381,13 @@ TEST(ClockWaterTransitionTest, GuidedWaterDrainPullsBottomRowWaterTowardOpenMout
         GuidedWaterDrain{
             .guideStartX = 1,
             .guideEndX = static_cast<int16_t>(world.getData().width - 2),
-            .guideY = static_cast<int16_t>(bottomRow),
+            .guideTopY = static_cast<int16_t>(bottomRow),
+            .guideBottomY = static_cast<int16_t>(bottomRow),
             .mouthStartX = drain.getStartX(),
             .mouthEndX = drain.getEndX(),
             .mouthY = static_cast<int16_t>(world.getData().height - 1),
-            .guideSpeed = 8.0f,
+            .guideDownwardSpeed = 0.0f,
+            .guideLateralSpeed = 8.0f,
             .mouthDownwardSpeed = 12.0f,
             .drainRatePerSecond = 6.0f,
         });
@@ -371,6 +395,38 @@ TEST(ClockWaterTransitionTest, GuidedWaterDrainPullsBottomRowWaterTowardOpenMout
 
     EXPECT_LT(world.getBulkWaterAmountAtCell(sourceX, bottomRow), 1.0f);
     EXPECT_GT(world.getBulkWaterAmountAtCell(sourceX + 1, bottomRow), 0.0f);
+}
+
+TEST(ClockWaterTransitionTest, GuidedWaterDrainPullsUpperRowWaterDownTowardBottomGuideRow)
+{
+    World world(11, 8);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+
+    const int drainY = world.getData().height - 1;
+    const int bottomGuideRow = drainY - 1;
+    const int upperGuideRow = bottomGuideRow - 2;
+    const int x = 3;
+
+    world.addBulkWaterAtCell(x, upperGuideRow, 1.0f);
+
+    world.queueGuidedWaterDrain(
+        GuidedWaterDrain{
+            .guideStartX = 1,
+            .guideEndX = static_cast<int16_t>(world.getData().width - 2),
+            .guideTopY = static_cast<int16_t>(upperGuideRow),
+            .guideBottomY = static_cast<int16_t>(bottomGuideRow),
+            .mouthStartX = static_cast<int16_t>(world.getData().width / 2),
+            .mouthEndX = static_cast<int16_t>(world.getData().width / 2),
+            .mouthY = static_cast<int16_t>(drainY),
+            .guideDownwardSpeed = 6.0f,
+            .guideLateralSpeed = 0.0f,
+            .mouthDownwardSpeed = 0.0f,
+            .drainRatePerSecond = 0.0f,
+        });
+    world.advanceTime(0.05);
+
+    EXPECT_LT(world.getBulkWaterAmountAtCell(x, upperGuideRow), 1.0f);
+    EXPECT_GT(world.getBulkWaterAmountAtCell(x, upperGuideRow + 1), 0.0f);
 }
 
 TEST(ClockWaterTransitionTest, GuidedDrainPullsLeftWaterWithoutCrossingToRightOfMouth)

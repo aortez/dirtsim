@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "core/Cell.h"
 #include "core/PhysicsSettings.h"
@@ -509,6 +510,9 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     // pools into a low-density haze across the basin.
     volumeScratch_ = waterVolume_;
 
+    const float advectionVolumeEpsilon =
+        pendingGuidedWaterDrains_.empty() ? parameters.advectionVolumeEpsilon : 0.0f;
+
     for (int y = 0; y < height_; ++y) {
         for (int x = 1; x < width_; ++x) {
             const size_t leftIdx = cellIndex(width_, x - 1, y);
@@ -534,12 +538,12 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             const size_t receiverIdx = flowRight ? rightIdx : leftIdx;
 
             const float donorSourceVol = waterVolume_[donorIdx];
-            if (donorSourceVol <= parameters.advectionVolumeEpsilon) {
+            if (donorSourceVol <= advectionVolumeEpsilon) {
                 continue;
             }
 
             const float donorAvailable = volumeScratch_[donorIdx];
-            if (donorAvailable <= parameters.advectionVolumeEpsilon) {
+            if (donorAvailable <= advectionVolumeEpsilon) {
                 continue;
             }
 
@@ -584,12 +588,12 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             const size_t receiverIdx = flowDown ? bottomIdx : topIdx;
 
             const float donorSourceVol = waterVolume_[donorIdx];
-            if (donorSourceVol <= parameters.advectionVolumeEpsilon) {
+            if (donorSourceVol <= advectionVolumeEpsilon) {
                 continue;
             }
 
             const float donorAvailable = volumeScratch_[donorIdx];
-            if (donorAvailable <= parameters.advectionVolumeEpsilon) {
+            if (donorAvailable <= advectionVolumeEpsilon) {
                 continue;
             }
 
@@ -621,10 +625,57 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
         }
     }
 
+    settleResidualWater();
+
     for (const GuidedWaterDrain& drain : pendingGuidedWaterDrains_) {
         applyGuidedWaterDrainOutflow(drain, dt);
     }
     pendingGuidedWaterDrains_.clear();
+
+    // Flush subnormal residue to zero. These values are effectively numerical noise but can
+    // persist forever (and keep drain/presence logic latched).
+    constexpr float kMinNormal = std::numeric_limits<float>::min();
+    for (float& volume : waterVolume_) {
+        if (!std::isfinite(volume) || (volume > 0.0f && volume < kMinNormal)) {
+            volume = 0.0f;
+        }
+    }
+}
+
+void MacProjectionWaterSim::settleResidualWater()
+{
+    const float settleEpsilon = std::max(0.0f, parameters_.fluidMaskVolumeEpsilon);
+    if (settleEpsilon <= 0.0f) {
+        return;
+    }
+
+    // Water below the MAC fluid threshold is not part of the pressure solve and can linger as a
+    // low-density haze. Treat it like droplets and let it settle under gravity so it can either
+    // pool or drain.
+    for (int y = height_ - 2; y >= 0; --y) {
+        for (int x = 0; x < width_; ++x) {
+            const size_t idx = cellIndex(width_, x, y);
+            const size_t belowIdx = cellIndex(width_, x, y + 1);
+            if (solidMask_[idx] != 0 || solidMask_[belowIdx] != 0) {
+                continue;
+            }
+
+            const float volume = waterVolume_[idx];
+            if (volume <= 0.0f || volume >= settleEpsilon) {
+                continue;
+            }
+
+            const float belowVolume = waterVolume_[belowIdx];
+            const float capacity = std::max(0.0f, 1.0f - belowVolume);
+            if (capacity <= 0.0f) {
+                continue;
+            }
+
+            const float transfer = std::min(volume, capacity);
+            waterVolume_[idx] -= transfer;
+            waterVolume_[belowIdx] += transfer;
+        }
+    }
 }
 
 void MacProjectionWaterSim::applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt)
@@ -656,38 +707,64 @@ void MacProjectionWaterSim::applyGuidedWaterDrainOutflow(const GuidedWaterDrain&
 
 void MacProjectionWaterSim::applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain)
 {
-    if (drain.guideSpeed <= 0.0f && drain.mouthDownwardSpeed <= 0.0f) {
-        return;
-    }
-
-    if (drain.guideY < 0 || drain.guideY >= height_) {
+    if (drain.guideDownwardSpeed <= 0.0f && drain.guideLateralSpeed <= 0.0f
+        && drain.mouthDownwardSpeed <= 0.0f) {
         return;
     }
 
     const int guideStartX = std::max(0, static_cast<int>(drain.guideStartX));
     const int guideEndX = std::min(width_ - 1, static_cast<int>(drain.guideEndX));
+    const int guideTopY = std::max(0, static_cast<int>(drain.guideTopY));
+    const int guideBottomY = std::min(height_ - 1, static_cast<int>(drain.guideBottomY));
     const int mouthStartX = std::max(0, static_cast<int>(drain.mouthStartX));
     const int mouthEndX = std::min(width_ - 1, static_cast<int>(drain.mouthEndX));
-    if (guideStartX > guideEndX || mouthStartX > mouthEndX) {
+    if (guideStartX > guideEndX || guideTopY > guideBottomY || mouthStartX > mouthEndX) {
         return;
     }
 
-    const int guideY = drain.guideY;
-    for (int faceX = guideStartX + 1; faceX <= guideEndX; ++faceX) {
-        const int leftX = faceX - 1;
-        const int rightX = faceX;
-        const size_t leftIdx = cellIndex(width_, leftX, guideY);
-        const size_t rightIdx = cellIndex(width_, rightX, guideY);
-        if (solidMask_[leftIdx] != 0 || solidMask_[rightIdx] != 0) {
-            continue;
-        }
+    if (drain.guideDownwardSpeed > 0.0f) {
+        const int rowsAboveBottom = guideBottomY - guideTopY;
+        for (int y = guideTopY; y < guideBottomY; ++y) {
+            float rowStrength = drain.guideDownwardSpeed;
+            if (rowsAboveBottom > 0) {
+                const float normalized =
+                    static_cast<float>(y - guideTopY + 1) / static_cast<float>(rowsAboveBottom);
+                rowStrength *= normalized;
+            }
 
-        const size_t faceIdx = uFaceIndex(width_, faceX, guideY);
-        if (faceX <= mouthStartX) {
-            uFaceVelocity_[faceIdx] = std::max(uFaceVelocity_[faceIdx], drain.guideSpeed);
+            for (int x = guideStartX; x <= guideEndX; ++x) {
+                const size_t topIdx = cellIndex(width_, x, y);
+                const size_t bottomIdx = cellIndex(width_, x, y + 1);
+                if (solidMask_[topIdx] != 0 || solidMask_[bottomIdx] != 0) {
+                    continue;
+                }
+
+                const size_t faceIdx = vFaceIndex(width_, x, y + 1);
+                vFaceVelocity_[faceIdx] = std::max(vFaceVelocity_[faceIdx], rowStrength);
+            }
         }
-        else if (faceX > mouthEndX) {
-            uFaceVelocity_[faceIdx] = std::min(uFaceVelocity_[faceIdx], -drain.guideSpeed);
+    }
+
+    if (drain.guideLateralSpeed > 0.0f) {
+        const int guideY = guideBottomY;
+        for (int faceX = guideStartX + 1; faceX <= guideEndX; ++faceX) {
+            const int leftX = faceX - 1;
+            const int rightX = faceX;
+            const size_t leftIdx = cellIndex(width_, leftX, guideY);
+            const size_t rightIdx = cellIndex(width_, rightX, guideY);
+            if (solidMask_[leftIdx] != 0 || solidMask_[rightIdx] != 0) {
+                continue;
+            }
+
+            const size_t faceIdx = uFaceIndex(width_, faceX, guideY);
+            if (faceX <= mouthStartX) {
+                uFaceVelocity_[faceIdx] =
+                    std::max(uFaceVelocity_[faceIdx], drain.guideLateralSpeed);
+            }
+            else if (faceX > mouthEndX) {
+                uFaceVelocity_[faceIdx] =
+                    std::min(uFaceVelocity_[faceIdx], -drain.guideLateralSpeed);
+            }
         }
     }
 

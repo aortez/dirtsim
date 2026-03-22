@@ -36,6 +36,7 @@ public:
     const Parameters& getParametersForTesting() const { return parameters_; }
 
 private:
+    void settleResidualWater();
     void applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt);
     void applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain);
 

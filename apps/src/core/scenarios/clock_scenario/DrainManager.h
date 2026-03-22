@@ -37,6 +37,7 @@ private:
     int16_t currentSize_ = 0;
     std::chrono::steady_clock::time_point lastSizeChange_{};
 
+    bool hasBulkWaterInGuideArea(const World& world) const;
     void updateSize(World& world, double waterAmount);
     void updateCells(
         World& world, double deltaTime, std::optional<Material::EnumType> extraMaterial);

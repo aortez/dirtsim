@@ -86,7 +86,7 @@ constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
 constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 constexpr double kNtscNesFramePeriodMs = 1000.0 / 60.0988;
 constexpr double kNtscNesFrameDelayMaxMs = kNtscNesFramePeriodMs - 0.001;
-constexpr float kWaterVolumeRenderEpsilon = 0.00001f;
+constexpr float kWaterVolumeRenderEpsilon = 1.0e-4f;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {

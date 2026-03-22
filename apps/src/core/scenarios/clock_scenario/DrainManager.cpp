@@ -15,8 +15,11 @@ namespace DirtSim {
 namespace {
 
 constexpr float kGuidedDrainGuideSpeed = 8.0f;
+constexpr float kGuidedDrainGuideDownwardSpeed = 6.0f;
 constexpr float kGuidedDrainMouthDownwardSpeed = 12.0f;
 constexpr float kGuidedDrainRatePerSecond = 6.0f;
+constexpr int16_t kGuidedDrainGuideHeight = 4;
+constexpr float kDrainWaterPresenceMinAmount = 0.0f;
 
 } // namespace
 
@@ -48,6 +51,28 @@ void DrainManager::update(
     }
 }
 
+bool DrainManager::hasBulkWaterInGuideArea(const World& world) const
+{
+    if (!open_) {
+        return false;
+    }
+
+    const WorldData& data = world.getData();
+    const int drainY = data.height - 1;
+    const int guideBottomY = drainY - 1;
+    const int guideTopY = std::max(1, guideBottomY - (kGuidedDrainGuideHeight - 1));
+
+    for (int y = guideTopY; y <= guideBottomY; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
+            if (world.hasBulkWaterAtCell(x, y, kDrainWaterPresenceMinAmount)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void DrainManager::updateSize(World& world, double waterAmount)
 {
     WorldData& data = world.getData();
@@ -76,11 +101,15 @@ void DrainManager::updateSize(World& world, double waterAmount)
     if (targetSize == 0) {
         int bottomRow = data.height - 2;
         for (int x = 1; x < data.width - 1; ++x) {
-            if (world.hasBulkWaterAtCell(x, bottomRow)) {
+            if (world.hasBulkWaterAtCell(x, bottomRow, kDrainWaterPresenceMinAmount)) {
                 targetSize = 1;
                 break;
             }
         }
+    }
+
+    if (targetSize == 0 && hasBulkWaterInGuideArea(world)) {
+        targetSize = 1;
     }
 
     // Hysteresis: only change drain size one step per second.
@@ -182,15 +211,20 @@ void DrainManager::updateCells(
     }
 
     if (world.getPhysicsSettings().water_sim_mode == WaterSimMode::MacProjection) {
+        const int16_t guideBottomY = static_cast<int16_t>(drainY - 1);
+        const int16_t guideTopY = std::max<int16_t>(
+            1, static_cast<int16_t>(guideBottomY - (kGuidedDrainGuideHeight - 1)));
         world.queueGuidedWaterDrain(
             GuidedWaterDrain{
                 .guideStartX = 1,
                 .guideEndX = static_cast<int16_t>(data.width - 2),
-                .guideY = static_cast<int16_t>(drainY - 1),
+                .guideTopY = guideTopY,
+                .guideBottomY = guideBottomY,
                 .mouthStartX = startX_,
                 .mouthEndX = endX_,
                 .mouthY = static_cast<int16_t>(drainY),
-                .guideSpeed = kGuidedDrainGuideSpeed,
+                .guideDownwardSpeed = kGuidedDrainGuideDownwardSpeed,
+                .guideLateralSpeed = kGuidedDrainGuideSpeed,
                 .mouthDownwardSpeed = kGuidedDrainMouthDownwardSpeed,
                 .drainRatePerSecond = kGuidedDrainRatePerSecond,
             });

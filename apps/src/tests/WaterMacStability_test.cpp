@@ -777,6 +777,50 @@ TEST(WaterMacDisplacementTest, SolidCellDisplacesWaterAndConservesVolume)
     EXPECT_NEAR(totalFinal, totalInitial, 0.0001f);
 }
 
+TEST(WaterMacStabilityTest, ResidualMistSettlesDownIntoTheBasin)
+{
+    constexpr int kWidth = 10;
+    constexpr int kHeight = 10;
+    constexpr int kSourceX = 5;
+    constexpr double kDeltaTime = 0.016;
+    constexpr float kResidualVolume = 0.00005f;
+    constexpr int kResidualCells = 4;
+    constexpr int kSteps = 12;
+
+    World world(kWidth, kHeight);
+    setupDirectEmptyBasin(world);
+
+    MacProjectionWaterSim sim;
+    sim.resize(kWidth, kHeight);
+    sim.reset();
+
+    WaterVolumeMutableView volumeMutable{};
+    ASSERT_TRUE(sim.tryGetMutableWaterVolumeView(volumeMutable));
+    for (int y = 0; y < kResidualCells; ++y) {
+        volumeMutable.volume[static_cast<size_t>(y) * kWidth + kSourceX] = kResidualVolume;
+    }
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const float totalInitial = sumVolume(volumeView);
+    ASSERT_NEAR(totalInitial, kResidualVolume * kResidualCells, 1e-7f);
+
+    for (int step = 0; step < kSteps; ++step) {
+        sim.advanceTime(world, kDeltaTime);
+    }
+
+    ASSERT_TRUE(sim.tryGetWaterVolumeView(volumeView));
+    const float totalFinal = sumVolume(volumeView);
+    EXPECT_NEAR(totalFinal, totalInitial, 1e-7f);
+
+    const int bottomPlayableY = kHeight - 2;
+    const float aboveBottomRow = sumVolumeInRows(volumeView, 0, bottomPlayableY);
+    const float bottomRow = sumVolumeInRows(volumeView, bottomPlayableY, bottomPlayableY + 1);
+
+    EXPECT_LT(aboveBottomRow, 1e-7f);
+    EXPECT_NEAR(bottomRow, totalInitial, 1e-7f);
+}
+
 TEST(WaterMacStabilityTest, SandboxColumnFallsInsteadOfRemainingSuspended)
 {
     constexpr int kWidth = 47;
