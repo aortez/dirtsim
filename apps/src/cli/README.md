@@ -249,8 +249,13 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canControlNesScenario
 ./build-debug/bin/cli functional-test canApplyClockTimezoneFromUserSettings
 ./build-debug/bin/cli functional-test canCancelWifiConnect --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canCancelThenScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test canPlaySynthKeys
 ./build-debug/bin/cli functional-test canSwitchWifiNetworks --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canSwitchWifiNetworksBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canExerciseScannerModeBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canSwitchForgetThenScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canSwitchThenScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test canExerciseWifiAndScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test verifyTraining
 
@@ -285,12 +290,17 @@ Run a minimal UI/server workflow check against a running system:
 - For canControlNesScenario: starts NES scenario, verifies timestep advances, sets Start via server `NesInputSet`, then releases it.
 - For canApplyClockTimezoneFromUserSettings: sets timezone, runs Clock scenario, and verifies pushed Clock config uses the setting.
 - For canCancelWifiConnect: runs a real WiFi connect attempt through the Network UI, waits for a cancelable state, presses Cancel, and verifies the original network stays active.
+- For canCancelThenScannerBackendOnly: runs backend cancel/reconnect up to the canceled state, reconnects the baseline network, then runs scanner enter / snapshot / exit / restore without ever completing the target-network switch.
 - For canPlaySynthKeys: opens the Synth screen and sends programmatic key press/release events via UI API, verifying state details.
 - For canSwitchWifiNetworks: connects to each configured real WiFi network through the Network UI and verifies the active SSID changes.
+- For canSwitchWifiNetworksBackendOnly: runs the real baseline -> target -> baseline WiFi switch sequence through os-manager only, without the Network UI and without scanner mode.
+- For canExerciseScannerModeBackendOnly: runs only the scanner-mode enter/snapshot/exit/restore path through os-manager, without the Network UI and without the cancel/reconnect sequence.
+- For canSwitchForgetThenScannerBackendOnly: runs a real backend switch to the target network, reconnects the baseline, forgets the target again so it is no longer saved, then runs scanner enter / snapshot / exit / restore.
+- For canSwitchThenScannerBackendOnly: runs a real backend WiFi switch to the target network, reconnects the baseline network, then runs scanner enter / snapshot / exit / restore without any canceled connect.
 - For canExerciseWifiAndScannerBackendOnly: runs the WiFi/scanner scenario through os-manager only, without the Network UI, so UI issues can be separated from backend/networking issues.
 
 **WiFi functional test config**:
-- Use `--wifi-config /path/to/config.json` for `canSwitchWifiNetworks`, `canCancelWifiConnect`, `canExerciseWifiAndScanner`, and `canExerciseWifiAndScannerBackendOnly`.
+- Use `--wifi-config /path/to/config.json` for `canSwitchWifiNetworks`, `canSwitchWifiNetworksBackendOnly`, `canCancelWifiConnect`, `canCancelThenScannerBackendOnly`, `canExerciseScannerModeBackendOnly`, `canSwitchForgetThenScannerBackendOnly`, `canSwitchThenScannerBackendOnly`, `canExerciseWifiAndScanner`, and `canExerciseWifiAndScannerBackendOnly`.
 - A template lives at `src/cli/examples/wifi-functional-test.example.json`.
 - These tests should be run locally on the target device so they can use `ws://localhost` while switching WiFi networks.
 

@@ -370,6 +370,11 @@ Any NetworkWifi::onEvent(const UiApi::NetworkConnectPress::Cwc& cwc, StateMachin
 Any NetworkWifi::onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
 {
     static_cast<void>(sendDiagnosticsResponse(cwc, context_));
+    auto nextState =
+        syncNetworkStateToPanelScreen(context_, NetworkDiagnosticsPanel::AutomationScreen::Wifi);
+    if (nextState.has_value()) {
+        return std::move(nextState.value());
+    }
     return std::move(*this);
 }
 
@@ -467,6 +472,11 @@ Any NetworkWifiDetails::onEvent(const UiUpdateEvent& /*evt*/, StateMachine& /*sm
 Any NetworkWifiDetails::onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
 {
     static_cast<void>(sendDiagnosticsResponse(cwc, context_));
+    auto nextState = syncNetworkStateToPanelScreen(
+        context_, NetworkDiagnosticsPanel::AutomationScreen::WifiDetails);
+    if (nextState.has_value()) {
+        return std::move(nextState.value());
+    }
     return std::move(*this);
 }
 
@@ -517,6 +527,11 @@ Any NetworkWifiPassword::onEvent(const UiUpdateEvent& /*evt*/, StateMachine& /*s
 Any NetworkWifiPassword::onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
 {
     static_cast<void>(sendDiagnosticsResponse(cwc, context_));
+    auto nextState = syncNetworkStateToPanelScreen(
+        context_, NetworkDiagnosticsPanel::AutomationScreen::WifiPassword);
+    if (nextState.has_value()) {
+        return std::move(nextState.value());
+    }
     return std::move(*this);
 }
 
@@ -626,6 +641,11 @@ Any NetworkWifiConnecting::onEvent(
     const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& /*sm*/)
 {
     static_cast<void>(sendDiagnosticsResponse(cwc, context_));
+    auto nextState = syncNetworkStateToPanelScreen(
+        context_, NetworkDiagnosticsPanel::AutomationScreen::WifiConnecting);
+    if (nextState.has_value()) {
+        return std::move(nextState.value());
+    }
     return std::move(*this);
 }
 

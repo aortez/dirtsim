@@ -24,6 +24,88 @@ disconnect_wifi() {
     nmcli device disconnect wlan0 >/dev/null 2>&1 || true
 }
 
+release_network_manager() {
+    nmcli device set wlan0 managed no >/dev/null 2>&1 || true
+}
+
+reclaim_network_manager() {
+    nmcli device set wlan0 managed yes >/dev/null 2>&1 || true
+}
+
+rescan_wifi() {
+    nmcli device wifi rescan ifname wlan0 >/dev/null 2>&1 || true
+}
+
+restart_wpa_supplicant() {
+    systemctl restart wpa_supplicant >/dev/null 2>&1 || true
+    sleep 2
+}
+
+stop_wpa_supplicant() {
+    systemctl stop wpa_supplicant >/dev/null 2>&1 || true
+
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if ! systemctl is-active --quiet wpa_supplicant 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+wait_for_no_p2p_device() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if ! iw dev 2>/dev/null | grep -q 'type P2P-device'; then
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+wait_for_network_manager_device_ready() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        state=$(nmcli -t -f GENERAL.STATE device show wlan0 2>/dev/null | sed -n 's/^GENERAL.STATE://p' || true)
+        case "$state" in
+            30*|50*|100*)
+                return 0
+                ;;
+        esac
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+bring_wlan_down() {
+    ip link set wlan0 down >/dev/null 2>&1 || true
+}
+
+bring_wlan_up() {
+    ip link set wlan0 up >/dev/null 2>&1 || true
+}
+
+disable_promiscuous_mode() {
+    nexutil -p0 >/dev/null 2>&1 || true
+}
+
+disable_monitor_mode() {
+    nexutil -m0 >/dev/null 2>&1 || true
+}
+
+enable_monitor_mode() {
+    nexutil -m2 >/dev/null 2>&1
+}
+
+enable_promiscuous_mode() {
+    nexutil -p1 >/dev/null 2>&1
+}
+
 ensure_backup() {
     mkdir -p "$BACKUP_DIR"
     if [ ! -f "$BACKUP_FW" ]; then
@@ -62,6 +144,10 @@ require_safe_route() {
 }
 
 unload_wifi_modules() {
+    stop_wpa_supplicant || true
+    wait_for_no_p2p_device || true
+    bring_wlan_down
+
     modprobe -r brcmfmac_wcc >/dev/null 2>&1 || true
     modprobe -r brcmfmac >/dev/null 2>&1 || true
 }
@@ -92,7 +178,7 @@ enable_stack() {
 
     if is_enabled; then
         print_status
-        exit 0
+        return 0
     fi
 
     if [ ! -f "$NEXMON_MODULE" ] || [ ! -f "$NEXMON_FW" ]; then
@@ -124,7 +210,39 @@ disable_stack() {
     print_status
 }
 
+enter_mode() {
+    require_safe_route
+    delete_monitor_interfaces
+    disconnect_wifi
+    release_network_manager
+    enable_stack >/dev/null
+    bring_wlan_up
+    enable_monitor_mode
+    enable_promiscuous_mode
+    print_status
+}
+
+exit_mode() {
+    delete_monitor_interfaces
+    disable_monitor_mode
+    disable_promiscuous_mode
+    bring_wlan_down
+    disable_stack >/dev/null
+    bring_wlan_up
+    reclaim_network_manager
+    restart_wpa_supplicant
+    wait_for_network_manager_device_ready || true
+    rescan_wifi
+    print_status
+}
+
 case "${1:-status}" in
+    enter)
+        enter_mode
+        ;;
+    exit)
+        exit_mode
+        ;;
     enable)
         enable_stack
         ;;
@@ -135,7 +253,7 @@ case "${1:-status}" in
         print_status
         ;;
     *)
-        echo "Usage: dirtsim-nexmon-mode [status|enable|disable]" >&2
+        echo "Usage: dirtsim-nexmon-mode [status|enter|exit|enable|disable]" >&2
         exit 1
         ;;
 esac

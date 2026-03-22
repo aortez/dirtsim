@@ -688,6 +688,7 @@ add_executable(dirtsim-os-manager
     src/cli/SubprocessManager.cpp
     src/os-manager/main.cpp
     src/os-manager/OperatingSystemManager.cpp
+    src/os-manager/ProcessRunner.cpp
     src/os-manager/EventProcessor.cpp
     src/os-manager/PeerTrust.cpp
     src/os-manager/api/PeerClientKeyEnsure.cpp
@@ -808,6 +809,7 @@ add_executable(dirtsim-tests
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
     src/os-manager/tests/PeerTrust_test.cpp
+    src/os-manager/tests/ProcessRunner_test.cpp
     src/os-manager/tests/RemoteCliRun_test.cpp
     src/os-manager/tests/StateError_test.cpp
     src/os-manager/tests/StateIdle_test.cpp
@@ -815,6 +817,7 @@ add_executable(dirtsim-tests
 
     # Os manager sources.
     src/os-manager/OperatingSystemManager.cpp
+    src/os-manager/ProcessRunner.cpp
     src/os-manager/EventProcessor.cpp
     src/os-manager/PeerTrust.cpp
     src/os-manager/api/PeerClientKeyEnsure.cpp

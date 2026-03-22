@@ -8,6 +8,7 @@
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
 #include "os-manager/PeerTrust.h"
+#include "os-manager/ProcessRunner.h"
 #include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
@@ -76,6 +77,8 @@ public:
         std::function<OsApi::SystemStatus::Okay()> systemStatus;
         std::function<void()> reboot;
         std::function<Result<std::string, ApiError>(const std::string&)> commandRunner;
+        std::function<Result<ProcessRunResult, std::string>(const std::vector<std::string>&, int)>
+            processRunner;
         std::function<std::filesystem::path(const std::string&)> homeDirResolver;
         std::function<Result<std::monostate, ApiError>(
             const std::filesystem::path&, const std::filesystem::path&, const std::string&)>
@@ -172,11 +175,13 @@ private:
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(
         const std::string& action, const std::string& unitName);
-    Result<std::monostate, ApiError> runScannerShellCommand(
-        const std::string& command, const std::string& step) const;
     Result<ScannerModeRuntimeState, ApiError> readScannerModeState() const;
     Result<std::monostate, ApiError> restoreWifiAfterScannerMode(
         const std::optional<std::string>& restoreSsid) const;
+    Result<ProcessRunResult, ApiError> runProcessCapture(
+        const std::vector<std::string>& argv, int timeoutMs) const;
+    Result<std::string, ApiError> runScannerHelperCommand(
+        const std::string& action, int timeoutMs) const;
     Result<std::monostate, ApiError> setScannerModeState(
         const ScannerModeRuntimeState& state) const;
     std::filesystem::path getPeerAllowlistPath() const;
@@ -188,7 +193,6 @@ private:
     Result<std::string, ApiError> getClientKeyFingerprintSha256() const;
     Result<std::string, ApiError> getPeerClientPublicKey(bool* created);
     Result<PeerTrustBundle, ApiError> buildTrustBundle(bool* created);
-    bool hasEthernetDefaultRoute() const;
     void bestEffortRestoreWifiFromScannerMode() const;
     Result<std::string, ApiError> runCommandCapture(const std::string& command) const;
     std::filesystem::path getSshUserHomeDir(const std::string& user) const;

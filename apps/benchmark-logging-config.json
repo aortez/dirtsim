@@ -1,0 +1,63 @@
+{
+  "channels": {
+    "brain": "info",
+    "cohesion": "info",
+    "collision": "info",
+    "friction": "info",
+    "network": "info",
+    "physics": "info",
+    "pressure": "info",
+    "scenario": "info",
+    "state": "debug",
+    "support": "info",
+    "swap": "warn",
+    "ui": "info",
+    "viscosity": "info"
+  },
+  "defaults": {
+    "console_level": "info",
+    "file_level": "debug",
+    "flush_interval_ms": 1000,
+    "pattern": "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v"
+  },
+  "runtime": {
+    "allow_reload": true,
+    "reload_signal": "SIGUSR1",
+    "watch_config": false
+  },
+  "sinks": {
+    "console": {
+      "colored": true,
+      "enabled": true,
+      "level": "info"
+    },
+    "file": {
+      "enabled": true,
+      "level": "debug",
+      "max_files": 3,
+      "max_size_mb": 10,
+      "path": "dirtsim.log",
+      "truncate": true
+    },
+    "specialized": {
+      "physics_deep": {
+        "channel_filter": [
+          "physics",
+          "collision",
+          "cohesion"
+        ],
+        "enabled": false,
+        "level": "trace",
+        "path": "physics-deep.log"
+      },
+      "swap_trace": {
+        "channel_filter": [
+          "swap"
+        ],
+        "enabled": false,
+        "level": "trace",
+        "path": "swap-trace.log"
+      }
+    }
+  }
+}

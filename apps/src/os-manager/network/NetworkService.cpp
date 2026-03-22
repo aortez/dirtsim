@@ -559,7 +559,7 @@ struct NetworkService::Impl {
                     Network::WifiConnectProgress{
                         .ssid = ssid,
                         .phase = Network::WifiConnectPhase::Starting,
-                        .canCancel = true,
+                        .canCancel = false,
                     });
 
                 const uint64_t operationId = ++connectOperationId;
@@ -588,6 +588,25 @@ struct NetworkService::Impl {
                             };
 
                         try {
+                            const auto canceledBeforeStart =
+                                invokeOnWorker<Result<bool, std::string>>([this, operationId]() {
+                                    return Result<bool, std::string>::okay(
+                                        connectCancelRequested
+                                        || operationId != connectOperationId);
+                                });
+                            if (canceledBeforeStart.isError()) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        canceledBeforeStart.errorValue()));
+                                return;
+                            }
+                            if (canceledBeforeStart.value()) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        "WiFi connection canceled"));
+                                return;
+                            }
+
                             Network::WifiManager wifiManager;
                             finishConnect(wifiManager.connectBySsid(ssid, password));
                         }

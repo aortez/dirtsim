@@ -3087,7 +3087,7 @@ bool NetworkDiagnosticsPanel::startAsyncScannerEnter()
             else {
                 OsApi::ScannerModeEnter::Command cmd{};
                 const auto response =
-                    client.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(cmd, 10000);
+                    client.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(cmd, 20000);
                 client.disconnect();
 
                 if (response.isError()) {

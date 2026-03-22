@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Result.h"
+#include "os-manager/ProcessRunner.h"
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -38,8 +39,11 @@ public:
         uint64_t retentionMs = 60000;
     };
 
-    explicit ScannerService(std::function<int(const std::string&)> systemCommand);
-    explicit ScannerService(Config config, std::function<int(const std::string&)> systemCommand);
+    using ProcessRunner =
+        std::function<Result<ProcessRunResult, std::string>(const std::vector<std::string>&, int)>;
+
+    explicit ScannerService(ProcessRunner processRunner);
+    explicit ScannerService(Config config, ProcessRunner processRunner);
     ~ScannerService();
 
     ScannerService(const ScannerService&) = delete;
@@ -70,7 +74,7 @@ private:
         std::chrono::steady_clock::time_point now);
 
     Config config_;
-    std::function<int(const std::string&)> systemCommand_;
+    ProcessRunner processRunner_;
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, RadioState> radiosByBssid_;

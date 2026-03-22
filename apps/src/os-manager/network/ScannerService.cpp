@@ -21,6 +21,7 @@ namespace OsManager {
 namespace {
 
 constexpr int kPollTimeoutMs = 50;
+constexpr int kSetChannelTimeoutMs = 2000;
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -286,12 +287,12 @@ std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
 
 } // namespace
 
-ScannerService::ScannerService(std::function<int(const std::string&)> systemCommand)
-    : config_(), systemCommand_(std::move(systemCommand))
+ScannerService::ScannerService(ProcessRunner processRunner)
+    : config_(), processRunner_(std::move(processRunner))
 {}
 
-ScannerService::ScannerService(Config config, std::function<int(const std::string&)> systemCommand)
-    : config_(std::move(config)), systemCommand_(std::move(systemCommand))
+ScannerService::ScannerService(Config config, ProcessRunner processRunner)
+    : config_(std::move(config)), processRunner_(std::move(processRunner))
 {}
 
 ScannerService::~ScannerService()
@@ -338,8 +339,10 @@ Result<std::monostate, std::string> ScannerService::start()
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        socketFd_ = fd;
+        currentChannel_.reset();
         lastError_.clear();
+        radiosByBssid_.clear();
+        socketFd_ = fd;
     }
 
     running_ = true;
@@ -362,6 +365,8 @@ void ScannerService::stop()
         fd = socketFd_;
         socketFd_ = -1;
         currentChannel_.reset();
+        lastError_.clear();
+        radiosByBssid_.clear();
     }
     if (fd >= 0) {
         ::close(fd);
@@ -449,14 +454,14 @@ std::vector<int> ScannerService::buildChannelPlan() const
 
 bool ScannerService::setChannel(int channel) const
 {
-    if (!systemCommand_) {
+    if (!processRunner_) {
         return false;
     }
 
-    const std::string cmd = "iw dev " + config_.interfaceName + " set channel "
-        + std::to_string(channel) + " >/dev/null 2>&1";
-    const int result = systemCommand_(cmd);
-    return result == 0;
+    const auto result = processRunner_(
+        { "iw", "dev", config_.interfaceName, "set", "channel", std::to_string(channel) },
+        kSetChannelTimeoutMs);
+    return result.isValue() && result.value().exitCode == 0;
 }
 
 void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
