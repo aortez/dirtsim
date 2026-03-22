@@ -47,6 +47,7 @@ void EmptyScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
+    world.clearAllBulkWater();
 
     spdlog::info("EmptyScenario::setup complete");
 }

@@ -510,6 +510,7 @@ void ClockScenario::setup(World& world)
             world.getData().at(x, y) = Cell();
         }
     }
+    world.clearAllBulkWater();
 
     // Draw walls using centralized wall system.
     redrawWalls(world);

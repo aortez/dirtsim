@@ -31,6 +31,8 @@
 #include "os-manager/api/WifiDisconnect.h"
 #include "os-manager/api/WifiForget.h"
 #include "os-manager/api/WifiScanRequest.h"
+#include "server/api/BulkWaterSet.h"
+#include "server/api/SpawnWaterBall.h"
 #include "ui/state-machine/api/NetworkConnectCancelPress.h"
 #include "ui/state-machine/api/NetworkConnectPress.h"
 #include "ui/state-machine/api/NetworkDiagnosticsGet.h"
@@ -56,6 +58,7 @@ CommandDispatcher::CommandDispatcher()
         "CommandDispatcher: Registering server API commands with response deserializers...");
 
     // Register server API commands.
+    registerCommand<Api::BulkWaterSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::CellGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::CellSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ClockEventTrigger::Cwc>(serverHandlers_, serverExampleHandlers_);
@@ -88,6 +91,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::SimRun::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SimStop::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::SpawnDirtBall::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::SpawnWaterBall::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::StateGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::StatusGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);

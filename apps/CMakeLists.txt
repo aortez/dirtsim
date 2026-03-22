@@ -855,6 +855,7 @@ add_executable(dirtsim-tests
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp
     src/os-manager/states/Startup.cpp
+    src/cli/CommandDispatcher.cpp
     src/cli/SubprocessManager.cpp
     src/tests/BinaryProtocol_test.cpp
     src/tests/AudioEngine_test.cpp
@@ -863,6 +864,7 @@ add_executable(dirtsim-tests
     src/tests/CacheCorrectness_test.cpp
     src/tests/Cell_serialization_test.cpp
     src/tests/ClockWaterTransition_test.cpp
+    src/tests/CommandDispatcher_test.cpp
     src/tests/ConfigLoader_test.cpp
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp

@@ -2,8 +2,13 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/evolution/GenomeRepository.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/DamBreakScenario.h"
+#include "core/scenarios/EmptyScenario.h"
+#include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/SandboxScenario.h"
+#include "core/scenarios/TreeGerminationScenario.h"
 #include "core/scenarios/clock_scenario/RainEvent.h"
 #include "core/water/MacProjectionWaterSim.h"
 
@@ -100,6 +105,14 @@ bool hasLegacyWaterCells(const World& world)
     }
 
     return false;
+}
+
+void expectNoResidualMacWater(const World& world)
+{
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
+    EXPECT_NEAR(sumVolume(volumeView), 0.0f, 1e-6f);
+    EXPECT_FALSE(hasLegacyWaterCells(world));
 }
 
 struct WaterShapeMetrics {
@@ -879,6 +892,42 @@ TEST(WaterMacStabilityTest, DamBreakScenarioSetupClearsPriorMacWaterAndUsesBulkW
     }
 }
 
+TEST(WaterMacStabilityTest, ClockScenarioSetupClearsPriorMacWater)
+{
+    World world(50, 32);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    world.setBulkWaterAmountAtCell(4, 4, 0.75f);
+
+    ClockScenario scenario;
+    scenario.setup(world);
+
+    expectNoResidualMacWater(world);
+}
+
+TEST(WaterMacStabilityTest, EmptyScenarioSetupClearsPriorMacWater)
+{
+    World world(12, 8);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    world.setBulkWaterAmountAtCell(4, 4, 0.75f);
+
+    EmptyScenario scenario;
+    scenario.setup(world);
+
+    expectNoResidualMacWater(world);
+}
+
+TEST(WaterMacStabilityTest, GooseTestScenarioSetupClearsPriorMacWater)
+{
+    World world(40, 30);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    world.setBulkWaterAmountAtCell(4, 4, 0.75f);
+
+    GooseTestScenario scenario;
+    scenario.setup(world);
+
+    expectNoResidualMacWater(world);
+}
+
 TEST(WaterMacStabilityTest, SandboxRainWritesBulkWaterWithoutLegacyWaterCellsInMacMode)
 {
     World world(47, 30);
@@ -900,6 +949,19 @@ TEST(WaterMacStabilityTest, SandboxRainWritesBulkWaterWithoutLegacyWaterCellsInM
     ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
     EXPECT_GT(sumVolume(volumeView), 1.0f);
     EXPECT_FALSE(hasLegacyWaterCells(world));
+}
+
+TEST(WaterMacStabilityTest, TreeGerminationScenarioSetupClearsPriorMacWater)
+{
+    World world(32, 32);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+    world.setBulkWaterAmountAtCell(4, 4, 0.75f);
+
+    GenomeRepository genomeRepository;
+    TreeGerminationScenario scenario(genomeRepository);
+    scenario.setup(world);
+
+    expectNoResidualMacWater(world);
 }
 
 TEST(WaterMacStabilityTest, SandboxColumnFallsInsteadOfRemainingSuspended)

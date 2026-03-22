@@ -47,6 +47,7 @@ void GooseTestScenario::setup(World& world)
             data.at(x, y) = Cell();
         }
     }
+    world.clearAllBulkWater();
 
     // Create ground at bottom 5 rows.
     for (int y = data.height - 5; y < data.height; ++y) {

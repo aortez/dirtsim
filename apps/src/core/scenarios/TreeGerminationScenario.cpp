@@ -96,6 +96,7 @@ void TreeGerminationScenario::setup(World& world)
             world.getData().at(x, y) = Cell();
         }
     }
+    world.clearAllBulkWater();
 
     // Scale soil depth from the canonical 32x32 layout for smaller test worlds.
     const int soilDepth = resolveSoilDepth(world.getData().height);
