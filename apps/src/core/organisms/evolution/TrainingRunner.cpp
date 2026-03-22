@@ -792,18 +792,25 @@ void TrainingRunner::updateDuckClockDoors()
         }
     }
 
-    // Track whether duck has crossed the world midpoint.
-    if (!doors.duckReachedMiddle) {
-        const int midX = data.width / 2;
-        const bool crossedMiddle =
-            (doors.side == DoorSide::LEFT) ? (duckCell.x >= midX) : (duckCell.x < midX);
-        if (crossedMiddle) {
-            doors.duckReachedMiddle = true;
+    // Track whether duck has completed at least one wall-to-wall traversal.
+    //
+    // This intentionally matches the wall-touch zones used by DuckClockEvaluationTracker so the
+    // exit door cannot be earned by only crossing the midpoint and then camping.
+    if (!doors.duckReachedOppositeWall) {
+        constexpr int kWallTouchZoneWidth = 2;
+        const bool touchedLeftWall = duckCell.x <= kWallTouchZoneWidth;
+        const bool touchedRightWall =
+            duckCell.x >= std::max(0, data.width - (kWallTouchZoneWidth + 1));
+        const bool touchedOppositeWall =
+            (doors.side == DoorSide::LEFT) ? touchedRightWall : touchedLeftWall;
+        if (touchedOppositeWall) {
+            doors.duckReachedOppositeWall = true;
         }
     }
 
-    // Reopen entrance door as exit door once duck has reached middle and time is reached.
-    if (!doors.exitDoorOpened && doors.entranceDoorClosed && doors.duckReachedMiddle
+    // Reopen entrance door as exit door once duck has reached the opposite wall and time is
+    // reached.
+    if (!doors.exitDoorOpened && doors.entranceDoorClosed && doors.duckReachedOppositeWall
         && simTime_ >= doors.exitDoorOpenTime) {
         doors.exitDoorId = doors.entranceDoorId;
         doorMgr.openDoor(doors.exitDoorId, *world_);

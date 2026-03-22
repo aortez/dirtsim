@@ -186,6 +186,10 @@ TEST(DuckClockEvaluationTrackerTest, RearmsObstacleOpportunityAfterOppositeWallT
             .duckOnGround = true,
             .obstacles = pit,
         });
+
+    DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
+    EXPECT_EQ(artifacts.pitOpportunities, 1);
+
     tracker.update(
         DuckClockTrackerFrame{
             .worldWidth = 20,
@@ -208,7 +212,7 @@ TEST(DuckClockEvaluationTrackerTest, RearmsObstacleOpportunityAfterOppositeWallT
             .obstacles = pit,
         });
 
-    DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
+    artifacts = tracker.buildArtifacts();
     EXPECT_EQ(artifacts.pitOpportunities, 1);
 
     tracker.update(
