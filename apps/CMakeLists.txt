@@ -271,6 +271,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/IconFont.cpp
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
+    src/core/MaterialColor.cpp
     src/core/MaterialFragmentationParams.cpp
     src/core/GenomePoolId.cpp
     src/core/MaterialType.cpp
@@ -885,6 +886,7 @@ add_executable(dirtsim-tests
 
     # World light and resize tests.
     src/core/tests/ColorTuning_test.cpp
+    src/core/tests/LightConfigPreset_test.cpp
     src/core/tests/LightManager_test.cpp
     src/core/tests/LightPropagator_test.cpp
     src/core/tests/UUID_test.cpp

@@ -316,6 +316,10 @@ void PhysicsPanel::onGenericValueChange(lv_event_t* e)
         if (control->config.indexSetter) {
             control->config.indexSetter(self->settings_, selectedIndex);
         }
+        if (control->config.refreshAllControlsAfterSet) {
+            PhysicsControlHelpers::updateControlsFromSettings(
+                self->controls_.data(), self->controls_.size(), self->settings_);
+        }
         self->syncSettings();
         return;
     }

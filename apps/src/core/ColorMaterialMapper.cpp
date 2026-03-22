@@ -1,6 +1,7 @@
 #include "ColorMaterialMapper.h"
 
 #include "ColorNames.h"
+#include "MaterialColor.h"
 #include <cmath>
 #include <limits>
 
@@ -69,22 +70,19 @@ float ColorMaterialMapper::colorDistance(
 const std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10>& ColorMaterialMapper::
     getMaterialColors()
 {
-    using namespace ColorNames;
-
-    // Material colors from ColorNames.cpp, using helper functions to extract RGB.
     // Array index matches Material::EnumType enum value (0=AIR, 1=DIRT, ..., 9=WOOD).
-    static const std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10> colors = { {
-        { getR(air()), getG(air()), getB(air()) },
-        { getR(dirt()), getG(dirt()), getB(dirt()) },
-        { getR(leaf()), getG(leaf()), getB(leaf()) },
-        { getR(metal()), getG(metal()), getB(metal()) },
-        { getR(root()), getG(root()), getB(root()) },
-        { getR(sand()), getG(sand()), getB(sand()) },
-        { getR(seed()), getG(seed()), getB(seed()) },
-        { getR(stone()), getG(stone()), getB(stone()) },
-        { getR(water()), getG(water()), getB(water()) },
-        { getR(wood()), getG(wood()), getB(wood()) },
-    } };
+    static const std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10> colors = [] {
+        std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10> result{};
+        for (size_t i = 0; i < result.size(); ++i) {
+            const uint32_t color = getLegacyMaterialColor(static_cast<Material::EnumType>(i));
+            result[i] = {
+                ColorNames::getR(color),
+                ColorNames::getG(color),
+                ColorNames::getB(color),
+            };
+        }
+        return result;
+    }();
 
     return colors;
 }

@@ -1,6 +1,7 @@
 #include "WorldDiagramGeneratorEmoji.h"
 #include "Cell.h"
 #include "ColorNames.h"
+#include "MaterialColor.h"
 #include "MaterialType.h"
 #include "PhysicsSettings.h"
 #include "World.h"
@@ -14,35 +15,6 @@
 using namespace DirtSim;
 
 namespace {
-
-ColorNames::RgbF getMaterialBaseColor(Material::EnumType material)
-{
-    using ColorNames::toRgbF;
-    switch (material) {
-        case Material::EnumType::Air:
-            return toRgbF(ColorNames::white());
-        case Material::EnumType::Dirt:
-            return toRgbF(ColorNames::dirt());
-        case Material::EnumType::Leaf:
-            return toRgbF(ColorNames::leaf());
-        case Material::EnumType::Metal:
-            return toRgbF(ColorNames::metal());
-        case Material::EnumType::Root:
-            return toRgbF(ColorNames::root());
-        case Material::EnumType::Sand:
-            return toRgbF(ColorNames::sand());
-        case Material::EnumType::Seed:
-            return toRgbF(ColorNames::seed());
-        case Material::EnumType::Wall:
-            return toRgbF(ColorNames::stone());
-        case Material::EnumType::Water:
-            return toRgbF(ColorNames::water());
-        case Material::EnumType::Wood:
-            return toRgbF(ColorNames::wood());
-        default:
-            return toRgbF(ColorNames::white());
-    }
-}
 
 const char* kAnsiReset = "\x1b[0m";
 
@@ -302,8 +274,9 @@ std::string WorldDiagramGeneratorEmoji::generateAnsiDiagram(
                 renderMaterial = Material::EnumType::Air;
             }
 
-            const ColorNames::RgbF color =
-                hasLitColors ? data.colors.at(x, y) : getMaterialBaseColor(renderMaterial);
+            const ColorNames::RgbF color = hasLitColors
+                ? data.colors.at(x, y)
+                : ColorNames::toRgbF(getLegacyMaterialColor(renderMaterial));
             const uint32_t rgba = ColorNames::toRgba(color);
             ansiDiagram << "\x1b[48;2;" << static_cast<int>(ColorNames::getR(rgba)) << ";"
                         << static_cast<int>(ColorNames::getG(rgba)) << ";"

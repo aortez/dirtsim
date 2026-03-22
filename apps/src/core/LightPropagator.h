@@ -83,6 +83,8 @@ public:
     void setAmbientBoost(ColorNames::RgbF boost) override;
 
 private:
+    void applyFlatBasic(WorldData& data);
+    void clearPropagatedState();
     void ensureBufferSizes(int width, int height);
     void propagateStep(const WorldData& data, bool air_fast_path);
     void injectSources(World& world, const LightConfig& config);
@@ -92,6 +94,7 @@ private:
     GridBuffer<DirectionalLight> light_field_;
     GridBuffer<DirectionalLight> light_field_next_;
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
+    bool inFlatBasicMode_ = false;
     ColorNames::RgbF ambient_boost_{};
     LightBuffer raw_light_;
 };
