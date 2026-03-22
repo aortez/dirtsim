@@ -1,12 +1,12 @@
 #pragma once
 
 #include "core/Result.h"
-#include "os-manager/ProcessRunner.h"
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -16,6 +16,8 @@
 
 namespace DirtSim {
 namespace OsManager {
+
+class ScannerChannelController;
 
 class ScannerService {
 public:
@@ -33,17 +35,17 @@ public:
         std::vector<ObservedRadio> radios;
     };
 
+    using SnapshotChangedCallback = std::function<void()>;
+
     struct Config {
         std::string interfaceName = "wlan0";
         int dwellMs = 250;
         uint64_t retentionMs = 60000;
     };
 
-    using ProcessRunner =
-        std::function<Result<ProcessRunResult, std::string>(const std::vector<std::string>&, int)>;
-
-    explicit ScannerService(ProcessRunner processRunner);
-    explicit ScannerService(Config config, ProcessRunner processRunner);
+    explicit ScannerService(std::shared_ptr<ScannerChannelController> channelController);
+    explicit ScannerService(
+        Config config, std::shared_ptr<ScannerChannelController> channelController);
     ~ScannerService();
 
     ScannerService(const ScannerService&) = delete;
@@ -54,6 +56,7 @@ public:
 
     Snapshot snapshot(uint64_t maxAgeMs, size_t maxRadios) const;
     std::string lastError() const;
+    void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
 private:
     struct RadioState {
@@ -65,8 +68,9 @@ private:
 
     void threadMain();
     std::vector<int> buildChannelPlan() const;
-    bool setChannel(int channel) const;
+    Result<std::monostate, std::string> setChannel(int channel);
     void pruneOldRadios(std::chrono::steady_clock::time_point now);
+    void notifySnapshotChanged();
     void handlePacket(
         const uint8_t* data,
         size_t length,
@@ -74,13 +78,14 @@ private:
         std::chrono::steady_clock::time_point now);
 
     Config config_;
-    ProcessRunner processRunner_;
+    std::shared_ptr<ScannerChannelController> channelController_;
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, RadioState> radiosByBssid_;
     std::optional<int> currentChannel_;
     std::string lastError_;
     int socketFd_ = -1;
+    SnapshotChangedCallback snapshotChangedCallback_;
 
     std::atomic<bool> stopRequested_{ false };
     std::atomic<bool> running_{ false };

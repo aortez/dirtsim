@@ -303,7 +303,6 @@ private:
     bool scannerModeActive_ = false;
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
-    std::optional<std::chrono::steady_clock::time_point> scannerSnapshotLastRequestedAt_;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -362,7 +361,6 @@ private:
     void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
-    void updateScannerSnapshotPolling();
     void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
     void updateScannerControls();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);

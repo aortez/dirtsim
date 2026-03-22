@@ -641,6 +641,7 @@ std::string getExamplesHelp()
                 "/etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test canExerciseWifiAndScanner --wifi-config "
                 "/etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canRecoverScannerUiAfterOutOfBandExit\n";
     examples += "  cli functional-test verifyTraining\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
@@ -1173,7 +1174,9 @@ int main(int argc, char** argv)
             && testName != "canSwitchForgetThenScannerBackendOnly"
             && testName != "canSwitchThenScannerBackendOnly"
             && testName != "canExerciseWifiAndScanner"
-            && testName != "canExerciseWifiAndScannerBackendOnly" && testName != "verifyTraining") {
+            && testName != "canExerciseWifiAndScannerBackendOnly"
+            && testName != "canRecoverScannerUiAfterOutOfBandExit"
+            && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
@@ -1192,6 +1195,7 @@ int main(int argc, char** argv)
                          "canSwitchThenScannerBackendOnly, "
                          "canExerciseWifiAndScanner, "
                          "canExerciseWifiAndScannerBackendOnly, "
+                         "canRecoverScannerUiAfterOutOfBandExit, "
                          "verifyTraining\n";
             return 1;
         }
@@ -1362,6 +1366,10 @@ int main(int argc, char** argv)
             }
             summary = runner.runCanExerciseWifiAndScannerBackendOnly(
                 uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canRecoverScannerUiAfterOutOfBandExit") {
+            summary = runner.runCanRecoverScannerUiAfterOutOfBandExit(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "verifyTraining") {
             summary =

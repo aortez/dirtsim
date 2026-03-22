@@ -722,6 +722,8 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/network/NetworkService.cpp
+    src/os-manager/network/NexmonChannelController.cpp
+    src/os-manager/network/NexmonChannelProtocol.cpp
     src/os-manager/network/ScannerService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
@@ -816,6 +818,7 @@ add_executable(dirtsim-tests
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
+    src/os-manager/tests/NexmonChannelProtocol_test.cpp
     src/os-manager/tests/PeerTrust_test.cpp
     src/os-manager/tests/ProcessRunner_test.cpp
     src/os-manager/tests/RemoteCliRun_test.cpp
@@ -851,6 +854,8 @@ add_executable(dirtsim-tests
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/network/NetworkService.cpp
+    src/os-manager/network/NexmonChannelController.cpp
+    src/os-manager/network/NexmonChannelProtocol.cpp
     src/os-manager/network/ScannerService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp

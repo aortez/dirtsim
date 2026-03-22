@@ -7,6 +7,7 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotChanged.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
@@ -1316,6 +1317,36 @@ void NetworkDiagnosticsPanel::startEventStream()
     });
     eventClient_->onServerCommand(
         [state](const std::string& messageType, const std::vector<std::byte>& payload) {
+            if (messageType == OsApi::ScannerSnapshotChanged::name()) {
+                try {
+                    const auto changed =
+                        Network::deserialize_payload<OsApi::ScannerSnapshotChanged>(payload);
+                    ScannerSnapshot snapshot;
+                    snapshot.active = changed.snapshot.active;
+                    snapshot.currentChannel = changed.snapshot.currentChannel;
+                    snapshot.detail = changed.snapshot.detail;
+                    snapshot.radios.reserve(changed.snapshot.radios.size());
+                    for (const auto& radio : changed.snapshot.radios) {
+                        ScannerObservedRadio entry;
+                        entry.bssid = radio.bssid;
+                        entry.ssid = radio.ssid;
+                        entry.signalDbm = radio.signalDbm;
+                        entry.channel = radio.channel;
+                        entry.lastSeenAgeMs = radio.lastSeenAgeMs;
+                        snapshot.radios.push_back(std::move(entry));
+                    }
+
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    state->pendingScannerSnapshot =
+                        Result<ScannerSnapshot, ScannerSnapshotError>::okay(std::move(snapshot));
+                }
+                catch (const std::exception& e) {
+                    LOG_ERROR(
+                        Controls, "Failed to deserialize ScannerSnapshotChanged: {}", e.what());
+                }
+                return;
+            }
+
             if (messageType != OsApi::NetworkSnapshotChanged::name()) {
                 LOG_DEBUG(Controls, "Ignoring os-manager push '{}'", messageType);
                 return;
@@ -2221,6 +2252,9 @@ void NetworkDiagnosticsPanel::refresh(bool forceRefresh)
     if (viewMode_ == ViewMode::Scanner) {
         setLoadingState();
         startAsyncRefresh(false);
+        if (scannerModeActive_) {
+            startAsyncScannerSnapshot();
+        }
         return;
     }
 
@@ -3870,6 +3904,16 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
             const std::string text = "Scanner status unavailable.\n" + scannerModeDetail_;
             lv_label_set_text(scannerStatusLabel_, text.c_str());
         }
+        if (scannerDataLabel_) {
+            lv_label_set_text(scannerDataLabel_, "Scanner data unavailable.");
+            lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
+        }
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
+        }
         updateScannerControls();
         return;
     }
@@ -3892,6 +3936,19 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
         }
         text += scannerModeDetail_;
         lv_label_set_text(scannerStatusLabel_, text.c_str());
+    }
+
+    if (!scannerModeActive_) {
+        if (scannerDataLabel_) {
+            lv_label_set_text(scannerDataLabel_, "Enter scanner mode to view observed radios.");
+            lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
+        }
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
+        }
     }
 
     updateScannerControls();
@@ -3918,6 +3975,27 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     }
 
     const auto& snapshot = result.value();
+    const bool scannerModeActiveChanged = scannerModeActive_ != snapshot.active;
+    scannerModeActive_ = snapshot.active;
+    if (!snapshot.detail.empty()) {
+        scannerModeDetail_ = snapshot.detail;
+    }
+
+    if (scannerStatusLabel_) {
+        std::string text;
+        if (scannerModeActive_) {
+            text = "Scanner mode active.\n";
+        }
+        else if (scannerModeAvailable_) {
+            text = "Scanner mode ready.\n";
+        }
+        else {
+            text = "Scanner mode unavailable.\n";
+        }
+        text += scannerModeDetail_;
+        lv_label_set_text(scannerStatusLabel_, text.c_str());
+    }
+    updateScannerControls();
 
     std::vector<float> channel24MaxSignal(11, 0.0f);
     std::vector<float> channel5MaxSignal(9, 0.0f);
@@ -4006,36 +4084,9 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
 
     lv_label_set_text(scannerDataLabel_, text.c_str());
     lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
-}
 
-void NetworkDiagnosticsPanel::updateScannerSnapshotPolling()
-{
-    if (viewMode_ != ViewMode::Scanner) {
-        return;
-    }
-
-    if (!scannerModeActive_) {
-        if (scannerDataLabel_) {
-            lv_label_set_text(scannerDataLabel_, "Enter scanner mode to view observed radios.");
-            lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
-        }
-        if (scannerChannelPlot24_) {
-            scannerChannelPlot24_->clear();
-        }
-        if (scannerChannelPlot5_) {
-            scannerChannelPlot5_->clear();
-        }
-        return;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    if (scannerSnapshotLastRequestedAt_.has_value()
-        && now - scannerSnapshotLastRequestedAt_.value() < std::chrono::milliseconds(800)) {
-        return;
-    }
-
-    if (startAsyncScannerSnapshot()) {
-        scannerSnapshotLastRequestedAt_ = now;
+    if (scannerModeActiveChanged) {
+        refresh();
     }
 }
 
@@ -4702,6 +4753,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "Scanner mode entered");
+            scannerModeActive_ = true;
             showScannerView();
             refresh();
         }
@@ -4724,6 +4776,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "Scanner mode exited");
+            scannerModeActive_ = false;
             refresh();
         }
     }
@@ -4995,7 +5048,6 @@ void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
     self->applyPendingUpdates();
     self->updateSignalHistory();
     self->updateConnectOverlay();
-    self->updateScannerSnapshotPolling();
 }
 
 void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)

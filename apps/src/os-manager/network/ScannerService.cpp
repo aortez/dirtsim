@@ -1,5 +1,6 @@
 #include "ScannerService.h"
 #include "core/LoggingChannels.h"
+#include "os-manager/network/ScannerChannelController.h"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -21,7 +22,6 @@ namespace OsManager {
 namespace {
 
 constexpr int kPollTimeoutMs = 50;
-constexpr int kSetChannelTimeoutMs = 2000;
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -287,12 +287,13 @@ std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
 
 } // namespace
 
-ScannerService::ScannerService(ProcessRunner processRunner)
-    : config_(), processRunner_(std::move(processRunner))
+ScannerService::ScannerService(std::shared_ptr<ScannerChannelController> channelController)
+    : config_(), channelController_(std::move(channelController))
 {}
 
-ScannerService::ScannerService(Config config, ProcessRunner processRunner)
-    : config_(std::move(config)), processRunner_(std::move(processRunner))
+ScannerService::ScannerService(
+    Config config, std::shared_ptr<ScannerChannelController> channelController)
+    : config_(std::move(config)), channelController_(std::move(channelController))
 {}
 
 ScannerService::~ScannerService()
@@ -337,6 +338,19 @@ Result<std::monostate, std::string> ScannerService::start()
         return Result<std::monostate, std::string>::error(error);
     }
 
+    if (!channelController_) {
+        ::close(fd);
+        return Result<std::monostate, std::string>::error(
+            "Missing dependency for scannerChannelController");
+    }
+
+    const auto channelControllerStartResult = channelController_->start();
+    if (channelControllerStartResult.isError()) {
+        ::close(fd);
+        return Result<std::monostate, std::string>::error(
+            channelControllerStartResult.errorValue());
+    }
+
     {
         std::lock_guard<std::mutex> lock(mutex_);
         currentChannel_.reset();
@@ -347,12 +361,15 @@ Result<std::monostate, std::string> ScannerService::start()
 
     running_ = true;
     thread_ = std::thread(&ScannerService::threadMain, this);
+    notifySnapshotChanged();
     return Result<std::monostate, std::string>::okay(std::monostate{});
 #endif
 }
 
 void ScannerService::stop()
 {
+    const bool wasRunning = running_;
+
 #ifdef __linux__
     stopRequested_ = true;
     if (thread_.joinable()) {
@@ -371,9 +388,15 @@ void ScannerService::stop()
     if (fd >= 0) {
         ::close(fd);
     }
+    if (channelController_) {
+        channelController_->stop();
+    }
 #endif
 
     running_ = false;
+    if (wasRunning) {
+        notifySnapshotChanged();
+    }
 }
 
 ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxRadios) const
@@ -434,6 +457,12 @@ std::string ScannerService::lastError() const
     return lastError_;
 }
 
+void ScannerService::setSnapshotChangedCallback(SnapshotChangedCallback callback)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshotChangedCallback_ = std::move(callback);
+}
+
 std::vector<int> ScannerService::buildChannelPlan() const
 {
     std::vector<int> channels;
@@ -452,16 +481,14 @@ std::vector<int> ScannerService::buildChannelPlan() const
     return channels;
 }
 
-bool ScannerService::setChannel(int channel) const
+Result<std::monostate, std::string> ScannerService::setChannel(int channel)
 {
-    if (!processRunner_) {
-        return false;
+    if (!channelController_) {
+        return Result<std::monostate, std::string>::error(
+            "Missing dependency for scannerChannelController");
     }
 
-    const auto result = processRunner_(
-        { "iw", "dev", config_.interfaceName, "set", "channel", std::to_string(channel) },
-        kSetChannelTimeoutMs);
-    return result.isValue() && result.value().exitCode == 0;
+    return channelController_->setChannel20MHz(channel);
 }
 
 void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
@@ -475,6 +502,19 @@ void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
         else {
             ++it;
         }
+    }
+}
+
+void ScannerService::notifySnapshotChanged()
+{
+    SnapshotChangedCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        callback = snapshotChangedCallback_;
+    }
+
+    if (callback) {
+        callback();
     }
 }
 
@@ -518,9 +558,14 @@ void ScannerService::threadMain()
                 break;
             }
 
-            if (!setChannel(channel)) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                lastError_ = "Failed to set channel " + std::to_string(channel);
+            const auto setChannelResult = setChannel(channel);
+            if (setChannelResult.isError()) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    lastError_ = "Failed to set channel " + std::to_string(channel) + ": "
+                        + setChannelResult.errorValue();
+                }
+                notifySnapshotChanged();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
@@ -528,6 +573,7 @@ void ScannerService::threadMain()
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 currentChannel_ = channel;
+                lastError_.clear();
             }
 
             const auto start = std::chrono::steady_clock::now();
@@ -564,6 +610,7 @@ void ScannerService::threadMain()
             }
 
             pruneOldRadios(std::chrono::steady_clock::now());
+            notifySnapshotChanged();
         }
     }
 

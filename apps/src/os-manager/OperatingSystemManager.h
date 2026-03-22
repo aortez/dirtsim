@@ -45,6 +45,7 @@ namespace OsManager {
 class LocalProcessBackend;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
+class ScannerChannelController;
 class ScannerService;
 struct PeerInfo;
 
@@ -86,6 +87,7 @@ public:
         std::function<Result<OsApi::RemoteCliRun::Okay, ApiError>(
             const PeerTrustBundle&, const std::vector<std::string>&, int)>
             remoteCliRunner;
+        std::shared_ptr<ScannerChannelController> scannerChannelController;
     };
 
     struct TestMode {
@@ -204,9 +206,12 @@ private:
     void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);
+    void initializeServices();
     void initializeDefaultDependencies();
     void initializePeerDiscovery();
     void publishNetworkSnapshotChanged(const NetworkService::Snapshot& snapshot);
+    void publishScannerSnapshotChanged(
+        bool active, const std::optional<std::string>& detailOverride = std::nullopt);
 
     uint16_t port_ = 0;
     bool enableNetworking_ = true;

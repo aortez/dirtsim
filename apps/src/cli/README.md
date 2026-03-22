@@ -256,6 +256,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canExerciseScannerModeBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test canSwitchForgetThenScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test canSwitchThenScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
+./build-debug/bin/cli functional-test canRecoverScannerUiAfterOutOfBandExit
 ./build-debug/bin/cli functional-test canExerciseWifiAndScannerBackendOnly --wifi-config src/cli/examples/wifi-functional-test.example.json
 ./build-debug/bin/cli functional-test verifyTraining
 
@@ -297,12 +298,14 @@ Run a minimal UI/server workflow check against a running system:
 - For canExerciseScannerModeBackendOnly: runs only the scanner-mode enter/snapshot/exit/restore path through os-manager, without the Network UI and without the cancel/reconnect sequence.
 - For canSwitchForgetThenScannerBackendOnly: runs a real backend switch to the target network, reconnects the baseline, forgets the target again so it is no longer saved, then runs scanner enter / snapshot / exit / restore.
 - For canSwitchThenScannerBackendOnly: runs a real backend WiFi switch to the target network, reconnects the baseline network, then runs scanner enter / snapshot / exit / restore without any canceled connect.
+- For canRecoverScannerUiAfterOutOfBandExit: enters scanner mode from the Network UI, exits scanner mode directly through os-manager, and verifies the Scanner screen returns to the ready/inactive state.
 - For canExerciseWifiAndScannerBackendOnly: runs the WiFi/scanner scenario through os-manager only, without the Network UI, so UI issues can be separated from backend/networking issues.
 
 **WiFi functional test config**:
 - Use `--wifi-config /path/to/config.json` for `canSwitchWifiNetworks`, `canSwitchWifiNetworksBackendOnly`, `canCancelWifiConnect`, `canCancelThenScannerBackendOnly`, `canExerciseScannerModeBackendOnly`, `canSwitchForgetThenScannerBackendOnly`, `canSwitchThenScannerBackendOnly`, `canExerciseWifiAndScanner`, and `canExerciseWifiAndScannerBackendOnly`.
 - A template lives at `src/cli/examples/wifi-functional-test.example.json`.
 - These tests should be run locally on the target device so they can use `ws://localhost` while switching WiFi networks.
+- `canRecoverScannerUiAfterOutOfBandExit` does not need `--wifi-config`, but it should also be run locally on the target device because scanner mode temporarily takes `wlan0` out of normal Wi-Fi service.
 
 ### Network Mode
 
