@@ -54,6 +54,7 @@ import {
   remoteFlashWithKey,
 } from '../pi-base/scripts/lib/index.mjs';
 import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
+import { resolveKasConfig } from './lib/kas-config.mjs';
 
 // Path setup.
 const __filename = fileURLToPath(import.meta.url);
@@ -74,8 +75,8 @@ const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 const APPS_DIR = join(YOCTO_DIR, '..', 'apps');
 const SERVICE_FILES_DIR = join(YOCTO_DIR, 'meta-dirtsim/recipes-dirtsim/dirtsim/files');
-const KAS_CONFIG_ARM = 'kas-dirtsim.yml';
-const KAS_CONFIG_X86 = 'kas-dirtsim-x86.yml';
+const KAS_CONFIG_ARM = resolveKasConfig('kas-dirtsim.yml');
+const KAS_CONFIG_X86 = resolveKasConfig('kas-dirtsim-x86.yml');
 
 // Assets to deploy alongside binaries (fonts, etc.).
 const DEPLOY_ASSETS = [

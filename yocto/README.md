@@ -104,8 +104,31 @@ sudo sysctl --system
 
 ```bash
 cd yocto
-kas build kas-dirtsim.yml
+npm run build
 ```
+
+### Local KAS Overrides
+
+For local-only build toggles that should persist without affecting `git status`,
+create a gitignored KAS overlay:
+
+```bash
+cd yocto
+cp kas-dirtsim.local.yml.example kas-dirtsim.local.yml
+```
+
+All standard Yocto helper flows automatically include `kas-dirtsim.local.yml`
+when it exists, including:
+
+- `./update.sh`
+- `npm run yolo`
+- `npm run deploy`
+- `npm run build`
+
+Example use case: enabling the experimental Nexmon scanner stack locally.
+
+If you run raw `kas build kas-dirtsim.yml` yourself, that bypasses this helper
+layering and will not auto-include `kas-dirtsim.local.yml`.
 
 ### Cache Directories
 
@@ -435,6 +458,7 @@ ssh-keygen -t ed25519
 yocto/
 ├── README.md                 # This file
 ├── kas-dirtsim.yml           # KAS build configuration
+├── kas-dirtsim.local.yml.example  # Example local-only KAS overlay
 ├── package.json              # npm scripts for flash/update
 ├── wifi-creds.local          # WiFi credentials (gitignored, create from example)
 ├── scripts/

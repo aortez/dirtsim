@@ -7,6 +7,7 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
@@ -612,6 +613,16 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_size(wifiView_, LV_PCT(100), 0);
     lv_obj_set_flex_grow(wifiView_, 1);
 
+    connectFlowView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(connectFlowView_);
+    lv_obj_set_size(connectFlowView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(connectFlowView_, 1);
+
+    networkDetailsView_ = lv_obj_create(pagesContainer_);
+    stylePanelColumn(networkDetailsView_);
+    lv_obj_set_size(networkDetailsView_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(networkDetailsView_, 1);
+
     lanAccessView_ = lv_obj_create(pagesContainer_);
     stylePanelColumn(lanAccessView_);
     lv_obj_set_size(lanAccessView_, LV_PCT(100), 0);
@@ -786,6 +797,11 @@ void NetworkDiagnosticsPanel::createUI()
     styleSwitchRow(liveScanToggle_);
 
     lv_obj_t* scannerCard = createSectionCard(scannerView_, "Scanner");
+    lv_obj_set_height(scannerCard, 0);
+    lv_obj_set_flex_grow(scannerCard, 1);
+    lv_obj_add_flag(scannerCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(scannerCard, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scannerCard, LV_SCROLLBAR_MODE_AUTO);
 
     scannerStatusLabel_ = lv_label_create(scannerCard);
     lv_label_set_text(scannerStatusLabel_, "Scanner status unavailable.");
@@ -842,6 +858,74 @@ void NetworkDiagnosticsPanel::createUI()
                              .callback(onScannerExitClicked, this)
                              .buildOrLog();
 
+    lv_obj_t* channelMapTitleLabel = lv_label_create(scannerCard);
+    lv_label_set_text(channelMapTitleLabel, "Channel map");
+    lv_obj_set_style_text_font(channelMapTitleLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(channelMapTitleLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_width(channelMapTitleLabel, LV_PCT(100));
+
+    lv_obj_t* channelMapRow = lv_obj_create(scannerCard);
+    lv_obj_set_size(channelMapRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(channelMapRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        channelMapRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(channelMapRow, 0, 0);
+    lv_obj_set_style_pad_column(channelMapRow, 10, 0);
+    lv_obj_set_style_bg_opa(channelMapRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(channelMapRow, 0, 0);
+    lv_obj_clear_flag(channelMapRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    scannerChannelPlot24_ = std::make_unique<TimeSeriesPlotWidget>(
+        channelMapRow,
+        TimeSeriesPlotWidget::Config{
+            .title = "2.4 GHz",
+            .lineColor = lv_color_hex(0x00CED1),
+            .defaultMinY = -100.0f,
+            .defaultMaxY = -20.0f,
+            .valueScale = 1.0f,
+            .autoScaleY = false,
+            .hideZeroValuePoints = true,
+            .showYAxisRangeLabels = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .barGroupGapPx = 1,
+            .barSeriesGapPx = 1,
+            .minPointCount = 1,
+        });
+    scannerChannelPlot24_->setBottomLabels("ch 1", "ch 11");
+
+    lv_obj_t* plot24Container = scannerChannelPlot24_->getContainer();
+    lv_obj_set_size(plot24Container, 0, 110);
+    lv_obj_set_flex_grow(plot24Container, 1);
+
+    scannerChannelPlot5_ = std::make_unique<TimeSeriesPlotWidget>(
+        channelMapRow,
+        TimeSeriesPlotWidget::Config{
+            .title = "5 GHz",
+            .lineColor = lv_color_hex(0xFFDD66),
+            .defaultMinY = -100.0f,
+            .defaultMaxY = -20.0f,
+            .valueScale = 1.0f,
+            .autoScaleY = false,
+            .hideZeroValuePoints = true,
+            .showYAxisRangeLabels = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .barGroupGapPx = 1,
+            .barSeriesGapPx = 1,
+            .minPointCount = 1,
+        });
+    scannerChannelPlot5_->setBottomLabels("ch 36", "ch 165");
+
+    lv_obj_t* plot5Container = scannerChannelPlot5_->getContainer();
+    lv_obj_set_size(plot5Container, 0, 110);
+    lv_obj_set_flex_grow(plot5Container, 1);
+
+    scannerDataLabel_ = lv_label_create(scannerCard);
+    lv_label_set_text(scannerDataLabel_, "Scanner data will appear here.");
+    lv_obj_set_style_text_font(scannerDataLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_long_mode(scannerDataLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(scannerDataLabel_, LV_PCT(100));
+
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
 
     const auto cachedAccess = getAccessCache();
@@ -872,12 +956,25 @@ Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnostics
     AutomationState state;
     switch (viewMode_) {
         case ViewMode::Wifi:
+            state.screen = AutomationScreen::Wifi;
+            state.viewMode = "Wifi";
+            break;
+        case ViewMode::WifiConnectFlow:
+            state.screen = connectOverlayMode_ == ConnectOverlayMode::PasswordEntry
+                ? AutomationScreen::WifiPassword
+                : AutomationScreen::WifiConnecting;
+            state.viewMode = "Wifi";
+            break;
+        case ViewMode::WifiDetails:
+            state.screen = AutomationScreen::WifiDetails;
             state.viewMode = "Wifi";
             break;
         case ViewMode::LanAccess:
+            state.screen = AutomationScreen::LanAccess;
             state.viewMode = "LanAccess";
             break;
         case ViewMode::Scanner:
+            state.screen = AutomationScreen::Scanner;
             state.viewMode = "Scanner";
             break;
     }
@@ -894,10 +991,13 @@ Result<NetworkDiagnosticsPanel::AutomationState, std::string> NetworkDiagnostics
         : std::nullopt;
     state.passwordError = labelText(passwordErrorLabel_);
     state.scannerStatusMessage = labelText(scannerStatusLabel_);
-    state.passwordPromptVisible =
-        passwordOverlay_ && !lv_obj_has_flag(passwordOverlay_, LV_OBJ_FLAG_HIDDEN);
+    const bool connectFlowVisible = viewMode_ == ViewMode::WifiConnectFlow && connectFlowView_
+        && !lv_obj_has_flag(connectFlowView_, LV_OBJ_FLAG_HIDDEN);
+    state.passwordPromptVisible = connectFlowVisible
+        && connectOverlayMode_ == ConnectOverlayMode::PasswordEntry
+        && connectOverlayHasPasswordEntry_;
     state.connectOverlayVisible =
-        state.passwordPromptVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
+        connectFlowVisible && connectOverlayMode_ == ConnectOverlayMode::Connecting;
     state.passwordSubmitEnabled = passwordJoinButton_
         && !lv_obj_has_state(getActionButtonInnerButton(passwordJoinButton_), LV_STATE_DISABLED);
     state.scannerModeActive = scannerModeActive_;
@@ -1129,6 +1229,10 @@ std::optional<size_t> NetworkDiagnosticsPanel::findNetworkIndexBySsid(const std:
 void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
 {
     const ViewMode previousMode = viewMode_;
+    const bool wasWifiMode = previousMode == ViewMode::Wifi
+        || previousMode == ViewMode::WifiConnectFlow || previousMode == ViewMode::WifiDetails;
+    const bool isWifiMode = mode == ViewMode::Wifi || mode == ViewMode::WifiConnectFlow
+        || mode == ViewMode::WifiDetails;
     auto setVisibility = [](lv_obj_t* view, bool visible) {
         if (!view) {
             return;
@@ -1145,16 +1249,18 @@ void NetworkDiagnosticsPanel::setViewMode(ViewMode mode)
     };
 
     setVisibility(wifiView_, mode == ViewMode::Wifi);
+    setVisibility(connectFlowView_, mode == ViewMode::WifiConnectFlow);
+    setVisibility(networkDetailsView_, mode == ViewMode::WifiDetails);
     setVisibility(lanAccessView_, mode == ViewMode::LanAccess);
     setVisibility(scannerView_, mode == ViewMode::Scanner);
     viewMode_ = mode;
-    if (mode != ViewMode::Wifi) {
+    if (!isWifiMode) {
         signalHistoryByBssid_.clear();
         signalHistoryLastSampleAt_.reset();
         return;
     }
 
-    if (previousMode != ViewMode::Wifi) {
+    if (!wasWifiMode) {
         signalHistoryLastSampleAt_.reset();
         updateSignalHistory(true);
     }
@@ -1287,9 +1393,11 @@ void NetworkDiagnosticsPanel::startEventStream()
 
 void NetworkDiagnosticsPanel::closePasswordPrompt()
 {
-    if (passwordOverlay_) {
-        lv_obj_del(passwordOverlay_);
-        passwordOverlay_ = nullptr;
+    if (connectFlowView_) {
+        lv_obj_clean(connectFlowView_);
+        if (viewMode_ == ViewMode::WifiConnectFlow) {
+            setViewMode(ViewMode::Wifi);
+        }
     }
 
     passwordCancelButton_ = nullptr;
@@ -1318,6 +1426,12 @@ void NetworkDiagnosticsPanel::closeNetworkDetailsOverlay()
     if (networkDetailsOverlay_) {
         lv_obj_del(networkDetailsOverlay_);
         networkDetailsOverlay_ = nullptr;
+    }
+    if (networkDetailsView_) {
+        lv_obj_clean(networkDetailsView_);
+        if (viewMode_ == ViewMode::WifiDetails) {
+            setViewMode(ViewMode::Wifi);
+        }
     }
 
     networkDetailsContent_ = nullptr;
@@ -1349,23 +1463,19 @@ void NetworkDiagnosticsPanel::openPasswordPrompt(const Network::WifiNetworkInfo&
     connectOverlayMode_ = ConnectOverlayMode::PasswordEntry;
     passwordVisible_ = false;
 
-    passwordOverlay_ = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(passwordOverlay_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(passwordOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(passwordOverlay_, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(passwordOverlay_, 0, 0);
-    lv_obj_set_style_pad_all(passwordOverlay_, 0, 0);
-    lv_obj_set_style_radius(passwordOverlay_, 0, 0);
-    lv_obj_clear_flag(passwordOverlay_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(passwordOverlay_);
+    if (!connectFlowView_) {
+        return;
+    }
 
-    lv_obj_t* modal = lv_obj_create(passwordOverlay_);
-    lv_obj_set_size(modal, LV_PCT(90), LV_PCT(100));
-    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
+    setViewMode(ViewMode::WifiConnectFlow);
+    lv_obj_clean(connectFlowView_);
+
+    lv_obj_t* modal = lv_obj_create(connectFlowView_);
+    lv_obj_set_size(modal, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(modal, 1);
     lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
     lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(modal, 1, 0);
-    lv_obj_set_style_border_color(modal, lv_color_hex(CARD_BORDER_COLOR), 0);
+    lv_obj_set_style_border_width(modal, 0, 0);
     lv_obj_set_style_radius(modal, 0, 0);
     lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
     lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
@@ -1678,28 +1788,28 @@ void NetworkDiagnosticsPanel::openNetworkDetailsOverlay(const Network::WifiNetwo
             return lhs.bssid < rhs.bssid;
         });
 
-    networkDetailsOverlay_ = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(networkDetailsOverlay_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(networkDetailsOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(networkDetailsOverlay_, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(networkDetailsOverlay_, 0, 0);
-    lv_obj_set_style_pad_all(networkDetailsOverlay_, 0, 0);
-    lv_obj_set_style_radius(networkDetailsOverlay_, 0, 0);
-    lv_obj_clear_flag(networkDetailsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(networkDetailsOverlay_);
+    if (!networkDetailsView_) {
+        return;
+    }
 
-    lv_obj_t* modal = lv_obj_create(networkDetailsOverlay_);
-    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
-    lv_obj_align(modal, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
-    lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_border_width(modal, 0, 0);
-    lv_obj_set_style_radius(modal, 0, 0);
-    lv_obj_set_style_pad_all(modal, NETWORK_CARD_PADDING, 0);
-    lv_obj_set_style_pad_row(modal, NETWORK_CARD_ROW_PADDING, 0);
-    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+    setViewMode(ViewMode::WifiDetails);
+    lv_obj_clean(networkDetailsView_);
+
+    networkDetailsOverlay_ = lv_obj_create(networkDetailsView_);
+    lv_obj_set_size(networkDetailsOverlay_, LV_PCT(100), 0);
+    lv_obj_set_flex_grow(networkDetailsOverlay_, 1);
+    lv_obj_set_style_bg_color(networkDetailsOverlay_, lv_color_hex(0x1E1E2E), 0);
+    lv_obj_set_style_bg_opa(networkDetailsOverlay_, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(networkDetailsOverlay_, 0, 0);
+    lv_obj_set_style_radius(networkDetailsOverlay_, 0, 0);
+    lv_obj_set_style_pad_all(networkDetailsOverlay_, NETWORK_CARD_PADDING, 0);
+    lv_obj_set_style_pad_row(networkDetailsOverlay_, NETWORK_CARD_ROW_PADDING, 0);
+    lv_obj_set_flex_flow(networkDetailsOverlay_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        networkDetailsOverlay_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(networkDetailsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* modal = networkDetailsOverlay_;
 
     lv_obj_t* headerRow = lv_obj_create(modal);
     lv_obj_set_size(headerRow, LV_PCT(100), LV_SIZE_CONTENT);
@@ -2453,7 +2563,7 @@ void NetworkDiagnosticsPanel::updateConnectPhaseBadges()
 
 void NetworkDiagnosticsPanel::updateConnectOverlay()
 {
-    if (!passwordOverlay_ || !passwordPromptNetwork_.has_value()) {
+    if (viewMode_ != ViewMode::WifiConnectFlow || !passwordPromptNetwork_.has_value()) {
         return;
     }
     if (connectOverlayMode_ != ConnectOverlayMode::Connecting || !connectProgressTitleLabel_
@@ -2504,9 +2614,7 @@ void NetworkDiagnosticsPanel::finalizeConfirmedConnect()
     LOG_INFO(Controls, "WiFi connect confirmed for {}", confirmedSsid);
 
     connectAwaitingConfirmationSsid_.reset();
-    if (passwordOverlay_) {
-        closePasswordPrompt();
-    }
+    closePasswordPrompt();
 
     endAsyncAction(AsyncActionKind::Connect);
     setConnectProgress(std::nullopt);
@@ -2979,7 +3087,7 @@ bool NetworkDiagnosticsPanel::startAsyncScannerEnter()
             else {
                 OsApi::ScannerModeEnter::Command cmd{};
                 const auto response =
-                    client.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(cmd, 10000);
+                    client.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(cmd, 20000);
                 client.disconnect();
 
                 if (response.isError()) {
@@ -3071,6 +3179,90 @@ bool NetworkDiagnosticsPanel::startAsyncScannerExit()
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingScannerExit = std::move(result);
         state->scannerExitInProgress = false;
+    }).detach();
+
+    return true;
+}
+
+bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->scannerSnapshotInProgress) {
+            return false;
+        }
+        asyncState_->scannerSnapshotInProgress = true;
+    }
+
+    auto state = asyncState_;
+    std::thread([state]() {
+        Result<ScannerSnapshot, ScannerSnapshotError> result =
+            Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ "Scanner snapshot failed" });
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
+            if (connectResult.isError()) {
+                result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                    ScannerSnapshotError{ "Failed to connect to os-manager: "
+                                          + connectResult.errorValue() });
+            }
+            else {
+                OsApi::ScannerSnapshotGet::Command cmd{};
+                cmd.maxRadios = 48;
+                cmd.maxAgeMs = 15000;
+                const auto response =
+                    client.sendCommandAndGetResponse<OsApi::ScannerSnapshotGet::Okay>(cmd, 2000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                        ScannerSnapshotError{ "ScannerSnapshotGet failed: "
+                                              + response.errorValue() });
+                }
+                else if (response.value().isError()) {
+                    result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                        ScannerSnapshotError{ "ScannerSnapshotGet failed: "
+                                              + response.value().errorValue().message });
+                }
+                else {
+                    const auto& okay = response.value().value();
+                    ScannerSnapshot snapshot;
+                    snapshot.active = okay.active;
+                    snapshot.currentChannel = okay.currentChannel;
+                    snapshot.detail = okay.detail;
+                    snapshot.radios.reserve(okay.radios.size());
+                    for (const auto& radio : okay.radios) {
+                        ScannerObservedRadio entry;
+                        entry.bssid = radio.bssid;
+                        entry.ssid = radio.ssid;
+                        entry.signalDbm = radio.signalDbm;
+                        entry.channel = radio.channel;
+                        entry.lastSeenAgeMs = radio.lastSeenAgeMs;
+                        snapshot.radios.push_back(std::move(entry));
+                    }
+
+                    result =
+                        Result<ScannerSnapshot, ScannerSnapshotError>::okay(std::move(snapshot));
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ e.what() });
+        }
+        catch (...) {
+            result = Result<ScannerSnapshot, ScannerSnapshotError>::error(
+                ScannerSnapshotError{ "Scanner snapshot failed" });
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingScannerSnapshot = std::move(result);
+        state->scannerSnapshotInProgress = false;
     }).detach();
 
     return true;
@@ -3705,6 +3897,148 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
     updateScannerControls();
 }
 
+void NetworkDiagnosticsPanel::updateScannerSnapshot(
+    const Result<ScannerSnapshot, ScannerSnapshotError>& result)
+{
+    if (!scannerDataLabel_) {
+        return;
+    }
+
+    if (result.isError()) {
+        const std::string text = "Scanner data unavailable: " + result.errorValue().message;
+        lv_label_set_text(scannerDataLabel_, text.c_str());
+        lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(ERROR_TEXT_COLOR), 0);
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
+        }
+        return;
+    }
+
+    const auto& snapshot = result.value();
+
+    std::vector<float> channel24MaxSignal(11, 0.0f);
+    std::vector<float> channel5MaxSignal(9, 0.0f);
+    constexpr std::array<int, 9> kChannel5Plan{ { 36, 40, 44, 48, 149, 153, 157, 161, 165 } };
+
+    for (const auto& radio : snapshot.radios) {
+        if (!radio.channel.has_value() || !radio.signalDbm.has_value()) {
+            continue;
+        }
+
+        const int channel = radio.channel.value();
+        const float signal = static_cast<float>(radio.signalDbm.value());
+
+        if (channel >= 1 && channel <= 11) {
+            const size_t idx = static_cast<size_t>(channel - 1);
+            if (channel24MaxSignal[idx] == 0.0f || signal > channel24MaxSignal[idx]) {
+                channel24MaxSignal[idx] = signal;
+            }
+            continue;
+        }
+
+        const auto it = std::find(kChannel5Plan.begin(), kChannel5Plan.end(), channel);
+        if (it != kChannel5Plan.end()) {
+            const size_t idx = static_cast<size_t>(std::distance(kChannel5Plan.begin(), it));
+            if (channel5MaxSignal[idx] == 0.0f || signal > channel5MaxSignal[idx]) {
+                channel5MaxSignal[idx] = signal;
+            }
+        }
+    }
+
+    if (scannerChannelPlot24_) {
+        scannerChannelPlot24_->setSamples(channel24MaxSignal);
+    }
+    if (scannerChannelPlot5_) {
+        scannerChannelPlot5_->setSamples(channel5MaxSignal);
+    }
+
+    std::string text;
+    if (!snapshot.detail.empty()) {
+        text += snapshot.detail;
+        text += "\n";
+    }
+    if (snapshot.currentChannel.has_value()) {
+        text += "Channel: ";
+        text += std::to_string(*snapshot.currentChannel);
+        text += "\n";
+    }
+    text += "Observed radios: ";
+    text += std::to_string(snapshot.radios.size());
+    text += "\n\n";
+    if (snapshot.radios.empty()) {
+        text += "No radios observed yet.";
+    }
+    else {
+        const size_t maxRows = 10;
+        const size_t rowCount = std::min(snapshot.radios.size(), maxRows);
+        for (size_t i = 0; i < rowCount; ++i) {
+            const auto& radio = snapshot.radios[i];
+            const std::string ssid = !radio.ssid.empty() ? radio.ssid : std::string("<hidden>");
+            text += ssid;
+            if (radio.channel.has_value()) {
+                text += "  ch ";
+                text += std::to_string(*radio.channel);
+            }
+            if (radio.signalDbm.has_value()) {
+                text += "  ";
+                text += std::to_string(*radio.signalDbm);
+                text += " dBm";
+            }
+            if (radio.lastSeenAgeMs.has_value()) {
+                text += "  ";
+                text += std::to_string(*radio.lastSeenAgeMs);
+                text += "ms";
+            }
+            text += "\n";
+            text += radio.bssid;
+            text += "\n";
+        }
+        if (snapshot.radios.size() > rowCount) {
+            text += "\n";
+            text += "…";
+            text += std::to_string(snapshot.radios.size() - rowCount);
+            text += " more";
+        }
+    }
+
+    lv_label_set_text(scannerDataLabel_, text.c_str());
+    lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(0xFFFFFF), 0);
+}
+
+void NetworkDiagnosticsPanel::updateScannerSnapshotPolling()
+{
+    if (viewMode_ != ViewMode::Scanner) {
+        return;
+    }
+
+    if (!scannerModeActive_) {
+        if (scannerDataLabel_) {
+            lv_label_set_text(scannerDataLabel_, "Enter scanner mode to view observed radios.");
+            lv_obj_set_style_text_color(scannerDataLabel_, lv_color_hex(MUTED_TEXT_COLOR), 0);
+        }
+        if (scannerChannelPlot24_) {
+            scannerChannelPlot24_->clear();
+        }
+        if (scannerChannelPlot5_) {
+            scannerChannelPlot5_->clear();
+        }
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (scannerSnapshotLastRequestedAt_.has_value()
+        && now - scannerSnapshotLastRequestedAt_.value() < std::chrono::milliseconds(800)) {
+        return;
+    }
+
+    if (startAsyncScannerSnapshot()) {
+        scannerSnapshotLastRequestedAt_ = now;
+    }
+}
+
 void NetworkDiagnosticsPanel::updateScannerControls()
 {
     if (scannerHintLabel_) {
@@ -3935,7 +4269,7 @@ void NetworkDiagnosticsPanel::updateDetailsSignalHistoryPlots()
 
 void NetworkDiagnosticsPanel::updateSignalHistory(bool forceSample)
 {
-    if (viewMode_ != ViewMode::Wifi) {
+    if (viewMode_ != ViewMode::Wifi && viewMode_ != ViewMode::WifiDetails) {
         return;
     }
 
@@ -4196,6 +4530,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<Result<std::monostate, std::string>> scannerEnterResult;
     std::optional<Result<std::monostate, std::string>> scannerExitResult;
+    std::optional<Result<ScannerSnapshot, ScannerSnapshotError>> scannerSnapshotResult;
     std::optional<PendingRefreshData> refreshData;
     std::optional<Result<std::monostate, std::string>> scanRequestResult;
     std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
@@ -4223,6 +4558,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         scannerExitResult = asyncState_->pendingScannerExit;
         asyncState_->pendingScannerExit.reset();
+
+        scannerSnapshotResult = asyncState_->pendingScannerSnapshot;
+        asyncState_->pendingScannerSnapshot.reset();
 
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
@@ -4273,7 +4611,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         updateWebSocketStatus(refreshData->accessStatusResult);
         updateSignalHistory(true);
 
-        if (networkDetailsOverlay_ && networkDetailsNetwork_.has_value()) {
+        if (viewMode_ == ViewMode::WifiDetails && networkDetailsOverlay_
+            && networkDetailsNetwork_.has_value()) {
             const int32_t detailsScrollY =
                 networkDetailsContent_ ? lv_obj_get_scroll_y(networkDetailsContent_) : 0;
             auto it = std::find_if(
@@ -4366,6 +4705,10 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             showScannerView();
             refresh();
         }
+    }
+
+    if (scannerSnapshotResult.has_value()) {
+        updateScannerSnapshot(scannerSnapshotResult.value());
     }
 
     if (scannerExitResult.has_value()) {
@@ -4607,6 +4950,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     bool scanRequestInProgress = false;
     bool scannerEnterInProgress = false;
     bool scannerExitInProgress = false;
+    bool scannerSnapshotInProgress = false;
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         connectCancelInProgress = asyncState_->connectCancelInProgress;
@@ -4615,6 +4959,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         scanRequestInProgress = asyncState_->scanRequestInProgress;
         scannerEnterInProgress = asyncState_->scannerEnterInProgress;
         scannerExitInProgress = asyncState_->scannerExitInProgress;
+        scannerSnapshotInProgress = asyncState_->scannerSnapshotInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnectCancel.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingDisconnect.has_value()
@@ -4622,12 +4967,13 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             || asyncState_->pendingForget.has_value()
             || asyncState_->pendingScannerEnter.has_value()
             || asyncState_->pendingScannerExit.has_value()
+            || asyncState_->pendingScannerSnapshot.has_value()
             || asyncState_->pendingScanRequest.has_value()
             || asyncState_->pendingWebSocketUpdate.has_value()
             || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->connectCancelInProgress
             || asyncState_->diagnosticsModeUpdateInProgress || asyncState_->scannerEnterInProgress
-            || asyncState_->scannerExitInProgress || asyncState_->webSocketUpdateInProgress
-            || asyncState_->webUiUpdateInProgress;
+            || asyncState_->scannerExitInProgress || asyncState_->scannerSnapshotInProgress
+            || asyncState_->webSocketUpdateInProgress || asyncState_->webUiUpdateInProgress;
     }
 
     setRefreshButtonEnabled(
@@ -4635,7 +4981,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         && !diagnosticsModeUpdateInProgress && !scannerEnterInProgress && !scannerExitInProgress
         && !isActionInProgress() && !hasPending);
     setScannerRefreshButtonEnabled(
-        !refreshInProgress && !scannerEnterInProgress && !scannerExitInProgress && !hasPending);
+        !refreshInProgress && !scannerEnterInProgress && !scannerExitInProgress
+        && !scannerSnapshotInProgress && !hasPending);
 }
 
 void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
@@ -4648,6 +4995,7 @@ void NetworkDiagnosticsPanel::onRefreshTimer(lv_timer_t* timer)
     self->applyPendingUpdates();
     self->updateSignalHistory();
     self->updateConnectOverlay();
+    self->updateScannerSnapshotPolling();
 }
 
 void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)

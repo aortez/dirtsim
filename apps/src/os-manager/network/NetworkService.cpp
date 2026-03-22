@@ -538,6 +538,9 @@ struct NetworkService::Impl {
     {
         return invokeOnWorker<Result<std::monostate, std::string>>(
             [this, ssid, password, completionCallback = std::move(completionCallback)]() mutable {
+                if (ssid.empty()) {
+                    return Result<std::monostate, std::string>::error("SSID is required");
+                }
                 if (hasConnectProgress) {
                     return Result<std::monostate, std::string>::error(
                         "WiFi connect already in progress");
@@ -556,7 +559,7 @@ struct NetworkService::Impl {
                     Network::WifiConnectProgress{
                         .ssid = ssid,
                         .phase = Network::WifiConnectPhase::Starting,
-                        .canCancel = true,
+                        .canCancel = false,
                     });
 
                 const uint64_t operationId = ++connectOperationId;
@@ -585,6 +588,25 @@ struct NetworkService::Impl {
                             };
 
                         try {
+                            const auto canceledBeforeStart =
+                                invokeOnWorker<Result<bool, std::string>>([this, operationId]() {
+                                    return Result<bool, std::string>::okay(
+                                        connectCancelRequested
+                                        || operationId != connectOperationId);
+                                });
+                            if (canceledBeforeStart.isError()) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        canceledBeforeStart.errorValue()));
+                                return;
+                            }
+                            if (canceledBeforeStart.value()) {
+                                finishConnect(
+                                    Result<Network::WifiConnectResult, std::string>::error(
+                                        "WiFi connection canceled"));
+                                return;
+                            }
+
                             Network::WifiManager wifiManager;
                             finishConnect(wifiManager.connectBySsid(ssid, password));
                         }
@@ -1103,6 +1125,10 @@ struct NetworkService::Impl {
 
     void setConnectProgress(const Network::WifiConnectProgress& progress)
     {
+        if (progress.ssid.empty()) {
+            LOG_WARN(Network, "Ignoring WiFi connect progress update with empty SSID.");
+            return;
+        }
         if (hasConnectProgress && wifiConnectProgressEqual(connectProgress, progress)) {
             return;
         }
@@ -1238,6 +1264,9 @@ struct NetworkService::Impl {
             refreshedNetworks =
                 mergePassiveNetworkList(cachedSnapshot->snapshot.networks, refreshedNetworks);
         }
+        const std::optional<Network::WifiConnectProgress> refreshedConnectProgress =
+            hasConnectProgress ? std::optional<Network::WifiConnectProgress>(connectProgress)
+                               : std::nullopt;
         const Snapshot refreshedSnapshot{
             .status = statusResult.value(),
             .networks = std::move(refreshedNetworks),
@@ -1245,7 +1274,7 @@ struct NetworkService::Impl {
             .activeBssid = getActiveBssid(wifiDevice),
             .localAddresses = collectLocalAddresses(),
             .connectOutcome = connectOutcome,
-            .connectProgress = connectProgress,
+            .connectProgress = refreshedConnectProgress,
             .lastScanAgeMs = getLastScanAgeMs(wifiDevice),
             .scanInProgress = false,
         };

@@ -8,9 +8,14 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/ScannerModeEnter.h"
+#include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/WifiConnect.h"
+#include "os-manager/api/WifiConnectCancel.h"
+#include "os-manager/api/WifiForget.h"
 #include "server/api/GenomeDelete.h"
 #include "server/api/NesInputSet.h"
 #include "server/api/RenderFormatSet.h"
@@ -36,6 +41,7 @@
 #include "ui/state-machine/api/NetworkScannerEnterPress.h"
 #include "ui/state-machine/api/NetworkScannerExitPress.h"
 #include "ui/state-machine/api/PlantSeed.h"
+#include "ui/state-machine/api/ScreenGrab.h"
 #include "ui/state-machine/api/SimRun.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
@@ -49,6 +55,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -62,6 +69,15 @@ namespace DirtSim {
 namespace Client {
 
 namespace {
+
+constexpr uint64_t kFireAndForgetCommandId = std::numeric_limits<uint64_t>::max();
+
+bool isNetworkStateName(const std::string& state)
+{
+    return state == "NetworkScanner" || state == "NetworkSettings" || state == "NetworkWifi"
+        || state == "NetworkWifiConnecting" || state == "NetworkWifiDetails"
+        || state == "NetworkWifiPassword";
+}
 
 template <typename OkayT>
 Result<OkayT, std::string> unwrapResponse(
@@ -81,8 +97,106 @@ Result<OkayT, std::string> unwrapResponse(
 
 int getPollingRequestTimeoutMs(int timeoutMs);
 bool isRetryablePollingError(const std::string& error);
+Result<OsApi::ScannerSnapshotGet::Okay, std::string> requestScannerSnapshot(
+    Network::WebSocketService& client, int timeoutMs);
 Result<OsApi::SystemStatus::Okay, std::string> requestSystemStatus(
     Network::WebSocketService& client, int timeoutMs);
+
+std::vector<uint8_t> base64Decode(const std::string& encoded)
+{
+    static const int base64_index[256] = {
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        0,  62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  0,  0,
+        0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
+        19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33,
+        34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+    };
+
+    std::vector<uint8_t> decoded;
+    decoded.reserve(encoded.size() * 3 / 4);
+
+    uint32_t val = 0;
+    int valBits = -8;
+
+    for (unsigned char c : encoded) {
+        if (c == '=') {
+            break;
+        }
+        if (c >= sizeof(base64_index) / sizeof(base64_index[0])) {
+            continue;
+        }
+        val = (val << 6) + base64_index[c];
+        valBits += 6;
+        if (valBits >= 0) {
+            decoded.push_back(static_cast<uint8_t>((val >> valBits) & 0xFF));
+            valBits -= 8;
+        }
+    }
+
+    return decoded;
+}
+
+struct UiScreenshotCaptureError {
+    std::string message;
+};
+
+Result<std::string, UiScreenshotCaptureError> captureUiScreenshotPng(
+    Network::WebSocketService& uiClient,
+    const std::string& testName,
+    const std::string& label,
+    int timeoutMs)
+{
+    const auto now = std::chrono::system_clock::now();
+    const auto timestampMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::filesystem::path outputPath = std::filesystem::path("/tmp")
+        / ("dirtsim-functional-test-" + testName + "-" + label + "-" + std::to_string(timestampMs)
+           + ".png");
+
+    UiApi::ScreenGrab::Command cmd{
+        .scale = 1.0,
+        .format = UiApi::ScreenGrab::Format::Png,
+        .quality = 23,
+        .binaryPayload = false,
+    };
+
+    auto grabResult =
+        unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::ScreenGrab::Okay>(cmd, timeoutMs));
+    if (grabResult.isError()) {
+        return Result<std::string, UiScreenshotCaptureError>::error(
+            UiScreenshotCaptureError{ .message = "ScreenGrab failed: " + grabResult.errorValue() });
+    }
+
+    const auto& okay = grabResult.value();
+    if (okay.format != UiApi::ScreenGrab::Format::Png) {
+        return Result<std::string, UiScreenshotCaptureError>::error(
+            UiScreenshotCaptureError{ .message = "ScreenGrab returned non-PNG payload" });
+    }
+
+    std::vector<uint8_t> pngData = base64Decode(okay.data);
+    if (pngData.empty()) {
+        return Result<std::string, UiScreenshotCaptureError>::error(
+            UiScreenshotCaptureError{ .message = "Failed to decode screenshot data" });
+    }
+
+    std::ofstream output(outputPath, std::ios::binary);
+    if (!output) {
+        return Result<std::string, UiScreenshotCaptureError>::error(
+            UiScreenshotCaptureError{ .message = "Failed to open screenshot output: "
+                                          + outputPath.string() });
+    }
+    output.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+    output.close();
+
+    if (!output) {
+        return Result<std::string, UiScreenshotCaptureError>::error(
+            UiScreenshotCaptureError{ .message = "Failed to write screenshot output: "
+                                          + outputPath.string() });
+    }
+
+    return Result<std::string, UiScreenshotCaptureError>::okay(outputPath.string());
+}
 
 struct WifiFunctionalNetworkConfig {
     std::optional<int> minimumSignalDbm;
@@ -609,7 +723,8 @@ Result<WifiPreflightResult, std::string> runWifiPreflight(
         true,
         [&](const OsApi::NetworkSnapshotGet::Okay& snapshot, std::string& lastError) {
             if (snapshot.connectProgress.has_value()) {
-                lastError = "WiFi connect already in progress during preflight";
+                lastError = "WiFi connect already in progress during preflight (ssid="
+                    + snapshot.connectProgress->ssid + ")";
                 return false;
             }
 
@@ -674,7 +789,7 @@ Result<std::monostate, std::string> ensureUiInNetworkScreen(
     }
 
     const std::string& state = uiStateResult.value().state;
-    if (state != "Network") {
+    if (!isNetworkStateName(state)) {
         auto startMenuResult = ensureUiInStartMenu(uiClient, timeoutMs);
         if (startMenuResult.isError()) {
             return startMenuResult;
@@ -698,7 +813,7 @@ Result<std::monostate, std::string> ensureUiInNetworkScreen(
             "UI IconSelect(NETWORK) failed: " + iconResult.errorValue());
     }
 
-    auto networkStateResult = waitForUiState(uiClient, "Network", timeoutMs);
+    auto networkStateResult = waitForUiState(uiClient, "NetworkWifi", timeoutMs);
     if (networkStateResult.isError()) {
         return Result<std::monostate, std::string>::error(networkStateResult.errorValue());
     }
@@ -708,7 +823,7 @@ Result<std::monostate, std::string> ensureUiInNetworkScreen(
         timeoutMs,
         "UI Network WiFi view",
         [](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.view_mode == "Wifi") {
+            if (diagnostics.screen == "Wifi") {
                 lastError.clear();
                 return true;
             }
@@ -766,6 +881,24 @@ Result<std::monostate, std::string> pressUiNetworkConnect(
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
+Result<std::monostate, std::string> forgetWifiViaOsManager(
+    Network::WebSocketService& osManagerClient, const std::string& ssid, int timeoutMs)
+{
+    OsApi::WifiForget::Command cmd{ .ssid = ssid };
+    auto result = unwrapResponse(
+        osManagerClient.sendCommandAndGetResponse<OsApi::WifiForget::Okay>(cmd, timeoutMs));
+    if (result.isError()) {
+        if (result.errorValue().find("No saved WiFi connection found for SSID")
+            != std::string::npos) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+        return Result<std::monostate, std::string>::error(
+            "OS WifiForget failed for " + ssid + ": " + result.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 Result<std::monostate, std::string> pressUiNetworkConnectCancel(
     Network::WebSocketService& uiClient, int timeoutMs)
 {
@@ -815,7 +948,7 @@ Result<std::monostate, std::string> ensureUiInNetworkScannerScreen(
         timeoutMs,
         "UI Network scanner view",
         [](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.view_mode == "Scanner") {
+            if (diagnostics.screen == "Scanner") {
                 lastError.clear();
                 return true;
             }
@@ -867,7 +1000,7 @@ Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiScannerMode(
         std::max(timeoutMs, 20000),
         description,
         [active](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.view_mode == "Scanner" && diagnostics.scanner_mode_active == active) {
+            if (diagnostics.screen == "Scanner" && diagnostics.scanner_mode_active == active) {
                 lastError.clear();
                 return true;
             }
@@ -920,6 +1053,41 @@ Result<OsApi::SystemStatus::Okay, std::string> waitForSystemScannerMode(
     }
 }
 
+Result<OsApi::ScannerSnapshotGet::Okay, std::string> waitForSystemScannerSnapshot(
+    Network::WebSocketService& osManagerClient, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 500;
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
+    std::string lastError;
+
+    while (true) {
+        auto snapshotResult = requestScannerSnapshot(osManagerClient, requestTimeoutMs);
+        if (snapshotResult.isError()) {
+            lastError = snapshotResult.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<OsApi::ScannerSnapshotGet::Okay, std::string>::error(lastError);
+            }
+        }
+        else if (snapshotResult.value().active) {
+            return snapshotResult;
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= std::max(timeoutMs, 20000)) {
+            if (!lastError.empty()) {
+                return Result<OsApi::ScannerSnapshotGet::Okay, std::string>::error(lastError);
+            }
+            return Result<OsApi::ScannerSnapshotGet::Okay, std::string>::error(
+                "Timeout waiting for scanner snapshot");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
 Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiConnectedSsid(
     Network::WebSocketService& uiClient, const std::string& ssid, int timeoutMs)
 {
@@ -928,8 +1096,57 @@ Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiConnectedSsid(
         std::max(timeoutMs, 30000),
         "UI connected SSID '" + ssid + "'",
         [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.connected_ssid.has_value()
-                && diagnostics.connected_ssid.value() == ssid) {
+            if (diagnostics.screen == "Wifi" && diagnostics.connected_ssid.has_value()
+                && diagnostics.connected_ssid.value() == ssid
+                && !diagnostics.connect_progress.has_value() && !diagnostics.password_prompt_visible
+                && !diagnostics.connect_overlay_visible) {
+                lastError.clear();
+                return true;
+            }
+
+            lastError.clear();
+            return false;
+        });
+}
+
+Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiUnsavedNetwork(
+    Network::WebSocketService& uiClient, const std::string& ssid, int timeoutMs)
+{
+    return waitForUiNetworkDiagnostics(
+        uiClient,
+        std::max(timeoutMs, 20000),
+        "UI unsaved WiFi network '" + ssid + "'",
+        [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
+            const auto* network = findUiNetworkInfo(diagnostics, ssid);
+            if (diagnostics.screen == "Wifi" && network && network->status != "Saved"
+                && network->status != "Connected") {
+                lastError.clear();
+                return true;
+            }
+
+            lastError.clear();
+            return false;
+        });
+}
+
+Result<OsApi::NetworkSnapshotGet::Okay, std::string> waitForOsUnsavedNetwork(
+    Network::WebSocketService& osManagerClient, const std::string& ssid, int timeoutMs)
+{
+    return waitForNetworkSnapshot(
+        osManagerClient,
+        std::max(timeoutMs, 20000),
+        "OS unsaved WiFi network '" + ssid + "'",
+        true,
+        [&](const OsApi::NetworkSnapshotGet::Okay& snapshot, std::string& lastError) {
+            const auto it = std::find_if(
+                snapshot.networks.begin(),
+                snapshot.networks.end(),
+                [&](const OsApi::NetworkSnapshotGet::WifiNetworkInfo& network) {
+                    return network.ssid == ssid;
+                });
+            if (it != snapshot.networks.end()
+                && it->status != OsApi::NetworkSnapshotGet::WifiNetworkStatus::Saved
+                && it->status != OsApi::NetworkSnapshotGet::WifiNetworkStatus::Connected) {
                 lastError.clear();
                 return true;
             }
@@ -947,8 +1164,8 @@ Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiCancelableConne
         std::max(timeoutMs, 20000),
         "UI cancelable WiFi connect for '" + ssid + "'",
         [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.connect_cancel_visible && diagnostics.connect_cancel_enabled
-                && diagnostics.connect_progress.has_value()
+            if (diagnostics.screen == "WifiConnecting" && diagnostics.connect_cancel_visible
+                && diagnostics.connect_cancel_enabled && diagnostics.connect_progress.has_value()
                 && diagnostics.connect_progress->ssid == ssid
                 && diagnostics.connect_progress->can_cancel) {
                 lastError.clear();
@@ -967,7 +1184,7 @@ Result<OsApi::NetworkSnapshotGet::Okay, std::string> waitForOsWifiConnectedSsid(
     const int pollDelayMs = 500;
     const int requestTimeoutMs = std::clamp(timeoutMs, 2000, 35000);
     std::string lastError;
-    bool sawCurrentConnectAttempt = false;
+    bool sawTargetProgress = false;
 
     while (true) {
         auto snapshotResult = requestNetworkSnapshot(osManagerClient, false, requestTimeoutMs);
@@ -980,20 +1197,35 @@ Result<OsApi::NetworkSnapshotGet::Okay, std::string> waitForOsWifiConnectedSsid(
         else {
             const auto& snapshot = snapshotResult.value();
             if (snapshot.connectProgress.has_value() && snapshot.connectProgress->ssid == ssid) {
-                sawCurrentConnectAttempt = true;
+                sawTargetProgress = true;
             }
-            if (snapshot.status.connected && snapshot.status.ssid == ssid
-                && !snapshot.connectProgress.has_value()) {
+
+            const bool networksShowConnectedToTarget = std::any_of(
+                snapshot.networks.begin(),
+                snapshot.networks.end(),
+                [&](const OsApi::NetworkSnapshotGet::WifiNetworkInfo& network) {
+                    return network.ssid == ssid
+                        && network.status
+                        == OsApi::NetworkSnapshotGet::WifiNetworkStatus::Connected;
+                });
+            if (networksShowConnectedToTarget && !snapshot.connectProgress.has_value()) {
                 return snapshotResult;
             }
-            if (sawCurrentConnectAttempt && snapshot.connectOutcome.has_value()
-                && snapshot.connectOutcome->ssid == ssid) {
+
+            if (snapshot.connectOutcome.has_value() && snapshot.connectOutcome->ssid == ssid
+                && sawTargetProgress) {
                 if (snapshot.connectOutcome->canceled) {
                     return Result<OsApi::NetworkSnapshotGet::Okay, std::string>::error(
                         "WiFi connect canceled for " + ssid);
                 }
                 return Result<OsApi::NetworkSnapshotGet::Okay, std::string>::error(
                     "WiFi connect failed for " + ssid + ": " + snapshot.connectOutcome->message);
+            }
+
+            if (!sawTargetProgress && snapshot.connectOutcome.has_value()
+                && snapshot.connectOutcome->ssid == ssid) {
+                lastError = "WiFi connect outcome present before progress for " + ssid + ": "
+                    + snapshot.connectOutcome->message;
             }
         }
 
@@ -1114,60 +1346,336 @@ Result<OsApi::NetworkSnapshotGet::Okay, std::string> waitForOsCanceledConnect(
     }
 }
 
+enum class UiWifiConnectStartState {
+    Connected,
+    InProgress,
+    PasswordPrompt,
+    ReadyToPress,
+};
+
+struct UiWifiConnectStartContext {
+    UiApi::NetworkDiagnosticsGet::Okay diagnostics;
+    UiWifiConnectStartState state = UiWifiConnectStartState::ReadyToPress;
+};
+
+bool isUiConnectedToTargetSsid(
+    const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, const std::string& ssid)
+{
+    return diagnostics.screen == "Wifi" && diagnostics.connected_ssid.has_value()
+        && diagnostics.connected_ssid.value() == ssid && !diagnostics.connect_progress.has_value()
+        && !diagnostics.password_prompt_visible && !diagnostics.connect_overlay_visible;
+}
+
+bool isUiConnectInProgressForTargetSsid(
+    const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, const std::string& ssid)
+{
+    if (diagnostics.connect_progress.has_value() && diagnostics.connect_progress->ssid == ssid) {
+        return true;
+    }
+
+    return diagnostics.screen == "WifiConnecting" && diagnostics.connect_target_ssid.has_value()
+        && diagnostics.connect_target_ssid.value() == ssid;
+}
+
+bool isUiPasswordPromptOpenForTargetSsid(
+    const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, const std::string& ssid)
+{
+    return diagnostics.screen == "WifiPassword" && diagnostics.password_prompt_visible
+        && diagnostics.password_prompt_target_ssid.has_value()
+        && diagnostics.password_prompt_target_ssid.value() == ssid;
+}
+
+bool isUiReadyToPressNetworkConnect(
+    const UiApi::StateGet::Okay& uiState, const UiApi::NetworkDiagnosticsGet::Okay& diagnostics)
+{
+    return uiState.state == "NetworkWifi" && diagnostics.screen == "Wifi"
+        && !diagnostics.password_prompt_visible && !diagnostics.connect_overlay_visible
+        && !diagnostics.connect_progress.has_value();
+}
+
+Result<UiWifiConnectStartContext, std::string> waitForUiWifiConnectStartContext(
+    Network::WebSocketService& uiClient, const std::string& ssid, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
+    std::string lastError;
+
+    while (true) {
+        auto diagnosticsResult = requestUiNetworkDiagnostics(uiClient, requestTimeoutMs);
+        if (diagnosticsResult.isError()) {
+            lastError = diagnosticsResult.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<UiWifiConnectStartContext, std::string>::error(lastError);
+            }
+        }
+        else {
+            auto uiStateResult = requestUiState(uiClient, requestTimeoutMs);
+            if (uiStateResult.isError()) {
+                lastError = uiStateResult.errorValue();
+                if (!isRetryablePollingError(lastError)) {
+                    return Result<UiWifiConnectStartContext, std::string>::error(lastError);
+                }
+            }
+            else {
+                UiWifiConnectStartContext context{ .diagnostics = diagnosticsResult.value() };
+                if (isUiConnectedToTargetSsid(context.diagnostics, ssid)) {
+                    context.state = UiWifiConnectStartState::Connected;
+                    return Result<UiWifiConnectStartContext, std::string>::okay(std::move(context));
+                }
+
+                if (isUiConnectInProgressForTargetSsid(context.diagnostics, ssid)) {
+                    context.state = UiWifiConnectStartState::InProgress;
+                    return Result<UiWifiConnectStartContext, std::string>::okay(std::move(context));
+                }
+
+                if (isUiPasswordPromptOpenForTargetSsid(context.diagnostics, ssid)) {
+                    context.state = UiWifiConnectStartState::PasswordPrompt;
+                    return Result<UiWifiConnectStartContext, std::string>::okay(std::move(context));
+                }
+
+                const auto* networkInfo = findUiNetworkInfo(context.diagnostics, ssid);
+                if (!networkInfo) {
+                    lastError = "UI does not show SSID " + ssid;
+                }
+                else if (isUiReadyToPressNetworkConnect(
+                             uiStateResult.value(), context.diagnostics)) {
+                    context.state = UiWifiConnectStartState::ReadyToPress;
+                    return Result<UiWifiConnectStartContext, std::string>::okay(std::move(context));
+                }
+                else {
+                    lastError.clear();
+                }
+            }
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= std::max(timeoutMs, 15000)) {
+            if (!lastError.empty()) {
+                return Result<UiWifiConnectStartContext, std::string>::error(lastError);
+            }
+            return Result<UiWifiConnectStartContext, std::string>::error(
+                "Timeout waiting for UI WiFi connect readiness for " + ssid);
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
 Result<std::monostate, std::string> beginWifiConnectViaUi(
     Network::WebSocketService& uiClient,
     const std::string& ssid,
     const std::optional<std::string>& password,
     int timeoutMs)
 {
-    auto diagnosticsResult = requestUiNetworkDiagnostics(uiClient, timeoutMs);
-    if (diagnosticsResult.isError()) {
+    auto uiStateResult = requestUiState(uiClient, timeoutMs);
+    if (uiStateResult.isError()) {
         return Result<std::monostate, std::string>::error(
-            "UI NetworkDiagnosticsGet failed: " + diagnosticsResult.errorValue());
+            "UI StateGet failed: " + uiStateResult.errorValue());
     }
-    if (diagnosticsResult.value().connected_ssid.has_value()
-        && diagnosticsResult.value().connected_ssid.value() == ssid) {
+
+    const bool uiAlreadyInNetworkState = isNetworkStateName(uiStateResult.value().state);
+    if (!uiAlreadyInNetworkState) {
+        auto uiWifiStateResult =
+            waitForUiState(uiClient, "NetworkWifi", std::max(timeoutMs, 20000));
+        if (uiWifiStateResult.isError()) {
+            return Result<std::monostate, std::string>::error(uiWifiStateResult.errorValue());
+        }
+    }
+
+    auto connectContextResult = waitForUiWifiConnectStartContext(uiClient, ssid, timeoutMs);
+    if (connectContextResult.isError()) {
+        return Result<std::monostate, std::string>::error(connectContextResult.errorValue());
+    }
+
+    auto connectContext = connectContextResult.value();
+    const auto* networkInfo = findUiNetworkInfo(connectContext.diagnostics, ssid);
+    if (connectContext.state == UiWifiConnectStartState::Connected
+        || connectContext.state == UiWifiConnectStartState::InProgress) {
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
-    const auto* networkInfo = findUiNetworkInfo(diagnosticsResult.value(), ssid);
-    if (!networkInfo) {
-        return Result<std::monostate, std::string>::error("UI does not show SSID " + ssid);
+    const bool promptAlreadyOpenForTarget =
+        connectContext.state == UiWifiConnectStartState::PasswordPrompt;
+    const bool requiresPassword =
+        promptAlreadyOpenForTarget || (networkInfo && networkInfo->requires_password);
+
+    if (requiresPassword && !password.has_value()) {
+        return Result<std::monostate, std::string>::error("Password is required for SSID " + ssid);
     }
 
-    auto connectResult = pressUiNetworkConnect(uiClient, ssid, timeoutMs);
-    if (connectResult.isError()) {
-        return connectResult;
-    }
+    if (!promptAlreadyOpenForTarget) {
+        const auto pressStart = std::chrono::steady_clock::now();
+        while (true) {
+            auto connectResult =
+                pressUiNetworkConnect(uiClient, ssid, getPollingRequestTimeoutMs(timeoutMs));
+            if (!connectResult.isError()) {
+                break;
+            }
 
-    if (networkInfo->requires_password) {
-        if (!password.has_value()) {
-            return Result<std::monostate, std::string>::error(
-                "Password is required for SSID " + ssid);
+            const std::string& error = connectResult.errorValue();
+            const bool retryable =
+                error.find("Command not supported in state: NetworkWifiConnecting")
+                    != std::string::npos
+                || error.find("Another network action is in progress") != std::string::npos
+                || error.find("Response timeout") != std::string::npos;
+            if (!retryable) {
+                return connectResult;
+            }
+
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       std::chrono::steady_clock::now() - pressStart)
+                                       .count();
+            const int remainingTimeoutMs = std::max(1000, timeoutMs - static_cast<int>(elapsedMs));
+            auto retryContextResult =
+                waitForUiWifiConnectStartContext(uiClient, ssid, remainingTimeoutMs);
+            if (retryContextResult.isError()) {
+                return Result<std::monostate, std::string>::error(retryContextResult.errorValue());
+            }
+
+            connectContext = retryContextResult.value();
+            if (connectContext.state == UiWifiConnectStartState::Connected
+                || connectContext.state == UiWifiConnectStartState::InProgress
+                || connectContext.state == UiWifiConnectStartState::PasswordPrompt) {
+                break;
+            }
         }
+    }
 
-        auto promptResult = waitForUiNetworkDiagnostics(
-            uiClient,
-            timeoutMs,
-            "password prompt for '" + ssid + "'",
-            [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-                if (diagnostics.password_prompt_visible
+    auto waitForPasswordPrompt = [&](int promptTimeoutMs) -> Result<bool, std::string> {
+        const auto start = std::chrono::steady_clock::now();
+        const int pollDelayMs = 200;
+        const int requestTimeoutMs = getPollingRequestTimeoutMs(promptTimeoutMs);
+
+        while (true) {
+            auto promptCheckResult = requestUiNetworkDiagnostics(uiClient, requestTimeoutMs);
+            if (promptCheckResult.isError()) {
+                if (!isRetryablePollingError(promptCheckResult.errorValue())) {
+                    return Result<bool, std::string>::error(promptCheckResult.errorValue());
+                }
+            }
+            else {
+                const auto& diagnostics = promptCheckResult.value();
+                if (diagnostics.screen == "WifiPassword" && diagnostics.password_prompt_visible
                     && diagnostics.password_prompt_target_ssid.has_value()
                     && diagnostics.password_prompt_target_ssid.value() == ssid) {
-                    lastError.clear();
-                    return true;
+                    if (!diagnostics.connect_overlay_visible
+                        && !diagnostics.connect_progress.has_value()) {
+                        return Result<bool, std::string>::okay(true);
+                    }
                 }
 
-                lastError.clear();
-                return false;
-            });
-        if (promptResult.isError()) {
-            return Result<std::monostate, std::string>::error(promptResult.errorValue());
-        }
+                const auto* uiNetwork = findUiNetworkInfo(diagnostics, ssid);
+                if (uiNetwork && uiNetwork->status == "Connected"
+                    && !diagnostics.connect_progress.has_value()
+                    && !diagnostics.password_prompt_visible) {
+                    return Result<bool, std::string>::okay(false);
+                }
+            }
 
-        auto submitResult = submitUiNetworkPassword(uiClient, password.value(), timeoutMs);
-        if (submitResult.isError()) {
-            return submitResult;
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       std::chrono::steady_clock::now() - start)
+                                       .count();
+            if (elapsedMs >= promptTimeoutMs) {
+                return Result<bool, std::string>::okay(false);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+        }
+    };
+
+    if (password.has_value()) {
+        const int promptTimeoutMs = timeoutMs;
+        auto promptVisibleResult = waitForPasswordPrompt(promptTimeoutMs);
+        if (promptVisibleResult.isError()) {
+            return Result<std::monostate, std::string>::error(promptVisibleResult.errorValue());
+        }
+        if (promptVisibleResult.value()) {
+            auto promptRecheckResult =
+                requestUiNetworkDiagnostics(uiClient, std::clamp(timeoutMs, 1000, 5000));
+            if (!promptRecheckResult.isError()) {
+                const auto& diagnostics = promptRecheckResult.value();
+                const bool promptStillVisible = diagnostics.screen == "WifiPassword"
+                    && diagnostics.password_prompt_visible
+                    && diagnostics.password_prompt_target_ssid.has_value()
+                    && diagnostics.password_prompt_target_ssid.value() == ssid;
+                if (!promptStillVisible) {
+                    return Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+            }
+
+            const auto submitStart = std::chrono::steady_clock::now();
+            const int submitPollDelayMs = 200;
+            const int submitTimeoutMs = 15000;
+            const int submitRequestTimeoutMs = std::clamp(timeoutMs, 1000, 5000);
+
+            while (true) {
+                auto submitResult =
+                    submitUiNetworkPassword(uiClient, password.value(), submitRequestTimeoutMs);
+                if (!submitResult.isError()) {
+                    break;
+                }
+
+                const std::string& error = submitResult.errorValue();
+                if (error.find("Password prompt is not open") != std::string::npos
+                    || error.find("Command not supported in state: NetworkWifiConnecting")
+                        != std::string::npos) {
+                    break;
+                }
+
+                auto diagnosticsDuringSubmit =
+                    requestUiNetworkDiagnostics(uiClient, submitRequestTimeoutMs);
+                if (!diagnosticsDuringSubmit.isError()) {
+                    const auto& diagnostics = diagnosticsDuringSubmit.value();
+                    if ((diagnostics.connect_progress.has_value()
+                         && diagnostics.connect_progress->ssid == ssid)
+                        || (diagnostics.screen == "Wifi" && !diagnostics.password_prompt_visible)) {
+                        break;
+                    }
+                }
+
+                const bool retryable =
+                    error.find("Another network action is in progress") != std::string::npos
+                    || error.find("Response timeout") != std::string::npos;
+                if (!retryable) {
+                    return submitResult;
+                }
+
+                const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() - submitStart)
+                                           .count();
+                if (elapsedMs >= submitTimeoutMs) {
+                    return submitResult;
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(submitPollDelayMs));
+            }
+
+            auto postSubmitResult = waitForUiNetworkDiagnostics(
+                uiClient,
+                std::clamp(timeoutMs, 5000, 15000),
+                "UI post-password submit state for '" + ssid + "'",
+                [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
+                    if (diagnostics.connect_progress.has_value()
+                        && diagnostics.connect_progress->ssid == ssid) {
+                        lastError.clear();
+                        return true;
+                    }
+
+                    const auto* uiNetwork = findUiNetworkInfo(diagnostics, ssid);
+                    if (uiNetwork && uiNetwork->status == "Connected") {
+                        lastError.clear();
+                        return true;
+                    }
+
+                    lastError.clear();
+                    return false;
+                });
+            if (postSubmitResult.isError()) {
+                return Result<std::monostate, std::string>::error(postSubmitResult.errorValue());
+            }
         }
     }
 
@@ -1199,47 +1707,137 @@ Result<std::monostate, std::string> connectToWifiViaUi(
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
+Result<std::monostate, std::string> beginWifiConnectViaBackend(
+    Network::WebSocketService& osManagerClient,
+    const std::string& ssid,
+    const std::optional<std::string>& password,
+    int /*timeoutMs*/)
+{
+    OsApi::WifiConnect::Command cmd{
+        .ssid = ssid,
+        .password = password,
+    };
+    const auto envelope = Network::make_command_envelope(kFireAndForgetCommandId, cmd);
+    auto connectResult = osManagerClient.sendBinary(Network::serialize_envelope(envelope));
+    if (connectResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "OS WifiConnect send failed for " + ssid + ": " + connectResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> cancelWifiConnectViaBackend(
+    Network::WebSocketService& osManagerClient, int timeoutMs)
+{
+    OsApi::WifiConnectCancel::Command cmd{};
+    auto cancelResult =
+        unwrapResponse(osManagerClient.sendCommandAndGetResponse<OsApi::WifiConnectCancel::Okay>(
+            cmd, std::clamp(timeoutMs, 5000, 30000)));
+    if (cancelResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "OS WifiConnectCancel failed: " + cancelResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> connectToWifiViaBackend(
+    Network::WebSocketService& osManagerClient,
+    const std::string& ssid,
+    const std::optional<std::string>& password,
+    int timeoutMs)
+{
+    auto beginResult = beginWifiConnectViaBackend(osManagerClient, ssid, password, timeoutMs);
+    if (beginResult.isError()) {
+        return beginResult;
+    }
+
+    auto osConnectedResult = waitForOsWifiConnectedSsid(osManagerClient, ssid, timeoutMs);
+    if (osConnectedResult.isError()) {
+        return Result<std::monostate, std::string>::error(osConnectedResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> enterScannerModeViaBackend(
+    Network::WebSocketService& osManagerClient, int timeoutMs)
+{
+    OsApi::ScannerModeEnter::Command cmd{};
+    auto enterResult =
+        unwrapResponse(osManagerClient.sendCommandAndGetResponse<OsApi::ScannerModeEnter::Okay>(
+            cmd, std::clamp(timeoutMs, 5000, 60000)));
+    if (enterResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "OS ScannerModeEnter failed: " + enterResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> exitScannerModeViaBackend(
+    Network::WebSocketService& osManagerClient, int timeoutMs)
+{
+    OsApi::ScannerModeExit::Command cmd{};
+    auto exitResult =
+        unwrapResponse(osManagerClient.sendCommandAndGetResponse<OsApi::ScannerModeExit::Okay>(
+            cmd, std::clamp(timeoutMs, 5000, 60000)));
+    if (exitResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "OS ScannerModeExit failed: " + exitResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 Result<std::monostate, std::string> restoreOriginalWifiConnection(
     Network::WebSocketService& osManagerClient,
     const std::optional<std::string>& originalConnectedSsid,
     const WifiFunctionalTestConfig& config,
     int timeoutMs)
 {
-    if (!originalConnectedSsid.has_value()) {
+    if (!originalConnectedSsid.has_value() && config.networks.empty()) {
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
+    const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+    const WifiFunctionalNetworkConfig* restoreNetwork = nullptr;
+    if (originalConnectedSsid.has_value()) {
+        restoreNetwork = findWifiNetworkConfig(config, originalConnectedSsid.value());
+    }
+    if (!restoreNetwork && !config.networks.empty()) {
+        restoreNetwork = &config.networks.front();
+    }
+    if (!restoreNetwork) {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    const std::string restoreSsid = restoreNetwork->ssid;
+
     auto snapshotResult =
-        requestNetworkSnapshot(osManagerClient, false, std::clamp(timeoutMs, 2000, 35000));
+        requestNetworkSnapshot(osManagerClient, false, std::clamp(wifiTimeoutMs, 2000, 35000));
     if (snapshotResult.isError()) {
         return Result<std::monostate, std::string>::error(
             "Failed to query WiFi status during cleanup: " + snapshotResult.errorValue());
     }
     if (snapshotResult.value().status.connected
-        && snapshotResult.value().status.ssid == originalConnectedSsid.value()) {
+        && snapshotResult.value().status.ssid == restoreSsid) {
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
-    const auto* configuredNetwork = findWifiNetworkConfig(config, originalConnectedSsid.value());
-    OsApi::WifiConnect::Command cmd{
-        .ssid = originalConnectedSsid.value(),
-        .password = configuredNetwork ? configuredNetwork->password : std::nullopt,
-    };
-    auto connectResult =
-        unwrapResponse(osManagerClient.sendCommandAndGetResponse<OsApi::WifiConnect::Okay>(
-            cmd, std::clamp(timeoutMs, 5000, 35000)));
-    if (connectResult.isError()) {
+    auto beginResult = beginWifiConnectViaBackend(
+        osManagerClient, restoreSsid, restoreNetwork->password, wifiTimeoutMs);
+    if (beginResult.isError()) {
         return Result<std::monostate, std::string>::error(
-            "Failed to restore original WiFi network '" + originalConnectedSsid.value()
-            + "': " + connectResult.errorValue());
+            "Failed to start restoring WiFi network '" + restoreSsid
+            + "': " + beginResult.errorValue());
     }
 
-    auto restoredResult =
-        waitForOsWifiConnectedSsid(osManagerClient, originalConnectedSsid.value(), timeoutMs);
+    auto restoredResult = waitForOsWifiConnectedSsid(osManagerClient, restoreSsid, wifiTimeoutMs);
     if (restoredResult.isError()) {
         return Result<std::monostate, std::string>::error(
-            "Failed to restore original WiFi network '" + originalConnectedSsid.value()
-            + "': " + restoredResult.errorValue());
+            "Failed to restore WiFi network '" + restoreSsid + "': " + restoredResult.errorValue());
     }
 
     return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -1784,6 +2382,14 @@ Result<OsApi::SystemStatus::Okay, std::string> requestSystemStatus(
         client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(cmd, timeoutMs));
 }
 
+Result<OsApi::ScannerSnapshotGet::Okay, std::string> requestScannerSnapshot(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    OsApi::ScannerSnapshotGet::Command cmd{};
+    return unwrapResponse(
+        client.sendCommandAndGetResponse<OsApi::ScannerSnapshotGet::Okay>(cmd, timeoutMs));
+}
+
 bool isStatusOk(const std::string& status)
 {
     return status == "OK";
@@ -1933,6 +2539,9 @@ nlohmann::json FunctionalTestSummary::toJson() const
     output["result"] = std::move(resultJson);
     if (failure_screenshot_path.has_value()) {
         output["failure_screenshot_path"] = *failure_screenshot_path;
+    }
+    if (success_screenshot_path.has_value()) {
+        output["success_screenshot_path"] = *success_screenshot_path;
     }
     if (training_summary.has_value()) {
         output["training_summary"] = training_summary->toJson();
@@ -3778,6 +4387,19 @@ FunctionalTestSummary FunctionalTestRunner::runCanCancelWifiConnect(
             return baselineConnectResult;
         }
 
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto uiUnsavedCancelTargetResult =
+            waitForUiUnsavedNetwork(uiClient, cancelTarget->ssid, timeoutMs);
+        if (uiUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                uiUnsavedCancelTargetResult.errorValue());
+        }
+
         auto beginConnectResult =
             beginWifiConnectViaUi(uiClient, cancelTarget->ssid, cancelTarget->password, timeoutMs);
         if (beginConnectResult.isError()) {
@@ -3812,8 +4434,21 @@ FunctionalTestSummary FunctionalTestRunner::runCanCancelWifiConnect(
             wifiTimeoutMs,
             "UI post-cancel network state",
             [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-                if (!diagnostics.connected_ssid.has_value()
+                const bool expectsPasswordPrompt = cancelTarget->password.has_value();
+                if (expectsPasswordPrompt && diagnostics.screen == "WifiPassword"
+                    && diagnostics.password_prompt_visible
+                    && diagnostics.password_prompt_target_ssid.has_value()
+                    && diagnostics.password_prompt_target_ssid.value() == cancelTarget->ssid
+                    && !diagnostics.connect_progress.has_value()
                     && !diagnostics.connect_overlay_visible) {
+                    lastError.clear();
+                    return true;
+                }
+
+                if (!expectsPasswordPrompt && diagnostics.screen == "Wifi"
+                    && !diagnostics.connected_ssid.has_value()
+                    && !diagnostics.connect_overlay_visible
+                    && !diagnostics.connect_progress.has_value()) {
                     lastError.clear();
                     return true;
                 }
@@ -3853,6 +4488,376 @@ FunctionalTestSummary FunctionalTestRunner::runCanCancelWifiConnect(
 
     return FunctionalTestSummary{
         .name = "canCancelWifiConnect",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanCancelWifiConnectBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canCancelWifiConnectBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canCancelWifiConnectBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canCancelWifiConnectBackendOnly requires at least two configured networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* cancelTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!cancelTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canCancelWifiConnectBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canCancelWifiConnectBackendOnly requires a baseline network and a distinct "
+                "cancel target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto osUnsavedCancelTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedCancelTargetResult.errorValue());
+        }
+
+        auto beginConnectResult = beginWifiConnectViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, timeoutMs);
+        if (beginConnectResult.isError()) {
+            return beginConnectResult;
+        }
+
+        auto osCancelableResult =
+            waitForOsCancelableConnect(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osCancelableResult.isError()) {
+            return Result<std::monostate, std::string>::error(osCancelableResult.errorValue());
+        }
+
+        auto cancelResult = cancelWifiConnectViaBackend(osManagerClient, timeoutMs);
+        if (cancelResult.isError()) {
+            return cancelResult;
+        }
+
+        auto canceledResult =
+            waitForOsCanceledConnect(osManagerClient, cancelTarget->ssid, wifiTimeoutMs);
+        if (canceledResult.isError()) {
+            return Result<std::monostate, std::string>::error(canceledResult.errorValue());
+        }
+
+        auto cancelTargetConnectResult = connectToWifiViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, wifiTimeoutMs);
+        if (cancelTargetConnectResult.isError()) {
+            return cancelTargetConnectResult;
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canCancelWifiConnectBackendOnly",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanCancelThenScannerBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canCancelThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canCancelThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canCancelThenScannerBackendOnly requires at least two configured networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* cancelTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!cancelTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canCancelThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canCancelThenScannerBackendOnly requires a baseline network and a distinct "
+                "cancel target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto initialSystemStatus = requestSystemStatus(osManagerClient, timeoutMs);
+        if (initialSystemStatus.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "SystemStatus failed: " + initialSystemStatus.errorValue());
+        }
+        if (!initialSystemStatus.value().scanner_mode_available) {
+            return Result<std::monostate, std::string>::error(
+                "Scanner mode unavailable: " + initialSystemStatus.value().scanner_mode_detail);
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto osUnsavedCancelTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedCancelTargetResult.errorValue());
+        }
+
+        auto beginConnectResult = beginWifiConnectViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, timeoutMs);
+        if (beginConnectResult.isError()) {
+            return beginConnectResult;
+        }
+
+        auto osCancelableResult =
+            waitForOsCancelableConnect(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osCancelableResult.isError()) {
+            return Result<std::monostate, std::string>::error(osCancelableResult.errorValue());
+        }
+
+        auto cancelResult = cancelWifiConnectViaBackend(osManagerClient, timeoutMs);
+        if (cancelResult.isError()) {
+            return cancelResult;
+        }
+
+        auto canceledResult =
+            waitForOsCanceledConnect(osManagerClient, cancelTarget->ssid, wifiTimeoutMs);
+        if (canceledResult.isError()) {
+            return Result<std::monostate, std::string>::error(canceledResult.errorValue());
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        auto scannerEnterResult =
+            enterScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto restoredBaselineResult =
+            waitForOsWifiConnectedSsid(osManagerClient, baselineIt->ssid, wifiTimeoutMs);
+        if (restoredBaselineResult.isError()) {
+            return Result<std::monostate, std::string>::error(restoredBaselineResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canCancelThenScannerBackendOnly",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,
@@ -4207,6 +5212,146 @@ FunctionalTestSummary FunctionalTestRunner::runCanSwitchWifiNetworks(
     };
 }
 
+FunctionalTestSummary FunctionalTestRunner::runCanSwitchWifiNetworksBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchWifiNetworksBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canSwitchWifiNetworksBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchWifiNetworksBackendOnly requires at least two configured networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* switchTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!switchTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchWifiNetworksBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchWifiNetworksBackendOnly requires a baseline network and a distinct "
+                "switch target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetSwitchTargetResult =
+            forgetWifiViaOsManager(osManagerClient, switchTarget->ssid, timeoutMs);
+        if (forgetSwitchTargetResult.isError()) {
+            return forgetSwitchTargetResult;
+        }
+
+        auto osUnsavedSwitchTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, switchTarget->ssid, timeoutMs);
+        if (osUnsavedSwitchTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedSwitchTargetResult.errorValue());
+        }
+
+        auto connectSwitchTargetResult = connectToWifiViaBackend(
+            osManagerClient, switchTarget->ssid, switchTarget->password, wifiTimeoutMs);
+        if (connectSwitchTargetResult.isError()) {
+            return connectSwitchTargetResult;
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canSwitchWifiNetworksBackendOnly",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
 FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
     const std::string& uiAddress,
     const std::string& serverAddress,
@@ -4262,6 +5407,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
     Network::WebSocketService serverClient;
     Network::WebSocketService uiClient;
     std::optional<std::string> originalConnectedSsid;
+    std::optional<std::string> successScreenshotPath;
 
     auto testResult = [&]() -> Result<std::monostate, std::string> {
         auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
@@ -4325,6 +5471,19 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
             return baselineConnectResult;
         }
 
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto uiUnsavedCancelTargetResult =
+            waitForUiUnsavedNetwork(uiClient, cancelTarget->ssid, timeoutMs);
+        if (uiUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                uiUnsavedCancelTargetResult.errorValue());
+        }
+
         auto beginConnectResult =
             beginWifiConnectViaUi(uiClient, cancelTarget->ssid, cancelTarget->password, timeoutMs);
         if (beginConnectResult.isError()) {
@@ -4359,8 +5518,21 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
             wifiTimeoutMs,
             "UI post-cancel network state",
             [&](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-                if (!diagnostics.connected_ssid.has_value()
+                const bool expectsPasswordPrompt = cancelTarget->password.has_value();
+                if (expectsPasswordPrompt && diagnostics.screen == "WifiPassword"
+                    && diagnostics.password_prompt_visible
+                    && diagnostics.password_prompt_target_ssid.has_value()
+                    && diagnostics.password_prompt_target_ssid.value() == cancelTarget->ssid
+                    && !diagnostics.connect_progress.has_value()
                     && !diagnostics.connect_overlay_visible) {
+                    lastError.clear();
+                    return true;
+                }
+
+                if (!expectsPasswordPrompt && diagnostics.screen == "Wifi"
+                    && !diagnostics.connected_ssid.has_value()
+                    && !diagnostics.connect_overlay_visible
+                    && !diagnostics.connect_progress.has_value()) {
                     lastError.clear();
                     return true;
                 }
@@ -4394,7 +5566,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
             timeoutMs,
             "UI scanner ready state",
             [](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-                if (diagnostics.view_mode == "Scanner" && diagnostics.scanner_mode_available
+                if (diagnostics.screen == "Scanner" && diagnostics.scanner_mode_available
                     && diagnostics.scanner_enter_enabled) {
                     lastError.clear();
                     return true;
@@ -4406,6 +5578,15 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
         if (scannerReadyResult.isError()) {
             return Result<std::monostate, std::string>::error(scannerReadyResult.errorValue());
         }
+
+        auto scannerScreenshotResult = captureUiScreenshotPng(
+            uiClient, "canExerciseWifiAndScanner", "scanner-ready", timeoutMs);
+        if (scannerScreenshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                scannerScreenshotResult.errorValue().message);
+        }
+        successScreenshotPath = scannerScreenshotResult.value();
+        std::cerr << "Saved scanner screenshot to " << *successScreenshotPath << std::endl;
 
         auto scannerEnterResult = pressUiScannerEnter(uiClient, timeoutMs);
         if (scannerEnterResult.isError()) {
@@ -4425,20 +5606,28 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
             return Result<std::monostate, std::string>::error(uiScannerActiveResult.errorValue());
         }
 
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
         auto scannerExitResult = pressUiScannerExit(uiClient, timeoutMs);
         if (scannerExitResult.isError()) {
             return scannerExitResult;
         }
 
         auto systemScannerInactiveResult =
-            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 30000));
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
         if (systemScannerInactiveResult.isError()) {
             return Result<std::monostate, std::string>::error(
                 systemScannerInactiveResult.errorValue());
         }
 
         auto uiScannerInactiveResult =
-            waitForUiScannerMode(uiClient, false, std::max(timeoutMs, 30000));
+            waitForUiScannerMode(uiClient, false, std::max(timeoutMs, 60000));
         if (uiScannerInactiveResult.isError()) {
             return Result<std::monostate, std::string>::error(uiScannerInactiveResult.errorValue());
         }
@@ -4488,6 +5677,760 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
 
     return FunctionalTestSummary{
         .name = "canExerciseWifiAndScanner",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .success_screenshot_path = successScreenshotPath,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScannerBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canExerciseWifiAndScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canExerciseWifiAndScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canExerciseWifiAndScannerBackendOnly requires at least two configured networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* cancelTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!cancelTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canExerciseWifiAndScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canExerciseWifiAndScannerBackendOnly requires a baseline network and a distinct "
+                "cancel target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto initialSystemStatus = requestSystemStatus(osManagerClient, timeoutMs);
+        if (initialSystemStatus.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "SystemStatus failed: " + initialSystemStatus.errorValue());
+        }
+        if (!initialSystemStatus.value().scanner_mode_available) {
+            return Result<std::monostate, std::string>::error(
+                "Scanner mode unavailable: " + initialSystemStatus.value().scanner_mode_detail);
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto osUnsavedCancelTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedCancelTargetResult.errorValue());
+        }
+
+        auto beginConnectResult = beginWifiConnectViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, timeoutMs);
+        if (beginConnectResult.isError()) {
+            return beginConnectResult;
+        }
+
+        auto osCancelableResult =
+            waitForOsCancelableConnect(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osCancelableResult.isError()) {
+            return Result<std::monostate, std::string>::error(osCancelableResult.errorValue());
+        }
+
+        auto cancelResult = cancelWifiConnectViaBackend(osManagerClient, timeoutMs);
+        if (cancelResult.isError()) {
+            return cancelResult;
+        }
+
+        auto canceledResult =
+            waitForOsCanceledConnect(osManagerClient, cancelTarget->ssid, wifiTimeoutMs);
+        if (canceledResult.isError()) {
+            return Result<std::monostate, std::string>::error(canceledResult.errorValue());
+        }
+
+        auto cancelTargetConnectResult = connectToWifiViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, wifiTimeoutMs);
+        if (cancelTargetConnectResult.isError()) {
+            return cancelTargetConnectResult;
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        auto scannerEnterResult =
+            enterScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto restoredBaselineResult =
+            waitForOsWifiConnectedSsid(osManagerClient, baselineIt->ssid, wifiTimeoutMs);
+        if (restoredBaselineResult.isError()) {
+            return Result<std::monostate, std::string>::error(restoredBaselineResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canExerciseWifiAndScannerBackendOnly",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanExerciseScannerModeBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canExerciseScannerModeBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.empty()) {
+        return FunctionalTestSummary{
+            .name = "canExerciseScannerModeBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canExerciseScannerModeBackendOnly requires at least one configured network"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalNetworkConfig& baseline = config.networks.front();
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto initialSystemStatus = requestSystemStatus(osManagerClient, timeoutMs);
+        if (initialSystemStatus.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "SystemStatus failed: " + initialSystemStatus.errorValue());
+        }
+        if (!initialSystemStatus.value().scanner_mode_available) {
+            return Result<std::monostate, std::string>::error(
+                "Scanner mode unavailable: " + initialSystemStatus.value().scanner_mode_detail);
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baseline.ssid, baseline.password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto scannerEnterResult =
+            enterScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto restoredBaselineResult =
+            waitForOsWifiConnectedSsid(osManagerClient, baseline.ssid, wifiTimeoutMs);
+        if (restoredBaselineResult.isError()) {
+            return Result<std::monostate, std::string>::error(restoredBaselineResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canExerciseScannerModeBackendOnly",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanSwitchForgetThenScannerBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchForgetThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canSwitchForgetThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchForgetThenScannerBackendOnly requires at least two configured "
+                "networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* cancelTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!cancelTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchForgetThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchForgetThenScannerBackendOnly requires a baseline network and a "
+                "distinct switch target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto initialSystemStatus = requestSystemStatus(osManagerClient, timeoutMs);
+        if (initialSystemStatus.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "SystemStatus failed: " + initialSystemStatus.errorValue());
+        }
+        if (!initialSystemStatus.value().scanner_mode_available) {
+            return Result<std::monostate, std::string>::error(
+                "Scanner mode unavailable: " + initialSystemStatus.value().scanner_mode_detail);
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto osUnsavedCancelTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedCancelTargetResult.errorValue());
+        }
+
+        auto connectSwitchTargetResult = connectToWifiViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, wifiTimeoutMs);
+        if (connectSwitchTargetResult.isError()) {
+            return connectSwitchTargetResult;
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        auto forgetBeforeScannerResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetBeforeScannerResult.isError()) {
+            return forgetBeforeScannerResult;
+        }
+
+        auto osUnsavedBeforeScannerResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedBeforeScannerResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedBeforeScannerResult.errorValue());
+        }
+
+        auto scannerEnterResult =
+            enterScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto restoredBaselineResult =
+            waitForOsWifiConnectedSsid(osManagerClient, baselineIt->ssid, wifiTimeoutMs);
+        if (restoredBaselineResult.isError()) {
+            return Result<std::monostate, std::string>::error(restoredBaselineResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canSwitchForgetThenScannerBackendOnly",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanSwitchThenScannerBackendOnly(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    const std::string& wifiConfigPath,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+    static_cast<void>(uiAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto configResult = loadWifiFunctionalTestConfig(wifiConfigPath);
+    if (configResult.isError()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(configResult.errorValue()),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const WifiFunctionalTestConfig config = configResult.value();
+    if (config.networks.size() < 2) {
+        return FunctionalTestSummary{
+            .name = "canSwitchThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchThenScannerBackendOnly requires at least two configured networks"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    const std::string cancelTargetSsid = config.cancelTargetSsid.value_or(config.networks[1].ssid);
+    const auto* cancelTarget = findWifiNetworkConfig(config, cancelTargetSsid);
+    const auto baselineIt = std::find_if(
+        config.networks.begin(),
+        config.networks.end(),
+        [&](const WifiFunctionalNetworkConfig& network) {
+            return network.ssid != cancelTargetSsid;
+        });
+    if (!cancelTarget || baselineIt == config.networks.end()) {
+        return FunctionalTestSummary{
+            .name = "canSwitchThenScannerBackendOnly",
+            .duration_ms = 0,
+            .result = Result<std::monostate, std::string>::error(
+                "canSwitchThenScannerBackendOnly requires a baseline network and a distinct "
+                "switch target"),
+            .failure_screenshot_path = std::nullopt,
+            .training_summary = std::nullopt,
+        };
+    }
+
+    Network::WebSocketService osManagerClient;
+    std::optional<std::string> originalConnectedSsid;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto initialSystemStatus = requestSystemStatus(osManagerClient, timeoutMs);
+        if (initialSystemStatus.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "SystemStatus failed: " + initialSystemStatus.errorValue());
+        }
+        if (!initialSystemStatus.value().scanner_mode_available) {
+            return Result<std::monostate, std::string>::error(
+                "Scanner mode unavailable: " + initialSystemStatus.value().scanner_mode_detail);
+        }
+
+        auto preflightResult = runWifiPreflight(osManagerClient, config, timeoutMs);
+        if (preflightResult.isError()) {
+            return Result<std::monostate, std::string>::error(preflightResult.errorValue());
+        }
+        originalConnectedSsid = preflightResult.value().originalConnectedSsid;
+
+        const int wifiTimeoutMs = std::max(timeoutMs, 60000);
+        auto baselineConnectResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (baselineConnectResult.isError()) {
+            return baselineConnectResult;
+        }
+
+        auto forgetCancelTargetResult =
+            forgetWifiViaOsManager(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (forgetCancelTargetResult.isError()) {
+            return forgetCancelTargetResult;
+        }
+
+        auto osUnsavedCancelTargetResult =
+            waitForOsUnsavedNetwork(osManagerClient, cancelTarget->ssid, timeoutMs);
+        if (osUnsavedCancelTargetResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                osUnsavedCancelTargetResult.errorValue());
+        }
+
+        auto connectSwitchTargetResult = connectToWifiViaBackend(
+            osManagerClient, cancelTarget->ssid, cancelTarget->password, wifiTimeoutMs);
+        if (connectSwitchTargetResult.isError()) {
+            return connectSwitchTargetResult;
+        }
+
+        auto reconnectBaselineResult = connectToWifiViaBackend(
+            osManagerClient, baselineIt->ssid, baselineIt->password, wifiTimeoutMs);
+        if (reconnectBaselineResult.isError()) {
+            return reconnectBaselineResult;
+        }
+
+        auto scannerEnterResult =
+            enterScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto restoredBaselineResult =
+            waitForOsWifiConnectedSsid(osManagerClient, baselineIt->ssid, wifiTimeoutMs);
+        if (restoredBaselineResult.isError()) {
+            return Result<std::monostate, std::string>::error(restoredBaselineResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = restoreOriginalWifiConnection(
+            osManagerClient, originalConnectedSsid, config, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    osManagerClient.disconnect();
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canSwitchThenScannerBackendOnly",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

@@ -22,6 +22,7 @@ import { dirname, isAbsolute, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
+import { resolveKasConfig } from './lib/kas-config.mjs';
 
 const require = createRequire(import.meta.url);
 const consola = require('consola');
@@ -34,6 +35,7 @@ let piHost = DEFAULT_HOST;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
+const KAS_CONFIG = resolveKasConfig('kas-dirtsim.yml');
 const KAS_BUILD_DIR = (() => {
   const buildDir = process.env.KAS_BUILD_DIR;
   if (!buildDir) {
@@ -167,9 +169,9 @@ async function buildApps(apps) {
     try {
         if (useDocker) {
             const imageRef = await resolveDockerImage();
-            await runInYoctoDocker(['kas', 'shell', 'kas-dirtsim.yml', '-c', bitbakeCmd], { imageRef });
+            await runInYoctoDocker(['kas', 'shell', KAS_CONFIG, '-c', bitbakeCmd], { imageRef });
         } else {
-            const cmd = `kas shell kas-dirtsim.yml -c "${bitbakeCmd}"`;
+            const cmd = `kas shell ${KAS_CONFIG} -c "${bitbakeCmd}"`;
             run(cmd, { cwd: YOCTO_DIR });
         }
         consola.success('Build complete!');

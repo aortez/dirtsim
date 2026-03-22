@@ -11,8 +11,9 @@
 
 import { colors, error, info, log, success, warn } from '../pi-base/scripts/lib/index.mjs';
 import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
+import { resolveKasConfig } from './lib/kas-config.mjs';
 
-const DEFAULT_CONFIG = 'kas-dirtsim.yml';
+const DEFAULT_CONFIG = resolveKasConfig('kas-dirtsim.yml');
 const DEFAULT_IMAGE_TARGET = 'dirtsim-image';
 
 function showHelp() {
@@ -105,7 +106,7 @@ async function main() {
       error('Missing value for --config.');
       process.exit(1);
     }
-    kasConfig = args[configIndex + 1];
+    kasConfig = resolveKasConfig(args[configIndex + 1]);
   }
 
   let imageTarget = DEFAULT_IMAGE_TARGET;

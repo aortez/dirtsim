@@ -11,6 +11,7 @@
 #include "os-manager/network/NetworkService.h"
 #include "os-manager/network/PeerAdvertisement.h"
 #include "os-manager/network/PeerDiscovery.h"
+#include "os-manager/network/ScannerService.h"
 #include "os-manager/ssh/RemoteSshExecutor.h"
 #include "server/api/StatusGet.h"
 #include "server/api/WebSocketAccessSet.h"
@@ -47,12 +48,16 @@ namespace OsManager {
 
 namespace {
 constexpr int kDefaultRemoteCommandTimeoutMs = 30000;
+constexpr int kScannerHelperEnterTimeoutMs = 15000;
+constexpr int kScannerHelperExitTimeoutMs = 15000;
+constexpr int kScannerHelperStatusTimeoutMs = 5000;
 constexpr const char* kScannerModeHelperPath = "/usr/bin/dirtsim-nexmon-mode";
 constexpr const char* kScannerNexutilPath = "/usr/bin/nexutil";
 constexpr const char* kScannerStateDir = "/run/dirtsim";
 constexpr const char* kScannerStateFile = "/run/dirtsim/scanner_mode_active";
 constexpr const char* kNexmonModulePath = "/usr/lib/nexmon/brcmfmac.ko";
 constexpr const char* kNexmonFirmwarePath = "/usr/lib/nexmon/cyfmac43455-sdio-standard.bin";
+constexpr size_t kScannerOutputLogLimit = 400;
 constexpr const char* kWifiInterfaceName = "wlan0";
 
 struct ParsedScannerModeStatus {
@@ -64,11 +69,6 @@ struct ParsedScannerModeStatus {
 Result<std::monostate, ApiError> makeMissingDependencyError(const std::string& name)
 {
     return Result<std::monostate, ApiError>::error(ApiError("Missing dependency for " + name));
-}
-
-bool commandExitedSuccessfully(int result)
-{
-    return result != -1 && WIFEXITED(result) && WEXITSTATUS(result) == 0;
 }
 
 std::string getEnvValue(const char* name)
@@ -89,6 +89,153 @@ std::optional<OperatingSystemManager::BackendType> parseBackendType(const std::s
         return OperatingSystemManager::BackendType::LocalProcess;
     }
     return std::nullopt;
+}
+
+std::string formatWifiAccessPointSummary(const Network::WifiAccessPointInfo& info)
+{
+    std::ostringstream stream;
+    stream << info.bssid << "@";
+    if (info.frequencyMhz.has_value()) {
+        stream << *info.frequencyMhz;
+    }
+    else {
+        stream << "?";
+    }
+    stream << "MHz/";
+    if (info.channel.has_value()) {
+        stream << "ch" << *info.channel;
+    }
+    else {
+        stream << "ch?";
+    }
+    stream << "/";
+    if (info.signalDbm.has_value()) {
+        stream << *info.signalDbm << "dBm";
+    }
+    else {
+        stream << "?dBm";
+    }
+    if (info.active) {
+        stream << "/active";
+    }
+    return stream.str();
+}
+
+std::string formatWifiAccessPointsForSsid(
+    const std::vector<Network::WifiAccessPointInfo>& accessPoints,
+    const std::optional<std::string>& ssid)
+{
+    constexpr size_t maxEntries = 4;
+
+    std::ostringstream stream;
+    size_t matchingCount = 0;
+    for (const auto& accessPoint : accessPoints) {
+        if (ssid.has_value() && accessPoint.ssid != *ssid) {
+            continue;
+        }
+
+        if (matchingCount < maxEntries) {
+            if (matchingCount > 0) {
+                stream << "; ";
+            }
+            stream << formatWifiAccessPointSummary(accessPoint);
+        }
+        ++matchingCount;
+    }
+
+    if (matchingCount == 0) {
+        return "none";
+    }
+    if (matchingCount > maxEntries) {
+        stream << "; +" << (matchingCount - maxEntries) << " more";
+    }
+    return stream.str();
+}
+
+std::string formatWifiConnectPhase(const Network::WifiConnectPhase phase)
+{
+    switch (phase) {
+        case Network::WifiConnectPhase::Starting:
+            return "starting";
+        case Network::WifiConnectPhase::Associating:
+            return "associating";
+        case Network::WifiConnectPhase::Authenticating:
+            return "authenticating";
+        case Network::WifiConnectPhase::GettingAddress:
+            return "getting_address";
+        case Network::WifiConnectPhase::Canceling:
+            return "canceling";
+    }
+
+    return "unknown";
+}
+
+std::string formatNetworkSnapshotSummary(
+    const NetworkService::Snapshot& snapshot, const std::optional<std::string>& focusSsid)
+{
+    std::ostringstream stream;
+    stream << "status.connected=" << (snapshot.status.connected ? "true" : "false")
+           << ", status.ssid='" << snapshot.status.ssid << "'"
+           << ", active_bssid="
+           << (snapshot.activeBssid.has_value() ? *snapshot.activeBssid : std::string("none"))
+           << ", scan_in_progress=" << (snapshot.scanInProgress ? "true" : "false");
+
+    if (snapshot.lastScanAgeMs.has_value()) {
+        stream << ", last_scan_age_ms=" << *snapshot.lastScanAgeMs;
+    }
+    else {
+        stream << ", last_scan_age_ms=none";
+    }
+
+    if (snapshot.connectProgress.has_value()) {
+        stream << ", connect_progress={ssid='" << snapshot.connectProgress->ssid
+               << "', phase=" << formatWifiConnectPhase(snapshot.connectProgress->phase)
+               << ", can_cancel=" << (snapshot.connectProgress->canCancel ? "true" : "false")
+               << "}";
+    }
+    else {
+        stream << ", connect_progress=none";
+    }
+
+    if (snapshot.connectOutcome.has_value()) {
+        stream << ", connect_outcome={ssid='" << snapshot.connectOutcome->ssid
+               << "', canceled=" << (snapshot.connectOutcome->canceled ? "true" : "false")
+               << ", message='" << snapshot.connectOutcome->message << "'}";
+    }
+    else {
+        stream << ", connect_outcome=none";
+    }
+
+    stream << ", access_points(";
+    if (focusSsid.has_value()) {
+        stream << "'" << *focusSsid << "'";
+    }
+    else {
+        stream << "*";
+    }
+    stream << ")=" << formatWifiAccessPointsForSsid(snapshot.accessPoints, focusSsid);
+    return stream.str();
+}
+
+void logNetworkSnapshot(
+    NetworkService* networkService,
+    const std::string& label,
+    const std::optional<std::string>& focusSsid)
+{
+    if (!networkService) {
+        LOG_INFO(State, "{}: network service unavailable.", label);
+        return;
+    }
+
+    const auto snapshotResult = networkService->getSnapshot(false);
+    if (snapshotResult.isError()) {
+        LOG_INFO(
+            State, "{}: failed to read network snapshot: {}", label, snapshotResult.errorValue());
+        return;
+    }
+
+    LOG_INFO(
+        State, "{}: {}", label, formatNetworkSnapshotSummary(snapshotResult.value(), focusSsid));
 }
 
 OsApi::NetworkSnapshotGet::WifiNetworkStatus toApiWifiNetworkStatus(
@@ -359,6 +506,22 @@ std::string trimWhitespace(const std::string& value)
     }
     const auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
+}
+
+std::string summarizeCommandOutput(const std::string& value)
+{
+    std::string normalized = trimWhitespace(value);
+    for (char& ch : normalized) {
+        if (ch == '\n' || ch == '\r' || ch == '\t') {
+            ch = ' ';
+        }
+    }
+
+    if (normalized.size() <= kScannerOutputLogLimit) {
+        return normalized;
+    }
+
+    return normalized.substr(0, kScannerOutputLogLimit) + "...";
 }
 
 ParsedScannerModeStatus parseScannerModeStatusOutput(const std::string& output)
@@ -824,6 +987,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
 {
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
     setupWebSocketService();
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
@@ -837,6 +1001,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
 {
     initializeDefaultDependencies();
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
     setupWebSocketService();
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
@@ -851,6 +1016,7 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
       backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
     networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
     networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
         publishNetworkSnapshotChanged(snapshot);
     });
@@ -872,6 +1038,12 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
         dependencies_.commandRunner = [](const std::string&) {
             return Result<std::string, ApiError>::error(
                 ApiError("Missing dependency for commandRunner"));
+        };
+    }
+    if (!dependencies_.processRunner) {
+        dependencies_.processRunner = [](const std::vector<std::string>&, int) {
+            return Result<ProcessRunResult, std::string>::error(
+                "Missing dependency for processRunner");
         };
     }
 
@@ -945,6 +1117,9 @@ void OperatingSystemManager::stop()
 {
     if (networkService_) {
         networkService_->stop();
+    }
+    if (scannerService_) {
+        scannerService_->stop();
     }
 
     if (enableNetworking_) {
@@ -1083,6 +1258,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
         [this](OsApi::ScannerModeExit::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerSnapshotGet::Cwc>(
+        [this](OsApi::ScannerSnapshotGet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::Reboot::Cwc>(
         [this](OsApi::Reboot::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::TrustBundleGet::Cwc>(
@@ -1153,6 +1330,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerSnapshotGet);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartUi);
@@ -1237,6 +1415,67 @@ Result<OsApi::NetworkSnapshotGet::Okay, ApiError> OperatingSystemManager::getNet
 
     return Result<OsApi::NetworkSnapshotGet::Okay, ApiError>::okay(
         toApiNetworkSnapshotOkay(snapshotResult.value()));
+}
+
+Result<OsApi::ScannerSnapshotGet::Okay, ApiError> OperatingSystemManager::getScannerSnapshot(
+    const OsApi::ScannerSnapshotGet::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!status.active) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(
+            ApiError("Scanner mode is not active."));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    OsApi::ScannerSnapshotGet::Okay okay;
+    okay.active = true;
+
+    const uint64_t maxAgeMs = command.maxAgeMs.value_or(15000);
+    const size_t maxRadios = static_cast<size_t>(command.maxRadios.value_or(64));
+
+    const auto startResult = scannerService_->start();
+    if (startResult.isError()) {
+        okay.detail = "Capture unavailable: " + startResult.errorValue();
+        return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
+    }
+
+    const auto snapshot = scannerService_->snapshot(maxAgeMs, maxRadios);
+    okay.currentChannel = snapshot.currentChannel;
+
+    const auto now = std::chrono::steady_clock::now();
+    okay.radios.reserve(snapshot.radios.size());
+    for (const auto& radio : snapshot.radios) {
+        OsApi::ScannerSnapshotGet::ObservedRadioInfo info;
+        info.bssid = radio.bssid;
+        info.ssid = radio.ssid;
+        info.signalDbm = radio.signalDbm;
+        info.channel = radio.channel;
+        if (radio.lastSeenAt.time_since_epoch().count() > 0) {
+            info.lastSeenAgeMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - radio.lastSeenAt)
+                    .count());
+        }
+        okay.radios.push_back(std::move(info));
+    }
+
+    const std::string lastError = scannerService_->lastError();
+    if (!lastError.empty()) {
+        okay.detail = lastError;
+    }
+    else if (okay.currentChannel.has_value()) {
+        okay.detail = "Scanning channel " + std::to_string(*okay.currentChannel) + ".";
+    }
+    else {
+        okay.detail = "Scanning.";
+    }
+
+    return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::
@@ -1736,9 +1975,11 @@ OperatingSystemManager::ScannerModeStatusInfo OperatingSystemManager::
         return info;
     }
 
-    auto statusOutputResult = runCommandCapture(std::string(kScannerModeHelperPath) + " status");
+    auto statusOutputResult = runScannerHelperCommand("status", kScannerHelperStatusTimeoutMs);
     if (statusOutputResult.isError()) {
-        info.detail = "Scanner mode status is unavailable.";
+        info.available = false;
+        info.detail =
+            "Scanner mode status is unavailable: " + statusOutputResult.errorValue().message;
         return info;
     }
 
@@ -1766,32 +2007,6 @@ OperatingSystemManager::ScannerModeStatusInfo OperatingSystemManager::
     }
 
     return info;
-}
-
-bool OperatingSystemManager::hasEthernetDefaultRoute() const
-{
-    if (!dependencies_.systemCommand) {
-        return false;
-    }
-
-    const int result =
-        dependencies_.systemCommand("sh -lc 'ip route show default | grep -q \" dev eth\"'");
-    return commandExitedSuccessfully(result);
-}
-
-Result<std::monostate, ApiError> OperatingSystemManager::runScannerShellCommand(
-    const std::string& command, const std::string& step) const
-{
-    if (!dependencies_.systemCommand) {
-        return makeMissingDependencyError("systemCommand");
-    }
-
-    const int result = dependencies_.systemCommand(command);
-    if (commandExitedSuccessfully(result)) {
-        return Result<std::monostate, ApiError>::okay(std::monostate{});
-    }
-
-    return Result<std::monostate, ApiError>::error(ApiError("Scanner step failed: " + step));
 }
 
 Result<OperatingSystemManager::ScannerModeRuntimeState, ApiError> OperatingSystemManager::
@@ -1863,6 +2078,53 @@ Result<std::monostate, ApiError> OperatingSystemManager::setScannerModeState(
     return Result<std::monostate, ApiError>::okay(std::monostate{});
 }
 
+Result<ProcessRunResult, ApiError> OperatingSystemManager::runProcessCapture(
+    const std::vector<std::string>& argv, int timeoutMs) const
+{
+    if (!dependencies_.processRunner) {
+        return Result<ProcessRunResult, ApiError>::error(
+            ApiError("Missing dependency for processRunner"));
+    }
+
+    const auto result = dependencies_.processRunner(argv, timeoutMs);
+    if (result.isError()) {
+        return Result<ProcessRunResult, ApiError>::error(ApiError(result.errorValue()));
+    }
+
+    return Result<ProcessRunResult, ApiError>::okay(result.value());
+}
+
+Result<std::string, ApiError> OperatingSystemManager::runScannerHelperCommand(
+    const std::string& action, int timeoutMs) const
+{
+    const auto result = runProcessCapture({ kScannerModeHelperPath, action }, timeoutMs);
+    if (result.isError()) {
+        return Result<std::string, ApiError>::error(
+            ApiError("Scanner helper " + action + " failed: " + result.errorValue().message));
+    }
+
+    const auto& process = result.value();
+    const std::string output = trimWhitespace(process.output);
+    const std::string outputSummary = summarizeCommandOutput(output);
+    if (process.exitCode != 0) {
+        std::string message =
+            "Scanner helper " + action + " failed (exit " + std::to_string(process.exitCode) + ")";
+        if (!outputSummary.empty()) {
+            message += ": " + outputSummary;
+        }
+        return Result<std::string, ApiError>::error(ApiError(message));
+    }
+
+    if (!outputSummary.empty()) {
+        LOG_INFO(State, "Scanner helper {}: {}", action, outputSummary);
+    }
+    else {
+        LOG_INFO(State, "Scanner helper {} completed.", action);
+    }
+
+    return Result<std::string, ApiError>::okay(output);
+}
+
 Result<std::monostate, ApiError> OperatingSystemManager::restoreWifiAfterScannerMode(
     const std::optional<std::string>& restoreSsid) const
 {
@@ -1873,20 +2135,39 @@ Result<std::monostate, ApiError> OperatingSystemManager::restoreWifiAfterScanner
         return makeMissingDependencyError("networkService");
     }
 
+    LOG_INFO(State, "Restoring Wi-Fi after scanner mode to '{}'.", *restoreSsid);
+    logNetworkSnapshot(networkService_.get(), "Scanner restore initial snapshot", restoreSsid);
+
     std::string lastError = "Timed out waiting for Wi-Fi restore";
     for (int attempt = 0; attempt < 3; ++attempt) {
+        const std::string attemptLabel =
+            "Scanner restore attempt " + std::to_string(attempt + 1) + "/3";
         std::this_thread::sleep_for(std::chrono::seconds(attempt == 0 ? 2 : 3));
 
+        logNetworkSnapshot(
+            networkService_.get(), attemptLabel + " pre-connect snapshot", restoreSsid);
         const auto connectResult = networkService_->connectBySsid(*restoreSsid, std::nullopt);
         if (!connectResult.isError()) {
+            LOG_INFO(State, "{} succeeded for '{}'.", attemptLabel, *restoreSsid);
+            logNetworkSnapshot(
+                networkService_.get(), attemptLabel + " post-success snapshot", restoreSsid);
             return Result<std::monostate, ApiError>::okay(std::monostate{});
         }
 
         lastError = connectResult.errorValue();
-        if (dependencies_.systemCommand) {
-            dependencies_.systemCommand(
-                std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
-                + " >/dev/null 2>&1 || true");
+        LOG_WARN(State, "{} failed for '{}': {}", attemptLabel, *restoreSsid, lastError);
+        logNetworkSnapshot(
+            networkService_.get(), attemptLabel + " post-failure snapshot", restoreSsid);
+        if (networkService_) {
+            const auto scanResult = networkService_->requestScan();
+            if (scanResult.isError()) {
+                SLOG_WARN(
+                    "Failed to request Wi-Fi scan after restore attempt: {}",
+                    scanResult.errorValue());
+            }
+            else {
+                LOG_INFO(State, "{} requested Wi-Fi scan.", attemptLabel);
+            }
         }
     }
 
@@ -1896,22 +2177,19 @@ Result<std::monostate, ApiError> OperatingSystemManager::restoreWifiAfterScanner
 
 void OperatingSystemManager::bestEffortRestoreWifiFromScannerMode() const
 {
-    if (!dependencies_.systemCommand) {
-        return;
+    const auto exitResult = runScannerHelperCommand("exit", kScannerHelperExitTimeoutMs);
+    if (exitResult.isError()) {
+        SLOG_WARN("Best-effort scanner restore failed: {}", exitResult.errorValue().message);
     }
 
-    dependencies_.systemCommand(std::string(kScannerNexutilPath) + " -m0 >/dev/null 2>&1 || true");
-    dependencies_.systemCommand(std::string(kScannerNexutilPath) + " -p0 >/dev/null 2>&1 || true");
-    dependencies_.systemCommand(
-        std::string("ip link set ") + kWifiInterfaceName + " down >/dev/null 2>&1 || true");
-    dependencies_.systemCommand(
-        std::string(kScannerModeHelperPath) + " disable >/dev/null 2>&1 || true");
-    dependencies_.systemCommand(
-        std::string("nmcli device set ") + kWifiInterfaceName
-        + " managed yes >/dev/null 2>&1 || true");
-    dependencies_.systemCommand(
-        std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
-        + " >/dev/null 2>&1 || true");
+    if (networkService_) {
+        const auto scanResult = networkService_->requestScan();
+        if (scanResult.isError()) {
+            SLOG_WARN(
+                "Failed to request Wi-Fi scan during best-effort restore: {}",
+                scanResult.errorValue());
+        }
+    }
 
     const auto stateResult = setScannerModeState(ScannerModeRuntimeState{});
     if (stateResult.isError()) {
@@ -1921,6 +2199,7 @@ void OperatingSystemManager::bestEffortRestoreWifiFromScannerMode() const
 
 Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterScannerMode()
 {
+    LOG_INFO(State, "Entering scanner mode.");
     const auto status = readScannerModeStatusInternal();
     if (!status.available) {
         return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(ApiError(status.detail));
@@ -1933,55 +2212,31 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
         return Result<OsApi::ScannerModeEnter::Okay, ApiError>::okay(std::move(okay));
     }
 
-    if (!hasEthernetDefaultRoute()) {
-        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(
-            ApiError("Scanner mode requires an Ethernet default route."));
-    }
-
     std::optional<std::string> restoreSsid;
     if (networkService_) {
-        const auto snapshotResult = networkService_->getSnapshot(false);
+        const auto snapshotResult = networkService_->getSnapshot(true);
         if (snapshotResult.isValue() && snapshotResult.value().status.connected
             && !snapshotResult.value().status.ssid.empty()) {
             restoreSsid = snapshotResult.value().status.ssid;
         }
-    }
-    if (!restoreSsid.has_value()) {
-        const auto activeSsidResult = runCommandCaptureOutput(
-            std::string("sh -lc 'nmcli -t -f ACTIVE,SSID device wifi list ifname ")
-            + kWifiInterfaceName + " --rescan no 2>/dev/null | sed -n \"s/^yes://p\"'");
-        if (activeSsidResult.isValue()) {
-            std::string activeSsid = trimWhitespace(activeSsidResult.value());
-            const auto newline = activeSsid.find_first_of("\r\n");
-            if (newline != std::string::npos) {
-                activeSsid = trimWhitespace(activeSsid.substr(0, newline));
-            }
-            if (!activeSsid.empty()) {
-                restoreSsid = std::move(activeSsid);
-            }
+        else if (snapshotResult.isError()) {
+            SLOG_WARN(
+                "Failed to refresh network snapshot before scanner mode: {}",
+                snapshotResult.errorValue());
         }
     }
 
-    const std::vector<std::pair<std::string, std::string>> steps = {
-        { std::string("nmcli device disconnect ") + kWifiInterfaceName + " >/dev/null 2>&1 || true",
-          "disconnect Wi-Fi" },
-        { std::string("nmcli device set ") + kWifiInterfaceName
-              + " managed no >/dev/null 2>&1 || true",
-          "release wlan0 from NetworkManager" },
-        { std::string(kScannerModeHelperPath) + " enable >/dev/null 2>&1",
-          "load experimental scanner stack" },
-        { std::string("ip link set ") + kWifiInterfaceName + " up >/dev/null 2>&1 || true",
-          "bring wlan0 up" },
-        { std::string(kScannerNexutilPath) + " -m2 >/dev/null 2>&1", "enable monitor mode" },
-        { std::string(kScannerNexutilPath) + " -p1 >/dev/null 2>&1", "enable promiscuous mode" },
-    };
+    if (restoreSsid.has_value()) {
+        LOG_INFO(State, "Scanner mode will restore Wi-Fi SSID '{}'.", *restoreSsid);
+    }
+    else {
+        LOG_INFO(State, "Scanner mode has no Wi-Fi SSID to restore.");
+    }
 
-    for (const auto& [command, step] : steps) {
-        const auto result = runScannerShellCommand(command, step);
-        if (result.isError()) {
-            bestEffortRestoreWifiFromScannerMode();
-            return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(result.errorValue());
-        }
+    const auto enterResult = runScannerHelperCommand("enter", kScannerHelperEnterTimeoutMs);
+    if (enterResult.isError()) {
+        bestEffortRestoreWifiFromScannerMode();
+        return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(enterResult.errorValue());
     }
 
     const auto stateResult =
@@ -1991,14 +2246,35 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
         return Result<OsApi::ScannerModeEnter::Okay, ApiError>::error(stateResult.errorValue());
     }
 
+    std::optional<std::string> captureError;
+    if (scannerService_) {
+        const auto captureStartResult = scannerService_->start();
+        if (captureStartResult.isError()) {
+            captureError = captureStartResult.errorValue();
+            SLOG_WARN("Scanner capture failed to start: {}", *captureError);
+        }
+    }
+
     OsApi::ScannerModeEnter::Okay okay;
     okay.active = true;
-    okay.detail = "Scanner mode active on wlan0.";
+    if (captureError.has_value()) {
+        LOG_WARN(State, "Scanner mode entered, but capture failed: {}", *captureError);
+        okay.detail = "Scanner mode active on wlan0, but capture failed: " + *captureError;
+    }
+    else {
+        LOG_INFO(State, "Scanner mode entered successfully.");
+        okay.detail = "Scanner mode active on wlan0.";
+    }
     return Result<OsApi::ScannerModeEnter::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScannerMode()
 {
+    LOG_INFO(State, "Exiting scanner mode.");
+    if (scannerService_) {
+        scannerService_->stop();
+    }
+
     std::optional<std::string> restoreSsid;
     const auto runtimeStateResult = readScannerModeState();
     if (runtimeStateResult.isValue()) {
@@ -2023,49 +2299,42 @@ Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScann
         return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
     }
 
-    if (dependencies_.systemCommand) {
-        dependencies_.systemCommand(
-            std::string(kScannerNexutilPath) + " -m0 >/dev/null 2>&1 || true");
-        dependencies_.systemCommand(
-            std::string(kScannerNexutilPath) + " -p0 >/dev/null 2>&1 || true");
-        dependencies_.systemCommand(
-            std::string("ip link set ") + kWifiInterfaceName + " down >/dev/null 2>&1 || true");
-        dependencies_.systemCommand(
-            std::string("ip link set ") + kWifiInterfaceName + " up >/dev/null 2>&1 || true");
+    const auto exitResult = runScannerHelperCommand("exit", kScannerHelperExitTimeoutMs);
+    if (exitResult.isError()) {
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(exitResult.errorValue());
     }
+    logNetworkSnapshot(networkService_.get(), "After scanner helper exit", restoreSsid);
 
-    const auto disableResult = runScannerShellCommand(
-        std::string(kScannerModeHelperPath) + " disable >/dev/null 2>&1",
-        "restore stock Wi-Fi stack");
-    if (disableResult.isError()) {
-        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(disableResult.errorValue());
+    if (networkService_) {
+        const auto scanResult = networkService_->requestScan();
+        if (scanResult.isError()) {
+            SLOG_WARN(
+                "Failed to request Wi-Fi scan after scanner exit: {}", scanResult.errorValue());
+        }
+        else {
+            LOG_INFO(State, "Requested Wi-Fi scan after scanner exit.");
+        }
     }
-
-    if (dependencies_.systemCommand) {
-        dependencies_.systemCommand(
-            std::string("nmcli device set ") + kWifiInterfaceName
-            + " managed yes >/dev/null 2>&1 || true");
-        dependencies_.systemCommand(
-            std::string("nmcli device wifi rescan ifname ") + kWifiInterfaceName
-            + " >/dev/null 2>&1 || true");
-    }
+    logNetworkSnapshot(networkService_.get(), "After scanner exit scan request", restoreSsid);
 
     const auto restoreResult = restoreWifiAfterScannerMode(restoreSsid);
+    if (restoreResult.isError()) {
+        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(restoreResult.errorValue());
+    }
 
     const auto stateResult = setScannerModeState(ScannerModeRuntimeState{});
     if (stateResult.isError()) {
         return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(stateResult.errorValue());
     }
-    if (restoreResult.isError()) {
-        return Result<OsApi::ScannerModeExit::Okay, ApiError>::error(restoreResult.errorValue());
-    }
 
     OsApi::ScannerModeExit::Okay okay;
     okay.active = false;
     if (restoreSsid.has_value() && !restoreSsid->empty()) {
+        LOG_INFO(State, "Scanner mode exited. Restored Wi-Fi SSID '{}'.", *restoreSsid);
         okay.detail = "Restored normal Wi-Fi connection to '" + *restoreSsid + "'.";
     }
     else {
+        LOG_INFO(State, "Scanner mode exited. Restored normal Wi-Fi mode.");
         okay.detail = "Restored normal Wi-Fi mode.";
     }
     return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
@@ -2803,6 +3072,9 @@ void OperatingSystemManager::initializeDefaultDependencies()
         dependencies_.commandRunner = [](const std::string& command) {
             return runCommandCaptureOutput(command);
         };
+        dependencies_.processRunner = [](const std::vector<std::string>& argv, int timeoutMs) {
+            return OsManager::runProcessCapture(argv, timeoutMs);
+        };
         dependencies_.homeDirResolver = [](const std::string& user) {
             return resolveUserHomeDir(user);
         };
@@ -2830,6 +3102,9 @@ void OperatingSystemManager::initializeDefaultDependencies()
     dependencies_.reboot = [this]() { scheduleRebootInternal(); };
     dependencies_.commandRunner = [](const std::string& command) {
         return runCommandCaptureOutput(command);
+    };
+    dependencies_.processRunner = [](const std::vector<std::string>& argv, int timeoutMs) {
+        return OsManager::runProcessCapture(argv, timeoutMs);
     };
     dependencies_.homeDirResolver = [](const std::string& user) {
         return resolveUserHomeDir(user);

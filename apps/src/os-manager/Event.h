@@ -11,6 +11,7 @@
 #include "os-manager/api/RestartUi.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
 #include "os-manager/api/StartUi.h"
@@ -54,6 +55,7 @@ public:
         OsApi::RestartUi::Cwc,
         OsApi::ScannerModeEnter::Cwc,
         OsApi::ScannerModeExit::Cwc,
+        OsApi::ScannerSnapshotGet::Cwc,
         OsApi::StartAudio::Cwc,
         OsApi::StartServer::Cwc,
         OsApi::StartUi::Cwc,

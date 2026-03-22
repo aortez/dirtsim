@@ -42,3 +42,7 @@ runtime/rootfs.tar.gz
 
 # WiFi credentials (sensitive - use wifi-creds.local.example from pi-base as template).
 wifi-creds.local
+
+# Local KAS overlays (developer-specific build toggles).
+kas-dirtsim.local.yml
+kas-dirtsim-x86.local.yml

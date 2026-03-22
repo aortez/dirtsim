@@ -11,6 +11,7 @@
 #include "RestartUi.h"
 #include "ScannerModeEnter.h"
 #include "ScannerModeExit.h"
+#include "ScannerSnapshotGet.h"
 #include "StartAudio.h"
 #include "StartServer.h"
 #include "StartUi.h"
@@ -45,6 +46,7 @@ using OsApiCommand = std::variant<
     RestartUi::Command,
     ScannerModeEnter::Command,
     ScannerModeExit::Command,
+    ScannerSnapshotGet::Command,
     StartAudio::Command,
     StartServer::Command,
     StartUi::Command,
