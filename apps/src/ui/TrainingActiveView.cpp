@@ -68,6 +68,42 @@ lv_color_t trainingPhaseTextColor(TrainingPhase phase)
     return lv_color_hex(0x888888);
 }
 
+const char* adaptiveMutationModeLabel(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return "Baseline";
+        case AdaptiveMutationMode::Explore:
+            return "Explore";
+        case AdaptiveMutationMode::Rescue:
+            return "Rescue";
+        case AdaptiveMutationMode::Recover:
+            return "Recover";
+    }
+    return "Unknown";
+}
+
+lv_color_t adaptiveMutationModeTextColor(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return lv_color_hex(0x00CC66);
+        case AdaptiveMutationMode::Explore:
+            return lv_color_hex(0xFFAA33);
+        case AdaptiveMutationMode::Rescue:
+            return lv_color_hex(0xFF6666);
+        case AdaptiveMutationMode::Recover:
+            return lv_color_hex(0x66CCFF);
+    }
+    return lv_color_hex(0x888888);
+}
+
+void setCompactStatsLabelStyle(lv_obj_t* label, lv_color_t color)
+{
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
 struct BestRenderRequest {
     TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
@@ -633,6 +669,56 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_color(bestAllTimeLabel_, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(bestAllTimeLabel_, &lv_font_montserrat_12, 0);
 
+    lv_obj_t* adaptationRow = lv_obj_create(statsPanel_);
+    setTransparentRowLayout(adaptationRow, 12);
+    lv_obj_set_flex_flow(adaptationRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationPhaseLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationPhaseLabel_, "Phase: Normal");
+    setCompactStatsLabelStyle(adaptationPhaseLabel_, trainingPhaseTextColor(TrainingPhase::Normal));
+
+    adaptationSinceImprovementLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationSinceImprovementLabel_, "SinceImp: 0");
+    setCompactStatsLabelStyle(adaptationSinceImprovementLabel_, lv_color_hex(0x88AACC));
+
+    adaptationMutationModeLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationMutationModeLabel_, "Mut: Baseline");
+    setCompactStatsLabelStyle(
+        adaptationMutationModeLabel_,
+        adaptiveMutationModeTextColor(AdaptiveMutationMode::Baseline));
+
+    adaptationResolvedLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationResolvedLabel_, "Resolved: --");
+    setCompactStatsLabelStyle(adaptationResolvedLabel_, lv_color_hex(0xCCCCCC));
+
+    lv_obj_t* adaptationActualRow = lv_obj_create(statsPanel_);
+    setTransparentRowLayout(adaptationActualRow, 12);
+    lv_obj_set_flex_flow(adaptationActualRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationActualWeightChangesLabel_ = lv_label_create(adaptationActualRow);
+    lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual Δw: --");
+    setCompactStatsLabelStyle(adaptationActualWeightChangesLabel_, lv_color_hex(0xCCCCCC));
+
+    adaptationActualResetAvgLabel_ = lv_label_create(adaptationActualRow);
+    lv_label_set_text(adaptationActualResetAvgLabel_, "ResetAvg: --");
+    setCompactStatsLabelStyle(adaptationActualResetAvgLabel_, lv_color_hex(0x88AACC));
+
+    lv_obj_t* adaptationDetailRow = lv_obj_create(statsPanel_);
+    setTransparentRowLayout(adaptationDetailRow, 12);
+    lv_obj_set_flex_flow(adaptationDetailRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationLastImprovementLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationLastImprovementLabel_, "LastImp: --");
+    setCompactStatsLabelStyle(adaptationLastImprovementLabel_, lv_color_hex(0x88AACC));
+
+    adaptationStagnationLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationStagnationLabel_, "Stag: 0");
+    setCompactStatsLabelStyle(adaptationStagnationLabel_, lv_color_hex(0x88AACC));
+
+    adaptationRecoveryLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationRecoveryLabel_, "Rec: 0");
+    setCompactStatsLabelStyle(adaptationRecoveryLabel_, lv_color_hex(0x88AACC));
+
     constexpr int worldColumnGapPx = 10;
     const int worldColumnWidth = std::max(160, (centerColumnWidth - worldColumnGapPx) / 2);
     const int worldContainerSize = std::max(145, worldColumnWidth - 10);
@@ -1018,6 +1104,15 @@ void TrainingActiveView::destroyUI()
         lv_obj_clean(container_);
     }
 
+    adaptationActualResetAvgLabel_ = nullptr;
+    adaptationActualWeightChangesLabel_ = nullptr;
+    adaptationLastImprovementLabel_ = nullptr;
+    adaptationMutationModeLabel_ = nullptr;
+    adaptationPhaseLabel_ = nullptr;
+    adaptationRecoveryLabel_ = nullptr;
+    adaptationResolvedLabel_ = nullptr;
+    adaptationSinceImprovementLabel_ = nullptr;
+    adaptationStagnationLabel_ = nullptr;
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
@@ -1819,6 +1914,102 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     if (bestAllTimeLabel_) {
         snprintf(buf, sizeof(buf), "All Time: %.4f", progress.bestFitnessAllTime);
         lv_label_set_text(bestAllTimeLabel_, buf);
+    }
+
+    if (adaptationPhaseLabel_) {
+        snprintf(buf, sizeof(buf), "Phase: %s", trainingPhaseLabel(progress.trainingPhase));
+        lv_label_set_text(adaptationPhaseLabel_, buf);
+        lv_obj_set_style_text_color(
+            adaptationPhaseLabel_, trainingPhaseTextColor(progress.trainingPhase), 0);
+    }
+
+    if (adaptationSinceImprovementLabel_) {
+        snprintf(
+            buf, sizeof(buf), "SinceImp: %d", std::max(progress.generationsSinceImprovement, 0));
+        lv_label_set_text(adaptationSinceImprovementLabel_, buf);
+    }
+
+    if (adaptationMutationModeLabel_) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Mut: %s",
+            adaptiveMutationModeLabel(progress.lastBreeding.mutationMode));
+        lv_label_set_text(adaptationMutationModeLabel_, buf);
+        lv_obj_set_style_text_color(
+            adaptationMutationModeLabel_,
+            adaptiveMutationModeTextColor(progress.lastBreeding.mutationMode),
+            0);
+    }
+
+    if (adaptationResolvedLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationResolvedLabel_, "Resolved: --");
+        }
+        else if (progress.lastBreeding.usesBudget) {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Resolved: %d / %d / %.3f",
+                progress.lastBreeding.resolvedPerturbationsPerOffspring,
+                progress.lastBreeding.resolvedResetsPerOffspring,
+                progress.lastBreeding.resolvedSigma);
+            lv_label_set_text(adaptationResolvedLabel_, buf);
+        }
+        else {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Resolved: legacy sigma %.3f",
+                progress.lastBreeding.resolvedSigma);
+            lv_label_set_text(adaptationResolvedLabel_, buf);
+        }
+    }
+
+    if (adaptationActualWeightChangesLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual Δw: --");
+        }
+        else {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Actual Δw: %.1f [%d..%d]",
+                progress.lastBreeding.weightChangesAvg,
+                progress.lastBreeding.weightChangesMin,
+                progress.lastBreeding.weightChangesMax);
+            lv_label_set_text(adaptationActualWeightChangesLabel_, buf);
+        }
+    }
+
+    if (adaptationActualResetAvgLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationActualResetAvgLabel_, "ResetAvg: --");
+        }
+        else {
+            snprintf(buf, sizeof(buf), "ResetAvg: %.1f", progress.lastBreeding.resetsAvg);
+            lv_label_set_text(adaptationActualResetAvgLabel_, buf);
+        }
+    }
+
+    if (adaptationLastImprovementLabel_) {
+        if (progress.lastImprovementGeneration >= 0) {
+            snprintf(buf, sizeof(buf), "LastImp: %d", progress.lastImprovementGeneration);
+            lv_label_set_text(adaptationLastImprovementLabel_, buf);
+        }
+        else {
+            lv_label_set_text(adaptationLastImprovementLabel_, "LastImp: --");
+        }
+    }
+
+    if (adaptationStagnationLabel_) {
+        snprintf(buf, sizeof(buf), "Stag: %d", std::max(progress.stagnationLevel, 0));
+        lv_label_set_text(adaptationStagnationLabel_, buf);
+    }
+
+    if (adaptationRecoveryLabel_) {
+        snprintf(buf, sizeof(buf), "Rec: %d", std::max(progress.recoveryLevel, 0));
+        lv_label_set_text(adaptationRecoveryLabel_, buf);
     }
 
     if (lastGenerationDistributionPlot_) {

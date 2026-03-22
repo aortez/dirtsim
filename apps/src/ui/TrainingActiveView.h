@@ -146,6 +146,15 @@ private:
     UserSettingsManager& userSettingsManager_;
     UserSettings& userSettings_;
 
+    lv_obj_t* adaptationActualResetAvgLabel_ = nullptr;
+    lv_obj_t* adaptationActualWeightChangesLabel_ = nullptr;
+    lv_obj_t* adaptationLastImprovementLabel_ = nullptr;
+    lv_obj_t* adaptationMutationModeLabel_ = nullptr;
+    lv_obj_t* adaptationPhaseLabel_ = nullptr;
+    lv_obj_t* adaptationRecoveryLabel_ = nullptr;
+    lv_obj_t* adaptationResolvedLabel_ = nullptr;
+    lv_obj_t* adaptationSinceImprovementLabel_ = nullptr;
+    lv_obj_t* adaptationStagnationLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
     lv_obj_t* bestThisGenLabel_ = nullptr;
     lv_obj_t* container_ = nullptr;
