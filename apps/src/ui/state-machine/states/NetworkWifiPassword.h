@@ -1,0 +1,36 @@
+#pragma once
+
+#include "StateForward.h"
+#include "ui/state-machine/Event.h"
+#include <memory>
+
+namespace DirtSim {
+namespace Ui {
+namespace State {
+
+struct NetworkUiContext;
+
+struct NetworkWifiPassword {
+    NetworkWifiPassword() = default;
+    explicit NetworkWifiPassword(std::shared_ptr<NetworkUiContext> context);
+
+    void onEnter(StateMachine& sm);
+    void onExit(StateMachine& sm);
+
+    Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkDiagnosticsGet::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::NetworkPasswordSubmit::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
+
+    static constexpr const char* name() { return "NetworkWifiPassword"; }
+    bool blocksAutoShrink() const { return true; }
+
+private:
+    std::shared_ptr<NetworkUiContext> context_;
+};
+
+} // namespace State
+} // namespace Ui
+} // namespace DirtSim

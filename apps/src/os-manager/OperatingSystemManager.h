@@ -8,12 +8,14 @@
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
 #include "os-manager/PeerTrust.h"
+#include "os-manager/ProcessRunner.h"
 #include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
 #include "os-manager/api/TrustPeer.h"
@@ -43,6 +45,7 @@ namespace OsManager {
 class LocalProcessBackend;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
+class ScannerService;
 struct PeerInfo;
 
 class OperatingSystemManager : public StateMachineBase, public StateMachineInterface<Event> {
@@ -74,6 +77,8 @@ public:
         std::function<OsApi::SystemStatus::Okay()> systemStatus;
         std::function<void()> reboot;
         std::function<Result<std::string, ApiError>(const std::string&)> commandRunner;
+        std::function<Result<ProcessRunResult, std::string>(const std::vector<std::string>&, int)>
+            processRunner;
         std::function<std::filesystem::path(const std::string&)> homeDirResolver;
         std::function<Result<std::monostate, ApiError>(
             const std::filesystem::path&, const std::filesystem::path&, const std::string&)>
@@ -118,6 +123,8 @@ public:
         const OsApi::RemoteCliRun::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
+    Result<OsApi::ScannerSnapshotGet::Okay, ApiError> getScannerSnapshot(
+        const OsApi::ScannerSnapshotGet::Command& command);
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
@@ -168,11 +175,13 @@ private:
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(
         const std::string& action, const std::string& unitName);
-    Result<std::monostate, ApiError> runScannerShellCommand(
-        const std::string& command, const std::string& step) const;
     Result<ScannerModeRuntimeState, ApiError> readScannerModeState() const;
     Result<std::monostate, ApiError> restoreWifiAfterScannerMode(
         const std::optional<std::string>& restoreSsid) const;
+    Result<ProcessRunResult, ApiError> runProcessCapture(
+        const std::vector<std::string>& argv, int timeoutMs) const;
+    Result<std::string, ApiError> runScannerHelperCommand(
+        const std::string& action, int timeoutMs) const;
     Result<std::monostate, ApiError> setScannerModeState(
         const ScannerModeRuntimeState& state) const;
     std::filesystem::path getPeerAllowlistPath() const;
@@ -184,7 +193,6 @@ private:
     Result<std::string, ApiError> getClientKeyFingerprintSha256() const;
     Result<std::string, ApiError> getPeerClientPublicKey(bool* created);
     Result<PeerTrustBundle, ApiError> buildTrustBundle(bool* created);
-    bool hasEthernetDefaultRoute() const;
     void bestEffortRestoreWifiFromScannerMode() const;
     Result<std::string, ApiError> runCommandCapture(const std::string& command) const;
     std::filesystem::path getSshUserHomeDir(const std::string& user) const;
@@ -210,6 +218,7 @@ private:
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
     std::unique_ptr<NetworkService> networkService_;
+    std::unique_ptr<ScannerService> scannerService_;
     std::unique_ptr<PeerAdvertisement> serverPeerAdvertisement_;
     std::unique_ptr<PeerAdvertisement> uiPeerAdvertisement_;
     std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;

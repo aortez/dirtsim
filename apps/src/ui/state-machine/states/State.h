@@ -4,7 +4,12 @@
 // Each state has its own header file for better organization.
 
 #include "Disconnected.h"
-#include "Network.h"
+#include "NetworkScanner.h"
+#include "NetworkSettings.h"
+#include "NetworkWifi.h"
+#include "NetworkWifiConnecting.h"
+#include "NetworkWifiDetails.h"
+#include "NetworkWifiPassword.h"
 #include "Paused.h"
 #include "Shutdown.h"
 #include "SimRunning.h"
@@ -31,7 +36,12 @@ class Any {
 public:
     using Variant = std::variant<
         Disconnected,
-        Network,
+        NetworkScanner,
+        NetworkSettings,
+        NetworkWifi,
+        NetworkWifiConnecting,
+        NetworkWifiDetails,
+        NetworkWifiPassword,
         Paused,
         Shutdown,
         SimRunning,

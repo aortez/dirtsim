@@ -84,6 +84,13 @@ const char* trainingPhaseLabel(TrainingPhase phase)
     return "unknown";
 }
 
+bool isNetworkStateName(const std::string& state)
+{
+    return state == "NetworkScanner" || state == "NetworkSettings" || state == "NetworkWifi"
+        || state == "NetworkWifiConnecting" || state == "NetworkWifiDetails"
+        || state == "NetworkWifiPassword";
+}
+
 const char* adaptiveMutationModeLabel(AdaptiveMutationMode mode)
 {
     switch (mode) {
@@ -647,9 +654,21 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canApplyClockTimezoneFromUserSettings\n";
     examples +=
         "  cli functional-test canCancelWifiConnect --wifi-config /etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canCancelWifiConnectBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canCancelThenScannerBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test canPlaySynthKeys\n";
     examples +=
         "  cli functional-test canSwitchWifiNetworks --wifi-config /etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canSwitchWifiNetworksBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canExerciseScannerModeBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canSwitchForgetThenScannerBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
+    examples += "  cli functional-test canSwitchThenScannerBackendOnly --wifi-config "
+                "/etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test canExerciseWifiAndScanner --wifi-config "
                 "/etc/dirtsim/test-wifi.json\n";
     examples += "  cli functional-test verifyTraining\n";
@@ -1177,9 +1196,14 @@ int main(int argc, char** argv)
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
             && testName != "canControlNesScenario"
             && testName != "canApplyClockTimezoneFromUserSettings"
-            && testName != "canCancelWifiConnect" && testName != "canPlaySynthKeys"
-            && testName != "canSwitchWifiNetworks" && testName != "canExerciseWifiAndScanner"
-            && testName != "verifyTraining") {
+            && testName != "canCancelWifiConnect" && testName != "canCancelWifiConnectBackendOnly"
+            && testName != "canPlaySynthKeys" && testName != "canCancelThenScannerBackendOnly"
+            && testName != "canSwitchWifiNetworks" && testName != "canSwitchWifiNetworksBackendOnly"
+            && testName != "canExerciseScannerModeBackendOnly"
+            && testName != "canSwitchForgetThenScannerBackendOnly"
+            && testName != "canSwitchThenScannerBackendOnly"
+            && testName != "canExerciseWifiAndScanner"
+            && testName != "canExerciseWifiAndScannerBackendOnly" && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
@@ -1189,8 +1213,15 @@ int main(int argc, char** argv)
                          "canUseDefaultScenarioWhenSimRunHasNoScenario, "
                          "canControlNesScenario, "
                          "canApplyClockTimezoneFromUserSettings, canCancelWifiConnect, "
+                         "canCancelWifiConnectBackendOnly, "
+                         "canCancelThenScannerBackendOnly, "
                          "canPlaySynthKeys, canSwitchWifiNetworks, "
+                         "canSwitchWifiNetworksBackendOnly, "
+                         "canExerciseScannerModeBackendOnly, "
+                         "canSwitchForgetThenScannerBackendOnly, "
+                         "canSwitchThenScannerBackendOnly, "
                          "canExerciseWifiAndScanner, "
+                         "canExerciseWifiAndScannerBackendOnly, "
                          "verifyTraining\n";
             return 1;
         }
@@ -1273,6 +1304,24 @@ int main(int argc, char** argv)
             summary = runner.runCanCancelWifiConnect(
                 uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
         }
+        else if (testName == "canCancelWifiConnectBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canCancelWifiConnectBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanCancelWifiConnectBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canCancelThenScannerBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canCancelThenScannerBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanCancelThenScannerBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
         else if (testName == "canPlaySynthKeys") {
             summary =
                 runner.runCanPlaySynthKeys(uiAddress, serverAddress, osManagerAddress, timeoutMs);
@@ -1290,6 +1339,42 @@ int main(int argc, char** argv)
             summary = runner.runCanSwitchWifiNetworks(
                 uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
         }
+        else if (testName == "canSwitchWifiNetworksBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canSwitchWifiNetworksBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanSwitchWifiNetworksBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canExerciseScannerModeBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canExerciseScannerModeBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanExerciseScannerModeBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canSwitchForgetThenScannerBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canSwitchForgetThenScannerBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanSwitchForgetThenScannerBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canSwitchThenScannerBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canSwitchThenScannerBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanSwitchThenScannerBackendOnly(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
         else if (testName == "canExerciseWifiAndScanner") {
             if (!wifiConfigPath) {
                 std::cerr << "Error: canExerciseWifiAndScanner requires --wifi-config "
@@ -1297,6 +1382,15 @@ int main(int argc, char** argv)
                 return 1;
             }
             summary = runner.runCanExerciseWifiAndScanner(
+                uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
+        }
+        else if (testName == "canExerciseWifiAndScannerBackendOnly") {
+            if (!wifiConfigPath) {
+                std::cerr << "Error: canExerciseWifiAndScannerBackendOnly requires --wifi-config "
+                             "/path/to/config.json\n";
+                return 1;
+            }
+            summary = runner.runCanExerciseWifiAndScannerBackendOnly(
                 uiAddress, serverAddress, osManagerAddress, args::get(wifiConfigPath), timeoutMs);
         }
         else if (testName == "verifyTraining") {
@@ -1681,7 +1775,7 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network") {
+            if (isNetworkStateName(state)) {
                 auto showResult = ensureIconRailVisible();
                 if (showResult.isError()) {
                     return Result<std::monostate, std::string>::error(showResult.errorValue());
@@ -1770,7 +1864,7 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network" || state == "Synth" || state == "SynthConfig") {
+            if (isNetworkStateName(state) || state == "Synth" || state == "SynthConfig") {
                 UiApi::SimStop::Command cmd{};
                 auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
                     uiClient, cmd, timeoutMs);
@@ -1962,7 +2056,7 @@ int main(int argc, char** argv)
                 return select;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            auto waitResult = waitForUiState({ "Network" }, 8000);
+            auto waitResult = waitForUiState({ "NetworkWifi" }, 8000);
             if (waitResult.isError()) {
                 return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
             }

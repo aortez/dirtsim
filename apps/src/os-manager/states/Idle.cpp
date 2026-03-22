@@ -103,6 +103,13 @@ Any Idle::onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::ScannerSnapshotGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerSnapshotGet command received");
+    cwc.sendResponse(osm.getScannerSnapshot(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::StartAudio::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "StartAudio command received");

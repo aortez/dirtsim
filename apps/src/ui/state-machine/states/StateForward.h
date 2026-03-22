@@ -9,7 +9,12 @@ namespace State {
 
 // Forward declarations.
 struct Disconnected;
-struct Network;
+struct NetworkScanner;
+struct NetworkSettings;
+struct NetworkWifi;
+struct NetworkWifiConnecting;
+struct NetworkWifiDetails;
+struct NetworkWifiPassword;
 struct Paused;
 struct Shutdown;
 struct SimRunning;

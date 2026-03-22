@@ -14,10 +14,12 @@ import { execSync, spawn } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
+import { resolveKasConfig } from './lib/kas-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
+const KAS_CONFIG = resolveKasConfig('kas-dirtsim.yml');
 
 const PING_TIMEOUT_SEC = 600;
 const SSH_TIMEOUT_SEC = 30;
@@ -69,7 +71,7 @@ async function run(cmd, args, options = {}) {
  */
 async function cleanImage() {
   info('Cleaning dirtsim-image sstate to force rebuild...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
+  await run('kas', ['shell', KAS_CONFIG, '-c', 'bitbake -c cleansstate dirtsim-image']);
   success('Clean complete!');
 }
 
@@ -83,7 +85,7 @@ async function build(forceClean = false) {
     await cleanImage();
   }
 
-  await run('kas', ['build', 'kas-dirtsim.yml']);
+  await run('kas', ['build', KAS_CONFIG]);
   success('Build complete!');
 }
 

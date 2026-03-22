@@ -35,6 +35,7 @@
 - Remote CLI status checks:
   - `ssh dirtsim2.local "dirtsim-cli server StatusGet"`
   - `ssh dirtsim2.local "dirtsim-cli ui StatusGet"`
+- jq is available on the remote for json parsing
 
 ## Coding Conventions (condensed)
 - Comments end in periods; keep inline comments rare and focus docs at file/class scope.

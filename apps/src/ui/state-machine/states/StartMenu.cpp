@@ -299,8 +299,8 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     if (evt.selectedId == IconId::NETWORK) {
-        LOG_INFO(State, "Network icon clicked, transitioning to Network");
-        return Network{};
+        LOG_INFO(State, "Network icon clicked, transitioning to NetworkWifi");
+        return NetworkWifi{};
     }
 
     // SCENARIO and EVOLUTION are action triggers - fire and deselect.

@@ -40,6 +40,15 @@ struct NetworkInterfaceInfo {
  */
 class NetworkDiagnosticsPanel {
 public:
+    enum class AutomationScreen {
+        LanAccess,
+        Scanner,
+        Wifi,
+        WifiConnecting,
+        WifiDetails,
+        WifiPassword,
+    };
+
     struct AutomationConnectProgress {
         std::string phase;
         std::string ssid;
@@ -60,6 +69,7 @@ public:
         std::string passwordError;
         std::string scannerStatusMessage;
         std::vector<AutomationNetworkInfo> networks;
+        AutomationScreen screen = AutomationScreen::Wifi;
         std::string viewMode;
         std::string wifiStatusMessage;
         bool connectCancelEnabled = false;
@@ -104,7 +114,7 @@ public:
     void showWifiView();
 
 private:
-    enum class ViewMode { LanAccess, Scanner, Wifi };
+    enum class ViewMode { LanAccess, Scanner, Wifi, WifiConnectFlow, WifiDetails };
     enum class ConnectOverlayMode { PasswordEntry, Connecting };
 
     lv_obj_t* container_;
@@ -118,10 +128,13 @@ private:
     lv_obj_t* lanAccessView_ = nullptr;
     lv_obj_t* networksTitleLabel_ = nullptr;
     lv_obj_t* pagesContainer_ = nullptr;
+    lv_obj_t* connectFlowView_ = nullptr;
+    lv_obj_t* networkDetailsView_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
     lv_obj_t* scannerEnterButton_ = nullptr;
     lv_obj_t* scannerExitButton_ = nullptr;
     lv_obj_t* scannerHintLabel_ = nullptr;
+    lv_obj_t* scannerDataLabel_ = nullptr;
     lv_obj_t* scannerRefreshButton_ = nullptr;
     lv_obj_t* scannerStatusLabel_ = nullptr;
     lv_obj_t* scannerView_ = nullptr;
@@ -136,7 +149,6 @@ private:
     lv_obj_t* networkDetailsOverlay_ = nullptr;
     lv_obj_t* networkDetailsContent_ = nullptr;
     lv_obj_t* networkDetailsLastScanValueLabel_ = nullptr;
-    lv_obj_t* passwordOverlay_ = nullptr;
     lv_obj_t* passwordStatusLabel_ = nullptr;
     lv_obj_t* passwordTextArea_ = nullptr;
     lv_obj_t* passwordVisibilityButton_ = nullptr;
@@ -207,11 +219,31 @@ private:
         std::unique_ptr<TimeSeriesPlotWidget> plot;
     };
 
+    struct ScannerObservedRadio {
+        std::string bssid;
+        std::string ssid;
+        std::optional<int> signalDbm;
+        std::optional<int> channel;
+        std::optional<uint64_t> lastSeenAgeMs;
+    };
+
+    struct ScannerSnapshot {
+        bool active = false;
+        std::optional<int> currentChannel;
+        std::string detail;
+        std::vector<ScannerObservedRadio> radios;
+    };
+
+    struct ScannerSnapshotError {
+        std::string message;
+    };
+
     struct AsyncState {
         std::mutex mutex;
         bool eventStreamConnected = false;
         bool refreshInProgress = false;
         bool scanRequestInProgress = false;
+        bool scannerSnapshotInProgress = false;
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<std::monostate, std::string>> pendingConnectCancel;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
@@ -220,6 +252,7 @@ private:
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
         std::optional<Result<std::monostate, std::string>> pendingScannerEnter;
         std::optional<Result<std::monostate, std::string>> pendingScannerExit;
+        std::optional<Result<ScannerSnapshot, ScannerSnapshotError>> pendingScannerSnapshot;
         std::optional<Result<std::monostate, std::string>> pendingScanRequest;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
         std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
@@ -239,6 +272,8 @@ private:
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::vector<std::unique_ptr<NetworkDetailsContext>> networkDetailsContexts_;
     std::vector<NetworkDetailsPlotBinding> networkDetailsPlotBindings_;
+    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot24_;
+    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot5_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
@@ -268,6 +303,7 @@ private:
     bool scannerModeActive_ = false;
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
+    std::optional<std::chrono::steady_clock::time_point> scannerSnapshotLastRequestedAt_;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -278,6 +314,7 @@ private:
     bool startAsyncRefresh(bool forceRefresh);
     bool startAsyncScannerEnter();
     bool startAsyncScannerExit();
+    bool startAsyncScannerSnapshot();
     bool startAsyncScanRequest();
     bool startAsyncConnect(
         const Network::WifiNetworkInfo& network,
@@ -325,6 +362,8 @@ private:
     void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
+    void updateScannerSnapshotPolling();
+    void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
     void updateScannerControls();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);

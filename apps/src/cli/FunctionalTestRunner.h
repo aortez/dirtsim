@@ -32,6 +32,7 @@ struct FunctionalTestSummary {
     int64_t duration_ms = 0;
     Result<std::monostate, std::string> result;
     std::optional<std::string> failure_screenshot_path;
+    std::optional<std::string> success_screenshot_path = std::nullopt;
     std::optional<FunctionalTrainingSummary> training_summary;
 
     nlohmann::json toJson() const;
@@ -110,6 +111,18 @@ public:
         const std::string& osManagerAddress,
         const std::string& wifiConfigPath,
         int timeoutMs);
+    FunctionalTestSummary runCanCancelWifiConnectBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
+    FunctionalTestSummary runCanCancelThenScannerBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
     FunctionalTestSummary runCanPlaySynthKeys(
         const std::string& uiAddress,
         const std::string& serverAddress,
@@ -121,7 +134,37 @@ public:
         const std::string& osManagerAddress,
         const std::string& wifiConfigPath,
         int timeoutMs);
+    FunctionalTestSummary runCanSwitchWifiNetworksBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
     FunctionalTestSummary runCanExerciseWifiAndScanner(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
+    FunctionalTestSummary runCanExerciseWifiAndScannerBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
+    FunctionalTestSummary runCanExerciseScannerModeBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
+    FunctionalTestSummary runCanSwitchForgetThenScannerBackendOnly(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        const std::string& wifiConfigPath,
+        int timeoutMs);
+    FunctionalTestSummary runCanSwitchThenScannerBackendOnly(
         const std::string& uiAddress,
         const std::string& serverAddress,
         const std::string& osManagerAddress,
