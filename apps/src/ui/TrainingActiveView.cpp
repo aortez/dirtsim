@@ -696,7 +696,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_flex_flow(adaptationActualRow, LV_FLEX_FLOW_ROW_WRAP);
 
     adaptationActualWeightChangesLabel_ = lv_label_create(adaptationActualRow);
-    lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual Δw: --");
+    lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual dW: --");
     setCompactStatsLabelStyle(adaptationActualWeightChangesLabel_, lv_color_hex(0xCCCCCC));
 
     adaptationActualResetAvgLabel_ = lv_label_create(adaptationActualRow);
@@ -1968,13 +1968,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     if (adaptationActualWeightChangesLabel_) {
         if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
-            lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual Δw: --");
+            lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual dW: --");
         }
         else {
             snprintf(
                 buf,
                 sizeof(buf),
-                "Actual Δw: %.1f [%d..%d]",
+                "Actual dW: %.1f [%d..%d]",
                 progress.lastBreeding.weightChangesAvg,
                 progress.lastBreeding.weightChangesMin,
                 progress.lastBreeding.weightChangesMax);
