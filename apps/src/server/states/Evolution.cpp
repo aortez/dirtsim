@@ -42,6 +42,21 @@ constexpr size_t kFitnessDistributionBinCount = 16;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
 constexpr size_t kRobustFitnessSampleWindow = 7;
 
+constexpr std::string_view adaptiveMutationModeName(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return "baseline";
+        case AdaptiveMutationMode::Explore:
+            return "explore";
+        case AdaptiveMutationMode::Rescue:
+            return "rescue";
+        case AdaptiveMutationMode::Recover:
+            return "recover";
+    }
+    return "unknown";
+}
+
 constexpr std::string_view trainingPhaseName(TrainingPhase phase)
 {
     switch (phase) {
@@ -838,6 +853,10 @@ void Evolution::initializePopulation(StateMachine& dsm)
     lastGenerationFitnessHistogram_.clear();
     pruneBeforeBreeding_ = false;
     completedEvaluations_ = 0;
+    lastEffectiveAdaptiveMutation_ = {
+        .mode = AdaptiveMutationMode::Baseline,
+        .mutationConfig = mutationConfig,
+    };
     sumFitnessThisGen_ = 0.0;
     pendingBest_.reset();
     robustnessPass_.reset();
@@ -1574,6 +1593,24 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         population.size() == fitnessScores.size(),
         "Evolution: fitness scores must align with population");
 
+    const EffectiveAdaptiveMutation effectiveAdaptiveMutation = adaptiveMutationResolve(
+        mutationConfig,
+        trainingPhaseTracker_.status(),
+        lastEffectiveAdaptiveMutation_,
+        evolutionConfig);
+    const MutationConfig& effectiveMutationConfig = effectiveAdaptiveMutation.mutationConfig;
+
+    LOG_INFO(
+        State,
+        "Evolution: breeding config gen={} mode={} use_budget={} perturbations={} resets={} "
+        "sigma={:.4f}",
+        generation,
+        adaptiveMutationModeName(effectiveAdaptiveMutation.mode),
+        effectiveMutationConfig.useBudget,
+        effectiveMutationConfig.perturbationsPerOffspring,
+        effectiveMutationConfig.resetsPerOffspring,
+        effectiveMutationConfig.sigma);
+
     // Selection and mutation: create offspring and append them.
     std::vector<Individual> offspring;
     std::vector<IndividualOrigin> offspringOrigins;
@@ -1612,7 +1649,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             DIRTSIM_ASSERT(entry->getGenomeLayout, "Evolution: brain has no genome layout");
             const GenomeLayout layout = entry->getGenomeLayout();
             Genome mutatedGenome =
-                mutate(parent.genome.value(), mutationConfig, layout, rng, &stats);
+                mutate(parent.genome.value(), effectiveMutationConfig, layout, rng, &stats);
             perturbationsTotal += stats.perturbations;
             resetsTotal += stats.resets;
             weightChanges = stats.totalChanges();
@@ -1633,6 +1670,14 @@ void Evolution::advanceGeneration(StateMachine& dsm)
                              : IndividualOrigin::OffspringClone);
     }
 
+    lastEffectiveAdaptiveMutation_ = effectiveAdaptiveMutation;
+    lastGenTelemetry_.breedingUsesBudget = effectiveMutationConfig.useBudget;
+    lastGenTelemetry_.breedingMutationMode = effectiveAdaptiveMutation.mode;
+    lastGenTelemetry_.breedingResolvedPerturbationsPerOffspring =
+        effectiveMutationConfig.perturbationsPerOffspring;
+    lastGenTelemetry_.breedingResolvedResetsPerOffspring =
+        effectiveMutationConfig.resetsPerOffspring;
+    lastGenTelemetry_.breedingResolvedSigma = effectiveMutationConfig.sigma;
     lastGenTelemetry_.breedingPerturbationsAvg = survivorPopulationSize > 0
         ? static_cast<double>(perturbationsTotal) / static_cast<double>(survivorPopulationSize)
         : 0.0;
@@ -1649,9 +1694,10 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     LOG_INFO(
         State,
-        "Evolution: offspring cycle gen={} total={} mutated={} clones={} (no_genome={} "
-        "mutation_disabled={} no_delta={})",
+        "Evolution: offspring cycle gen={} mode={} total={} mutated={} clones={} "
+        "(no_genome={} mutation_disabled={} no_delta={})",
         generation,
+        adaptiveMutationModeName(effectiveAdaptiveMutation.mode),
         mutationStats.totalOffspring,
         mutationStats.mutated,
         mutationStats.cloneCount(),
@@ -2023,11 +2069,20 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .activeParallelism = activeParallelism,
         .cpuPercent = latestCpu,
         .cpuPercentPerCore = lastCpuPercentPerCore_,
-        .lastBreedingPerturbationsAvg = lastGenTelemetry_.breedingPerturbationsAvg,
-        .lastBreedingResetsAvg = lastGenTelemetry_.breedingResetsAvg,
-        .lastBreedingWeightChangesAvg = lastGenTelemetry_.breedingWeightChangesAvg,
-        .lastBreedingWeightChangesMin = lastGenTelemetry_.breedingWeightChangesMin,
-        .lastBreedingWeightChangesMax = lastGenTelemetry_.breedingWeightChangesMax,
+        .lastBreeding =
+            Api::EvolutionBreedingTelemetry{
+                .usesBudget = lastGenTelemetry_.breedingUsesBudget,
+                .mutationMode = lastGenTelemetry_.breedingMutationMode,
+                .resolvedPerturbationsPerOffspring =
+                    lastGenTelemetry_.breedingResolvedPerturbationsPerOffspring,
+                .resolvedResetsPerOffspring = lastGenTelemetry_.breedingResolvedResetsPerOffspring,
+                .resolvedSigma = lastGenTelemetry_.breedingResolvedSigma,
+                .perturbationsAvg = lastGenTelemetry_.breedingPerturbationsAvg,
+                .resetsAvg = lastGenTelemetry_.breedingResetsAvg,
+                .weightChangesAvg = lastGenTelemetry_.breedingWeightChangesAvg,
+                .weightChangesMin = lastGenTelemetry_.breedingWeightChangesMin,
+                .weightChangesMax = lastGenTelemetry_.breedingWeightChangesMax,
+            },
         .lastGenerationEliteCarryoverCount = lastGenTelemetry_.eliteCarryoverCount,
         .lastGenerationSeedCount = lastGenTelemetry_.seedCount,
         .lastGenerationOffspringCloneCount = lastGenTelemetry_.offspringCloneCount,

@@ -16,6 +16,11 @@ int normalizeStagnationWindow(int value)
     return std::max(value, 1);
 }
 
+int recoveryLevelNext(int recoveryLevel)
+{
+    return std::max(recoveryLevel - 1, 0);
+}
+
 int stagnationLevelCompute(int generationsSinceImprovement, int stagnationWindowGenerations)
 {
     if (generationsSinceImprovement >= stagnationWindowGenerations * 2) {
@@ -69,23 +74,29 @@ TrainingPhaseUpdate TrainingPhaseTracker::updateCompletedGeneration(
     const double improvementEpsilon = std::max(0.0, config.stagnationImprovementEpsilon);
     const bool improved = !std::isfinite(lastMeaningfulBestFitness_)
         || completedBestFitness > lastMeaningfulBestFitness_ + improvementEpsilon;
+    const bool wasRecovery = status_.phase == TrainingPhase::Recovery;
+    const bool wasStagnated = status_.stagnationLevel > 0;
 
     if (improved) {
-        const bool wasStagnated =
-            status_.stagnationLevel > 0 || status_.phase == TrainingPhase::Recovery;
         lastMeaningfulBestFitness_ = completedBestFitness;
         status_.lastImprovementGeneration = generation;
         status_.generationsSinceImprovement = 0;
         status_.stagnationLevel = 0;
-        status_.recoveryLevel = wasStagnated ? recoveryWindowGenerations : 0;
+        if (wasStagnated) {
+            status_.recoveryLevel = recoveryWindowGenerations;
+        }
+        else if (wasRecovery) {
+            status_.recoveryLevel = recoveryLevelNext(status_.recoveryLevel);
+        }
+        else {
+            status_.recoveryLevel = 0;
+        }
     }
     else {
         status_.generationsSinceImprovement++;
         status_.stagnationLevel = stagnationLevelCompute(
             status_.generationsSinceImprovement, stagnationWindowGenerations);
-        if (status_.recoveryLevel > 0) {
-            status_.recoveryLevel--;
-        }
+        status_.recoveryLevel = recoveryLevelNext(status_.recoveryLevel);
     }
 
     status_.phase = phaseResolve(status_);

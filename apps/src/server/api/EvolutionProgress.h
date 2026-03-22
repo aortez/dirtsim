@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/organisms/evolution/AdaptiveMutation.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingPhase.h"
 #include <cstdint>
@@ -15,6 +16,25 @@ namespace Api {
  * Progress update broadcast from server during evolution.
  * Not a request/response — pushed to subscribed clients.
  */
+struct EvolutionBreedingTelemetry {
+    bool usesBudget = false;
+    AdaptiveMutationMode mutationMode = AdaptiveMutationMode::Baseline;
+    // Resolved generation-level config before per-genome clamp in mutate().
+    int resolvedPerturbationsPerOffspring = 0;
+    int resolvedResetsPerOffspring = 0;
+    double resolvedSigma = 0.0;
+    double perturbationsAvg = 0.0;
+    double resetsAvg = 0.0;
+    double weightChangesAvg = 0.0;
+    int weightChangesMin = 0;
+    int weightChangesMax = 0;
+
+    using serialize = zpp::bits::members<10>;
+};
+
+void to_json(nlohmann::json& j, const EvolutionBreedingTelemetry& value);
+void from_json(const nlohmann::json& j, EvolutionBreedingTelemetry& value);
+
 struct EvolutionProgress {
     int generation = 0;
     int maxGenerations = 0;
@@ -55,11 +75,7 @@ struct EvolutionProgress {
     std::vector<double> cpuPercentPerCore; // Latest per-core CPU measurements.
 
     // Breeding telemetry from the most recent offspring generation step.
-    double lastBreedingPerturbationsAvg = 0.0;
-    double lastBreedingResetsAvg = 0.0;
-    double lastBreedingWeightChangesAvg = 0.0;
-    int lastBreedingWeightChangesMin = 0;
-    int lastBreedingWeightChangesMax = 0;
+    EvolutionBreedingTelemetry lastBreeding{};
 
     // Telemetry from the most recently completed generation evaluation.
     int lastGenerationEliteCarryoverCount = 0;
@@ -78,7 +94,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<50>;
+    using serialize = zpp::bits::members<46>;
 };
 
 } // namespace Api

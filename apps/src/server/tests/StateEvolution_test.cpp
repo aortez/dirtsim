@@ -1499,6 +1499,105 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     EXPECT_TRUE(foundMutation);
 }
 
+TEST(StateEvolutionTest, AdaptiveBudgetedMutationTracksPhaseAndKeepsPopulationSize)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.maxGenerations = 4;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
+    evolutionState.evolutionConfig.stagnationWindowGenerations = 1;
+    evolutionState.evolutionConfig.recoveryWindowGenerations = 3;
+    evolutionState.mutationConfig = MutationConfig{
+        .useBudget = true,
+        .perturbationsPerOffspring = 10,
+        .resetsPerOffspring = 1,
+        .sigma = 0.05,
+    };
+
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const Genome seedGenome = makeNeuralNetGenome(0.1f);
+    const GenomeId seedId = UUID::generate();
+    const GenomeMetadata seedMeta{
+        .name = "seed",
+        .fitness = 1.0,
+        .robustFitness = 1.0,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { 1.0 },
+        .generation = 0,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+    };
+    repo.store(seedId, seedGenome, seedMeta);
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 2;
+    population.seedGenomes = { seedId, seedId };
+    population.randomCount = 0;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    const auto advanceToGeneration = [&evolutionState, &fixture](int targetGeneration) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < deadline
+               && evolutionState.generation < targetGeneration) {
+            auto result = evolutionState.tick(*fixture.stateMachine);
+            ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_EQ(evolutionState.generation, targetGeneration);
+    };
+
+    advanceToGeneration(1);
+    EXPECT_EQ(evolutionState.trainingPhaseTracker_.status().phase, TrainingPhase::Normal);
+    EXPECT_EQ(evolutionState.lastEffectiveAdaptiveMutation_.mode, AdaptiveMutationMode::Baseline);
+    EXPECT_EQ(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.perturbationsPerOffspring,
+        evolutionState.mutationConfig.perturbationsPerOffspring);
+    EXPECT_EQ(evolutionState.population.size(), 4u);
+
+    advanceToGeneration(2);
+    EXPECT_EQ(evolutionState.trainingPhaseTracker_.status().phase, TrainingPhase::Plateau);
+    EXPECT_EQ(evolutionState.lastEffectiveAdaptiveMutation_.mode, AdaptiveMutationMode::Explore);
+    EXPECT_GT(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.perturbationsPerOffspring,
+        evolutionState.mutationConfig.perturbationsPerOffspring);
+    EXPECT_GT(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.resetsPerOffspring,
+        evolutionState.mutationConfig.resetsPerOffspring);
+    EXPECT_EQ(evolutionState.population.size(), 4u);
+
+    const EffectiveAdaptiveMutation exploreMutation = evolutionState.lastEffectiveAdaptiveMutation_;
+
+    advanceToGeneration(3);
+    EXPECT_EQ(evolutionState.trainingPhaseTracker_.status().phase, TrainingPhase::Stuck);
+    EXPECT_EQ(evolutionState.lastEffectiveAdaptiveMutation_.mode, AdaptiveMutationMode::Rescue);
+    EXPECT_GT(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.perturbationsPerOffspring,
+        exploreMutation.mutationConfig.perturbationsPerOffspring);
+    EXPECT_GT(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.resetsPerOffspring,
+        exploreMutation.mutationConfig.resetsPerOffspring);
+    EXPECT_GT(
+        evolutionState.lastEffectiveAdaptiveMutation_.mutationConfig.sigma,
+        exploreMutation.mutationConfig.sigma);
+    EXPECT_EQ(evolutionState.population.size(), 4u);
+}
+
 /**
  * @brief Test that evolution completes and transitions after training result delivery.
  */

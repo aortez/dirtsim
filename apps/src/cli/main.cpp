@@ -84,6 +84,21 @@ const char* trainingPhaseLabel(TrainingPhase phase)
     return "unknown";
 }
 
+const char* adaptiveMutationModeLabel(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return "baseline";
+        case AdaptiveMutationMode::Explore:
+            return "explore";
+        case AdaptiveMutationMode::Rescue:
+            return "rescue";
+        case AdaptiveMutationMode::Recover:
+            return "recover";
+    }
+    return "unknown";
+}
+
 std::string commandTypeFromSignature(const std::string& signature)
 {
     const std::string_view delimiter = " -> ";
@@ -2289,10 +2304,19 @@ int main(int argc, char** argv)
                               << progress.lastGenerationPhenotypeNovelOffspringMutatedCount;
 
                     telemetry << " breedΔw=" << std::fixed << std::setprecision(0)
-                              << progress.lastBreedingWeightChangesAvg;
-                    telemetry << "[" << progress.lastBreedingWeightChangesMin << ".."
-                              << progress.lastBreedingWeightChangesMax << "]";
-                    telemetry << " resetAvg=" << progress.lastBreedingResetsAvg;
+                              << progress.lastBreeding.weightChangesAvg;
+                    telemetry << "[" << progress.lastBreeding.weightChangesMin << ".."
+                              << progress.lastBreeding.weightChangesMax << "]";
+                    telemetry << " resetAvg=" << progress.lastBreeding.resetsAvg;
+                    telemetry << " mutMode="
+                              << adaptiveMutationModeLabel(progress.lastBreeding.mutationMode);
+                    if (progress.lastBreeding.usesBudget) {
+                        telemetry << " mutResolved="
+                                  << progress.lastBreeding.resolvedPerturbationsPerOffspring << "/"
+                                  << progress.lastBreeding.resolvedResetsPerOffspring << "/"
+                                  << std::fixed << std::setprecision(3)
+                                  << progress.lastBreeding.resolvedSigma;
+                    }
 
                     std::cout << telemetry.str() << std::endl;
                 }

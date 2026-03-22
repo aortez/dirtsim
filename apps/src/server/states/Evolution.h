@@ -10,6 +10,7 @@
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/evolution/AdaptiveMutation.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
@@ -95,6 +96,7 @@ struct Evolution {
     GenomeId bestGenomeId{};
     uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    EffectiveAdaptiveMutation lastEffectiveAdaptiveMutation_{};
     TrainingPhaseTracker trainingPhaseTracker_;
     int lastCompletedGeneration_ = -1;
     double lastGenerationAverageFitness_ = 0.0;
@@ -221,6 +223,11 @@ private:
         int phenotypeUniqueEliteCarryoverCount = 0;
         int phenotypeUniqueOffspringMutatedCount = 0;
         int phenotypeNovelOffspringMutatedCount = 0;
+        bool breedingUsesBudget = false;
+        AdaptiveMutationMode breedingMutationMode = AdaptiveMutationMode::Baseline;
+        int breedingResolvedPerturbationsPerOffspring = 0;
+        int breedingResolvedResetsPerOffspring = 0;
+        double breedingResolvedSigma = 0.0;
         double breedingPerturbationsAvg = 0.0;
         double breedingResetsAvg = 0.0;
         double breedingWeightChangesAvg = 0.0;
