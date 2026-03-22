@@ -25,11 +25,10 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 
 ## Near-Term Priority Order
 
-1. Finish the remaining gameplay/setup paths that still treat legacy water cells as bulk water.
-2. Make `waterVolume` setup/reset fully explicit when a `World` is reused.
-3. Add MAC-based quiet metrics and allow calm pool interiors to sleep.
-4. Gate MAC water work by active regions if profiling shows it is still needed.
-5. Add an optional transient spray/droplet layer.
+1. Finish the tracked-only Phase 3 water quiet-state slice and validate calm pool interiors.
+2. Tune the first water wake policy for interfaces, drains, inlets, and impacts.
+3. Gate MAC water work by active regions if profiling shows it is still needed.
+4. Add an optional transient spray/droplet layer.
 
 ## Current Branch Status
 
@@ -40,7 +39,10 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 - External edits, blocked transfers, gravity changes, and material moves already feed the tracker.
 - Region debug overlay plumbing exists and is visible in the UI.
 - Selected dry-region hot loops now enforce sleeping for conservative dry interiors.
-- Water regions and dirt/water boundary regions remain `tracked-only`.
+- Calm MAC pool interiors can already reach `Sleeping` tracker state in the first tracked-only
+  water slice.
+- Water regions and dirt/water boundary regions remain `tracked-only`; water-region work is not yet
+  skipped.
 - Static-load work, MAC-water work, and some dry-region processing are still not gated by the sleep
   mask.
 
@@ -55,22 +57,27 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 - Production scenario water sources now author bulk water through explicit bulk-water APIs instead
   of instantiating legacy water cells in MAC mode.
 - Generic material mutation no longer authors bulk water in MAC mode.
-- Editor/server water commands now use explicit `BulkWaterSet` / `SpawnWaterBall` paths instead of
-  overloading solid-material commands.
+- Editor/server/CLI water commands now use explicit `BulkWaterSet` / `SpawnWaterBall` paths
+  instead of overloading solid-material commands.
 - `CellSet` is back to meaning air/solid cell edits only; it no longer carries a hidden water
   payload path.
 - `SpawnDirtBall` is literal dirt again; water spawning is an explicit peer command rather than a
   selected-material special case.
+- Top-level scenario setup/reset paths now clear `waterVolume` explicitly when a `World` is reused.
 
-### Remaining Water Migration Gaps
+### Phase 2 Completion Notes
 
-- Some gameplay and scenario logic still assumes `Cell.material_type == Water`.
-- Scenario setup and reset are inconsistent about clearing or repopulating `waterVolume` when a
-  `World` instance is reused.
+- No known active MAC bulk-water authoring path now depends on `Cell.material_type == Water`.
+- Remaining `Material::EnumType::Water` references are expected legacy-mode physics, rendering,
+  palette/sensing, or explicit helper/cleanup code around bulk-water APIs.
+- If a new gameplay path needs bulk-water authoring, it should use the explicit bulk-water APIs
+  rather than reopening generic material mutation.
 
-### Current Phase 2 Exit Line
+### Phase 2 Status
 
-Phase 2 should be considered complete when:
+Phase 2 is complete on this branch.
+
+The following are now true:
 
 - production MAC bulk-water behavior no longer depends on legacy water cells,
 - reused worlds do not carry stale `waterVolume`,
@@ -138,6 +145,11 @@ The target end state is:
 
 ### Phase 2: Finish MAC Water Ownership And Remove Bulk Legacy Assumptions
 
+#### Status
+
+- Complete on the current branch.
+- Reopen only if a new active MAC bulk-water ownership leak is found.
+
 #### Scope
 
 - Add a shared helper or query layer for water presence, amount, and edits in MAC mode.
@@ -156,8 +168,7 @@ The target end state is:
 
 - This does not require designing water sleeping yet.
 - The goal is to establish one authoritative bulk-water representation before adding more behavior.
-- The command-surface cleanup is effectively done; the remaining work is mainly gameplay logic,
-  scenario reset/setup consistency, and any lingering legacy-water assumptions behind helper paths.
+- The command-surface and scenario-reset cleanup is complete on the current branch.
 - In practice this phase splits into two kinds of work:
   - straightforward bulk-water migration, such as scenario setup/reset, bulk-water counting,
     hydration, and simple add/remove paths;
@@ -185,6 +196,7 @@ The target end state is:
 - Bulk-water behavior no longer depends on surviving legacy water cells.
 - Production MAC bulk-water behavior no longer depends on generic water-material mutation paths.
 - Public/editor command surfaces do not overload solid-material commands to author bulk water.
+- The items above are satisfied on the current branch.
 
 ### Phase 3: Add Water Quiet Metrics And Sleep Calm Pool Interiors
 
