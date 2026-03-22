@@ -251,7 +251,10 @@ EvaluationPassResult runEvaluationPass(
     const FitnessModelBundle& fitnessModel,
     bool includeGenerationDetails,
     const std::shared_ptr<VisibleEvaluationHandle>& visibleHandle,
-    std::atomic<bool>* stopRequested)
+    std::atomic<bool>* stopRequested,
+    std::condition_variable* pauseCv,
+    std::mutex* pauseMutex,
+    bool* paused)
 {
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = brainRegistry,
@@ -279,6 +282,15 @@ EvaluationPassResult runEvaluationPass(
     TrainingRunner::Status status;
     while (status.state == TrainingRunner::State::Running
            && !(stopRequested && stopRequested->load())) {
+        if (pauseCv && pauseMutex && paused) {
+            std::unique_lock<std::mutex> lock(*pauseMutex);
+            pauseCv->wait(lock, [stopRequested, paused]() {
+                return !*paused || (stopRequested && stopRequested->load());
+            });
+        }
+        if (stopRequested && stopRequested->load()) {
+            break;
+        }
         status = runner.step(1);
         if (visibleHandle) {
             const WorldData* worldData = runner.getWorldData();
@@ -477,6 +489,9 @@ struct EvaluationExecutor::Impl {
     std::condition_variable taskCv;
     std::deque<CompletedEvaluation> resultQueue;
     std::mutex resultMutex;
+    bool paused = false;
+    std::condition_variable pauseCv;
+    std::mutex pauseMutex;
     std::atomic<bool> stopRequested{ false };
     std::atomic<int> allowedConcurrency{ 0 };
     std::atomic<int> activeEvaluations{ 0 };
@@ -595,7 +610,10 @@ std::optional<CompletedEvaluation> runEvaluationTask(
         impl.config.fitnessModel,
         includeGenerationDetails,
         visibleHandle,
-        &impl.stopRequested);
+        &impl.stopRequested,
+        &impl.pauseCv,
+        &impl.pauseMutex,
+        &impl.paused);
 
     CompletedEvaluation result = buildCompletedEvaluationFromPass(
         initialQueued.request, std::move(primaryPass), includeGenerationDetails);
@@ -624,7 +642,10 @@ std::optional<CompletedEvaluation> runEvaluationTask(
             impl.config.fitnessModel,
             includeGenerationDetails,
             visibleHandle,
-            &impl.stopRequested);
+            &impl.stopRequested,
+            &impl.pauseCv,
+            &impl.pauseMutex,
+            &impl.paused);
         passResults.push_back(buildCompletedEvaluationFromPass(
             passQueued.request, std::move(pass), includeGenerationDetails));
     }
@@ -658,6 +679,21 @@ EvaluationExecutor::~EvaluationExecutor()
     stop();
 }
 
+bool EvaluationExecutor::isPaused() const
+{
+    std::lock_guard<std::mutex> lock(impl_->pauseMutex);
+    return impl_->paused;
+}
+
+void EvaluationExecutor::pauseSet(bool paused)
+{
+    {
+        std::lock_guard<std::mutex> lock(impl_->pauseMutex);
+        impl_->paused = paused;
+    }
+    impl_->pauseCv.notify_all();
+}
+
 void EvaluationExecutor::start(int maxParallelEvaluations)
 {
     stop();
@@ -667,6 +703,7 @@ void EvaluationExecutor::start(int maxParallelEvaluations)
     impl_->backgroundWorkerCount = resolvedParallelEvaluations;
     impl_->allowedConcurrency.store(impl_->backgroundWorkerCount);
     impl_->activeEvaluations.store(0);
+    impl_->paused = false;
     impl_->stopRequested.store(false);
     impl_->visible.reset();
 
@@ -718,6 +755,11 @@ void EvaluationExecutor::stop()
     }
 
     impl_->stopRequested.store(true);
+    {
+        std::lock_guard<std::mutex> lock(impl_->pauseMutex);
+        impl_->paused = false;
+    }
+    impl_->pauseCv.notify_all();
     impl_->taskCv.notify_all();
 
     for (auto& worker : impl_->workers) {

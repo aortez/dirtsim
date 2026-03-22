@@ -40,8 +40,8 @@ struct EvolutionProgress {
     int maxGenerations = 0;
     int currentEval = 0;
     int populationSize = 0;
-    int totalGenomeCount = 0;
-    int genomeArchiveMaxSize = 0; // Per organismType+brainKind cap for managed genomes.
+    int totalGenomeCount = 0;     // Managed genomes in the current training archive buckets.
+    int genomeArchiveMaxSize = 0; // Total archive capacity across current training buckets.
     // Latest validated best for genome brains, or latest evaluated-generation best for
     // non-genome brains.
     double bestFitnessThisGen = 0.0;
@@ -65,11 +65,12 @@ struct EvolutionProgress {
     std::vector<uint32_t> lastGenerationFitnessHistogram;
     std::string bestThisGenSource = "none";
     GenomeId bestGenomeId{};
-    double totalTrainingSeconds = 0.0;     // Real-world seconds since training started.
-    double currentSimTime = 0.0;           // Sim time for current individual.
-    double cumulativeSimTime = 0.0;        // Total sim time across all individuals.
-    double speedupFactor = 0.0;            // Sim time / real time.
-    double etaSeconds = 0.0;               // Estimated time remaining.
+    double totalTrainingSeconds = 0.0; // Real-world seconds spent actively training.
+    double currentSimTime = 0.0;       // Sim time for current individual.
+    double cumulativeSimTime = 0.0;    // Total sim time across all individuals.
+    double speedupFactor = 0.0;        // Sim time / real time.
+    double etaSeconds = 0.0;           // Estimated time remaining.
+    bool isPaused = false;
     int activeParallelism = 0;             // Current allowed concurrency (background + main).
     double cpuPercent = 0.0;               // Latest system CPU measurement.
     std::vector<double> cpuPercentPerCore; // Latest per-core CPU measurements.
@@ -94,7 +95,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<46>;
+    using serialize = zpp::bits::members<47>;
 };
 
 } // namespace Api

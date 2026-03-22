@@ -12,6 +12,11 @@ namespace DirtSim::Tests {
 
 class MockWebSocketService : public Network::WebSocketServiceInterface {
 public:
+    struct SentClientBinary {
+        std::string connectionId;
+        std::vector<std::byte> data;
+    };
+
     MockWebSocketService() = default;
 
     template <typename CommandType>
@@ -33,7 +38,14 @@ public:
     }
 
     const std::vector<std::string>& sentCommands() const { return sentCommands_; }
-    void clearSentCommands() { sentCommands_.clear(); }
+    const std::vector<Network::MessageEnvelope>& sentEnvelopes() const { return sentEnvelopes_; }
+    const std::vector<SentClientBinary>& sentClientBinaries() const { return sentClientBinaries_; }
+    void clearSentCommands()
+    {
+        sentCommands_.clear();
+        sentEnvelopes_.clear();
+    }
+    void clearSentClientBinaries() { sentClientBinaries_.clear(); }
 
     Result<std::monostate, std::string> connect(
         const std::string& /*url*/, int /*timeoutMs*/ = 5000) override;
@@ -88,6 +100,8 @@ private:
     std::string accessToken_;
     std::map<std::string, Network::MessageEnvelope> responses_;
     std::vector<std::string> sentCommands_;
+    std::vector<Network::MessageEnvelope> sentEnvelopes_;
+    std::vector<SentClientBinary> sentClientBinaries_;
     ConnectionCallback connectedCallback_;
     ConnectionCallback disconnectedCallback_;
     ErrorCallback errorCallback_;

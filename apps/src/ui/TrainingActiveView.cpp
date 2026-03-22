@@ -1732,6 +1732,8 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
         return;
     }
 
+    setTrainingPaused(progress.isPaused);
+
     const auto now = std::chrono::steady_clock::now();
     if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {
         lastProgressUiLog_ = now;

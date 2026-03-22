@@ -18,6 +18,7 @@
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
+#include "server/api/EvolutionPauseSet.h"
 #include "server/evolution/EvaluationExecutor.h"
 #include "server/evolution/FitnessEvaluation.h"
 #include "server/evolution/FitnessModelBundle.h"
@@ -115,11 +116,14 @@ struct Evolution {
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
+    std::chrono::steady_clock::time_point trainingPauseStartTime_{};
     double cumulativeSimTime_ = 0.0; // Total sim time across all completed individuals.
     double sumFitnessThisGen_ = 0.0;
     double finalAverageFitness_ = 0.0;
     double finalTrainingSeconds_ = 0.0;
+    std::chrono::steady_clock::duration totalPausedDuration_{};
     bool trainingComplete_ = false;
+    bool trainingPaused_ = false;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackBroadcastTime_{};
     std::chrono::steady_clock::time_point lastBestPlaybackStepTime_{};
@@ -160,6 +164,7 @@ struct Evolution {
     // Returns a state to transition to, or nullopt to stay in Evolution.
     std::optional<Any> tick(StateMachine& dsm);
 
+    Any onEvent(const Api::EvolutionPauseSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
@@ -282,8 +287,10 @@ private:
     void handleRobustnessSampleResult(
         StateMachine& dsm, const EvolutionSupport::CompletedEvaluation& result);
     void finalizeRobustnessPass(StateMachine& dsm);
+    double activeTrainingSecondsGet(std::chrono::steady_clock::time_point now) const;
     void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
+    void pauseSet(bool paused, StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
     void setBestPlaybackSource(const Individual& individual, double fitness, int generation);
     void stepBestPlayback(StateMachine& dsm);

@@ -53,7 +53,6 @@ struct TrainingActive {
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
     std::optional<Starfield::Snapshot> starfieldSnapshot_;
-    bool trainingPaused_ = false;
     bool hasPlottedBestFitness_ = false;
     std::vector<float> plotAverageSeries_;
     std::vector<float> plotBestSeries_;

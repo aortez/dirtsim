@@ -143,6 +143,47 @@ EvolutionConfig makeEvolutionConfig(int populationSize, double maxSimulationTime
     return config;
 }
 
+int completedCountDrain(EvaluationExecutor& executor)
+{
+    int completedCount = static_cast<int>(executor.completedDrain().size());
+    completedCount += static_cast<int>(
+        executor.visibleTick(std::chrono::steady_clock::now(), 0).completed.size());
+    return completedCount;
+}
+
+bool waitForVisibleSimTime(EvaluationExecutor& executor, double minSimTime, int timeoutMs)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        if (executor.visibleSimTimeGet() >= minSimTime) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
+double waitForVisibleSimTimeStable(EvaluationExecutor& executor, int timeoutMs)
+{
+    double stableSimTime = executor.visibleSimTimeGet();
+    auto stableSince = std::chrono::steady_clock::now();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        const double currentSimTime = executor.visibleSimTimeGet();
+        if (currentSimTime != stableSimTime) {
+            stableSimTime = currentSimTime;
+            stableSince = std::chrono::steady_clock::now();
+        }
+        else if (std::chrono::steady_clock::now() - stableSince >= std::chrono::milliseconds(20)) {
+            return stableSimTime;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return stableSimTime;
+}
+
 } // namespace
 
 TEST(EvaluationExecutorTest, VisibleEvaluationAdvancesIncrementally)
@@ -344,4 +385,101 @@ TEST(EvaluationExecutorTest, DuckClockVisibleEvaluationUsesFlatBasicPreviewLight
     ASSERT_TRUE(frame.has_value());
     EXPECT_TRUE(allAirCellsBlack(frame->worldData));
     EXPECT_TRUE(hasLitSolidCell(frame->worldData));
+}
+
+TEST(EvaluationExecutorTest, VisibleEvaluationDoesNotAdvanceWhilePaused)
+{
+    TestStateMachineFixture fixture;
+    const TrainingSpec trainingSpec =
+        makeTrainingSpec(Scenario::EnumType::TreeGermination, OrganismType::TREE, 1);
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(1, 1.0);
+    const std::vector<EvaluationRequest> requests{
+        makeGenerationRequest(0, Scenario::EnumType::TreeGermination, 0.1f),
+    };
+
+    executor.start(1);
+    executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
+
+    ASSERT_TRUE(waitForVisibleSimTime(executor, 0.01, 2000));
+
+    executor.pauseSet(true);
+    const double pausedSimTime = waitForVisibleSimTimeStable(executor, 100);
+    const auto pauseDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    int completedWhilePaused = 0;
+    while (std::chrono::steady_clock::now() < pauseDeadline) {
+        completedWhilePaused += completedCountDrain(executor);
+        EXPECT_NEAR(executor.visibleSimTimeGet(), pausedSimTime, 1e-9);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    EXPECT_EQ(completedWhilePaused, 0);
+
+    executor.pauseSet(false);
+
+    bool resumed = false;
+    const auto resumeDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < resumeDeadline) {
+        const double visibleSimTime = executor.visibleSimTimeGet();
+        const int completed = completedCountDrain(executor);
+        if (visibleSimTime > pausedSimTime || completed > 0) {
+            resumed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    EXPECT_TRUE(resumed);
+}
+
+TEST(EvaluationExecutorTest, BackgroundEvaluationsDoNotCompleteWhilePaused)
+{
+    TestStateMachineFixture fixture;
+    const TrainingSpec trainingSpec =
+        makeTrainingSpec(Scenario::EnumType::TreeGermination, OrganismType::TREE, 2);
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(2, 2.0);
+    const std::vector<EvaluationRequest> requests{
+        makeGenerationRequest(0, Scenario::EnumType::TreeGermination, 0.1f),
+        makeGenerationRequest(1, Scenario::EnumType::TreeGermination, 0.2f),
+    };
+
+    executor.start(2);
+    executor.generationBatchSubmit(requests, evolutionConfig, std::nullopt);
+
+    const auto activeDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < activeDeadline) {
+        executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        if (executor.activeEvaluationsGet() == 2 && executor.visibleSimTimeGet() > 0.0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_EQ(executor.activeEvaluationsGet(), 2);
+
+    executor.pauseSet(true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    int completedWhilePaused = 0;
+    const auto pauseDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    while (std::chrono::steady_clock::now() < pauseDeadline) {
+        completedWhilePaused += completedCountDrain(executor);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    EXPECT_EQ(completedWhilePaused, 0);
+
+    executor.pauseSet(false);
+
+    int completedAfterResume = 0;
+    const auto resumeDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+    while (std::chrono::steady_clock::now() < resumeDeadline && completedAfterResume < 2) {
+        completedAfterResume += completedCountDrain(executor);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    EXPECT_EQ(completedAfterResume, 2);
 }
