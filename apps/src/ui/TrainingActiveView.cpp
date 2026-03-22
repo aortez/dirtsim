@@ -38,6 +38,94 @@ constexpr std::array<const char*, 8> kNesButtonLabels{ "U", "D", "L", "R", "A", 
 constexpr std::array<const char*, 4> kNesOutputLabels{ "X", "Y", "A", "B" };
 constexpr float kNesOutputBarMaxMagnitude = 4.0f;
 
+const char* trainingPhaseLabel(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return "Normal";
+        case TrainingPhase::Plateau:
+            return "Plateau";
+        case TrainingPhase::Stuck:
+            return "Stuck";
+        case TrainingPhase::Recovery:
+            return "Recovery";
+    }
+    return "Unknown";
+}
+
+lv_color_t trainingPhaseTextColor(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return lv_color_hex(0x00CC66);
+        case TrainingPhase::Plateau:
+            return lv_color_hex(0xFFAA33);
+        case TrainingPhase::Stuck:
+            return lv_color_hex(0xFF6666);
+        case TrainingPhase::Recovery:
+            return lv_color_hex(0x66CCFF);
+    }
+    return lv_color_hex(0x888888);
+}
+
+const char* adaptiveMutationModeLabel(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return "Baseline";
+        case AdaptiveMutationMode::Explore:
+            return "Explore";
+        case AdaptiveMutationMode::Rescue:
+            return "Rescue";
+        case AdaptiveMutationMode::Recover:
+            return "Recover";
+    }
+    return "Unknown";
+}
+
+lv_color_t adaptiveMutationModeTextColor(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return lv_color_hex(0x00CC66);
+        case AdaptiveMutationMode::Explore:
+            return lv_color_hex(0xFFAA33);
+        case AdaptiveMutationMode::Rescue:
+            return lv_color_hex(0xFF6666);
+        case AdaptiveMutationMode::Recover:
+            return lv_color_hex(0x66CCFF);
+    }
+    return lv_color_hex(0x888888);
+}
+
+void setCompactStatsLabelStyle(lv_obj_t* label, lv_color_t color)
+{
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+}
+
+void setCompactStatsBadgeAccent(lv_obj_t* label, lv_color_t color)
+{
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_bg_color(label, color, 0);
+    lv_obj_set_style_border_color(label, color, 0);
+}
+
+void setCompactStatsBadgeStyle(lv_obj_t* label, lv_color_t color)
+{
+    setCompactStatsLabelStyle(label, color);
+    lv_obj_set_style_bg_color(label, color, 0);
+    lv_obj_set_style_bg_opa(label, LV_OPA_20, 0);
+    lv_obj_set_style_border_color(label, color, 0);
+    lv_obj_set_style_border_opa(label, LV_OPA_40, 0);
+    lv_obj_set_style_border_width(label, 1, 0);
+    lv_obj_set_style_pad_left(label, 8, 0);
+    lv_obj_set_style_pad_right(label, 8, 0);
+    lv_obj_set_style_pad_top(label, 3, 0);
+    lv_obj_set_style_pad_bottom(label, 3, 0);
+    lv_obj_set_style_radius(label, 6, 0);
+}
+
 struct BestRenderRequest {
     TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
@@ -455,6 +543,8 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     setTransparentColumnLayout(bestFitnessPresentationContent_, 8);
     renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
 
+    const int strategyColumnWidth = std::clamp(centerColumnWidth / 3, 280, 360);
+
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
     lv_obj_set_size(statsPanel_, LV_PCT(100), LV_SIZE_CONTENT);
@@ -470,90 +560,54 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
         statsPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(statsPanel_, LV_OBJ_FLAG_SCROLLABLE);
 
+    lv_obj_t* headerRow = lv_obj_create(statsPanel_);
+    setTransparentRowLayout(headerRow, 18);
+    lv_obj_set_flex_flow(headerRow, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(headerRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+    lv_obj_t* summaryColumn = lv_obj_create(headerRow);
+    setTransparentColumnLayout(summaryColumn, 6);
+    lv_obj_set_size(summaryColumn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(summaryColumn, 1);
+    lv_obj_set_style_min_width(summaryColumn, 0, 0);
+
+    lv_obj_t* strategyColumn = lv_obj_create(headerRow);
+    setTransparentColumnLayout(strategyColumn, 4);
+    lv_obj_set_size(strategyColumn, strategyColumnWidth, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(strategyColumn, lv_color_hex(0x121626), 0);
+    lv_obj_set_style_bg_opa(strategyColumn, LV_OPA_50, 0);
+    lv_obj_set_style_border_width(strategyColumn, 1, 0);
+    lv_obj_set_style_border_color(strategyColumn, lv_color_hex(0x2A2A44), 0);
+    lv_obj_set_style_pad_all(strategyColumn, 6, 0);
+
     // Title row: "EVOLUTION" + status.
-    lv_obj_t* titleRow = lv_obj_create(statsPanel_);
-    lv_obj_set_size(titleRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(titleRow, 0, 0);
-    lv_obj_set_style_pad_all(titleRow, 0, 0);
-    lv_obj_set_flex_flow(titleRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        titleRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(titleRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* titleRow = lv_obj_create(summaryColumn);
+    setTransparentRowLayout(titleRow, 12);
 
     lv_obj_t* title = lv_label_create(titleRow);
     lv_label_set_text(title, "EVOLUTION");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FF88), 0);
-    lv_obj_set_style_pad_right(title, 15, 0);
+    lv_obj_set_style_pad_right(title, 12, 0);
 
     statusLabel_ = lv_label_create(titleRow);
     lv_label_set_text(statusLabel_, "Ready");
     lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
 
-    // Time stats row (compact horizontal).
-    lv_obj_t* timeRow = lv_obj_create(statsPanel_);
-    lv_obj_set_size(timeRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(timeRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(timeRow, 0, 0);
-    lv_obj_set_style_pad_all(timeRow, 0, 0);
-    lv_obj_set_style_pad_gap(timeRow, 12, 0);
-    lv_obj_set_flex_flow(timeRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        timeRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(timeRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    totalTimeLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(totalTimeLabel_, "Time: 0.0s");
-    lv_obj_set_style_text_color(totalTimeLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(totalTimeLabel_, &lv_font_montserrat_12, 0);
-
-    simTimeLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(simTimeLabel_, "Sim: 0.0s");
-    lv_obj_set_style_text_color(simTimeLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(simTimeLabel_, &lv_font_montserrat_12, 0);
-
-    speedupLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(speedupLabel_, "Speed: 0.0x");
-    lv_obj_set_style_text_color(speedupLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(speedupLabel_, &lv_font_montserrat_12, 0);
-
-    etaLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(etaLabel_, "ETA: --");
-    lv_obj_set_style_text_color(etaLabel_, lv_color_hex(0xFFDD66), 0);
-    lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
-
-    cpuLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(cpuLabel_, "CPU: --");
-    lv_obj_set_style_text_color(cpuLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(cpuLabel_, &lv_font_montserrat_12, 0);
-
-    parallelismLabel_ = lv_label_create(timeRow);
-    lv_label_set_text(parallelismLabel_, "Par: --");
-    lv_obj_set_style_text_color(parallelismLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(parallelismLabel_, &lv_font_montserrat_12, 0);
-
-    // Progress bars row.
-    lv_obj_t* progressRow = lv_obj_create(statsPanel_);
-    lv_obj_set_size(progressRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(progressRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(progressRow, 0, 0);
-    lv_obj_set_style_pad_all(progressRow, 0, 0);
-    lv_obj_set_style_pad_gap(progressRow, 12, 0);
-    lv_obj_set_flex_flow(progressRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        progressRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(progressRow, LV_OBJ_FLAG_SCROLLABLE);
+    // Progress row.
+    lv_obj_t* progressRow = lv_obj_create(summaryColumn);
+    setTransparentRowLayout(progressRow, 10);
+    lv_obj_set_flex_flow(progressRow, LV_FLEX_FLOW_ROW_WRAP);
 
     // Generation progress.
     genLabel_ = lv_label_create(progressRow);
-    lv_label_set_text(genLabel_, "Gen: 0/0");
+    lv_label_set_text(genLabel_, "Gen 0/0");
     lv_obj_set_style_text_color(genLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(genLabel_, &lv_font_montserrat_12, 0);
 
     generationBar_ = lv_bar_create(progressRow);
-    lv_obj_set_size(generationBar_, 120, 12);
+    lv_obj_set_size(generationBar_, 100, 12);
     lv_bar_set_range(generationBar_, 0, 100);
     lv_bar_set_value(generationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(generationBar_, lv_color_hex(0x333355), 0);
@@ -563,12 +617,12 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 
     // Evaluation progress.
     evalLabel_ = lv_label_create(progressRow);
-    lv_label_set_text(evalLabel_, "Eval: 0");
+    lv_label_set_text(evalLabel_, "Eval 0");
     lv_obj_set_style_text_color(evalLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(evalLabel_, &lv_font_montserrat_12, 0);
 
     evaluationBar_ = lv_bar_create(progressRow);
-    lv_obj_set_size(evaluationBar_, 120, 12);
+    lv_obj_set_size(evaluationBar_, 100, 12);
     lv_bar_set_range(evaluationBar_, 0, 100);
     lv_bar_set_value(evaluationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x333355), 0);
@@ -576,32 +630,109 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_radius(evaluationBar_, 4, 0);
     lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
 
-    genomeCountLabel_ = lv_label_create(progressRow);
-    lv_label_set_text(genomeCountLabel_, "Genomes: --");
-    lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(genomeCountLabel_, &lv_font_montserrat_12, 0);
-
-    // Fitness stats row.
-    lv_obj_t* fitnessRow = lv_obj_create(statsPanel_);
-    lv_obj_set_size(fitnessRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(fitnessRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(fitnessRow, 0, 0);
-    lv_obj_set_style_pad_all(fitnessRow, 0, 0);
-    lv_obj_set_style_pad_gap(fitnessRow, 15, 0);
-    lv_obj_set_flex_flow(fitnessRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        fitnessRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(fitnessRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    bestThisGenLabel_ = lv_label_create(fitnessRow);
-    lv_label_set_text(bestThisGenLabel_, "Last Fitness: --");
+    bestThisGenLabel_ = lv_label_create(progressRow);
+    lv_label_set_text(bestThisGenLabel_, "Last: --");
     lv_obj_set_style_text_color(bestThisGenLabel_, lv_color_hex(0xAAAACC), 0);
     lv_obj_set_style_text_font(bestThisGenLabel_, &lv_font_montserrat_12, 0);
 
-    bestAllTimeLabel_ = lv_label_create(fitnessRow);
-    lv_label_set_text(bestAllTimeLabel_, "All Time: --");
+    bestAllTimeLabel_ = lv_label_create(progressRow);
+    lv_label_set_text(bestAllTimeLabel_, "Best: --");
     lv_obj_set_style_text_color(bestAllTimeLabel_, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(bestAllTimeLabel_, &lv_font_montserrat_12, 0);
+
+    // Time and runtime stats row.
+    lv_obj_t* timeRow = lv_obj_create(summaryColumn);
+    setTransparentRowLayout(timeRow, 10);
+    lv_obj_set_flex_flow(timeRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    totalTimeLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(totalTimeLabel_, "Time 0.0s");
+    lv_obj_set_style_text_color(totalTimeLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(totalTimeLabel_, &lv_font_montserrat_12, 0);
+
+    simTimeLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(simTimeLabel_, "Sim 0.0s");
+    lv_obj_set_style_text_color(simTimeLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(simTimeLabel_, &lv_font_montserrat_12, 0);
+
+    speedupLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(speedupLabel_, "Speed 0.0x");
+    lv_obj_set_style_text_color(speedupLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(speedupLabel_, &lv_font_montserrat_12, 0);
+
+    etaLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(etaLabel_, "ETA --");
+    lv_obj_set_style_text_color(etaLabel_, lv_color_hex(0xFFDD66), 0);
+    lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
+
+    cpuLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(cpuLabel_, "CPU --");
+    lv_obj_set_style_text_color(cpuLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(cpuLabel_, &lv_font_montserrat_12, 0);
+
+    parallelismLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(parallelismLabel_, "Par --");
+    lv_obj_set_style_text_color(parallelismLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(parallelismLabel_, &lv_font_montserrat_12, 0);
+
+    genomeCountLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(genomeCountLabel_, "Genomes --");
+    lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(genomeCountLabel_, &lv_font_montserrat_12, 0);
+
+    lv_obj_t* adaptationRow = lv_obj_create(strategyColumn);
+    setTransparentRowLayout(adaptationRow, 12);
+    lv_obj_set_flex_flow(adaptationRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationPhaseLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationPhaseLabel_, "Phase: Normal");
+    setCompactStatsBadgeStyle(adaptationPhaseLabel_, trainingPhaseTextColor(TrainingPhase::Normal));
+
+    adaptationMutationModeLabel_ = lv_label_create(adaptationRow);
+    lv_label_set_text(adaptationMutationModeLabel_, "Mut: Baseline");
+    setCompactStatsBadgeStyle(
+        adaptationMutationModeLabel_,
+        adaptiveMutationModeTextColor(AdaptiveMutationMode::Baseline));
+
+    lv_obj_t* adaptationSummaryRow = lv_obj_create(strategyColumn);
+    setTransparentRowLayout(adaptationSummaryRow, 12);
+    lv_obj_set_flex_flow(adaptationSummaryRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationSinceImprovementLabel_ = lv_label_create(adaptationSummaryRow);
+    lv_label_set_text(adaptationSinceImprovementLabel_, "Since: 0");
+    setCompactStatsLabelStyle(adaptationSinceImprovementLabel_, lv_color_hex(0x88AACC));
+
+    adaptationResolvedLabel_ = lv_label_create(adaptationSummaryRow);
+    lv_label_set_text(adaptationResolvedLabel_, "Resolved: --");
+    setCompactStatsLabelStyle(adaptationResolvedLabel_, lv_color_hex(0xCCCCCC));
+
+    lv_obj_t* adaptationActualRow = lv_obj_create(strategyColumn);
+    setTransparentRowLayout(adaptationActualRow, 12);
+    lv_obj_set_flex_flow(adaptationActualRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationActualWeightChangesLabel_ = lv_label_create(adaptationActualRow);
+    lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual dW: --");
+    setCompactStatsLabelStyle(adaptationActualWeightChangesLabel_, lv_color_hex(0xCCCCCC));
+
+    adaptationActualResetAvgLabel_ = lv_label_create(adaptationActualRow);
+    lv_label_set_text(adaptationActualResetAvgLabel_, "Reset: --");
+    setCompactStatsLabelStyle(adaptationActualResetAvgLabel_, lv_color_hex(0x88AACC));
+
+    lv_obj_t* adaptationDetailRow = lv_obj_create(strategyColumn);
+    setTransparentRowLayout(adaptationDetailRow, 12);
+    lv_obj_set_flex_flow(adaptationDetailRow, LV_FLEX_FLOW_ROW_WRAP);
+
+    adaptationLastImprovementLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationLastImprovementLabel_, "Last: --");
+    setCompactStatsLabelStyle(adaptationLastImprovementLabel_, lv_color_hex(0x667799));
+
+    adaptationStagnationLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationStagnationLabel_, "S: 0");
+    setCompactStatsLabelStyle(adaptationStagnationLabel_, lv_color_hex(0x667799));
+
+    adaptationRecoveryLabel_ = lv_label_create(adaptationDetailRow);
+    lv_label_set_text(adaptationRecoveryLabel_, "R: 0");
+    setCompactStatsLabelStyle(adaptationRecoveryLabel_, lv_color_hex(0x667799));
 
     constexpr int worldColumnGapPx = 10;
     const int worldColumnWidth = std::max(160, (centerColumnWidth - worldColumnGapPx) / 2);
@@ -988,6 +1119,15 @@ void TrainingActiveView::destroyUI()
         lv_obj_clean(container_);
     }
 
+    adaptationActualResetAvgLabel_ = nullptr;
+    adaptationActualWeightChangesLabel_ = nullptr;
+    adaptationLastImprovementLabel_ = nullptr;
+    adaptationMutationModeLabel_ = nullptr;
+    adaptationPhaseLabel_ = nullptr;
+    adaptationRecoveryLabel_ = nullptr;
+    adaptationResolvedLabel_ = nullptr;
+    adaptationSinceImprovementLabel_ = nullptr;
+    adaptationStagnationLabel_ = nullptr;
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
@@ -1634,7 +1774,8 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
         }
         else if (evolutionStarted_) {
             lv_label_set_text(statusLabel_, "Training...");
-            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
+            lv_obj_set_style_text_color(
+                statusLabel_, trainingPhaseTextColor(progress.trainingPhase), 0);
         }
         else {
             lv_label_set_text(statusLabel_, "Ready");
@@ -1646,49 +1787,49 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     // Update time displays (compact format).
     if (totalTimeLabel_) {
-        snprintf(buf, sizeof(buf), "Time: %.1fs", progress.totalTrainingSeconds);
+        snprintf(buf, sizeof(buf), "Time %.1fs", progress.totalTrainingSeconds);
         lv_label_set_text(totalTimeLabel_, buf);
     }
 
     if (simTimeLabel_) {
-        snprintf(buf, sizeof(buf), "Sim: %.1fs", progress.currentSimTime);
+        snprintf(buf, sizeof(buf), "Sim %.1fs", progress.currentSimTime);
         lv_label_set_text(simTimeLabel_, buf);
     }
 
     if (speedupLabel_) {
-        snprintf(buf, sizeof(buf), "Speed: %.1fx", progress.speedupFactor);
+        snprintf(buf, sizeof(buf), "Speed %.1fx", progress.speedupFactor);
         lv_label_set_text(speedupLabel_, buf);
     }
 
     if (etaLabel_) {
         if (progress.etaSeconds <= 0.0) {
-            lv_label_set_text(etaLabel_, "ETA: --");
+            lv_label_set_text(etaLabel_, "ETA --");
         }
         else if (progress.etaSeconds < 60.0) {
-            snprintf(buf, sizeof(buf), "ETA: %.0fs", progress.etaSeconds);
+            snprintf(buf, sizeof(buf), "ETA %.0fs", progress.etaSeconds);
             lv_label_set_text(etaLabel_, buf);
         }
         else if (progress.etaSeconds < 3600.0) {
             int mins = static_cast<int>(progress.etaSeconds) / 60;
             int secs = static_cast<int>(progress.etaSeconds) % 60;
-            snprintf(buf, sizeof(buf), "ETA: %dm %ds", mins, secs);
+            snprintf(buf, sizeof(buf), "ETA %dm %ds", mins, secs);
             lv_label_set_text(etaLabel_, buf);
         }
         else {
             int hours = static_cast<int>(progress.etaSeconds) / 3600;
             int mins = (static_cast<int>(progress.etaSeconds) % 3600) / 60;
-            snprintf(buf, sizeof(buf), "ETA: %dh %dm", hours, mins);
+            snprintf(buf, sizeof(buf), "ETA %dh %dm", hours, mins);
             lv_label_set_text(etaLabel_, buf);
         }
     }
 
     if (cpuLabel_) {
         if (progress.cpuPercent > 0.0) {
-            snprintf(buf, sizeof(buf), "CPU: %.0f%%", progress.cpuPercent);
+            snprintf(buf, sizeof(buf), "CPU %.0f%%", progress.cpuPercent);
             lv_label_set_text(cpuLabel_, buf);
         }
         else {
-            lv_label_set_text(cpuLabel_, "CPU: --");
+            lv_label_set_text(cpuLabel_, "CPU --");
         }
     }
     if (cpuCorePlot_) {
@@ -1702,20 +1843,20 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     if (parallelismLabel_) {
         if (progress.activeParallelism > 0) {
-            snprintf(buf, sizeof(buf), "Par: %d", progress.activeParallelism);
+            snprintf(buf, sizeof(buf), "Par %d", progress.activeParallelism);
             lv_label_set_text(parallelismLabel_, buf);
         }
         else {
-            lv_label_set_text(parallelismLabel_, "Par: --");
+            lv_label_set_text(parallelismLabel_, "Par --");
         }
     }
 
     // Update generation progress.
     if (progress.maxGenerations > 0) {
-        snprintf(buf, sizeof(buf), "Gen: %d/%d", progress.generation, progress.maxGenerations);
+        snprintf(buf, sizeof(buf), "Gen %d/%d", progress.generation, progress.maxGenerations);
     }
     else {
-        snprintf(buf, sizeof(buf), "Gen: %d", progress.generation);
+        snprintf(buf, sizeof(buf), "Gen %d", progress.generation);
     }
     lv_label_set_text(genLabel_, buf);
 
@@ -1729,7 +1870,7 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
         snprintf(
             buf,
             sizeof(buf),
-            "Validate: %d/%d",
+            "Validate %d/%d",
             progress.validatingBestCompletedSamples,
             progress.validatingBestTargetSamples);
         lv_label_set_text(evalLabel_, buf);
@@ -1737,7 +1878,12 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             (progress.validatingBestCompletedSamples * 100) / progress.validatingBestTargetSamples;
     }
     else {
-        snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
+        if (progress.populationSize > 0) {
+            snprintf(buf, sizeof(buf), "Eval %d/%d", progress.currentEval, progress.populationSize);
+        }
+        else {
+            snprintf(buf, sizeof(buf), "Eval %d", progress.currentEval);
+        }
         lv_label_set_text(evalLabel_, buf);
         evalPercent = progress.populationSize > 0
             ? (progress.currentEval * 100) / progress.populationSize
@@ -1750,14 +1896,14 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             snprintf(
                 buf,
                 sizeof(buf),
-                "Genomes: %d (cap/organism+brain: %d)",
+                "Genomes %d/%d",
                 progress.totalGenomeCount,
                 progress.genomeArchiveMaxSize);
             lv_label_set_text(genomeCountLabel_, buf);
             lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
         }
         else {
-            snprintf(buf, sizeof(buf), "Genomes: %d", progress.totalGenomeCount);
+            snprintf(buf, sizeof(buf), "Genomes %d", progress.totalGenomeCount);
             lv_label_set_text(genomeCountLabel_, buf);
             lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
         }
@@ -1766,21 +1912,124 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     // Update fitness labels (compact format).
     if (bestThisGenLabel_) {
         if (progress.lastCompletedGeneration >= 0) {
-            snprintf(buf, sizeof(buf), "Last Gen Best: %.2f", progress.lastGenerationFitnessMax);
+            snprintf(buf, sizeof(buf), "Last: %.2f", progress.lastGenerationFitnessMax);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
         else if (progress.bestThisGenSource != "none" || progress.robustEvaluationCount > 0) {
-            snprintf(buf, sizeof(buf), "Current Best: %.2f", progress.bestFitnessThisGen);
+            snprintf(buf, sizeof(buf), "Current: %.2f", progress.bestFitnessThisGen);
             lv_label_set_text(bestThisGenLabel_, buf);
         }
         else {
-            lv_label_set_text(bestThisGenLabel_, "Last Gen Best: --");
+            lv_label_set_text(bestThisGenLabel_, "Last: --");
         }
     }
 
     if (bestAllTimeLabel_) {
-        snprintf(buf, sizeof(buf), "All Time: %.4f", progress.bestFitnessAllTime);
+        snprintf(buf, sizeof(buf), "Best: %.4f", progress.bestFitnessAllTime);
         lv_label_set_text(bestAllTimeLabel_, buf);
+    }
+
+    if (adaptationPhaseLabel_) {
+        snprintf(buf, sizeof(buf), "Phase: %s", trainingPhaseLabel(progress.trainingPhase));
+        lv_label_set_text(adaptationPhaseLabel_, buf);
+        setCompactStatsBadgeAccent(
+            adaptationPhaseLabel_, trainingPhaseTextColor(progress.trainingPhase));
+    }
+
+    if (adaptationSinceImprovementLabel_) {
+        snprintf(buf, sizeof(buf), "Since: %d", std::max(progress.generationsSinceImprovement, 0));
+        lv_label_set_text(adaptationSinceImprovementLabel_, buf);
+    }
+
+    if (adaptationMutationModeLabel_) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Mut: %s",
+            adaptiveMutationModeLabel(progress.lastBreeding.mutationMode));
+        lv_label_set_text(adaptationMutationModeLabel_, buf);
+        setCompactStatsBadgeAccent(
+            adaptationMutationModeLabel_,
+            adaptiveMutationModeTextColor(progress.lastBreeding.mutationMode));
+    }
+
+    if (adaptationResolvedLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationResolvedLabel_, "Resolved: --");
+        }
+        else if (progress.lastBreeding.usesBudget) {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Resolved: %d/%d/%.3f",
+                progress.lastBreeding.resolvedPerturbationsPerOffspring,
+                progress.lastBreeding.resolvedResetsPerOffspring,
+                progress.lastBreeding.resolvedSigma);
+            lv_label_set_text(adaptationResolvedLabel_, buf);
+        }
+        else {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Resolved: legacy sigma %.3f",
+                progress.lastBreeding.resolvedSigma);
+            lv_label_set_text(adaptationResolvedLabel_, buf);
+        }
+    }
+
+    if (adaptationActualWeightChangesLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationActualWeightChangesLabel_, "Actual dW: --");
+        }
+        else if (progress.lastBreeding.weightChangesMin == progress.lastBreeding.weightChangesMax) {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Actual dW: %.1f [%d]",
+                progress.lastBreeding.weightChangesAvg,
+                progress.lastBreeding.weightChangesMin);
+            lv_label_set_text(adaptationActualWeightChangesLabel_, buf);
+        }
+        else {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Actual dW: %.1f [%d..%d]",
+                progress.lastBreeding.weightChangesAvg,
+                progress.lastBreeding.weightChangesMin,
+                progress.lastBreeding.weightChangesMax);
+            lv_label_set_text(adaptationActualWeightChangesLabel_, buf);
+        }
+    }
+
+    if (adaptationActualResetAvgLabel_) {
+        if (progress.lastCompletedGeneration < 0 && progress.generation == 0) {
+            lv_label_set_text(adaptationActualResetAvgLabel_, "Reset: --");
+        }
+        else {
+            snprintf(buf, sizeof(buf), "Reset: %.1f", progress.lastBreeding.resetsAvg);
+            lv_label_set_text(adaptationActualResetAvgLabel_, buf);
+        }
+    }
+
+    if (adaptationLastImprovementLabel_) {
+        if (progress.lastImprovementGeneration >= 0) {
+            snprintf(buf, sizeof(buf), "Last: %d", progress.lastImprovementGeneration);
+            lv_label_set_text(adaptationLastImprovementLabel_, buf);
+        }
+        else {
+            lv_label_set_text(adaptationLastImprovementLabel_, "Last: --");
+        }
+    }
+
+    if (adaptationStagnationLabel_) {
+        snprintf(buf, sizeof(buf), "S: %d", std::max(progress.stagnationLevel, 0));
+        lv_label_set_text(adaptationStagnationLabel_, buf);
+    }
+
+    if (adaptationRecoveryLabel_) {
+        snprintf(buf, sizeof(buf), "R: %d", std::max(progress.recoveryLevel, 0));
+        lv_label_set_text(adaptationRecoveryLabel_, buf);
     }
 
     if (lastGenerationDistributionPlot_) {

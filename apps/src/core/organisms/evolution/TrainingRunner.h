@@ -248,7 +248,7 @@ private:
         DoorId entranceDoorId = INVALID_DOOR_ID;
         DoorId exitDoorId = INVALID_DOOR_ID;
         DoorSide side = DoorSide::LEFT;
-        bool duckReachedMiddle = false;
+        bool duckReachedOppositeWall = false;
         bool entranceDoorClosed = false;
         bool exitDoorOpened = false;
         bool duckExitedThroughDoor = false;

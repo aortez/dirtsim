@@ -68,15 +68,6 @@ bool DuckClockEvaluationTracker::floorObstacleMatches(
     return left.start_x == right.start_x && left.width == right.width && left.type == right.type;
 }
 
-bool DuckClockEvaluationTracker::isObstacleOpportunityActive(
-    const DuckClockTrackerFrame& frame, const FloorObstacle& obstacle)
-{
-    const int obstacleStart = obstacle.start_x;
-    const int obstacleEndExclusive = obstacle.start_x + obstacle.width;
-    return frame.duckAnchorCell.x >= (obstacleStart - 1)
-        && frame.duckAnchorCell.x <= obstacleEndExclusive;
-}
-
 void DuckClockEvaluationTracker::markExitedThroughDoor(double simTime)
 {
     artifacts_.bestExitDoorDistanceCells = 0.0;
@@ -191,6 +182,8 @@ void DuckClockEvaluationTracker::updateObstacleOpportunities(const DuckClockTrac
 {
     cleanupInactiveObstacleOpportunities(frame.obstacles);
 
+    // Count each spawned obstacle as an opportunity exactly once per traversal lap.
+    // activeOpportunityObstacles_ is cleared when a full wall-to-wall traversal is recorded.
     for (const FloorObstacle& obstacle : frame.obstacles) {
         const auto alreadyCountedIt = std::find_if(
             activeOpportunityObstacles_.begin(),
@@ -199,9 +192,6 @@ void DuckClockEvaluationTracker::updateObstacleOpportunities(const DuckClockTrac
                 return floorObstacleMatches(activeObstacle, obstacle);
             });
         if (alreadyCountedIt != activeOpportunityObstacles_.end()) {
-            continue;
-        }
-        if (!isObstacleOpportunityActive(frame, obstacle)) {
             continue;
         }
 

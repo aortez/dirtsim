@@ -69,11 +69,41 @@ using namespace DirtSim;
 namespace {
 constexpr int kProgressFitnessPrecision = 6;
 
+const char* trainingPhaseLabel(TrainingPhase phase)
+{
+    switch (phase) {
+        case TrainingPhase::Normal:
+            return "normal";
+        case TrainingPhase::Plateau:
+            return "plateau";
+        case TrainingPhase::Stuck:
+            return "stuck";
+        case TrainingPhase::Recovery:
+            return "recovery";
+    }
+    return "unknown";
+}
+
 bool isNetworkStateName(const std::string& state)
 {
     return state == "NetworkScanner" || state == "NetworkSettings" || state == "NetworkWifi"
         || state == "NetworkWifiConnecting" || state == "NetworkWifiDetails"
         || state == "NetworkWifiPassword";
+}
+
+const char* adaptiveMutationModeLabel(AdaptiveMutationMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationMode::Baseline:
+            return "baseline";
+        case AdaptiveMutationMode::Explore:
+            return "explore";
+        case AdaptiveMutationMode::Rescue:
+            return "rescue";
+        case AdaptiveMutationMode::Recover:
+            return "recover";
+    }
+    return "unknown";
 }
 
 std::string commandTypeFromSignature(const std::string& signature)
@@ -2333,6 +2363,13 @@ int main(int argc, char** argv)
                      << progress.bestFitnessAllTime;
                 line << " avg=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
                      << progress.averageFitness;
+                line << " phase=" << trainingPhaseLabel(progress.trainingPhase);
+                line << " sinceImp=" << progress.generationsSinceImprovement;
+                line << " stagnation=" << progress.stagnationLevel;
+                line << " recovery=" << progress.recoveryLevel;
+                if (progress.lastImprovementGeneration >= 0) {
+                    line << " lastImpGen=" << progress.lastImprovementGeneration;
+                }
                 line << " src=" << progress.bestThisGenSource;
                 if (!progress.bestGenomeId.isNil()) {
                     const std::string genomeId = progress.bestGenomeId.toString();
@@ -2361,10 +2398,19 @@ int main(int argc, char** argv)
                               << progress.lastGenerationPhenotypeNovelOffspringMutatedCount;
 
                     telemetry << " breedΔw=" << std::fixed << std::setprecision(0)
-                              << progress.lastBreedingWeightChangesAvg;
-                    telemetry << "[" << progress.lastBreedingWeightChangesMin << ".."
-                              << progress.lastBreedingWeightChangesMax << "]";
-                    telemetry << " resetAvg=" << progress.lastBreedingResetsAvg;
+                              << progress.lastBreeding.weightChangesAvg;
+                    telemetry << "[" << progress.lastBreeding.weightChangesMin << ".."
+                              << progress.lastBreeding.weightChangesMax << "]";
+                    telemetry << " resetAvg=" << progress.lastBreeding.resetsAvg;
+                    telemetry << " mutMode="
+                              << adaptiveMutationModeLabel(progress.lastBreeding.mutationMode);
+                    if (progress.lastBreeding.usesBudget) {
+                        telemetry << " mutResolved="
+                                  << progress.lastBreeding.resolvedPerturbationsPerOffspring << "/"
+                                  << progress.lastBreeding.resolvedResetsPerOffspring << "/"
+                                  << std::fixed << std::setprecision(3)
+                                  << progress.lastBreeding.resolvedSigma;
+                    }
 
                     std::cout << telemetry.str() << std::endl;
                 }

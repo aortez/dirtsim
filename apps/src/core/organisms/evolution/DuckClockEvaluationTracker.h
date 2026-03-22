@@ -41,8 +41,6 @@ private:
     static bool didJumpClearObstacle(
         const JumpAttempt& jumpAttempt, const Vector2i& landingCell, const FloorObstacle& obstacle);
     static bool floorObstacleMatches(const FloorObstacle& left, const FloorObstacle& right);
-    static bool isObstacleOpportunityActive(
-        const DuckClockTrackerFrame& frame, const FloorObstacle& obstacle);
     static WallZone resolveWallZone(int x, int worldWidth);
 
     void cleanupInactiveObstacleOpportunities(std::span<const FloorObstacle> obstacles);

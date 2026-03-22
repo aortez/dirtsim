@@ -1126,23 +1126,25 @@ TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
         << "Roof cell should be AIR after door closes";
 
     // ----------------------------------------------------------------
-    // Phase 2b: Run duck past the world midpoint (required for exit door).
+    // Phase 2b: Run duck to the opposite wall zone (required for exit door).
     // ----------------------------------------------------------------
-    const int midX = data.width / 2;
-    bool reachedMiddle = false;
+    constexpr int kWallTouchZoneWidth = 2;
+    const int rightWallZoneMinX = std::max(0, data.width - (kWallTouchZoneWidth + 1));
+    bool reachedOppositeWall = false;
     for (int i = 0; i < 2000; ++i) {
         const TrainingRunner::Status status = runner.step(1);
         if (status.state != TrainingRunner::State::Running) {
             break;
         }
         organism = runner.getOrganism();
-        ASSERT_NE(organism, nullptr) << "Duck died before reaching middle (step " << i << ")";
-        if (organism->getAnchorCell().x >= midX) {
-            reachedMiddle = true;
+        ASSERT_NE(organism, nullptr)
+            << "Duck died before reaching opposite wall (step " << i << ")";
+        if (organism->getAnchorCell().x >= rightWallZoneMinX) {
+            reachedOppositeWall = true;
             break;
         }
     }
-    ASSERT_TRUE(reachedMiddle) << "Duck never reached the world midpoint";
+    ASSERT_TRUE(reachedOppositeWall) << "Duck never reached the opposite wall zone";
 
     // Reverse the duck so it heads back toward the entrance (now exit).
     brainPtr->setReturnToEntrance();

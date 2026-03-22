@@ -75,8 +75,7 @@ MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
     const double uniqueRowProgress = std::max(0.0, static_cast<double>(uniqueRowCount) - 1.0);
     const double uniqueCellProgress = std::max(0.0, static_cast<double>(uniqueCellCount) - 1.0);
 
-    const double coverageColumnReference =
-        std::max(1.0, kDuckScoringConfig.columnCoverageReferenceWidthScale * worldWidth);
+    const double coverageColumnReference = std::max(1.0, static_cast<double>(worldWidth) - 1.0);
     const double coverageRowReference =
         std::max(1.0, kDuckScoringConfig.rowCoverageReferenceHeightScale * worldHeight);
     const double coverageCellReference =
@@ -89,7 +88,7 @@ MovementScoring::Scores computeDuckMovementScores(const FitnessContext& context)
     scores.coverageCellRaw = uniqueCellProgress;
     scores.coverageCellReference = coverageCellReference;
     scores.coverageColumnScore =
-        MovementScoring::saturatingScore(uniqueColumnProgress, coverageColumnReference);
+        MovementScoring::clamp01(uniqueColumnProgress / coverageColumnReference);
     scores.coverageRowScore =
         MovementScoring::saturatingScore(uniqueRowProgress, coverageRowReference);
     scores.coverageCellScore =

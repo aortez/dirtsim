@@ -239,6 +239,21 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.validatingBest = true;
     evt.progress.validatingBestCompletedSamples = 1;
     evt.progress.validatingBestTargetSamples = 3;
+    evt.progress.trainingPhase = TrainingPhase::Plateau;
+    evt.progress.generationsSinceImprovement = 6;
+    evt.progress.lastImprovementGeneration = 2;
+    evt.progress.stagnationLevel = 1;
+    evt.progress.recoveryLevel = 0;
+    evt.progress.lastBreeding.usesBudget = true;
+    evt.progress.lastBreeding.mutationMode = AdaptiveMutationMode::Explore;
+    evt.progress.lastBreeding.resolvedPerturbationsPerOffspring = 60;
+    evt.progress.lastBreeding.resolvedResetsPerOffspring = 2;
+    evt.progress.lastBreeding.resolvedSigma = 0.0625;
+    evt.progress.lastBreeding.perturbationsAvg = 48.0;
+    evt.progress.lastBreeding.resetsAvg = 1.5;
+    evt.progress.lastBreeding.weightChangesAvg = 49.5;
+    evt.progress.lastBreeding.weightChangesMin = 30;
+    evt.progress.lastBreeding.weightChangesMax = 63;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -257,6 +272,21 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_TRUE(trainingState.progress.validatingBest);
     EXPECT_EQ(trainingState.progress.validatingBestCompletedSamples, 1);
     EXPECT_EQ(trainingState.progress.validatingBestTargetSamples, 3);
+    EXPECT_EQ(trainingState.progress.trainingPhase, TrainingPhase::Plateau);
+    EXPECT_EQ(trainingState.progress.generationsSinceImprovement, 6);
+    EXPECT_EQ(trainingState.progress.lastImprovementGeneration, 2);
+    EXPECT_EQ(trainingState.progress.stagnationLevel, 1);
+    EXPECT_EQ(trainingState.progress.recoveryLevel, 0);
+    EXPECT_TRUE(trainingState.progress.lastBreeding.usesBudget);
+    EXPECT_EQ(trainingState.progress.lastBreeding.mutationMode, AdaptiveMutationMode::Explore);
+    EXPECT_EQ(trainingState.progress.lastBreeding.resolvedPerturbationsPerOffspring, 60);
+    EXPECT_EQ(trainingState.progress.lastBreeding.resolvedResetsPerOffspring, 2);
+    EXPECT_DOUBLE_EQ(trainingState.progress.lastBreeding.resolvedSigma, 0.0625);
+    EXPECT_DOUBLE_EQ(trainingState.progress.lastBreeding.perturbationsAvg, 48.0);
+    EXPECT_DOUBLE_EQ(trainingState.progress.lastBreeding.resetsAvg, 1.5);
+    EXPECT_DOUBLE_EQ(trainingState.progress.lastBreeding.weightChangesAvg, 49.5);
+    EXPECT_EQ(trainingState.progress.lastBreeding.weightChangesMin, 30);
+    EXPECT_EQ(trainingState.progress.lastBreeding.weightChangesMax, 63);
 
     trainingState.view_.reset();
 }
