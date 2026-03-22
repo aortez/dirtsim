@@ -29,6 +29,7 @@ public:
     void queueGuidedWaterDrain(const GuidedWaterDrain& drain) override;
     void syncToSettings(const PhysicsSettings& settings) override;
 
+    bool tryGetWaterActivityView(WaterActivityView& out) const override;
     bool tryGetWaterVolumeView(WaterVolumeView& out) const override;
     bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out) override;
 
@@ -36,6 +37,7 @@ public:
     const Parameters& getParametersForTesting() const { return parameters_; }
 
 private:
+    void rebuildWaterActivityView(const std::vector<float>& previousWaterVolume);
     void settleResidualWater();
     void applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt);
     void applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain);
@@ -46,6 +48,10 @@ private:
     std::vector<GuidedWaterDrain> pendingGuidedWaterDrains_;
 
     std::vector<float> waterVolume_;
+    std::vector<float> previousWaterVolume_;
+    std::vector<float> waterActivityMaxFaceSpeed_;
+    std::vector<float> waterActivityVolumeDelta_;
+    std::vector<uint8_t> waterActivityFlags_;
     std::vector<float> uFaceVelocity_;
     std::vector<float> vFaceVelocity_;
 

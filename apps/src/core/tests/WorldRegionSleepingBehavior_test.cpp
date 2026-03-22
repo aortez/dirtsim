@@ -7,6 +7,7 @@
 #include "core/WorldRegionActivityTracker.h"
 #include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/SandboxScenario.h"
+#include "core/water/WaterVolumeView.h"
 
 #include <gtest/gtest.h>
 
@@ -32,6 +33,7 @@ constexpr int kSandboxWorldHeight = 30;
 constexpr int kSettleSteps = 180;
 constexpr int kWaterSettleSteps = 600;
 constexpr int kWaterDiagnosticFrames = 48;
+constexpr float kBulkWaterRegionEpsilon = 0.0001f;
 constexpr int kPileCenterX = kWorldWidth / 2;
 constexpr int kPileBaseY = kWorldHeight - 2;
 constexpr int kPileBaseHalfWidth = 22;
@@ -579,6 +581,25 @@ bool regionContainsMaterialType(
     return false;
 }
 
+bool regionContainsBulkWater(const World& world, int block_x, int block_y)
+{
+    const WorldData& data = world.getData();
+    const int x_begin = block_x * kRegionSize;
+    const int y_begin = block_y * kRegionSize;
+    const int x_end = std::min(static_cast<int>(data.width), x_begin + kRegionSize);
+    const int y_end = std::min(static_cast<int>(data.height), y_begin + kRegionSize);
+
+    for (int y = y_begin; y < y_end; ++y) {
+        for (int x = x_begin; x < x_end; ++x) {
+            if (world.getBulkWaterAmountAtCell(x, y) > kBulkWaterRegionEpsilon) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool regionHasEmptyAdjacency(const World& world, const GridOfCells& grid, int block_x, int block_y)
 {
     const WorldData& data = world.getData();
@@ -595,6 +616,61 @@ bool regionHasEmptyAdjacency(const World& world, const GridOfCells& grid, int bl
             }
 
             if (grid.getEmptyNeighborhood(x, y).countEmptyNeighbors() > 0) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool regionHasBulkWaterInterface(const World& world, int block_x, int block_y)
+{
+    const WorldData& data = world.getData();
+    const int x_begin = block_x * kRegionSize;
+    const int y_begin = block_y * kRegionSize;
+    const int x_end = std::min(static_cast<int>(data.width), x_begin + kRegionSize);
+    const int y_end = std::min(static_cast<int>(data.height), y_begin + kRegionSize);
+
+    WaterActivityView activityView{};
+    const bool hasActivityView = world.tryGetWaterActivityView(activityView)
+        && activityView.width == data.width && activityView.height == data.height;
+
+    const auto hasBulkWaterAt = [&](int x, int y) {
+        return world.getBulkWaterAmountAtCell(x, y) > kBulkWaterRegionEpsilon;
+    };
+
+    for (int y = y_begin; y < y_end; ++y) {
+        for (int x = x_begin; x < x_end; ++x) {
+            if (!hasBulkWaterAt(x, y)) {
+                continue;
+            }
+
+            if (hasActivityView) {
+                const size_t idx = static_cast<size_t>(y) * data.width + x;
+                if (idx < activityView.flags.size()
+                    && hasWaterActivityFlag(
+                        activityView.flags[idx], WaterActivityFlag::Interface)) {
+                    return true;
+                }
+                continue;
+            }
+
+            const auto neighborIsInterface = [&](int nx, int ny) {
+                if (nx < 0 || nx >= data.width || ny < 0 || ny >= data.height) {
+                    return true;
+                }
+
+                const Cell& neighbor = data.at(nx, ny);
+                if (!neighbor.isEmpty() && neighbor.material_type != Material::EnumType::Air) {
+                    return true;
+                }
+
+                return !hasBulkWaterAt(nx, ny);
+            };
+
+            if (neighborIsInterface(x - 1, y) || neighborIsInterface(x + 1, y)
+                || neighborIsInterface(x, y - 1) || neighborIsInterface(x, y + 1)) {
                 return true;
             }
         }
@@ -665,18 +741,19 @@ SandboxRegionBuckets classifySandboxDirtRegions(const World& world, const GridOf
 WaterRegionBuckets classifyWaterRegions(const World& world, const GridOfCells& grid)
 {
     const WorldData& data = world.getData();
+    static_cast<void>(grid);
     WaterRegionBuckets buckets;
 
     for (int block_y = 0; block_y < data.region_debug_blocks_y; ++block_y) {
         for (int block_x = 0; block_x < data.region_debug_blocks_x; ++block_x) {
-            if (!regionContainsMaterialType(world, block_x, block_y, Material::EnumType::Water)) {
+            if (!regionContainsBulkWater(world, block_x, block_y)) {
                 continue;
             }
 
             const RegionCoord region{ .x = block_x, .y = block_y };
             buckets.water_regions.push_back(region);
 
-            if (regionHasEmptyAdjacency(world, grid, block_x, block_y)) {
+            if (regionHasBulkWaterInterface(world, block_x, block_y)) {
                 buckets.exposed_water_regions.push_back(region);
                 continue;
             }
@@ -966,6 +1043,51 @@ std::string dumpSandboxDirtRegionDetails(const World& world, const SandboxRegion
             << " empty=" << summary.has_empty_adjacency << " mixed=" << summary.has_mixed_material
             << " water=" << summary.has_water_adjacency << " touched=" << summary.touched_this_frame
             << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpWaterRegionDetails(const World& world, const WaterRegionBuckets& buckets, int frame)
+{
+    const WorldRegionActivityTracker& tracker = world.getRegionActivityTracker();
+    std::ostringstream out;
+
+    out << "Water region details\n";
+    for (const RegionCoord& region : buckets.water_regions) {
+        const RegionSummary& summary = tracker.getRegionSummary(region.x, region.y);
+        const RegionFrameSample sample = sampleRegionFrame(world, region, frame);
+        const char role = [&]() -> char {
+            if (std::find_if(
+                    buckets.interior_water_regions.begin(),
+                    buckets.interior_water_regions.end(),
+                    [&region](const RegionCoord& candidate) {
+                        return candidate.x == region.x && candidate.y == region.y;
+                    })
+                != buckets.interior_water_regions.end()) {
+                return 'I';
+            }
+            if (std::find_if(
+                    buckets.exposed_water_regions.begin(),
+                    buckets.exposed_water_regions.end(),
+                    [&region](const RegionCoord& candidate) {
+                        return candidate.x == region.x && candidate.y == region.y;
+                    })
+                != buckets.exposed_water_regions.end()) {
+                return 'E';
+            }
+            return 'W';
+        }();
+
+        out << "(" << region.x << "," << region.y << ")"
+            << " role=" << role << " state=" << regionStateToChar(sample.state)
+            << " wake=" << wakeReasonToChar(sample.wake_reason) << " meanV=" << sample.mean_velocity
+            << " maxV=" << sample.max_velocity << " macBulk=" << summary.has_mac_bulk_water
+            << " macIface=" << summary.has_mac_water_interface
+            << " macFace=" << summary.max_mac_water_face_speed
+            << " macDelta=" << summary.max_mac_water_volume_delta
+            << " waterAdj=" << summary.has_water_adjacency
+            << " touched=" << summary.touched_this_frame << "\n";
     }
 
     return out.str();
@@ -3956,20 +4078,22 @@ void initializeSandboxQuadrantWorld(World& world)
 
 void initializeStillWaterPoolWorld(World& world)
 {
-    for (int y = 8; y <= 32; ++y) {
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+
+    for (int y = 6; y <= 35; ++y) {
         world.replaceMaterialAtCell(
-            Vector2s{ 15, static_cast<int16_t>(y) }, Material::EnumType::Wall);
+            Vector2s{ 8, static_cast<int16_t>(y) }, Material::EnumType::Wall);
         world.replaceMaterialAtCell(
-            Vector2s{ 48, static_cast<int16_t>(y) }, Material::EnumType::Wall);
+            Vector2s{ 55, static_cast<int16_t>(y) }, Material::EnumType::Wall);
     }
 
-    for (int x = 15; x <= 48; ++x) {
+    for (int x = 8; x <= 55; ++x) {
         world.replaceMaterialAtCell(
-            Vector2s{ static_cast<int16_t>(x), 32 }, Material::EnumType::Wall);
+            Vector2s{ static_cast<int16_t>(x), 35 }, Material::EnumType::Wall);
     }
 
-    for (int y = 16; y <= 31; ++y) {
-        fillHorizontalSpan(world, y, 16, 47, Material::EnumType::Water);
+    for (int y = 12; y <= 34; ++y) {
+        fillHorizontalSpan(world, y, 9, 54, Material::EnumType::Water);
     }
 }
 
@@ -3977,12 +4101,12 @@ void initializePerturbedWaterPoolWorld(World& world)
 {
     initializeStillWaterPoolWorld(world);
 
-    for (int y = 14; y <= 15; ++y) {
-        fillHorizontalSpan(world, y, 16, 23, Material::EnumType::Water);
+    for (int y = 10; y <= 10; ++y) {
+        fillHorizontalSpan(world, y, 9, 16, Material::EnumType::Water);
     }
 
-    for (int y = 16; y <= 17; ++y) {
-        fillHorizontalSpan(world, y, 40, 47, Material::EnumType::Air);
+    for (int y = 12; y <= 13; ++y) {
+        fillHorizontalSpan(world, y, 47, 54, Material::EnumType::Air);
     }
 }
 
@@ -4350,6 +4474,106 @@ TEST(WorldRegionSleepingBehaviorTest, SandboxInteriorDirtSleepEnforcementSkipsDr
         << "Expected at least one sleeping interior dirt region to skip force processing.";
     EXPECT_GT(skipped_move_interior_regions, 0)
         << "Expected at least one sleeping interior dirt region to skip move generation.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegionsToSleepTrackedOnly)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+
+    settleWorld(world, kWaterSettleSteps);
+
+    const GridOfCells grid = makeGrid(world);
+    const WaterRegionBuckets buckets = classifyWaterRegions(world, grid);
+
+    SCOPED_TRACE(dumpWaterPoolDiagnostics());
+
+    ASSERT_FALSE(buckets.interior_water_regions.empty())
+        << "Expected the settled pool to contain interior bulk-water regions.";
+    ASSERT_FALSE(buckets.exposed_water_regions.empty())
+        << "Expected the settled pool to contain exposed/interface bulk-water regions.";
+
+    int sleepingInteriorRegions = 0;
+    int awakeExposedRegions = 0;
+
+    for (const RegionCoord& region : buckets.interior_water_regions) {
+        const RegionFrameSample sample = sampleRegionFrame(world, region, kWaterSettleSteps);
+        if (sample.state == RegionState::Sleeping) {
+            sleepingInteriorRegions++;
+        }
+
+        EXPECT_EQ(sample.sleep_skipped_force_processing_cells, 0)
+            << "Expected water regions to remain tracked-only during the first MAC water sleep "
+               "slice.";
+        EXPECT_EQ(sample.sleep_skipped_move_generation_cells, 0)
+            << "Expected water regions to keep generating world moves during the tracked-only "
+               "slice.";
+    }
+
+    for (const RegionCoord& region : buckets.exposed_water_regions) {
+        const RegionFrameSample sample = sampleRegionFrame(world, region, kWaterSettleSteps);
+        if (sample.state == RegionState::Awake) {
+            awakeExposedRegions++;
+        }
+
+        EXPECT_EQ(sample.sleep_skipped_force_processing_cells, 0)
+            << "Expected exposed water regions to remain tracked-only during the first MAC water "
+               "sleep slice.";
+        EXPECT_EQ(sample.sleep_skipped_move_generation_cells, 0)
+            << "Expected exposed water regions to keep generating world moves during the "
+               "tracked-only slice.";
+    }
+
+    EXPECT_GT(sleepingInteriorRegions, 0)
+        << "Expected at least one calm pool interior region to reach Sleeping state.";
+    EXPECT_GT(awakeExposedRegions, 0)
+        << "Expected the pool shell to retain at least one Awake interface region.";
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    PerturbedWaterPoolKeepsAnExposedRegionAwakeBeforeInteriorQuiets)
+{
+    constexpr int kEarlyObservationSteps = 64;
+    constexpr int kLateObservationSteps = kWaterSettleSteps * 2;
+
+    World world(kWorldWidth, kWorldHeight);
+    initializePerturbedWaterPoolWorld(world);
+
+    settleWorld(world, kEarlyObservationSteps);
+
+    const GridOfCells earlyGrid = makeGrid(world);
+    WaterRegionBuckets buckets = classifyWaterRegions(world, earlyGrid);
+
+    SCOPED_TRACE(dumpPerturbedWaterPoolDiagnostics());
+
+    ASSERT_FALSE(buckets.exposed_water_regions.empty())
+        << "Expected the perturbed pool to contain exposed/interface bulk-water regions.";
+
+    int awakeExposedRegions = 0;
+    for (const RegionCoord& region : buckets.exposed_water_regions) {
+        const RegionFrameSample sample = sampleRegionFrame(world, region, kEarlyObservationSteps);
+        if (sample.state == RegionState::Awake) {
+            awakeExposedRegions++;
+        }
+    }
+
+    EXPECT_GT(awakeExposedRegions, 0)
+        << "Expected the perturbed pool to keep at least one exposed/interface region Awake.";
+
+    settleWorld(world, kLateObservationSteps - kEarlyObservationSteps);
+
+    const GridOfCells settledGrid = makeGrid(world);
+    buckets = classifyWaterRegions(world, settledGrid);
+
+    ASSERT_FALSE(buckets.interior_water_regions.empty())
+        << "Expected the perturbed pool to retain interior regions after settling.";
+
+    SCOPED_TRACE(dumpWaterRegionDetails(world, buckets, kLateObservationSteps));
+
+    const int quietInteriorRegions = countQuietRegions(world, buckets.interior_water_regions);
+    EXPECT_GT(quietInteriorRegions, 0) << "Expected the pool interior to recover some quiet "
+                                          "regions after the perturbation settles.";
 }
 
 TEST_P(WorldRegionSleepingBehaviorParamTest, BuriedRegionQuietStateMatchesGravityMode)

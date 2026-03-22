@@ -100,6 +100,16 @@ bool shouldForceAwake(
     if (config.keep_organism_regions_awake && summary.has_organism) {
         return true;
     }
+    if (summary.has_mac_bulk_water) {
+        if (summary.max_mac_water_volume_delta > config.mac_water_volume_delta_epsilon) {
+            return true;
+        }
+        if (config.keep_mac_water_interface_awake && summary.has_mac_water_interface) {
+            return true;
+        }
+
+        return false;
+    }
     if (config.keep_water_adjacent_awake && summary.has_water_adjacency) {
         return true;
     }
@@ -228,7 +238,10 @@ void WorldRegionActivityTracker::summarizeFrame(
 
     const WorldData& data = world.getData();
     const auto& organism_grid = world.getOrganismManager().getGrid();
+    WaterActivityView waterActivityView{};
     WaterVolumeView waterView{};
+    const bool hasWaterActivity = world.tryGetWaterActivityView(waterActivityView)
+        && waterActivityView.width == data.width && waterActivityView.height == data.height;
     const bool hasWaterVolume = world.tryGetWaterVolumeView(waterView)
         && waterView.width == data.width && waterView.height == data.height;
 
@@ -259,6 +272,26 @@ void WorldRegionActivityTracker::summarizeFrame(
 
             if (cell_idx < organism_grid.size() && organism_grid[cell_idx] != INVALID_ORGANISM_ID) {
                 summary.has_organism = true;
+            }
+
+            if (hasWaterActivity && cell_idx < waterActivityView.flags.size()) {
+                const uint8_t flags = waterActivityView.flags[cell_idx];
+                if (hasWaterActivityFlag(flags, WaterActivityFlag::HasFluid)) {
+                    summary.has_mac_bulk_water = true;
+                    if (cell_idx < waterActivityView.max_face_speed.size()) {
+                        summary.max_mac_water_face_speed = std::max(
+                            summary.max_mac_water_face_speed,
+                            waterActivityView.max_face_speed[cell_idx]);
+                    }
+                    if (cell_idx < waterActivityView.volume_delta.size()) {
+                        summary.max_mac_water_volume_delta = std::max(
+                            summary.max_mac_water_volume_delta,
+                            waterActivityView.volume_delta[cell_idx]);
+                    }
+                }
+                if (hasWaterActivityFlag(flags, WaterActivityFlag::Interface)) {
+                    summary.has_mac_water_interface = true;
+                }
             }
 
             if (hasWaterVolume && hasWaterVolumeAdjacency(waterView, x, y)) {

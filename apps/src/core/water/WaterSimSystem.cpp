@@ -58,6 +58,15 @@ void WaterSimSystem::queueGuidedWaterDrain(const GuidedWaterDrain& drain)
     sim_->queueGuidedWaterDrain(drain);
 }
 
+bool WaterSimSystem::tryGetWaterActivityView(WaterActivityView& out) const
+{
+    if (!sim_) {
+        return false;
+    }
+
+    return sim_->tryGetWaterActivityView(out);
+}
+
 bool WaterSimSystem::tryGetWaterVolumeView(WaterVolumeView& out) const
 {
     if (!sim_) {

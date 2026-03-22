@@ -35,6 +35,7 @@ public:
     virtual void syncToSettings(const PhysicsSettings& /*settings*/) {}
     virtual void queueGuidedWaterDrain(const GuidedWaterDrain& /*drain*/) {}
 
+    virtual bool tryGetWaterActivityView(WaterActivityView& /*out*/) const { return false; }
     virtual bool tryGetWaterVolumeView(WaterVolumeView& /*out*/) const { return false; }
     virtual bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& /*out*/) { return false; }
 };

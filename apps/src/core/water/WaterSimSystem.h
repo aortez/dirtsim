@@ -19,6 +19,7 @@ public:
     void syncToSettings(const PhysicsSettings& settings, int worldWidth, int worldHeight);
     void advanceTime(World& world, double deltaTimeSeconds);
     void queueGuidedWaterDrain(const GuidedWaterDrain& drain);
+    bool tryGetWaterActivityView(WaterActivityView& out) const;
     bool tryGetWaterVolumeView(WaterVolumeView& out) const;
     bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out);
 

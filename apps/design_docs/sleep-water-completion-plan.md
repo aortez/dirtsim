@@ -158,6 +158,7 @@ The target end state is:
 - Bulk-water reads/writes go through one consistent abstraction in MAC mode.
 - Scenario reset/setup does not leave stale `waterVolume` behind.
 - Bulk-water behavior no longer depends on surviving legacy water cells.
+- Production MAC bulk-water behavior no longer depends on generic water-material mutation paths.
 
 ### Phase 3: Add Water Quiet Metrics And Sleep Calm Pool Interiors
 
@@ -172,18 +173,28 @@ The target end state is:
   - recent deposit/removal/displacement,
   - drain/inlet/impact disturbance.
 - Allow the interior of large calm pools to qualify for sleep while keeping the active shell awake.
+- Start with a tracked-only slice:
+  - compute and expose the new MAC-water quiet state in the region tracker and debug overlays,
+  - use interface presence, local volume change, and explicit disturbances as the first wake
+    policy,
+  - keep solver face-speed metrics available for diagnostics and later tuning, but do not make the
+    first tracked-only slice depend on them,
+  - do not skip MAC solver work or water-region world work yet.
 
 #### Target Behavior
 
 - Pool interiors can sleep.
 - Free surfaces, drains, inlets, moving-solid contacts, and recent splash zones stay awake.
 - Dirt/water interface regions remain conservative until the policy is clearly stable.
+- The first implementation slice changes tracker state only; runtime enforcement stays off for water.
 
 #### Acceptance
 
 - Large calm pools show sleeping interior regions.
 - Surface motion or disturbances wake a local halo without requiring full-pool wakeup.
 - Water sleeping does not cause obvious mass loss, stuck flow, or missed wake events.
+- During the first tracked-only slice, water regions can become `Sleeping` in debug/tracker state
+  without yet skipping MAC work.
 
 ### Phase 4: Gate MAC Water Work By Active Regions If Needed
 

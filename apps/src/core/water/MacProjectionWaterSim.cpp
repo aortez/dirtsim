@@ -33,6 +33,10 @@ void MacProjectionWaterSim::reset()
 {
     pendingGuidedWaterDrains_.clear();
     std::fill(waterVolume_.begin(), waterVolume_.end(), 0.0f);
+    std::fill(previousWaterVolume_.begin(), previousWaterVolume_.end(), 0.0f);
+    std::fill(waterActivityMaxFaceSpeed_.begin(), waterActivityMaxFaceSpeed_.end(), 0.0f);
+    std::fill(waterActivityVolumeDelta_.begin(), waterActivityVolumeDelta_.end(), 0.0f);
+    std::fill(waterActivityFlags_.begin(), waterActivityFlags_.end(), 0);
     std::fill(uFaceVelocity_.begin(), uFaceVelocity_.end(), 0.0f);
     std::fill(vFaceVelocity_.begin(), vFaceVelocity_.end(), 0.0f);
     std::fill(divergence_.begin(), divergence_.end(), 0.0f);
@@ -57,6 +61,10 @@ void MacProjectionWaterSim::resize(int worldWidth, int worldHeight)
     const size_t vFaceCount = static_cast<size_t>(width_) * (height_ + 1);
 
     waterVolume_.assign(cellCount, 0.0f);
+    previousWaterVolume_.assign(cellCount, 0.0f);
+    waterActivityMaxFaceSpeed_.assign(cellCount, 0.0f);
+    waterActivityVolumeDelta_.assign(cellCount, 0.0f);
+    waterActivityFlags_.assign(cellCount, 0);
     uFaceVelocity_.assign(uFaceCount, 0.0f);
     vFaceVelocity_.assign(vFaceCount, 0.0f);
     divergence_.assign(cellCount, 0.0f);
@@ -68,6 +76,20 @@ void MacProjectionWaterSim::resize(int worldWidth, int worldHeight)
     projectionMask_.assign(cellCount, 0);
     projectionMaskScratch_.assign(cellCount, 0);
     solidMask_.assign(cellCount, 0);
+}
+
+bool MacProjectionWaterSim::tryGetWaterActivityView(WaterActivityView& out) const
+{
+    if (width_ <= 0 || height_ <= 0) {
+        return false;
+    }
+
+    out.width = width_;
+    out.height = height_;
+    out.max_face_speed = waterActivityMaxFaceSpeed_;
+    out.volume_delta = waterActivityVolumeDelta_;
+    out.flags = waterActivityFlags_;
+    return true;
 }
 
 bool MacProjectionWaterSim::tryGetWaterVolumeView(WaterVolumeView& out) const
@@ -113,15 +135,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     if (width_ <= 0 || height_ <= 0) {
         return;
     }
-    if (deltaTimeSeconds <= 0.0) {
-        return;
-    }
-
-    const float dt = static_cast<float>(deltaTimeSeconds);
     const WorldData& data = world.getData();
-
-    const float gravity = static_cast<float>(world.getPhysicsSettings().gravity);
-    const Parameters& parameters = parameters_;
 
     for (int y = 0; y < height_; ++y) {
         for (int x = 0; x < width_; ++x) {
@@ -131,6 +145,16 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             solidMask_[idx] = solid ? 1 : 0;
         }
     }
+
+    std::copy(waterVolume_.begin(), waterVolume_.end(), previousWaterVolume_.begin());
+    if (deltaTimeSeconds <= 0.0) {
+        rebuildWaterActivityView(previousWaterVolume_);
+        return;
+    }
+
+    const float dt = static_cast<float>(deltaTimeSeconds);
+    const float gravity = static_cast<float>(world.getPhysicsSettings().gravity);
+    const Parameters& parameters = parameters_;
 
     float totalWaterVolume = 0.0f;
     for (int y = 0; y < height_; ++y) {
@@ -237,6 +261,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
         pendingGuidedWaterDrains_.clear();
         std::fill(uFaceVelocity_.begin(), uFaceVelocity_.end(), 0.0f);
         std::fill(vFaceVelocity_.begin(), vFaceVelocity_.end(), 0.0f);
+        rebuildWaterActivityView(previousWaterVolume_);
         return;
     }
 
@@ -638,6 +663,69 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     for (float& volume : waterVolume_) {
         if (!std::isfinite(volume) || (volume > 0.0f && volume < kMinNormal)) {
             volume = 0.0f;
+        }
+    }
+
+    rebuildWaterActivityView(previousWaterVolume_);
+}
+
+void MacProjectionWaterSim::rebuildWaterActivityView(const std::vector<float>& previousWaterVolume)
+{
+    const auto cellHasFluid = [&](int x, int y) {
+        if (x < 0 || x >= width_ || y < 0 || y >= height_) {
+            return false;
+        }
+
+        const size_t idx = cellIndex(width_, x, y);
+        return solidMask_[idx] == 0 && waterVolume_[idx] > parameters_.fluidMaskVolumeEpsilon;
+    };
+
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
+            const size_t idx = cellIndex(width_, x, y);
+            if (solidMask_[idx] != 0) {
+                waterActivityMaxFaceSpeed_[idx] = 0.0f;
+                waterActivityVolumeDelta_[idx] = 0.0f;
+                waterActivityFlags_[idx] = 0;
+                continue;
+            }
+
+            const float currentVolume = std::clamp(waterVolume_[idx], 0.0f, 1.0f);
+            const float previousVolume = idx < previousWaterVolume.size()
+                ? std::clamp(previousWaterVolume[idx], 0.0f, 1.0f)
+                : 0.0f;
+
+            waterActivityVolumeDelta_[idx] = std::abs(currentVolume - previousVolume);
+            waterActivityMaxFaceSpeed_[idx] = std::max(
+                {
+                    std::abs(uFaceVelocity_[uFaceIndex(width_, x, y)]),
+                    std::abs(uFaceVelocity_[uFaceIndex(width_, x + 1, y)]),
+                    std::abs(vFaceVelocity_[vFaceIndex(width_, x, y)]),
+                    std::abs(vFaceVelocity_[vFaceIndex(width_, x, y + 1)]),
+                });
+
+            uint8_t flags = 0;
+            const bool hasFluid = cellHasFluid(x, y);
+            if (hasFluid) {
+                flags |= static_cast<uint8_t>(WaterActivityFlag::HasFluid);
+            }
+
+            if (hasFluid) {
+                const auto neighborIsInterface = [&](int nx, int ny) {
+                    if (nx < 0 || nx >= width_ || ny < 0 || ny >= height_) {
+                        return true;
+                    }
+
+                    return !cellHasFluid(nx, ny);
+                };
+
+                if (neighborIsInterface(x - 1, y) || neighborIsInterface(x + 1, y)
+                    || neighborIsInterface(x, y - 1) || neighborIsInterface(x, y + 1)) {
+                    flags |= static_cast<uint8_t>(WaterActivityFlag::Interface);
+                }
+            }
+
+            waterActivityFlags_[idx] = flags;
         }
     }
 }
