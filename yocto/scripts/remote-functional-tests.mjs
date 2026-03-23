@@ -37,6 +37,7 @@ const ALL_TESTS = [
   'canTrain',
   'canSetGenerationsAndTrain',
   'canPlantTreeSeed',
+  'canRecoverScannerUiAfterOutOfBandExit',
   'canControlNesScenario',
   'canLoadGenomeFromBrowser',
   'canOpenTrainingConfigPanel',

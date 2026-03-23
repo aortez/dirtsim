@@ -1,7 +1,9 @@
 [Unit]
 Description=DirtSim Configuration Setup
 DefaultDependencies=no
-Before=dirtsim-server.service dirtsim-ui.service
+RequiresMountsFor=/data/dirtsim
+After=local-fs.target data.mount
+Before=dirtsim-audio.service dirtsim-os-manager.service dirtsim-server.service dirtsim-ui.service
 
 [Service]
 Type=oneshot

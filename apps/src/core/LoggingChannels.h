@@ -66,11 +66,14 @@ public:
      * Looks for <configPath>.local first, falls back to <configPath> if not found.
      * @param configPath Path to the JSON config file (default: "logging-config.json")
      * @param componentName Component name for log file and pattern (e.g., "server", "ui")
+     * @param defaultLogFilePath Default file sink path to use when generating or falling back
+     * to built-in config.
      * @return true if config was loaded successfully, false if using defaults
      */
     static bool initializeFromConfig(
         const std::string& configPath = "logging-config.json",
-        const std::string& componentName = "default");
+        const std::string& componentName = "default",
+        const std::string& defaultLogFilePath = "dirtsim.log");
 
     /**
      * @brief Get a specific channel logger.
@@ -116,12 +119,14 @@ private:
      * Creates default config if file doesn't exist.
      * Exits on error if file exists but cannot be read.
      */
-    static nlohmann::json loadConfigFile(const std::string& configPath);
+    static nlohmann::json loadConfigFile(
+        const std::string& configPath, const std::string& defaultLogFilePath);
 
     /**
      * @brief Create default config file at the given path.
      */
-    static bool createDefaultConfigFile(const std::string& path);
+    static bool createDefaultConfigFile(
+        const std::string& path, const std::string& defaultLogFilePath);
 
     /**
      * @brief Apply configuration from JSON object.
@@ -129,7 +134,9 @@ private:
      * @param componentName Component name for log file and pattern
      */
     static void applyConfig(
-        const nlohmann::json& config, const std::string& componentName = "default");
+        const nlohmann::json& config,
+        const std::string& componentName = "default",
+        const std::string& defaultLogFilePath = "dirtsim.log");
 
     /**
      * @brief Create specialized sinks from config.

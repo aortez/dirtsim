@@ -116,6 +116,7 @@ public:
 private:
     enum class ViewMode { LanAccess, Scanner, Wifi, WifiConnectFlow, WifiDetails };
     enum class ConnectOverlayMode { PasswordEntry, Connecting };
+    enum class ScannerBand { Band24Ghz, Band5Ghz };
 
     lv_obj_t* container_;
     lv_obj_t* connectProgressCancelButton_ = nullptr;
@@ -131,10 +132,14 @@ private:
     lv_obj_t* connectFlowView_ = nullptr;
     lv_obj_t* networkDetailsView_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
+    lv_obj_t* scannerBand24Button_ = nullptr;
+    lv_obj_t* scannerBand5Button_ = nullptr;
+    lv_obj_t* scannerChannelPlot24Container_ = nullptr;
+    lv_obj_t* scannerChannelPlot5Container_ = nullptr;
     lv_obj_t* scannerEnterButton_ = nullptr;
     lv_obj_t* scannerExitButton_ = nullptr;
-    lv_obj_t* scannerHintLabel_ = nullptr;
-    lv_obj_t* scannerDataLabel_ = nullptr;
+    lv_obj_t* scannerRadiosHeaderLabel_ = nullptr;
+    lv_obj_t* scannerRadiosList_ = nullptr;
     lv_obj_t* scannerRefreshButton_ = nullptr;
     lv_obj_t* scannerStatusLabel_ = nullptr;
     lv_obj_t* scannerView_ = nullptr;
@@ -303,6 +308,15 @@ private:
     bool scannerModeActive_ = false;
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
+    std::optional<std::chrono::steady_clock::time_point> scannerSnapshotActivityAt_;
+    std::optional<int> scannerCurrentChannel_;
+    size_t scannerObservedRadioCount_ = 0;
+    std::vector<ScannerObservedRadio> scannerObservedRadios_;
+    std::string scannerSnapshotErrorMessage_;
+    bool scannerSnapshotReceived_ = false;
+    bool scannerSnapshotStale_ = false;
+    bool scannerStatusUnavailable_ = false;
+    ScannerBand scannerSelectedBand_ = ScannerBand::Band5Ghz;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -351,6 +365,8 @@ private:
     void setWebUiToggleEnabled(bool enabled);
     void submitPasswordPrompt();
     std::optional<size_t> findNetworkIndexBySsid(const std::string& ssid) const;
+    bool isScannerSnapshotStale() const;
+    void resetScannerSnapshotState();
     void updateCurrentConnectionSummary();
     void updateDetailsLastScanLabel();
     void updateDetailsSignalHistoryPlots();
@@ -362,7 +378,12 @@ private:
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
     void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
+    void updateScannerBandControls();
     void updateScannerControls();
+    void updateScannerPlotVisibility();
+    void updateScannerRadioList();
+    void updateScannerStaleState();
+    void updateScannerStatusLabel();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
@@ -398,6 +419,8 @@ private:
     static void onPasswordVisibilityClicked(lv_event_t* e);
     static void onScannerEnterClicked(lv_event_t* e);
     static void onScannerExitClicked(lv_event_t* e);
+    static void onScannerBand24Clicked(lv_event_t* e);
+    static void onScannerBand5Clicked(lv_event_t* e);
     static void onScannerRefreshClicked(lv_event_t* e);
     static void onLiveScanToggleChanged(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);

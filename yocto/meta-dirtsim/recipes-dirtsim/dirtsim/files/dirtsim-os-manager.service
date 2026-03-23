@@ -1,11 +1,12 @@
 [Unit]
 Description=DirtSim OS Manager
+After=dirtsim-config-setup.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/data/dirtsim
-ExecStart=/usr/bin/dirtsim-os-manager -p 9090
+ExecStart=/usr/bin/dirtsim-os-manager -p 9090 --log-config /etc/dirtsim/dirtsim-os-manager-logging-config.json
 Restart=no
 
 [Install]
