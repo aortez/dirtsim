@@ -4,6 +4,7 @@
 #include "server/api/ClockEventTrigger.h"
 #include "server/api/DiagramGet.h"
 #include "server/api/EventSubscribe.h"
+#include "server/api/EvolutionPauseSet.h"
 #include "server/api/Exit.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
@@ -83,6 +84,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::EventSubscribe::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::EventSubscribe::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::EvolutionPauseSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::EvolutionPauseSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::Exit::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Exit::Command::fromJson(cmd));

@@ -271,6 +271,58 @@ void setTransparentColumnLayout(lv_obj_t* container, int gapPx)
     lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+lv_obj_t* createLongTermCollapsibleSection(
+    lv_obj_t* parent,
+    const char* title,
+    uint32_t accentColor,
+    bool initiallyExpanded,
+    int contentGapPx)
+{
+    auto sectionBuilder = LVGLBuilder::collapsiblePanel(parent);
+    if (lv_obj_t* sectionPanel = sectionBuilder.title(title)
+                                     .size(LV_PCT(100))
+                                     .initiallyExpanded(initiallyExpanded)
+                                     .backgroundColor(0x141420)
+                                     .headerColor(0x1A1A2E)
+                                     .buildOrLog()) {
+        lv_obj_t* sectionContent = sectionBuilder.getContent();
+
+        lv_obj_set_style_bg_opa(sectionPanel, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(sectionPanel, 0, 0);
+        lv_obj_set_style_pad_all(sectionPanel, 0, 0);
+        lv_obj_set_style_pad_gap(sectionPanel, 6, 0);
+
+        if (lv_obj_t* sectionHeader = sectionBuilder.getHeader()) {
+            lv_obj_set_style_bg_opa(sectionHeader, LV_OPA_60, 0);
+            lv_obj_set_style_border_width(sectionHeader, 1, 0);
+            lv_obj_set_style_border_color(sectionHeader, lv_color_hex(0x2A2A44), 0);
+            lv_obj_set_style_pad_left(sectionHeader, 8, 0);
+            lv_obj_set_style_pad_right(sectionHeader, 8, 0);
+        }
+
+        if (lv_obj_t* sectionIndicator = sectionBuilder.getIndicator()) {
+            lv_obj_set_style_text_color(sectionIndicator, lv_color_hex(accentColor), 0);
+            lv_obj_set_style_text_font(sectionIndicator, &lv_font_montserrat_16, 0);
+        }
+
+        if (lv_obj_t* sectionTitle = sectionBuilder.getTitleLabel()) {
+            lv_obj_set_style_text_color(sectionTitle, lv_color_hex(accentColor), 0);
+            lv_obj_set_style_text_font(sectionTitle, &lv_font_montserrat_14, 0);
+        }
+
+        if (sectionContent) {
+            setTransparentColumnLayout(sectionContent, contentGapPx);
+        }
+        return sectionContent;
+    }
+
+    lv_obj_t* sectionTitle = lv_label_create(parent);
+    lv_label_set_text(sectionTitle, title);
+    lv_obj_set_style_text_color(sectionTitle, lv_color_hex(accentColor), 0);
+    lv_obj_set_style_text_font(sectionTitle, &lv_font_montserrat_14, 0);
+    return parent;
+}
+
 void setTransparentRowLayout(lv_obj_t* container, int gapPx)
 {
     lv_obj_set_size(container, LV_PCT(100), LV_SIZE_CONTENT);
@@ -522,24 +574,20 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_scroll_dir(longTermPanel_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(longTermPanel_, LV_SCROLLBAR_MODE_AUTO);
 
-    lv_obj_t* bestCommandsTitle = lv_label_create(longTermPanel_);
-    lv_label_set_text(bestCommandsTitle, "Best Command Histogram");
-    lv_obj_set_style_text_color(bestCommandsTitle, lv_color_hex(0xFFDD66), 0);
-    lv_obj_set_style_text_font(bestCommandsTitle, &lv_font_montserrat_14, 0);
+    lv_obj_t* bestCommandsParent = createLongTermCollapsibleSection(
+        longTermPanel_, "Best Command Histogram", 0xFFDD66, false, 0);
 
-    bestCommandSummaryLabel_ = lv_label_create(longTermPanel_);
+    bestCommandSummaryLabel_ = lv_label_create(bestCommandsParent);
     lv_obj_set_width(bestCommandSummaryLabel_, LV_PCT(100));
     lv_label_set_long_mode(bestCommandSummaryLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_font(bestCommandSummaryLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(bestCommandSummaryLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
 
-    lv_obj_t* bestPresentationTitle = lv_label_create(longTermPanel_);
-    lv_label_set_text(bestPresentationTitle, "Best Fitness Presentation");
-    lv_obj_set_style_text_color(bestPresentationTitle, lv_color_hex(0x99DDFF), 0);
-    lv_obj_set_style_text_font(bestPresentationTitle, &lv_font_montserrat_14, 0);
+    lv_obj_t* bestFitnessPresentationParent = createLongTermCollapsibleSection(
+        longTermPanel_, "Best Fitness Presentation", 0x99DDFF, true, 8);
 
-    bestFitnessPresentationContent_ = lv_obj_create(longTermPanel_);
+    bestFitnessPresentationContent_ = lv_obj_create(bestFitnessPresentationParent);
     setTransparentColumnLayout(bestFitnessPresentationContent_, 8);
     renderBestFitnessPresentationPlaceholder("No best snapshot yet.");
 
@@ -1731,6 +1779,8 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) {
         return;
     }
+
+    setTrainingPaused(progress.isPaused);
 
     const auto now = std::chrono::steady_clock::now();
     if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {

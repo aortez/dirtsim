@@ -4,7 +4,9 @@
  */
 
 #include "core/UUID.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
@@ -234,6 +236,7 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.bestFitnessThisGen = 2.5;
     evt.progress.bestFitnessAllTime = 3.0;
     evt.progress.averageFitness = 1.5;
+    evt.progress.isPaused = true;
     evt.progress.activeParallelism = 4;
     evt.progress.cpuPercent = 48.5;
     evt.progress.validatingBest = true;
@@ -257,8 +260,9 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
-    EXPECT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()))
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()))
         << "TrainingActive + EvolutionProgress should not transition";
+    trainingState = std::move(std::get<TrainingActive>(result.getVariant()));
 
     EXPECT_EQ(trainingState.progress.generation, 5);
     EXPECT_EQ(trainingState.progress.maxGenerations, 100);
@@ -267,6 +271,7 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessThisGen, 2.5);
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessAllTime, 3.0);
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
+    EXPECT_TRUE(trainingState.progress.isPaused);
     EXPECT_EQ(trainingState.progress.activeParallelism, 4);
     EXPECT_DOUBLE_EQ(trainingState.progress.cpuPercent, 48.5);
     EXPECT_TRUE(trainingState.progress.validatingBest);
@@ -287,6 +292,51 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.lastBreeding.weightChangesAvg, 49.5);
     EXPECT_EQ(trainingState.progress.lastBreeding.weightChangesMin, 30);
     EXPECT_EQ(trainingState.progress.lastBreeding.weightChangesMax, 63);
+
+    trainingState.view_.reset();
+}
+
+TEST(StateTrainingTest, PauseButtonUsesServerCommandAndServerProgress)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    TrainingActive trainingState;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    trainingState.onEnter(*fixture.stateMachine);
+    fixture.mockWebSocketService->clearSentCommands();
+
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionPauseSet::Command>(
+        { .paused = true });
+
+    State::Any result =
+        trainingState.onEvent(TrainingPauseResumeClickedEvent{}, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()));
+    trainingState = std::move(std::get<TrainingActive>(result.getVariant()));
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionPauseSet");
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentEnvelopes().size(), 1u);
+    const auto sentPauseCmd = Network::deserialize_payload<Api::EvolutionPauseSet::Command>(
+        fixture.mockWebSocketService->sentEnvelopes().back().payload);
+    EXPECT_TRUE(sentPauseCmd.paused);
+
+    EXPECT_FALSE(trainingState.progress.isPaused);
+
+    EvolutionProgressReceivedEvent evt;
+    evt.progress.isPaused = true;
+    result = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()));
+    trainingState = std::move(std::get<TrainingActive>(result.getVariant()));
+    EXPECT_TRUE(trainingState.progress.isPaused);
 
     trainingState.view_.reset();
 }

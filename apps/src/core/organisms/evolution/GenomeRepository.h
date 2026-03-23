@@ -66,6 +66,10 @@ public:
     // Returns number of genomes removed.
     size_t pruneManagedByFitness(size_t maxManagedGenomes);
 
+    // Count managed genomes (trainingSessionId set) in one archive bucket.
+    size_t countManagedByBucket(
+        OrganismType organismType, const std::string& brainKind, GenomePoolId genomePoolId) const;
+
     // Check if a genome exists.
     bool exists(GenomeId id) const;
 

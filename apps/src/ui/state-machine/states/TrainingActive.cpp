@@ -6,6 +6,7 @@
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/UserSettingsPatch.h"
@@ -46,7 +47,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.plotBestSeriesNewHighMask_.clear();
 
     state.lastPlottedCompletedGeneration_ = -1;
-    state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
     state.renderMessageCount_ = 0;
     state.lastRenderRateLog_ = std::chrono::steady_clock::now();
@@ -316,7 +316,6 @@ State::Any TrainingActive::onEvent(const Api::TrainingResult::Cwc& cwc, StateMac
 {
     LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());
 
-    trainingPaused_ = false;
     const GenomeId bestGenomeId = getBestGenomeId(cwc.command.candidates);
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
@@ -346,8 +345,6 @@ State::Any TrainingActive::onEvent(const StopTrainingClickedEvent& /*evt*/, Stat
 {
     LOG_INFO(State, "Stop button clicked, stopping evolution");
 
-    trainingPaused_ = false;
-
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot stop evolution");
@@ -375,14 +372,27 @@ State::Any TrainingActive::onEvent(const QuitTrainingClickedEvent& /*evt*/, Stat
     return onEvent(StopTrainingClickedEvent{}, sm);
 }
 
-State::Any TrainingActive::onEvent(
-    const TrainingPauseResumeClickedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any TrainingActive::onEvent(const TrainingPauseResumeClickedEvent& /*evt*/, StateMachine& sm)
 {
-    trainingPaused_ = !trainingPaused_;
-    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
-    view_->setTrainingPaused(trainingPaused_);
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot toggle training pause");
+        return std::move(*this);
+    }
 
-    LOG_INFO(State, "Training pause toggled: {}", trainingPaused_);
+    Api::EvolutionPauseSet::Command cmd{ .paused = !progress.isPaused };
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::EvolutionPauseSet::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "Failed to send EvolutionPauseSet: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(State, "Server EvolutionPauseSet error: {}", result.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "Training pause requested: {}", result.value().value().paused);
     return std::move(*this);
 }
 

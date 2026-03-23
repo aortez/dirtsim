@@ -353,6 +353,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/ClockEventTrigger.cpp
     src/server/api/DiagramGet.cpp
     src/server/api/EventSubscribe.cpp
+    src/server/api/EvolutionPauseSet.cpp
     src/server/api/EvolutionProgress.cpp
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp

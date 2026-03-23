@@ -4,6 +4,10 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "server/Event.h"
+#include "server/api/EventSubscribe.h"
+#include "server/api/EvolutionPauseSet.h"
+#include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TimerStatsGet.h"
@@ -54,6 +58,31 @@ TrainingSpec makeTrainingSpec(int populationSize)
     return spec;
 }
 
+GenomeMetadata makeManagedGenomeMetadata(
+    const std::string& name,
+    double fitness,
+    OrganismType organismType,
+    const std::string& brainKind,
+    GenomePoolId genomePoolId = GenomePoolId::DirtSim)
+{
+    return GenomeMetadata{
+        .name = name,
+        .fitness = fitness,
+        .robustFitness = fitness,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { fitness },
+        .generation = 1,
+        .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = organismType,
+        .brainKind = brainKind,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = UUID::generate(),
+        .genomePoolId = genomePoolId,
+    };
+}
+
 struct EvolutionWorkerGuard {
     Evolution* evolution = nullptr;
     StateMachine* stateMachine = nullptr;
@@ -62,6 +91,52 @@ struct EvolutionWorkerGuard {
     {
         if (evolution && stateMachine) {
             evolution->onExit(*stateMachine);
+        }
+    }
+};
+
+void eventSubscribe(TestStateMachineFixture& fixture, const std::string& connectionId)
+{
+    bool callbackInvoked = false;
+    Api::EventSubscribe::Response response;
+    Api::EventSubscribe::Command cmd{
+        .enabled = true,
+        .connectionId = connectionId,
+    };
+    Api::EventSubscribe::Cwc cwc(cmd, [&](Api::EventSubscribe::Response&& value) {
+        callbackInvoked = true;
+        response = std::move(value);
+    });
+
+    fixture.stateMachine->handleEvent(Server::Event{ cwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+}
+
+std::optional<Api::EvolutionProgress> latestEvolutionProgress(const MockWebSocketService& mockWs)
+{
+    for (auto it = mockWs.sentClientBinaries().rbegin(); it != mockWs.sentClientBinaries().rend();
+         ++it) {
+        const auto envelope = Network::deserialize_envelope(it->data);
+        if (envelope.message_type == Api::EvolutionProgress::name()) {
+            return Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+        }
+    }
+    return std::nullopt;
+}
+
+struct StateAnyEvolutionGuard {
+    State::Any* state = nullptr;
+    StateMachine* stateMachine = nullptr;
+
+    ~StateAnyEvolutionGuard()
+    {
+        if (!state || !stateMachine) {
+            return;
+        }
+        if (std::holds_alternative<Evolution>(state->getVariant())) {
+            std::get<Evolution>(state->getVariant()).onExit(*stateMachine);
         }
     }
 };
@@ -1894,6 +1969,233 @@ TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
         : metadata->fitness;
     EXPECT_EQ(bestDisplayFitness, evolutionState.bestFitnessAllTime)
         << "Stored fitness should match tracked best";
+}
+
+TEST(StateEvolutionTest, EvolutionPauseProgressReportsPausedWithoutGrowingTrainingTime)
+{
+    TestStateMachineFixture fixture;
+    eventSubscribe(fixture, "events");
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    State::Any currentState = std::move(evolutionState);
+    StateAnyEvolutionGuard guard{ .state = &currentState,
+                                  .stateMachine = fixture.stateMachine.get() };
+
+    auto& initialEvolution = std::get<Evolution>(currentState.getVariant());
+    auto tickResult = initialEvolution.tick(*fixture.stateMachine);
+    ASSERT_FALSE(tickResult.has_value());
+
+    const auto progressDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < progressDeadline) {
+        auto& currentEvolution = std::get<Evolution>(currentState.getVariant());
+        currentEvolution.tick(*fixture.stateMachine);
+        if (currentEvolution.executor_ && currentEvolution.executor_->visibleSimTimeGet() > 0.0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    auto& readyEvolution = std::get<Evolution>(currentState.getVariant());
+    ASSERT_NE(readyEvolution.executor_, nullptr);
+    ASSERT_GT(readyEvolution.executor_->visibleSimTimeGet(), 0.0);
+
+    const auto sendPause = [&](bool paused) {
+        bool callbackInvoked = false;
+        Api::EvolutionPauseSet::Response response;
+        Api::EvolutionPauseSet::Command cmd{ .paused = paused };
+        Api::EvolutionPauseSet::Cwc cwc(cmd, [&](Api::EvolutionPauseSet::Response&& value) {
+            callbackInvoked = true;
+            response = std::move(value);
+        });
+
+        fixture.mockWebSocketService->clearSentClientBinaries();
+        State::Any nextState =
+            std::get<Evolution>(currentState.getVariant()).onEvent(cwc, *fixture.stateMachine);
+        EXPECT_TRUE(callbackInvoked);
+        EXPECT_TRUE(response.isValue());
+        currentState = std::move(nextState);
+        EXPECT_TRUE(std::holds_alternative<Evolution>(currentState.getVariant()));
+        return response;
+    };
+
+    const auto firstResponse = sendPause(true);
+    ASSERT_TRUE(firstResponse.isValue());
+    EXPECT_TRUE(firstResponse.value().paused);
+    EXPECT_TRUE(std::get<Evolution>(currentState.getVariant()).executor_->isPaused());
+
+    const auto firstProgress = latestEvolutionProgress(*fixture.mockWebSocketService);
+    ASSERT_TRUE(firstProgress.has_value());
+    EXPECT_TRUE(firstProgress->isPaused);
+    const double pausedTrainingSeconds = firstProgress->totalTrainingSeconds;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    const auto secondResponse = sendPause(true);
+    ASSERT_TRUE(secondResponse.isValue());
+    EXPECT_TRUE(secondResponse.value().paused);
+
+    const auto secondProgress = latestEvolutionProgress(*fixture.mockWebSocketService);
+    ASSERT_TRUE(secondProgress.has_value());
+    EXPECT_TRUE(secondProgress->isPaused);
+    EXPECT_NEAR(secondProgress->totalTrainingSeconds, pausedTrainingSeconds, 0.01);
+}
+
+TEST(StateEvolutionTest, EvolutionProgressReportsManagedArchiveOccupancyForTrainingBuckets)
+{
+    TestStateMachineFixture fixture;
+    eventSubscribe(fixture, "events");
+
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.store(
+        UUID::generate(),
+        makeNeuralNetGenome(0.1f),
+        makeManagedGenomeMetadata(
+            "tree_net_a", 1.0, OrganismType::TREE, TrainingBrainKind::NeuralNet));
+    repo.store(
+        UUID::generate(),
+        makeNeuralNetGenome(0.2f),
+        makeManagedGenomeMetadata(
+            "tree_net_b", 2.0, OrganismType::TREE, TrainingBrainKind::NeuralNet));
+    repo.store(
+        UUID::generate(),
+        makeNeuralNetGenome(0.3f),
+        makeManagedGenomeMetadata(
+            "tree_rule", 3.0, OrganismType::TREE, TrainingBrainKind::RuleBased));
+
+    auto unmanagedTreeNet = makeManagedGenomeMetadata(
+        "tree_net_unmanaged", 4.0, OrganismType::TREE, TrainingBrainKind::NeuralNet);
+    unmanagedTreeNet.trainingSessionId = std::nullopt;
+    repo.store(UUID::generate(), makeNeuralNetGenome(0.4f), unmanagedTreeNet);
+    repo.store(
+        UUID::generate(),
+        makeNeuralNetGenome(0.5f),
+        makeManagedGenomeMetadata(
+            "tree_net_other_pool",
+            5.0,
+            OrganismType::TREE,
+            TrainingBrainKind::NeuralNet,
+            GenomePoolId::FlappyParatroopa));
+    repo.store(
+        UUID::generate(),
+        makeNeuralNetGenome(0.6f),
+        makeManagedGenomeMetadata(
+            "duck_net", 6.0, OrganismType::DUCK, TrainingBrainKind::NeuralNet));
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.genomeArchiveMaxSize = 2;
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population.push_back(
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::NeuralNet,
+            .brainVariant = std::nullopt,
+            .count = 1,
+            .seedGenomes = {},
+            .randomCount = 1,
+        });
+    evolutionState.trainingSpec.population.push_back(
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::RuleBased,
+            .brainVariant = std::nullopt,
+            .count = 1,
+            .seedGenomes = {},
+            .randomCount = 0,
+        });
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    State::Any currentState = std::move(evolutionState);
+    StateAnyEvolutionGuard guard{ .state = &currentState,
+                                  .stateMachine = fixture.stateMachine.get() };
+
+    bool pauseCallbackInvoked = false;
+    Api::EvolutionPauseSet::Response pauseResponse;
+    Api::EvolutionPauseSet::Command pauseCmd{ .paused = true };
+    Api::EvolutionPauseSet::Cwc pauseCwc(
+        pauseCmd, [&](Api::EvolutionPauseSet::Response&& response) {
+            pauseCallbackInvoked = true;
+            pauseResponse = std::move(response);
+        });
+
+    State::Any pausedState =
+        std::get<Evolution>(currentState.getVariant()).onEvent(pauseCwc, *fixture.stateMachine);
+    ASSERT_TRUE(pauseCallbackInvoked);
+    ASSERT_TRUE(pauseResponse.isValue());
+    currentState = std::move(pausedState);
+    ASSERT_TRUE(std::holds_alternative<Evolution>(currentState.getVariant()));
+
+    const auto progress = latestEvolutionProgress(*fixture.mockWebSocketService);
+    ASSERT_TRUE(progress.has_value());
+    EXPECT_EQ(progress->totalGenomeCount, 3);
+    EXPECT_EQ(progress->genomeArchiveMaxSize, 4);
+}
+
+TEST(StateEvolutionTest, EvolutionStopStillWorksWhilePaused)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    State::Any currentState = std::move(evolutionState);
+    StateAnyEvolutionGuard guard{ .state = &currentState,
+                                  .stateMachine = fixture.stateMachine.get() };
+
+    const auto progressDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < progressDeadline) {
+        auto& currentEvolution = std::get<Evolution>(currentState.getVariant());
+        currentEvolution.tick(*fixture.stateMachine);
+        if (currentEvolution.executor_ && currentEvolution.executor_->visibleSimTimeGet() > 0.0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(currentState.getVariant()));
+    ASSERT_NE(std::get<Evolution>(currentState.getVariant()).executor_, nullptr);
+
+    Api::EvolutionPauseSet::Command pauseCmd{ .paused = true };
+    Api::EvolutionPauseSet::Response pauseResponse;
+    Api::EvolutionPauseSet::Cwc pauseCwc(
+        pauseCmd,
+        [&](Api::EvolutionPauseSet::Response&& response) { pauseResponse = std::move(response); });
+    State::Any pausedState =
+        std::get<Evolution>(currentState.getVariant()).onEvent(pauseCwc, *fixture.stateMachine);
+    ASSERT_TRUE(pauseResponse.isValue());
+    EXPECT_TRUE(pauseResponse.value().paused);
+    currentState = std::move(pausedState);
+    ASSERT_TRUE(std::holds_alternative<Evolution>(currentState.getVariant()));
+
+    bool stopCallbackInvoked = false;
+    Api::EvolutionStop::Response stopResponse;
+    Api::EvolutionStop::Command stopCmd;
+    Api::EvolutionStop::Cwc stopCwc(stopCmd, [&](Api::EvolutionStop::Response&& response) {
+        stopCallbackInvoked = true;
+        stopResponse = std::move(response);
+    });
+
+    State::Any nextState =
+        std::get<Evolution>(currentState.getVariant()).onEvent(stopCwc, *fixture.stateMachine);
+
+    EXPECT_TRUE(stopCallbackInvoked);
+    ASSERT_TRUE(stopResponse.isValue());
+    EXPECT_TRUE(std::holds_alternative<Idle>(nextState.getVariant()));
+    currentState = std::move(nextState);
 }
 
 /**

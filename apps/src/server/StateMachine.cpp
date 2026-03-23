@@ -882,6 +882,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_EMPTY(Api::CellSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::DiagramGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::EvolutionPauseSet);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
         DISPATCH_JSON_CMD_EMPTY(Api::NesInputSet);
@@ -1109,6 +1110,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::ClockEventTrigger::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::DiagramGet::Cwc>(
         [this](Api::DiagramGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::EvolutionPauseSet::Cwc>(
+        [this](Api::EvolutionPauseSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::EvolutionStart::Cwc>(
         [this](Api::EvolutionStart::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::EvolutionStop::Cwc>(

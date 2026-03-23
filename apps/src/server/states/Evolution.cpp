@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
+#include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
@@ -70,6 +71,29 @@ constexpr std::string_view trainingPhaseName(TrainingPhase phase)
             return "recovery";
     }
     return "unknown";
+}
+
+int clampArchiveMetric(size_t value)
+{
+    return value > static_cast<size_t>(std::numeric_limits<int>::max())
+        ? std::numeric_limits<int>::max()
+        : static_cast<int>(value);
+}
+
+std::vector<std::string> managedArchiveBrainKindsGet(const TrainingSpec& trainingSpec)
+{
+    std::vector<std::string> brainKinds;
+    brainKinds.reserve(trainingSpec.population.size());
+    for (const auto& populationSpec : trainingSpec.population) {
+        if (populationSpec.brainKind.empty()) {
+            continue;
+        }
+        brainKinds.push_back(populationSpec.brainKind);
+    }
+
+    std::sort(brainKinds.begin(), brainKinds.end());
+    brainKinds.erase(std::unique(brainKinds.begin(), brainKinds.end()), brainKinds.end());
+    return brainKinds;
 }
 
 uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
@@ -554,6 +578,9 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
+    totalPausedDuration_ = std::chrono::steady_clock::duration::zero();
+    trainingPauseStartTime_ = std::chrono::steady_clock::time_point{};
+    trainingPaused_ = false;
     lastBestPlaybackBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
@@ -667,7 +694,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     }
 
     // Sample CPU periodically for auto-tuning.
-    if (cpuMetrics_) {
+    if (!trainingPaused_ && cpuMetrics_) {
         constexpr auto kCpuSampleInterval = std::chrono::seconds(2);
         const auto now = std::chrono::steady_clock::now();
         if (lastCpuSampleTime_ == std::chrono::steady_clock::time_point{}
@@ -703,7 +730,9 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         if (visibleTick.progressed || !visibleTick.completed.empty()) {
             broadcastProgress(dsm);
         }
-        stepBestPlayback(dsm);
+        if (!trainingPaused_) {
+            stepBestPlayback(dsm);
+        }
     }
 
     if (trainingComplete_) {
@@ -713,6 +742,15 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         }
     }
     return std::nullopt;
+}
+
+Any Evolution::onEvent(const Api::EvolutionPauseSet::Cwc& cwc, StateMachine& dsm)
+{
+    pauseSet(cwc.command.paused, dsm);
+
+    Api::EvolutionPauseSet::Okay okay{ .paused = trainingPaused_ };
+    cwc.sendResponse(Api::EvolutionPauseSet::Response::okay(std::move(okay)));
+    return std::move(*this);
 }
 
 Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
@@ -1431,7 +1469,7 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
         finalAverageFitness_ =
             generationPopulationSize > 0 ? (sumFitnessThisGen_ / generationPopulationSize) : 0.0;
         auto now = std::chrono::steady_clock::now();
-        finalTrainingSeconds_ = std::chrono::duration<double>(now - trainingStartTime_).count();
+        finalTrainingSeconds_ = activeTrainingSecondsGet(now);
         trainingComplete_ = true;
         generation = evolutionConfig.maxGenerations;
         return;
@@ -1875,6 +1913,64 @@ void Evolution::adjustConcurrency()
     }
 }
 
+double Evolution::activeTrainingSecondsGet(std::chrono::steady_clock::time_point now) const
+{
+    auto pausedDuration = totalPausedDuration_;
+    if (trainingPaused_ && trainingPauseStartTime_ != std::chrono::steady_clock::time_point{}) {
+        pausedDuration += now - trainingPauseStartTime_;
+    }
+
+    const auto activeDuration = now - trainingStartTime_ - pausedDuration;
+    return std::max(0.0, std::chrono::duration<double>(activeDuration).count());
+}
+
+void Evolution::pauseSet(bool paused, StateMachine& dsm)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (paused == trainingPaused_) {
+        lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
+        broadcastProgress(dsm);
+        return;
+    }
+
+    if (paused) {
+        trainingPaused_ = true;
+        trainingPauseStartTime_ = now;
+        if (executor_) {
+            executor_->pauseSet(true);
+        }
+        LOG_INFO(State, "Evolution: Paused training");
+    }
+    else {
+        const auto pausedDuration =
+            trainingPauseStartTime_ == std::chrono::steady_clock::time_point{}
+            ? std::chrono::steady_clock::duration::zero()
+            : now - trainingPauseStartTime_;
+        totalPausedDuration_ += pausedDuration;
+        trainingPauseStartTime_ = std::chrono::steady_clock::time_point{};
+        trainingPaused_ = false;
+        if (executor_) {
+            executor_->pauseSet(false);
+        }
+        if (lastBestPlaybackBroadcastTime_ != std::chrono::steady_clock::time_point{}) {
+            lastBestPlaybackBroadcastTime_ += pausedDuration;
+        }
+        if (lastBestPlaybackStepTime_ != std::chrono::steady_clock::time_point{}) {
+            lastBestPlaybackStepTime_ += pausedDuration;
+        }
+        if (lastCpuSampleTime_ != std::chrono::steady_clock::time_point{}) {
+            lastCpuSampleTime_ += pausedDuration;
+        }
+        LOG_INFO(
+            State,
+            "Evolution: Resumed training after {:.3f}s pause",
+            std::chrono::duration<double>(pausedDuration).count());
+    }
+
+    lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    broadcastProgress(dsm);
+}
+
 void Evolution::setBestPlaybackSource(const Individual& individual, double fitness, int generation)
 {
     bestPlayback_.individual = individual;
@@ -1993,7 +2089,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     }
 
     // Calculate total training time.
-    double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
+    double totalSeconds = activeTrainingSecondsGet(now);
 
     const double visibleSimTime = executor_ ? executor_->visibleSimTimeGet() : 0.0;
     double cumulative = cumulativeSimTime_ + visibleSimTime;
@@ -2029,11 +2125,22 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         activeParallelism = executor_->allowedConcurrencyGet();
     }
 
-    const size_t totalGenomeCount = repo.count();
-    const int totalGenomeCountForProgress =
-        totalGenomeCount > static_cast<size_t>(std::numeric_limits<int>::max())
-        ? std::numeric_limits<int>::max()
-        : static_cast<int>(totalGenomeCount);
+    const auto archiveBrainKinds = managedArchiveBrainKindsGet(trainingSpec);
+    size_t managedGenomeCount = 0;
+    for (const auto& brainKind : archiveBrainKinds) {
+        managedGenomeCount +=
+            repo.countManagedByBucket(trainingSpec.organismType, brainKind, genomePoolId_);
+    }
+    const int totalGenomeCountForProgress = clampArchiveMetric(managedGenomeCount);
+    size_t totalArchiveCapacity = 0;
+    if (evolutionConfig.genomeArchiveMaxSize > 0) {
+        const size_t archiveMaxSize = static_cast<size_t>(evolutionConfig.genomeArchiveMaxSize);
+        totalArchiveCapacity =
+            archiveBrainKinds.size() > std::numeric_limits<size_t>::max() / archiveMaxSize
+            ? std::numeric_limits<size_t>::max()
+            : archiveBrainKinds.size() * archiveMaxSize;
+    }
+    const int genomeArchiveMaxSizeForProgress = clampArchiveMetric(totalArchiveCapacity);
 
     const Api::EvolutionProgress progress{
         .generation = generation,
@@ -2041,7 +2148,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .currentEval = currentEval,
         .populationSize = static_cast<int>(population.size()),
         .totalGenomeCount = totalGenomeCountForProgress,
-        .genomeArchiveMaxSize = evolutionConfig.genomeArchiveMaxSize,
+        .genomeArchiveMaxSize = genomeArchiveMaxSizeForProgress,
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
         .robustEvaluationCount = robustEvaluationCount_,
@@ -2066,6 +2173,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .cumulativeSimTime = cumulative,
         .speedupFactor = speedup,
         .etaSeconds = eta,
+        .isPaused = trainingPaused_,
         .activeParallelism = activeParallelism,
         .cpuPercent = latestCpu,
         .cpuPercentPerCore = lastCpuPercentPerCore_,

@@ -67,8 +67,13 @@ Result<std::monostate, std::string> MockWebSocketService::sendToClient(
 }
 
 Result<std::monostate, std::string> MockWebSocketService::sendToClient(
-    const std::string& /*connectionId*/, const std::vector<std::byte>& /*data*/)
+    const std::string& connectionId, const std::vector<std::byte>& data)
 {
+    sentClientBinaries_.push_back(
+        SentClientBinary{
+            .connectionId = connectionId,
+            .data = data,
+        });
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -99,6 +104,7 @@ Result<Network::MessageEnvelope, std::string> MockWebSocketService::sendBinaryAn
     const Network::MessageEnvelope& envelope, int /*timeoutMs*/)
 {
     sentCommands_.push_back(envelope.message_type);
+    sentEnvelopes_.push_back(envelope);
 
     auto it = responses_.find(envelope.message_type);
     if (it != responses_.end()) {

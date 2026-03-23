@@ -49,11 +49,13 @@ protected:
         const std::string& name,
         double fitness,
         OrganismType organismType,
-        const std::string& brainKind)
+        const std::string& brainKind,
+        GenomePoolId genomePoolId = GenomePoolId::DirtSim)
     {
         auto meta = createManagedMetadata(name, fitness);
         meta.organismType = organismType;
         meta.brainKind = brainKind;
+        meta.genomePoolId = genomePoolId;
         return meta;
     }
 };
@@ -324,6 +326,49 @@ TEST_F(GenomeRepositoryTest, PruneManagedByFitnessAppliesPerOrganismBrainBucket)
     EXPECT_TRUE(repo.exists(treeHigh));
     EXPECT_FALSE(repo.exists(duckLow));
     EXPECT_TRUE(repo.exists(duckHigh));
+}
+
+TEST_F(GenomeRepositoryTest, CountManagedByBucketIgnoresOtherScopes)
+{
+    repo.store(
+        UUID::generate(),
+        createTestGenome(0.1),
+        createManagedMetadataForBucket("tree_a", 1.0, OrganismType::TREE, "NeuralNet"));
+    repo.store(
+        UUID::generate(),
+        createTestGenome(0.2),
+        createManagedMetadataForBucket("tree_b", 2.0, OrganismType::TREE, "NeuralNet"));
+
+    auto unmanaged = createTestMetadata("unmanaged", 3.0);
+    unmanaged.organismType = OrganismType::TREE;
+    unmanaged.brainKind = "NeuralNet";
+    repo.store(UUID::generate(), createTestGenome(0.3), unmanaged);
+
+    repo.store(
+        UUID::generate(),
+        createTestGenome(0.4),
+        createManagedMetadataForBucket("tree_rule", 4.0, OrganismType::TREE, "RuleBased"));
+    repo.store(
+        UUID::generate(),
+        createTestGenome(0.5),
+        createManagedMetadataForBucket("duck_net", 5.0, OrganismType::DUCK, "NeuralNet"));
+    repo.store(
+        UUID::generate(),
+        createTestGenome(0.6),
+        createManagedMetadataForBucket(
+            "tree_other_pool",
+            6.0,
+            OrganismType::TREE,
+            "NeuralNet",
+            GenomePoolId::FlappyParatroopa));
+
+    EXPECT_EQ(
+        repo.countManagedByBucket(OrganismType::TREE, "NeuralNet", GenomePoolId::DirtSim), 2u);
+    EXPECT_EQ(
+        repo.countManagedByBucket(OrganismType::TREE, "RuleBased", GenomePoolId::DirtSim), 1u);
+    EXPECT_EQ(
+        repo.countManagedByBucket(OrganismType::TREE, "NeuralNet", GenomePoolId::FlappyParatroopa),
+        1u);
 }
 
 TEST_F(GenomeRepositoryTest, ConcurrentStoreAndReadIsThreadSafe)

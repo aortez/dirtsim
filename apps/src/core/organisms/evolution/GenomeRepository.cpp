@@ -548,6 +548,32 @@ size_t GenomeRepository::pruneManagedByFitness(size_t maxManagedGenomes)
     return removed;
 }
 
+size_t GenomeRepository::countManagedByBucket(
+    OrganismType organismType, const std::string& brainKind, GenomePoolId genomePoolId) const
+{
+    std::lock_guard<std::mutex> lock(*mutex_);
+
+    size_t managedCount = 0;
+    for (const auto& [id, meta] : metadata_) {
+        (void)id;
+        if (!meta.trainingSessionId.has_value()) {
+            continue;
+        }
+        if (!meta.organismType.has_value() || meta.organismType.value() != organismType) {
+            continue;
+        }
+        if (!meta.brainKind.has_value() || meta.brainKind.value() != brainKind) {
+            continue;
+        }
+        if (meta.genomePoolId != genomePoolId) {
+            continue;
+        }
+        managedCount++;
+    }
+
+    return managedCount;
+}
+
 bool GenomeRepository::exists(GenomeId id) const
 {
     std::lock_guard<std::mutex> lock(*mutex_);

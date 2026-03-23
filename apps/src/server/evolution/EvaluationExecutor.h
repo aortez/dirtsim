@@ -106,6 +106,8 @@ public:
     EvaluationExecutor(const EvaluationExecutor&) = delete;
     EvaluationExecutor& operator=(const EvaluationExecutor&) = delete;
 
+    bool isPaused() const;
+    void pauseSet(bool paused);
     void start(int maxParallelEvaluations);
     void stop();
 
