@@ -23,6 +23,7 @@ struct RegionSummary {
     bool has_mac_water_interface = false;
     float max_velocity = 0.0f;
     float max_mac_water_face_speed = 0.0f;
+    float max_mac_water_interface_face_speed = 0.0f;
     float max_mac_water_volume_delta = 0.0f;
     float max_live_pressure_delta = 0.0f;
     float max_static_load_delta = 0.0f;
@@ -38,10 +39,12 @@ public:
     struct Config {
         uint16_t quiet_frames_to_sleep = 12;
         float live_pressure_delta_epsilon = 0.02f;
+        float mac_water_interface_face_speed_epsilon = 0.5f;
         float mac_water_volume_delta_epsilon = 0.0005f;
         float static_load_delta_epsilon = 0.02f;
         float velocity_epsilon = 0.01f;
         bool keep_empty_adjacent_awake = true;
+        bool keep_mac_water_interface_face_speed_awake = false;
         bool keep_mac_water_interface_awake = true;
         bool keep_mixed_material_awake = true;
         bool keep_organism_regions_awake = true;

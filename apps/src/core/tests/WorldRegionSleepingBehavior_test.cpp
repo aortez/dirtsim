@@ -800,6 +800,21 @@ int countQuietRegions(
     return quiet_regions;
 }
 
+float maxMacWaterInterfaceFaceSpeed(const World& world, const std::vector<RegionCoord>& regions)
+{
+    float max_face_speed = 0.0f;
+
+    for (const RegionCoord& region : regions) {
+        max_face_speed = std::max(
+            max_face_speed,
+            world.getRegionActivityTracker()
+                .getRegionSummary(region.x, region.y)
+                .max_mac_water_interface_face_speed);
+    }
+
+    return max_face_speed;
+}
+
 bool regionEquals(RegionCoord a, RegionCoord b)
 {
     return a.x == b.x && a.y == b.y;
@@ -1090,6 +1105,7 @@ std::string dumpWaterRegionDetails(const World& world, const WaterRegionBuckets&
             << " maxV=" << sample.max_velocity << " macBulk=" << summary.has_mac_bulk_water
             << " macIface=" << summary.has_mac_water_interface
             << " macFace=" << summary.max_mac_water_face_speed
+            << " macIfaceFace=" << summary.max_mac_water_interface_face_speed
             << " macDelta=" << summary.max_mac_water_volume_delta
             << " waterAdj=" << summary.has_water_adjacency
             << " touched=" << summary.touched_this_frame << "\n";
@@ -4533,6 +4549,75 @@ TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegions
         << "Expected at least one calm pool interior region to reach Sleeping state.";
     EXPECT_GT(awakeExposedRegions, 0)
         << "Expected the pool shell to retain at least one Awake interface region.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, InterfaceFaceSpeedSeparatesPerturbedSurfaceFromCalmInterior)
+{
+    constexpr int kEarlyObservationSteps = 64;
+    constexpr float kFaceSpeedThreshold = 0.5f;
+
+    World settledWorld(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(settledWorld);
+    settleWorld(settledWorld, kWaterSettleSteps);
+
+    const GridOfCells settledGrid = makeGrid(settledWorld);
+    const WaterRegionBuckets settledBuckets = classifyWaterRegions(settledWorld, settledGrid);
+    ASSERT_FALSE(settledBuckets.interior_water_regions.empty())
+        << "Expected the settled pool to contain interior bulk-water regions.";
+
+    World perturbedWorld(kWorldWidth, kWorldHeight);
+    initializePerturbedWaterPoolWorld(perturbedWorld);
+    settleWorld(perturbedWorld, kEarlyObservationSteps);
+
+    const GridOfCells perturbedGrid = makeGrid(perturbedWorld);
+    const WaterRegionBuckets perturbedBuckets = classifyWaterRegions(perturbedWorld, perturbedGrid);
+    ASSERT_FALSE(perturbedBuckets.exposed_water_regions.empty())
+        << "Expected the perturbed pool to contain exposed/interface bulk-water regions.";
+
+    SCOPED_TRACE(dumpWaterRegionDetails(settledWorld, settledBuckets, kWaterSettleSteps));
+    SCOPED_TRACE(dumpWaterRegionDetails(perturbedWorld, perturbedBuckets, kEarlyObservationSteps));
+
+    const float settledInteriorMaxInterfaceFaceSpeed =
+        maxMacWaterInterfaceFaceSpeed(settledWorld, settledBuckets.interior_water_regions);
+    const float perturbedExposedMaxInterfaceFaceSpeed =
+        maxMacWaterInterfaceFaceSpeed(perturbedWorld, perturbedBuckets.exposed_water_regions);
+
+    EXPECT_FLOAT_EQ(settledInteriorMaxInterfaceFaceSpeed, 0.0f);
+    EXPECT_GT(perturbedExposedMaxInterfaceFaceSpeed, kFaceSpeedThreshold);
+
+    WorldRegionActivityTracker::Config interfaceFaceSpeedOnlyConfig{};
+    interfaceFaceSpeedOnlyConfig.keep_empty_adjacent_awake = false;
+    interfaceFaceSpeedOnlyConfig.keep_mac_water_interface_face_speed_awake = true;
+    interfaceFaceSpeedOnlyConfig.keep_mac_water_interface_awake = false;
+    interfaceFaceSpeedOnlyConfig.keep_mixed_material_awake = false;
+    interfaceFaceSpeedOnlyConfig.keep_organism_regions_awake = false;
+    interfaceFaceSpeedOnlyConfig.keep_water_adjacent_awake = false;
+    interfaceFaceSpeedOnlyConfig.live_pressure_delta_epsilon = 1000.0f;
+    interfaceFaceSpeedOnlyConfig.mac_water_interface_face_speed_epsilon = kFaceSpeedThreshold;
+    interfaceFaceSpeedOnlyConfig.mac_water_volume_delta_epsilon = 1000.0f;
+    interfaceFaceSpeedOnlyConfig.static_load_delta_epsilon = 1000.0f;
+    interfaceFaceSpeedOnlyConfig.velocity_epsilon = 1000.0f;
+
+    const WorldRegionActivityTracker settledTracker =
+        runFrozenTrackerReplay(settledWorld, interfaceFaceSpeedOnlyConfig, 16);
+    const WorldRegionActivityTracker perturbedTracker =
+        runFrozenTrackerReplay(perturbedWorld, interfaceFaceSpeedOnlyConfig, 16);
+
+    const int quietSettledInteriorRegions =
+        countQuietRegions(settledTracker, settledBuckets.interior_water_regions);
+    int awakePerturbedExposedRegions = 0;
+    for (const RegionCoord& region : perturbedBuckets.exposed_water_regions) {
+        if (perturbedTracker.getRegionState(region.x, region.y) == RegionState::Awake) {
+            awakePerturbedExposedRegions++;
+        }
+    }
+
+    EXPECT_GT(quietSettledInteriorRegions, 0)
+        << "Expected calm pool interior regions to remain eligible for quiet tracking under an "
+           "interface-face-speed wake policy.";
+    EXPECT_GT(awakePerturbedExposedRegions, 0)
+        << "Expected at least one perturbed surface region to stay Awake under an interface-face-"
+           "speed wake policy.";
 }
 
 TEST(

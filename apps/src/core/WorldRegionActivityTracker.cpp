@@ -104,6 +104,11 @@ bool shouldForceAwake(
         if (summary.max_mac_water_volume_delta > config.mac_water_volume_delta_epsilon) {
             return true;
         }
+        if (config.keep_mac_water_interface_face_speed_awake
+            && summary.max_mac_water_interface_face_speed
+                > config.mac_water_interface_face_speed_epsilon) {
+            return true;
+        }
         if (config.keep_mac_water_interface_awake && summary.has_mac_water_interface) {
             return true;
         }
@@ -291,6 +296,11 @@ void WorldRegionActivityTracker::summarizeFrame(
                 }
                 if (hasWaterActivityFlag(flags, WaterActivityFlag::Interface)) {
                     summary.has_mac_water_interface = true;
+                    if (cell_idx < waterActivityView.max_face_speed.size()) {
+                        summary.max_mac_water_interface_face_speed = std::max(
+                            summary.max_mac_water_interface_face_speed,
+                            waterActivityView.max_face_speed[cell_idx]);
+                    }
                 }
             }
 
