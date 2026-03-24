@@ -110,6 +110,13 @@ Any Idle::onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::ScannerProbeRun::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerProbeRun command received");
+    cwc.sendResponse(osm.runScannerProbe(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::ScannerSnapshotGet::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "ScannerSnapshotGet command received");

@@ -25,6 +25,7 @@ namespace {
 
 constexpr int kPollTimeoutMs = 50;
 constexpr int kMinDwellMs = 100;
+constexpr int kProbeTimeoutPaddingMs = 5000;
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -103,6 +104,17 @@ struct RadiotapInfo {
     std::optional<int> signalDbm;
     std::optional<int> channelFreqMhz;
 };
+
+ScannerService::ProbeDwell probeDwellFromObservation(const StepObservation& observation)
+{
+    return ScannerService::ProbeDwell{
+        .sawTraffic = observation.sawTraffic,
+        .radiosSeen = static_cast<uint32_t>(observation.radiosSeen),
+        .newRadiosSeen = static_cast<uint32_t>(observation.newRadiosSeen),
+        .strongestSignalDbm = observation.strongestSignalDbm,
+        .observedChannels = observation.observedChannels,
+    };
+}
 
 RadiotapInfo parseRadiotap(const uint8_t* data, size_t length)
 {
@@ -473,6 +485,50 @@ std::string ScannerService::lastError() const
     return lastError_;
 }
 
+Result<ScannerService::ProbeResult, std::string> ScannerService::runProbe(
+    const ProbeRequest& request)
+{
+    if (!running_) {
+        return Result<ProbeResult, std::string>::error("Scanner service is not running.");
+    }
+    if (request.sampleCount == 0) {
+        return Result<ProbeResult, std::string>::error(
+            "Scanner probe sampleCount must be at least 1.");
+    }
+    if (!scannerWidthSupported(request.tuning.band, request.tuning.widthMhz)) {
+        return Result<ProbeResult, std::string>::error(
+            "Unsupported " + scannerBandLabel(request.tuning.band) + " scanner width "
+            + std::to_string(request.tuning.widthMhz) + " MHz");
+    }
+
+    auto probe = std::make_shared<PendingProbe>();
+    probe->request = request;
+    probe->result = ProbeResult{
+        .tuning = request.tuning,
+        .dwellMs = std::max(kMinDwellMs, request.dwellMs),
+        .dwells = {},
+    };
+    probe->result.dwells.reserve(request.sampleCount);
+
+    auto future = probe->promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(probeMutex_);
+        if (pendingProbe_ && !pendingProbe_->completed) {
+            return Result<ProbeResult, std::string>::error("Scanner probe already running.");
+        }
+        pendingProbe_ = probe;
+    }
+
+    const int totalDwellMs =
+        std::max(kMinDwellMs, request.dwellMs) * static_cast<int>(request.sampleCount);
+    const auto timeout = std::chrono::milliseconds(totalDwellMs + kProbeTimeoutPaddingMs);
+    if (future.wait_for(timeout) != std::future_status::ready) {
+        return Result<ProbeResult, std::string>::error("Scanner probe timed out.");
+    }
+
+    return future.get();
+}
+
 Result<std::monostate, std::string> ScannerService::setFocus(
     const ScannerBand band, const int widthMhz)
 {
@@ -535,6 +591,33 @@ void ScannerService::notifySnapshotChanged()
     }
 }
 
+void ScannerService::completeProbe(
+    const std::shared_ptr<PendingProbe>& probe, Result<ProbeResult, std::string> result)
+{
+    if (!probe) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(probeMutex_);
+        if (probe->completed) {
+            return;
+        }
+        probe->completed = true;
+        if (pendingProbe_ == probe) {
+            pendingProbe_.reset();
+        }
+    }
+
+    probe->promise.set_value(std::move(result));
+}
+
+std::shared_ptr<ScannerService::PendingProbe> ScannerService::currentProbe() const
+{
+    std::lock_guard<std::mutex> lock(probeMutex_);
+    return pendingProbe_;
+}
+
 std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
     const uint8_t* data, size_t length, int channelHint, std::chrono::steady_clock::time_point now)
 {
@@ -575,13 +658,24 @@ void ScannerService::threadMain()
     std::array<uint8_t, 8192> buffer{};
 
     while (!stopRequested_) {
-        if (!planner_) {
+        const auto probe = currentProbe();
+        if (!probe && !planner_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
-        planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
-        const ScanStep step = planner_->nextStep(std::chrono::steady_clock::now());
+        ScanStep step;
+        if (probe) {
+            step = ScanStep{
+                .tuning = probe->request.tuning,
+                .dwellMs = std::max(kMinDwellMs, probe->request.dwellMs),
+            };
+        }
+        else {
+            planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
+            step = planner_->nextStep(std::chrono::steady_clock::now());
+        }
+
         const auto setChannelResult = setChannel(step.tuning);
         if (setChannelResult.isError()) {
             {
@@ -589,6 +683,13 @@ void ScannerService::threadMain()
                 currentTuning_.reset();
                 lastError_ = "Failed to set channel " + std::to_string(step.tuning.primaryChannel)
                     + ": " + setChannelResult.errorValue();
+            }
+            if (probe) {
+                completeProbe(
+                    probe,
+                    Result<ProbeResult, std::string>::error(
+                        "Failed to set probe tuning " + std::to_string(step.tuning.primaryChannel)
+                        + ": " + setChannelResult.errorValue()));
             }
             notifySnapshotChanged();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -669,11 +770,28 @@ void ScannerService::threadMain()
 
         observation.observedChannels.assign(observedChannels.begin(), observedChannels.end());
         std::sort(observation.observedChannels.begin(), observation.observedChannels.end());
-        planner_->recordObservation(observation, std::chrono::steady_clock::now());
+        if (probe) {
+            probe->result.dwells.push_back(probeDwellFromObservation(observation));
+            if (probe->result.dwells.size() >= probe->request.sampleCount) {
+                completeProbe(
+                    probe,
+                    Result<ProbeResult, std::string>::okay(
+                        ProbeResult{
+                            .tuning = probe->result.tuning,
+                            .dwellMs = probe->result.dwellMs,
+                            .dwells = probe->result.dwells,
+                        }));
+            }
+        }
+        else {
+            planner_->recordObservation(observation, std::chrono::steady_clock::now());
+        }
         pruneOldRadios(std::chrono::steady_clock::now());
         notifySnapshotChanged();
     }
 
+    completeProbe(
+        currentProbe(), Result<ProbeResult, std::string>::error("Scanner thread stopped."));
     LOG_INFO(Network, "ScannerService thread exiting");
 #endif
 }

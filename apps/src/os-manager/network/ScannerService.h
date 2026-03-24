@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -39,6 +40,26 @@ public:
         std::vector<ObservedRadio> radios;
     };
 
+    struct ProbeDwell {
+        bool sawTraffic = false;
+        uint32_t radiosSeen = 0;
+        uint32_t newRadiosSeen = 0;
+        std::optional<int> strongestSignalDbm;
+        std::vector<int> observedChannels;
+    };
+
+    struct ProbeRequest {
+        ScannerTuning tuning;
+        int dwellMs = 250;
+        uint32_t sampleCount = 10;
+    };
+
+    struct ProbeResult {
+        ScannerTuning tuning;
+        int dwellMs = 0;
+        std::vector<ProbeDwell> dwells;
+    };
+
     using SnapshotChangedCallback = std::function<void()>;
 
     struct Config {
@@ -59,6 +80,7 @@ public:
 
     Snapshot snapshot(uint64_t maxAgeMs, size_t maxRadios) const;
     std::string lastError() const;
+    Result<ProbeResult, std::string> runProbe(const ProbeRequest& request);
     Result<std::monostate, std::string> setFocus(ScannerBand band, int widthMhz);
     void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
@@ -80,6 +102,16 @@ private:
         std::optional<int> signalDbm;
         bool isNewRadio = false;
     };
+    struct PendingProbe {
+        ProbeRequest request;
+        ProbeResult result;
+        std::promise<Result<ProbeResult, std::string>> promise;
+        bool completed = false;
+    };
+
+    void completeProbe(
+        const std::shared_ptr<PendingProbe>& probe, Result<ProbeResult, std::string> result);
+    std::shared_ptr<PendingProbe> currentProbe() const;
     std::optional<PacketObservation> handlePacket(
         const uint8_t* data,
         size_t length,
@@ -94,6 +126,8 @@ private:
     std::optional<ScannerTuning> currentTuning_;
     std::string lastError_;
     int socketFd_ = -1;
+    mutable std::mutex probeMutex_;
+    std::shared_ptr<PendingProbe> pendingProbe_;
     SnapshotChangedCallback snapshotChangedCallback_;
     std::unique_ptr<ScanPlanner> planner_;
     std::atomic<ScannerBand> requestedFocusBand_{ ScannerBand::Band5Ghz };

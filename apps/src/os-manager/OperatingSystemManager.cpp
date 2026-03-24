@@ -1344,6 +1344,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
         [this](OsApi::ScannerModeExit::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerProbeRun::Cwc>(
+        [this](OsApi::ScannerProbeRun::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerSnapshotGet::Cwc>(
         [this](OsApi::ScannerSnapshotGet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::Reboot::Cwc>(
@@ -1417,6 +1419,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerFocusSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerProbeRun);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerSnapshotGet);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
@@ -1558,6 +1561,58 @@ Result<OsApi::ScannerFocusSet::Okay, ApiError> OperatingSystemManager::setScanne
     publishScannerSnapshotChanged(status.active, std::nullopt);
     return Result<OsApi::ScannerFocusSet::Okay, ApiError>::okay(
         OsApi::ScannerFocusSet::Okay{ .band = command.band, .widthMhz = command.widthMhz });
+}
+
+Result<OsApi::ScannerProbeRun::Okay, ApiError> OperatingSystemManager::runScannerProbe(
+    const OsApi::ScannerProbeRun::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!status.active) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Scanner mode is not active."));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    const auto startResult = scannerService_->start();
+    if (startResult.isError()) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Capture unavailable: " + startResult.errorValue()));
+    }
+
+    const auto probeResult = scannerService_->runProbe(
+        ScannerService::ProbeRequest{
+            .tuning = command.tuning,
+            .dwellMs = command.dwellMs,
+            .sampleCount = command.sampleCount,
+        });
+    if (probeResult.isError()) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError(probeResult.errorValue()));
+    }
+
+    OsApi::ScannerProbeRun::Okay okay{
+        .tuning = probeResult.value().tuning,
+        .dwellMs = probeResult.value().dwellMs,
+        .dwells = {},
+    };
+    okay.dwells.reserve(probeResult.value().dwells.size());
+    for (const auto& dwell : probeResult.value().dwells) {
+        okay.dwells.push_back(
+            OsApi::ScannerProbeRun::ProbeDwellInfo{
+                .sawTraffic = dwell.sawTraffic,
+                .radiosSeen = dwell.radiosSeen,
+                .newRadiosSeen = dwell.newRadiosSeen,
+                .strongestSignalDbm = dwell.strongestSignalDbm,
+                .observedChannels = dwell.observedChannels,
+            });
+    }
+    return Result<OsApi::ScannerProbeRun::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::

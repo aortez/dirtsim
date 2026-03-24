@@ -12,6 +12,7 @@
 #include "os-manager/api/ScannerFocusSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerProbeRun.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
@@ -109,6 +110,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::ScannerModeExit::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::ScannerModeExit::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::ScannerProbeRun::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerProbeRun::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::ScannerSnapshotGet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

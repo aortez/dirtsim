@@ -16,6 +16,7 @@
 #include "os-manager/api/ScannerFocusSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerProbeRun.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
@@ -128,6 +129,8 @@ public:
         const OsApi::ScannerFocusSet::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
+    Result<OsApi::ScannerProbeRun::Okay, ApiError> runScannerProbe(
+        const OsApi::ScannerProbeRun::Command& command);
     Result<OsApi::ScannerSnapshotGet::Okay, ApiError> getScannerSnapshot(
         const OsApi::ScannerSnapshotGet::Command& command);
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();

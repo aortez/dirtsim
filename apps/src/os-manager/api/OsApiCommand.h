@@ -12,6 +12,7 @@
 #include "ScannerFocusSet.h"
 #include "ScannerModeEnter.h"
 #include "ScannerModeExit.h"
+#include "ScannerProbeRun.h"
 #include "ScannerSnapshotGet.h"
 #include "StartAudio.h"
 #include "StartServer.h"
@@ -48,6 +49,7 @@ using OsApiCommand = std::variant<
     ScannerFocusSet::Command,
     ScannerModeEnter::Command,
     ScannerModeExit::Command,
+    ScannerProbeRun::Command,
     ScannerSnapshotGet::Command,
     StartAudio::Command,
     StartServer::Command,
