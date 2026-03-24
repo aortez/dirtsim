@@ -718,7 +718,7 @@ void SimRunning::tick(StateMachine& dsm)
     const auto now = std::chrono::steady_clock::now();
 
     // Advance physics by fixed timestep.
-    // Note: Scenario tick is called inside World::advanceTime() after force clear.
+    // Note: Scenario tick is called at the start of World::advanceTime() after force clear.
     dsm.getTimers().startTimer("physics_step");
     world->advanceTime(FIXED_TIMESTEP_SECONDS);
     dsm.getTimers().stopTimer("physics_step");

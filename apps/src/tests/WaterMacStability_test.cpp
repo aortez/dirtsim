@@ -2,12 +2,14 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/WorldRegionActivityTracker.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/EmptyScenario.h"
 #include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/SandboxScenario.h"
+#include "core/scenarios/Scenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
 #include "core/scenarios/clock_scenario/RainEvent.h"
 #include "core/water/MacProjectionWaterSim.h"
@@ -138,6 +140,64 @@ struct SandboxSizeCase {
 struct WaterColumnDimensions {
     int height = 0;
     int width = 0;
+};
+
+class StartOfFrameWaterScenario final : public ScenarioRunner {
+public:
+    const ScenarioMetadata& getMetadata() const override { return metadata_; }
+
+    ScenarioConfig getConfig() const override { return Config::Empty{}; }
+
+    void setConfig(const ScenarioConfig& /*config*/, World& /*world*/) override {}
+
+    void setup(World& world) override
+    {
+        WorldData& data = world.getData();
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
+                data.at(x, y) = Cell{};
+            }
+        }
+        world.clearAllBulkWater();
+
+        for (int x = 0; x < data.width; ++x) {
+            world.replaceMaterialAtCell(
+                Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(data.height - 1) },
+                Material::EnumType::Wall);
+        }
+        for (int y = 0; y < data.height; ++y) {
+            world.replaceMaterialAtCell(
+                Vector2s{ 0, static_cast<int16_t>(y) }, Material::EnumType::Wall);
+            world.replaceMaterialAtCell(
+                Vector2s{ static_cast<int16_t>(data.width - 1), static_cast<int16_t>(y) },
+                Material::EnumType::Wall);
+        }
+
+        didAuthorWater_ = false;
+    }
+
+    void reset(World& world) override { setup(world); }
+
+    void tick(World& world, double /*deltaTime*/) override
+    {
+        if (didAuthorWater_) {
+            return;
+        }
+
+        world.addBulkWaterAtCell(3, 6, 1.0f);
+        didAuthorWater_ = true;
+    }
+
+private:
+    ScenarioMetadata metadata_{
+        .kind = ScenarioKind::GridWorld,
+        .name = "StartOfFrameWaterScenario",
+        .description = "Test scenario that authors water during tick.",
+        .category = "test",
+        .requiredWidth = 8,
+        .requiredHeight = 8,
+    };
+    bool didAuthorWater_ = false;
 };
 
 struct WaterSourceRect {
@@ -868,6 +928,45 @@ TEST(WaterMacStabilityTest, ClockRainEventWritesBulkWaterWithoutLegacyWaterCells
     ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
     EXPECT_NEAR(sumVolume(volumeView), 0.5f, 1e-6f);
     EXPECT_FALSE(hasLegacyWaterCells(world));
+}
+
+TEST(WaterMacStabilityTest, ScenarioTickWaterAuthoringFeedsSameFrameMacActivityAndTracker)
+{
+    World world(8, 8);
+    world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
+
+    StartOfFrameWaterScenario scenario;
+    scenario.setup(world);
+    world.setScenario(&scenario);
+
+    world.advanceTime(0.016);
+
+    WaterVolumeView volumeView{};
+    ASSERT_TRUE(world.tryGetWaterVolumeView(volumeView));
+    EXPECT_GT(sumVolume(volumeView), 0.5f);
+
+    WaterActivityView activityView{};
+    ASSERT_TRUE(world.tryGetWaterActivityView(activityView));
+    ASSERT_EQ(activityView.width, world.getData().width);
+    ASSERT_EQ(activityView.height, world.getData().height);
+
+    bool sawFluid = false;
+    bool sawVolumeDelta = false;
+    for (size_t idx = 0; idx < activityView.flags.size(); ++idx) {
+        if (hasWaterActivityFlag(activityView.flags[idx], WaterActivityFlag::HasFluid)) {
+            sawFluid = true;
+        }
+        if (idx < activityView.volume_delta.size() && activityView.volume_delta[idx] > 0.001f) {
+            sawVolumeDelta = true;
+        }
+    }
+
+    EXPECT_TRUE(sawFluid);
+    EXPECT_TRUE(sawVolumeDelta);
+
+    const auto& summary = world.getRegionActivityTracker().getRegionSummary(0, 0);
+    EXPECT_TRUE(summary.has_mac_bulk_water);
+    EXPECT_GT(summary.max_mac_water_volume_delta, 0.001f);
 }
 
 TEST(WaterMacStabilityTest, DamBreakScenarioSetupClearsPriorMacWaterAndUsesBulkWater)

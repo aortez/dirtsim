@@ -25,10 +25,15 @@ This document focuses on current branch status, sequencing, acceptance criteria,
 
 ## Near-Term Priority Order
 
-1. Finish the tracked-only Phase 3 water quiet-state slice and validate calm pool interiors.
-2. Tune the first water wake policy for interfaces, drains, inlets, and impacts.
-3. Gate MAC water work by active regions if profiling shows it is still needed.
-4. Add an optional transient spray/droplet layer.
+1. Lock the Phase 3 architecture: water wake policy stays global to the world / MAC solver /
+   region tracker rather than being implemented in scenario code.
+2. Run `ScenarioRunner::tick()` at the start of the frame so authored water inputs affect that
+   frame's MAC solve and tracker evaluation.
+3. Finish the tracked-only Phase 3 water quiet-state slice and validate calm pool interiors.
+4. Tune the first water wake policy for interfaces, drains, inlets, and impacts using centralized
+   solver/world signals.
+5. Gate MAC water work by active regions if profiling shows it is still needed.
+6. Add an optional transient spray/droplet layer.
 
 ## Current Branch Status
 
@@ -111,7 +116,41 @@ The target end state is:
 - legacy `Cell.material_type == Water` is not used as an active bulk-water simulation path,
 - any remaining water-like transient effects are explicit and local.
 
-### 4. No Serialization Backward Compatibility
+### 4. Keep Water Wake Policy Global
+
+Water wake/sleep policy belongs in shared simulation systems:
+
+- `World`,
+- `MacProjectionWaterSim`,
+- `WorldRegionActivityTracker`.
+
+Scenario code may author physical inputs such as rain, drains, or explicit bulk-water edits, but it
+should not decide wake halos, paint tracker state, or add scenario-specific heuristics for bulk
+water sleeping.
+
+If a water disturbance signal is needed for sleeping, it should come from one centralized world- or
+solver-level path rather than ad hoc calls from individual scenarios.
+
+### 5. Water Inputs Must Enter Before Sleep Evaluation
+
+Scenario-authored water edits should happen during the same start-of-frame authoring phase as other
+scenario updates.
+
+What matters is that a scenario-authored water edit is applied before the MAC water step and before
+that frame's region activity summary.
+
+That means:
+
+- `ScenarioRunner::tick()` should run at the start of the frame on the committed world state from
+  the end of the previous frame,
+- water-affecting authored inputs should be applied immediately during that start-of-frame tick,
+- the first rendered frame that shows an authored water edit should also be the first frame whose
+  MAC solve and sleep tracker have seen it.
+
+The sleep model should not depend on late scenario code manually compensating for frame-ordering
+problems.
+
+### 6. No Serialization Backward Compatibility
 
 - Backward compatibility is explicitly unsupported.
 - No migrations, version tags, or compatibility shims should be added for old save formats.
@@ -202,22 +241,38 @@ The target end state is:
 
 #### Scope
 
+- First, fix the frame plumbing so `ScenarioRunner::tick()` runs at the start of the frame.
+- Scenario-authored water inputs should then be applied before the MAC solve and before region
+  sleep state is evaluated for that frame.
+- Keep a follow-up note to evaluate moving `OrganismManager::update()` into the same early authoring
+  phase so organism-authored cell changes also participate in the same frame's solver/tracker
+  inputs. This is intentionally out of scope for the current sleep/water slice unless a concrete
+  bug requires it.
 - Replace the current "water adjacency keeps awake" policy with a more precise interface/disturbance
   policy.
-- Derive water quiet metrics from the MAC solver, such as:
+- Derive water quiet metrics from the MAC solver and centralized world-level water-input signals,
+  such as:
   - max face velocity,
   - max local water-volume delta,
   - free-surface presence,
-  - recent deposit/removal/displacement,
+  - recent centralized deposit/removal/displacement,
   - drain/inlet/impact disturbance.
 - Allow the interior of large calm pools to qualify for sleep while keeping the active shell awake.
 - Start with a tracked-only slice:
   - compute and expose the new MAC-water quiet state in the region tracker and debug overlays,
-  - use interface presence, local volume change, and explicit disturbances as the first wake
-    policy,
-  - keep solver face-speed metrics available for diagnostics and later tuning, but do not make the
-    first tracked-only slice depend on them,
+  - use shared solver/world signals rather than scenario-specific wake code,
+  - keep solver face-speed metrics available for diagnostics and tuning, and prefer them over
+    scenario-authored wake heuristics when choosing the first automatic disturbance policy,
   - do not skip MAC solver work or water-region world work yet.
+
+#### Guardrails
+
+- Do not add scenario-specific tracker pokes, wake rectangles, or wake halos for bulk water.
+- Do not let scenario integration tests define the wake policy; they should only validate that
+  scenario-authored water inputs route into the same global water/sleep systems as every other
+  source.
+- If authored rain, drain, or removal operations need an explicit disturbance signal, expose it
+  through a centralized world/water path rather than direct scenario-to-tracker wiring.
 
 #### Target Behavior
 
@@ -225,6 +280,8 @@ The target end state is:
 - Free surfaces, drains, inlets, moving-solid contacts, and recent splash zones stay awake.
 - Dirt/water interface regions remain conservative until the policy is clearly stable.
 - The first implementation slice changes tracker state only; runtime enforcement stays off for water.
+- Scenario code remains responsible for authoring physical water inputs, not for choosing wake
+  policy.
 
 #### Acceptance
 
@@ -233,6 +290,8 @@ The target end state is:
 - Water sleeping does not cause obvious mass loss, stuck flow, or missed wake events.
 - During the first tracked-only slice, water regions can become `Sleeping` in debug/tracker state
   without yet skipping MAC work.
+- No scenario-specific wake heuristics are required to make the tracked-only slice behave
+  correctly.
 
 ### Phase 4: Gate MAC Water Work By Active Regions If Needed
 

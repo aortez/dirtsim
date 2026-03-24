@@ -274,7 +274,7 @@ public:
     class OrganismManager& getOrganismManager() { return *organism_manager_; }
     const class OrganismManager& getOrganismManager() const { return *organism_manager_; }
 
-    // Scenario - called during advanceTime after force clear, before force application.
+    // Scenario - called at the start of advanceTime() after force clear.
     void setScenario(ScenarioRunner* scenario) { scenario_ = scenario; }
     ScenarioRunner* getScenario() const { return scenario_; }
 

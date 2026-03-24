@@ -79,6 +79,13 @@ bool shouldEnforceRegionSleep(
     return !tracker.isCellActive(x, y);
 }
 
+void clearPendingForcesForNewFrame(DirtSim::WorldData& data)
+{
+    for (DirtSim::Cell& cell : data.cells) {
+        cell.clearPendingForce();
+    }
+}
+
 bool isLoadBearingGranularCell(const DirtSim::Cell& cell)
 {
     if (cell.isEmpty()) {
@@ -1289,6 +1296,20 @@ void World::advanceTime(double deltaTimeSeconds)
         return;
     }
 
+    // Start the frame from a clean force buffer so scenario-authoring for this frame can add
+    // immediate forces that survive through force resolution.
+    {
+        ScopeTimer clearTimer(pImpl->timers_, "resolve_forces_clear_pending");
+        clearPendingForcesForNewFrame(pImpl->data_);
+    }
+
+    // Scenario tick runs at the start of the frame so authored world changes, including water
+    // edits, participate in this frame's MAC solve and activity tracking.
+    if (scenario_) {
+        ScopeTimer scenarioTimer(pImpl->timers_, "resolve_forces_scenario_tick");
+        scenario_->tick(*this, scaledDeltaTime);
+    }
+
     pImpl->water_sim_system_.syncToSettings(
         pImpl->physicsSettings_, pImpl->data_.width, pImpl->data_.height);
     pImpl->water_sim_system_.advanceTime(*this, scaledDeltaTime);
@@ -2288,29 +2309,9 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     WorldViscosityCalculator& viscosity_calc = pImpl->viscosity_calculator_;
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
-    std::vector<Cell>& cells = data.cells;
     const WorldRegionActivityTracker& region_activity_tracker = pImpl->region_activity_tracker_;
 
     ScopeTimer timer(timers, "resolve_forces");
-
-    // Clear pending forces at the start of each physics frame.
-    // Skip organism cells - they preserve forces added during organism update.
-    {
-        ScopeTimer clearTimer(timers, "resolve_forces_clear_pending");
-        const auto& org_grid = organism_manager_->getGrid();
-        for (size_t i = 0; i < cells.size(); ++i) {
-            if (org_grid[i] == INVALID_ORGANISM_ID) {
-                cells[i].clearPendingForce();
-            }
-        }
-    }
-
-    // Scenario tick - apply scenario forces after clear, before physics forces.
-    // This allows scenarios to use addPendingForce() and have forces processed normally.
-    if (scenario_) {
-        ScopeTimer scenarioTimer(timers, "resolve_forces_scenario_tick");
-        scenario_->tick(*this, deltaTime);
-    }
 
     // Apply gravity forces.
     {

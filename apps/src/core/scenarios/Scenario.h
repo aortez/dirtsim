@@ -39,6 +39,8 @@ public:
     virtual void setConfig(const ScenarioConfig& config, World& world) = 0;
     virtual void setup(World& world) = 0;
     virtual void reset(World& world) = 0;
+    // Runs at the start of each frame on the committed world state from the end of the previous
+    // frame.
     virtual void tick(World& world, double deltaTime) = 0;
 };
 
