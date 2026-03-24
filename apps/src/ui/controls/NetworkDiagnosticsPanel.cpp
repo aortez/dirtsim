@@ -303,6 +303,10 @@ constexpr int NETWORK_RADIOS_CONTENT_ROW_PADDING = 8;
 constexpr int NETWORK_SCANNER_LIST_AGE_WIDTH = 72;
 constexpr int NETWORK_SCANNER_LIST_CHANNEL_WIDTH = 40;
 constexpr int NETWORK_SCANNER_LIST_RSSI_WIDTH = 56;
+constexpr uint64_t NETWORK_SCANNER_ROW_STALE_AGE_MS = 5000;
+constexpr float NETWORK_SCANNER_RSSI_SMOOTHING_ALPHA = 0.3f;
+constexpr float NETWORK_SCANNER_RSSI_SWAP_THRESHOLD_DB = 5.0f;
+constexpr int NETWORK_SCANNER_SWAP_CONFIRM_UPDATES = 2;
 constexpr int NETWORK_STAGE_BADGE_HEIGHT = 34;
 constexpr int NETWORK_SIGNAL_HISTORY_MAX_SAMPLES = 60;
 constexpr int WIFI_LIST_COLUMN_GROW = 7;
@@ -1022,6 +1026,8 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_border_width(scannerRadiosList_, 0, 0);
     lv_obj_set_scroll_dir(scannerRadiosList_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(scannerRadiosList_, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_add_event_cb(scannerRadiosList_, onScannerRadiosListScroll, LV_EVENT_SCROLL_BEGIN, this);
+    lv_obj_add_event_cb(scannerRadiosList_, onScannerRadiosListScroll, LV_EVENT_SCROLL_END, this);
 
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
 
@@ -2559,9 +2565,158 @@ void NetworkDiagnosticsPanel::resetScannerSnapshotState()
     scannerCurrentChannel_.reset();
     scannerObservedRadioCount_ = 0;
     scannerObservedRadios_.clear();
+    scannerRadioOrder_.clear();
+    scannerRadioRowsByKey_.clear();
+    scannerRenderedBand_.reset();
     scannerSnapshotErrorMessage_.clear();
     scannerSnapshotReceived_ = false;
     scannerSnapshotStale_ = false;
+    scannerRadiosListScrolling_ = false;
+}
+
+void NetworkDiagnosticsPanel::clearScannerRadioRows()
+{
+    scannerRadioOrder_.clear();
+    scannerRadioRowsByKey_.clear();
+    scannerRenderedBand_.reset();
+    if (scannerRadiosList_) {
+        lv_obj_clean(scannerRadiosList_);
+    }
+}
+
+std::string NetworkDiagnosticsPanel::scannerRadioIdentity(const ScannerObservedRadio& radio) const
+{
+    if (!radio.bssid.empty()) {
+        return radio.bssid;
+    }
+
+    std::string identity = radio.ssid.empty() ? "<hidden>" : radio.ssid;
+    identity += "|";
+    identity += radio.channel.has_value() ? std::to_string(radio.channel.value()) : "--";
+    return identity;
+}
+
+bool NetworkDiagnosticsPanel::scannerRadioMatchesSelectedBand(
+    const ScannerObservedRadio& radio) const
+{
+    if (!radio.channel.has_value()) {
+        return false;
+    }
+
+    const int channel = radio.channel.value();
+    switch (scannerSelectedBand_) {
+        case ScannerBand::Band24Ghz:
+            return channel >= 1 && channel <= 14;
+        case ScannerBand::Band5Ghz:
+            return channel > 14;
+    }
+
+    return false;
+}
+
+std::string NetworkDiagnosticsPanel::scannerSelectedBandLabel() const
+{
+    switch (scannerSelectedBand_) {
+        case ScannerBand::Band24Ghz:
+            return "2.4 GHz";
+        case ScannerBand::Band5Ghz:
+            return "5 GHz";
+    }
+
+    return "Selected";
+}
+
+void NetworkDiagnosticsPanel::updateScannerRadioRowDisplay(
+    ScannerRadioRowState& rowState, const ScannerObservedRadio& radio)
+{
+    rowState.radio = radio;
+
+    if (radio.signalDbm.has_value()) {
+        const float signal = static_cast<float>(radio.signalDbm.value());
+        if (!rowState.hasSmoothedSignal) {
+            rowState.smoothedSignalDbm = signal;
+            rowState.hasSmoothedSignal = true;
+        }
+        else {
+            rowState.smoothedSignalDbm =
+                (1.0f - NETWORK_SCANNER_RSSI_SMOOTHING_ALPHA) * rowState.smoothedSignalDbm
+                + NETWORK_SCANNER_RSSI_SMOOTHING_ALPHA * signal;
+        }
+    }
+
+    const bool rowIsStale = radio.lastSeenAgeMs.has_value()
+        && radio.lastSeenAgeMs.value() > NETWORK_SCANNER_ROW_STALE_AGE_MS;
+    const uint32_t primaryTextColor = rowIsStale ? MUTED_TEXT_COLOR : 0xFFFFFF;
+    const uint32_t secondaryTextColor = rowIsStale ? HEADER_TEXT_COLOR : 0xFFFFFF;
+    const std::string ageText = formatCompactAge(radio.lastSeenAgeMs);
+    const std::string channelText =
+        radio.channel.has_value() ? std::to_string(radio.channel.value()) : "--";
+    const std::string rssiText =
+        radio.signalDbm.has_value() ? std::to_string(radio.signalDbm.value()) : "--";
+    const std::string ssid = radio.ssid.empty() ? "<hidden>" : radio.ssid;
+
+    lv_label_set_text(rowState.ssidLabel, ssid.c_str());
+    lv_label_set_text(rowState.channelLabel, channelText.c_str());
+    lv_label_set_text(rowState.rssiLabel, rssiText.c_str());
+    lv_label_set_text(rowState.ageLabel, ageText.c_str());
+
+    lv_obj_set_style_text_color(rowState.ssidLabel, lv_color_hex(primaryTextColor), 0);
+    lv_obj_set_style_text_color(rowState.channelLabel, lv_color_hex(secondaryTextColor), 0);
+    lv_obj_set_style_text_color(rowState.rssiLabel, lv_color_hex(secondaryTextColor), 0);
+    lv_obj_set_style_text_color(rowState.ageLabel, lv_color_hex(secondaryTextColor), 0);
+    lv_obj_set_style_bg_opa(rowState.row, rowIsStale ? LV_OPA_70 : LV_OPA_COVER, 0);
+}
+
+void NetworkDiagnosticsPanel::updateScannerRadioRowOrder()
+{
+    if (scannerRadiosListScrolling_) {
+        return;
+    }
+
+    for (size_t i = 1; i < scannerRadioOrder_.size(); ++i) {
+        const std::string& upperKey = scannerRadioOrder_[i - 1];
+        const std::string& lowerKey = scannerRadioOrder_[i];
+        auto upperIt = scannerRadioRowsByKey_.find(upperKey);
+        auto lowerIt = scannerRadioRowsByKey_.find(lowerKey);
+        if (upperIt == scannerRadioRowsByKey_.end() || lowerIt == scannerRadioRowsByKey_.end()) {
+            continue;
+        }
+
+        ScannerRadioRowState& upperRow = upperIt->second;
+        ScannerRadioRowState& lowerRow = lowerIt->second;
+        if (lowerRow.smoothedSignalDbm
+            <= upperRow.smoothedSignalDbm + NETWORK_SCANNER_RSSI_SWAP_THRESHOLD_DB) {
+            lowerRow.pendingSwapAboveKey.clear();
+            lowerRow.pendingSwapAboveUpdates = 0;
+            continue;
+        }
+
+        if (lowerRow.pendingSwapAboveKey != upperKey) {
+            lowerRow.pendingSwapAboveKey = upperKey;
+            lowerRow.pendingSwapAboveUpdates = 1;
+            continue;
+        }
+
+        lowerRow.pendingSwapAboveUpdates += 1;
+        if (lowerRow.pendingSwapAboveUpdates < NETWORK_SCANNER_SWAP_CONFIRM_UPDATES) {
+            continue;
+        }
+
+        std::swap(scannerRadioOrder_[i - 1], scannerRadioOrder_[i]);
+        lowerRow.pendingSwapAboveKey.clear();
+        lowerRow.pendingSwapAboveUpdates = 0;
+        upperRow.pendingSwapAboveKey.clear();
+        upperRow.pendingSwapAboveUpdates = 0;
+    }
+
+    for (size_t i = 0; i < scannerRadioOrder_.size(); ++i) {
+        auto it = scannerRadioRowsByKey_.find(scannerRadioOrder_[i]);
+        if (it == scannerRadioRowsByKey_.end() || !it->second.row) {
+            continue;
+        }
+
+        lv_obj_move_to_index(it->second.row, static_cast<int32_t>(i));
+    }
 }
 
 std::string NetworkDiagnosticsPanel::formatConnectPhaseText() const
@@ -4185,17 +4340,21 @@ void NetworkDiagnosticsPanel::updateScannerBandControls()
 {
     setActionButtonChecked(scannerBand24Button_, scannerSelectedBand_ == ScannerBand::Band24Ghz);
     setActionButtonChecked(scannerBand5Button_, scannerSelectedBand_ == ScannerBand::Band5Ghz);
-    setActionButtonEnabled(scannerBand24Button_, true);
-    setActionButtonEnabled(scannerBand5Button_, true);
+    const bool bandButtonsEnabled = scannerModeActive_ && !isActionInProgress();
+    setActionButtonEnabled(scannerBand24Button_, bandButtonsEnabled);
+    setActionButtonEnabled(scannerBand5Button_, bandButtonsEnabled);
 }
 
 void NetworkDiagnosticsPanel::updateScannerControls()
 {
     const bool showEnterButton = !scannerModeActive_;
     const bool showExitButton = scannerModeActive_;
+    const bool showBandButtons = scannerModeActive_;
     const bool showRetryButton =
         scannerStatusUnavailable_ || !scannerSnapshotErrorMessage_.empty() || scannerSnapshotStale_;
 
+    setObjectVisible(scannerBand24Button_, showBandButtons);
+    setObjectVisible(scannerBand5Button_, showBandButtons);
     setObjectVisible(scannerEnterButton_, showEnterButton);
     setObjectVisible(scannerExitButton_, showExitButton);
     setObjectVisible(scannerRefreshButton_, showRetryButton);
@@ -4219,18 +4378,31 @@ void NetworkDiagnosticsPanel::updateScannerPlotVisibility()
 
 void NetworkDiagnosticsPanel::updateScannerRadioList()
 {
+    const std::string bandLabel = scannerSelectedBandLabel();
+    std::vector<ScannerObservedRadio> radios;
+    radios.reserve(scannerObservedRadios_.size());
+    for (const auto& radio : scannerObservedRadios_) {
+        if (!scannerRadioMatchesSelectedBand(radio)) {
+            continue;
+        }
+
+        radios.push_back(radio);
+    }
+
     if (scannerRadiosHeaderLabel_) {
-        const std::string headerText = scannerModeActive_
-            ? "Observed radios: " + std::to_string(scannerObservedRadioCount_)
-            : "Observed radios";
+        std::string headerText = "Observed radios";
+        if (scannerModeActive_) {
+            headerText = bandLabel + " radios: " + std::to_string(radios.size());
+            if (scannerObservedRadioCount_ != radios.size()) {
+                headerText += " of " + std::to_string(scannerObservedRadioCount_);
+            }
+        }
         lv_label_set_text(scannerRadiosHeaderLabel_, headerText.c_str());
     }
 
     if (!scannerRadiosList_) {
         return;
     }
-
-    lv_obj_clean(scannerRadiosList_);
 
     auto createMessageLabel = [this](const std::string& text, const uint32_t color) {
         lv_obj_t* label = lv_label_create(scannerRadiosList_);
@@ -4242,11 +4414,13 @@ void NetworkDiagnosticsPanel::updateScannerRadioList()
     };
 
     if (!scannerModeActive_) {
+        clearScannerRadioRows();
         createMessageLabel("Enter scanner mode to view observed radios.", MUTED_TEXT_COLOR);
         return;
     }
 
     if (!scannerSnapshotReceived_) {
+        clearScannerRadioRows();
         if (!scannerSnapshotErrorMessage_.empty()) {
             createMessageLabel(scannerSnapshotErrorMessage_, ERROR_TEXT_COLOR);
         }
@@ -4260,35 +4434,27 @@ void NetworkDiagnosticsPanel::updateScannerRadioList()
     }
 
     if (scannerObservedRadios_.empty()) {
+        clearScannerRadioRows();
         createMessageLabel("No radios observed yet.", MUTED_TEXT_COLOR);
         return;
     }
 
-    std::vector<ScannerObservedRadio> radios = scannerObservedRadios_;
-    std::sort(
-        radios.begin(),
-        radios.end(),
-        [](const ScannerObservedRadio& lhs, const ScannerObservedRadio& rhs) {
-            const int lhsSignal = lhs.signalDbm.value_or(-200);
-            const int rhsSignal = rhs.signalDbm.value_or(-200);
-            if (lhsSignal != rhsSignal) {
-                return lhsSignal > rhsSignal;
-            }
-            if (lhs.channel != rhs.channel) {
-                return lhs.channel.value_or(1000) < rhs.channel.value_or(1000);
-            }
-            const std::string lhsSsid = lhs.ssid.empty() ? "<hidden>" : lhs.ssid;
-            const std::string rhsSsid = rhs.ssid.empty() ? "<hidden>" : rhs.ssid;
-            if (lhsSsid != rhsSsid) {
-                return lhsSsid < rhsSsid;
-            }
-            return lhs.bssid < rhs.bssid;
-        });
+    if (radios.empty()) {
+        clearScannerRadioRows();
+        createMessageLabel("No " + bandLabel + " radios observed yet.", MUTED_TEXT_COLOR);
+        return;
+    }
 
-    auto createValueLabel =
-        [](lv_obj_t* parent, const std::string& text, const int width) -> lv_obj_t* {
+    if (scannerRenderedBand_ != scannerSelectedBand_) {
+        clearScannerRadioRows();
+    }
+    scannerRenderedBand_ = scannerSelectedBand_;
+
+    std::unordered_set<std::string> currentKeys;
+    currentKeys.reserve(radios.size());
+
+    auto createValueLabel = [](lv_obj_t* parent, const int width) -> lv_obj_t* {
         lv_obj_t* label = lv_label_create(parent);
-        lv_label_set_text(label, text.c_str());
         lv_obj_set_width(label, width);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0);
@@ -4297,39 +4463,92 @@ void NetworkDiagnosticsPanel::updateScannerRadioList()
     };
 
     for (const auto& radio : radios) {
-        lv_obj_t* row = lv_obj_create(scannerRadiosList_);
-        lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_hor(row, 10, 0);
-        lv_obj_set_style_pad_ver(row, 6, 0);
-        lv_obj_set_style_pad_column(row, 8, 0);
-        lv_obj_set_style_bg_color(row, lv_color_hex(NETWORK_ROW_BG_COLOR), 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(row, 1, 0);
-        lv_obj_set_style_border_color(row, lv_color_hex(NETWORK_ROW_BORDER_COLOR), 0);
-        lv_obj_set_style_radius(row, 8, 0);
-        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        const std::string key = scannerRadioIdentity(radio);
+        currentKeys.insert(key);
 
-        lv_obj_t* ssidLabel = lv_label_create(row);
-        const std::string ssid = radio.ssid.empty() ? "<hidden>" : radio.ssid;
-        lv_label_set_text(ssidLabel, ssid.c_str());
-        lv_obj_set_size(ssidLabel, 0, LV_SIZE_CONTENT);
-        lv_obj_set_flex_grow(ssidLabel, 1);
-        lv_obj_set_style_text_font(ssidLabel, &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_color(ssidLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_label_set_long_mode(ssidLabel, LV_LABEL_LONG_DOT);
+        auto rowIt = scannerRadioRowsByKey_.find(key);
+        if (rowIt == scannerRadioRowsByKey_.end()) {
+            ScannerRadioRowState rowState;
+            rowState.row = lv_obj_create(scannerRadiosList_);
+            lv_obj_set_size(rowState.row, LV_PCT(100), LV_SIZE_CONTENT);
+            lv_obj_set_flex_flow(rowState.row, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(
+                rowState.row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_style_pad_hor(rowState.row, 10, 0);
+            lv_obj_set_style_pad_ver(rowState.row, 6, 0);
+            lv_obj_set_style_pad_column(rowState.row, 8, 0);
+            lv_obj_set_style_bg_color(rowState.row, lv_color_hex(NETWORK_ROW_BG_COLOR), 0);
+            lv_obj_set_style_bg_opa(rowState.row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(rowState.row, 1, 0);
+            lv_obj_set_style_border_color(rowState.row, lv_color_hex(NETWORK_ROW_BORDER_COLOR), 0);
+            lv_obj_set_style_radius(rowState.row, 8, 0);
+            lv_obj_clear_flag(rowState.row, LV_OBJ_FLAG_SCROLLABLE);
 
-        createValueLabel(
-            row,
-            radio.channel.has_value() ? std::to_string(radio.channel.value()) : "--",
-            NETWORK_SCANNER_LIST_CHANNEL_WIDTH);
-        createValueLabel(
-            row,
-            radio.signalDbm.has_value() ? std::to_string(radio.signalDbm.value()) : "--",
-            NETWORK_SCANNER_LIST_RSSI_WIDTH);
-        createValueLabel(
-            row, formatCompactAge(radio.lastSeenAgeMs), NETWORK_SCANNER_LIST_AGE_WIDTH);
+            rowState.ssidLabel = lv_label_create(rowState.row);
+            lv_obj_set_size(rowState.ssidLabel, 0, LV_SIZE_CONTENT);
+            lv_obj_set_flex_grow(rowState.ssidLabel, 1);
+            lv_obj_set_style_text_font(rowState.ssidLabel, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(rowState.ssidLabel, lv_color_hex(0xFFFFFF), 0);
+            lv_label_set_long_mode(rowState.ssidLabel, LV_LABEL_LONG_DOT);
+
+            rowState.channelLabel =
+                createValueLabel(rowState.row, NETWORK_SCANNER_LIST_CHANNEL_WIDTH);
+            rowState.rssiLabel = createValueLabel(rowState.row, NETWORK_SCANNER_LIST_RSSI_WIDTH);
+            rowState.ageLabel = createValueLabel(rowState.row, NETWORK_SCANNER_LIST_AGE_WIDTH);
+
+            auto [insertedIt, inserted] = scannerRadioRowsByKey_.emplace(key, std::move(rowState));
+            rowIt = insertedIt;
+        }
+
+        ScannerRadioRowState& rowState = rowIt->second;
+        updateScannerRadioRowDisplay(rowState, radio);
+
+        if (std::find(scannerRadioOrder_.begin(), scannerRadioOrder_.end(), key)
+            == scannerRadioOrder_.end()) {
+            if (scannerRadiosListScrolling_) {
+                scannerRadioOrder_.push_back(key);
+            }
+            else {
+                auto insertIt = scannerRadioOrder_.begin();
+                for (; insertIt != scannerRadioOrder_.end(); ++insertIt) {
+                    auto existingIt = scannerRadioRowsByKey_.find(*insertIt);
+                    if (existingIt == scannerRadioRowsByKey_.end()) {
+                        continue;
+                    }
+                    if (rowState.smoothedSignalDbm > existingIt->second.smoothedSignalDbm) {
+                        break;
+                    }
+                }
+                scannerRadioOrder_.insert(insertIt, key);
+            }
+        }
+    }
+
+    for (auto orderIt = scannerRadioOrder_.begin(); orderIt != scannerRadioOrder_.end();) {
+        if (currentKeys.contains(*orderIt)) {
+            ++orderIt;
+            continue;
+        }
+
+        auto rowIt = scannerRadioRowsByKey_.find(*orderIt);
+        if (rowIt != scannerRadioRowsByKey_.end() && rowIt->second.row) {
+            lv_obj_del(rowIt->second.row);
+            scannerRadioRowsByKey_.erase(rowIt);
+        }
+        orderIt = scannerRadioOrder_.erase(orderIt);
+    }
+
+    updateScannerRadioRowOrder();
+
+    if (scannerRadiosListScrolling_) {
+        for (size_t i = 0; i < scannerRadioOrder_.size(); ++i) {
+            auto rowIt = scannerRadioRowsByKey_.find(scannerRadioOrder_[i]);
+            if (rowIt == scannerRadioRowsByKey_.end() || !rowIt->second.row) {
+                continue;
+            }
+
+            lv_obj_move_to_index(rowIt->second.row, static_cast<int32_t>(i));
+        }
     }
 }
 
@@ -4859,6 +5078,7 @@ void NetworkDiagnosticsPanel::onScannerBand24Clicked(lv_event_t* e)
     self->scannerSelectedBand_ = ScannerBand::Band24Ghz;
     self->updateScannerBandControls();
     self->updateScannerPlotVisibility();
+    self->updateScannerRadioList();
 }
 
 void NetworkDiagnosticsPanel::onScannerBand5Clicked(lv_event_t* e)
@@ -4875,6 +5095,26 @@ void NetworkDiagnosticsPanel::onScannerBand5Clicked(lv_event_t* e)
     self->scannerSelectedBand_ = ScannerBand::Band5Ghz;
     self->updateScannerBandControls();
     self->updateScannerPlotVisibility();
+    self->updateScannerRadioList();
+}
+
+void NetworkDiagnosticsPanel::onScannerRadiosListScroll(lv_event_t* e)
+{
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    const lv_event_code_t eventCode = lv_event_get_code(e);
+    if (eventCode == LV_EVENT_SCROLL_BEGIN) {
+        self->scannerRadiosListScrolling_ = true;
+        return;
+    }
+
+    if (eventCode == LV_EVENT_SCROLL_END) {
+        self->scannerRadiosListScrolling_ = false;
+        self->updateScannerRadioList();
+    }
 }
 
 void NetworkDiagnosticsPanel::onScannerExitClicked(lv_event_t* e)

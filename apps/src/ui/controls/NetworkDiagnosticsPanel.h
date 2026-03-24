@@ -243,6 +243,19 @@ private:
         std::string message;
     };
 
+    struct ScannerRadioRowState {
+        lv_obj_t* row = nullptr;
+        lv_obj_t* ssidLabel = nullptr;
+        lv_obj_t* channelLabel = nullptr;
+        lv_obj_t* rssiLabel = nullptr;
+        lv_obj_t* ageLabel = nullptr;
+        std::string pendingSwapAboveKey;
+        ScannerObservedRadio radio;
+        float smoothedSignalDbm = -200.0f;
+        int pendingSwapAboveUpdates = 0;
+        bool hasSmoothedSignal = false;
+    };
+
     struct AsyncState {
         std::mutex mutex;
         bool eventStreamConnected = false;
@@ -312,11 +325,15 @@ private:
     std::optional<int> scannerCurrentChannel_;
     size_t scannerObservedRadioCount_ = 0;
     std::vector<ScannerObservedRadio> scannerObservedRadios_;
+    std::unordered_map<std::string, ScannerRadioRowState> scannerRadioRowsByKey_;
+    std::vector<std::string> scannerRadioOrder_;
+    std::optional<ScannerBand> scannerRenderedBand_;
     std::string scannerSnapshotErrorMessage_;
     bool scannerSnapshotReceived_ = false;
     bool scannerSnapshotStale_ = false;
     bool scannerStatusUnavailable_ = false;
     ScannerBand scannerSelectedBand_ = ScannerBand::Band5Ghz;
+    bool scannerRadiosListScrolling_ = false;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
     bool webSocketToggleLocked_ = false;
@@ -367,6 +384,10 @@ private:
     std::optional<size_t> findNetworkIndexBySsid(const std::string& ssid) const;
     bool isScannerSnapshotStale() const;
     void resetScannerSnapshotState();
+    void clearScannerRadioRows();
+    std::string scannerRadioIdentity(const ScannerObservedRadio& radio) const;
+    bool scannerRadioMatchesSelectedBand(const ScannerObservedRadio& radio) const;
+    std::string scannerSelectedBandLabel() const;
     void updateCurrentConnectionSummary();
     void updateDetailsLastScanLabel();
     void updateDetailsSignalHistoryPlots();
@@ -377,11 +398,14 @@ private:
     void updateConnectPhaseBadges();
     void updatePasswordJoinButton();
     void updatePasswordVisibilityButton();
+    void updateScannerRadioRowDisplay(
+        ScannerRadioRowState& rowState, const ScannerObservedRadio& radio);
     void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
     void updateScannerBandControls();
     void updateScannerControls();
     void updateScannerPlotVisibility();
     void updateScannerRadioList();
+    void updateScannerRadioRowOrder();
     void updateScannerStaleState();
     void updateScannerStatusLabel();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
@@ -421,6 +445,7 @@ private:
     static void onScannerExitClicked(lv_event_t* e);
     static void onScannerBand24Clicked(lv_event_t* e);
     static void onScannerBand5Clicked(lv_event_t* e);
+    static void onScannerRadiosListScroll(lv_event_t* e);
     static void onScannerRefreshClicked(lv_event_t* e);
     static void onLiveScanToggleChanged(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);
