@@ -1,13 +1,15 @@
 #include "ScannerService.h"
 #include "core/LoggingChannels.h"
+#include "os-manager/network/AdaptiveScanPlanner.h"
 #include "os-manager/network/ScannerChannelController.h"
 #include <algorithm>
-#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <memory>
 #include <poll.h>
 #include <sys/socket.h>
+#include <unordered_set>
 
 #ifdef __linux__
 #include <arpa/inet.h>
@@ -22,6 +24,8 @@ namespace OsManager {
 namespace {
 
 constexpr int kPollTimeoutMs = 50;
+constexpr int kMinDwellMs = 100;
+constexpr int kWidth20Mhz = 20;
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -288,12 +292,16 @@ std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
 } // namespace
 
 ScannerService::ScannerService(std::shared_ptr<ScannerChannelController> channelController)
-    : config_(), channelController_(std::move(channelController))
+    : config_(),
+      channelController_(std::move(channelController)),
+      planner_(std::make_unique<AdaptiveScanPlanner>())
 {}
 
 ScannerService::ScannerService(
     Config config, std::shared_ptr<ScannerChannelController> channelController)
-    : config_(std::move(config)), channelController_(std::move(channelController))
+    : config_(std::move(config)),
+      channelController_(std::move(channelController)),
+      planner_(std::make_unique<AdaptiveScanPlanner>())
 {}
 
 ScannerService::~ScannerService()
@@ -353,10 +361,15 @@ Result<std::monostate, std::string> ScannerService::start()
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        currentChannel_.reset();
+        currentTuning_.reset();
         lastError_.clear();
         radiosByBssid_.clear();
         socketFd_ = fd;
+    }
+
+    if (planner_) {
+        planner_->reset();
+        planner_->setFocusBand(requestedFocusBand_.load());
     }
 
     running_ = true;
@@ -381,7 +394,7 @@ void ScannerService::stop()
         std::lock_guard<std::mutex> lock(mutex_);
         fd = socketFd_;
         socketFd_ = -1;
-        currentChannel_.reset();
+        currentTuning_.reset();
         lastError_.clear();
         radiosByBssid_.clear();
     }
@@ -403,13 +416,14 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
 {
     Snapshot snapshot;
     snapshot.running = running_;
+    snapshot.focusBand = requestedFocusBand_.load();
 
     const auto now = std::chrono::steady_clock::now();
     const auto maxAge = std::chrono::milliseconds(maxAgeMs);
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        snapshot.currentChannel = currentChannel_;
+        snapshot.currentTuning = currentTuning_;
         snapshot.radios.reserve(radiosByBssid_.size());
         for (const auto& [bssid, state] : radiosByBssid_) {
             if (maxAgeMs > 0 && now - state.lastSeenAt > maxAge) {
@@ -457,38 +471,30 @@ std::string ScannerService::lastError() const
     return lastError_;
 }
 
+void ScannerService::setFocusBand(const ScannerBand band)
+{
+    requestedFocusBand_ = band;
+}
+
 void ScannerService::setSnapshotChangedCallback(SnapshotChangedCallback callback)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshotChangedCallback_ = std::move(callback);
 }
 
-std::vector<int> ScannerService::buildChannelPlan() const
-{
-    std::vector<int> channels;
-    channels.reserve(24);
-
-    // 2.4 GHz: 1-11.
-    for (int ch = 1; ch <= 11; ++ch) {
-        channels.push_back(ch);
-    }
-
-    // 5 GHz: common non-DFS ranges.
-    for (int ch : { 36, 40, 44, 48, 149, 153, 157, 161, 165 }) {
-        channels.push_back(ch);
-    }
-
-    return channels;
-}
-
-Result<std::monostate, std::string> ScannerService::setChannel(int channel)
+Result<std::monostate, std::string> ScannerService::setChannel(const ScannerTuning& tuning)
 {
     if (!channelController_) {
         return Result<std::monostate, std::string>::error(
             "Missing dependency for scannerChannelController");
     }
 
-    return channelController_->setChannel20MHz(channel);
+    if (tuning.widthMhz != kWidth20Mhz) {
+        return Result<std::monostate, std::string>::error(
+            "Unsupported scanner tuning width " + std::to_string(tuning.widthMhz) + " MHz");
+    }
+
+    return channelController_->setChannel20MHz(tuning.primaryChannel);
 }
 
 void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
@@ -518,15 +524,17 @@ void ScannerService::notifySnapshotChanged()
     }
 }
 
-void ScannerService::handlePacket(
+std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
     const uint8_t* data, size_t length, int channelHint, std::chrono::steady_clock::time_point now)
 {
     const auto parsed = parseBeaconOrProbeResponse(data, length, channelHint);
     if (!parsed.has_value() || parsed->bssid.empty()) {
-        return;
+        return std::nullopt;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    const auto existingIt = radiosByBssid_.find(parsed->bssid);
+    const bool isNewRadio = existingIt == radiosByBssid_.end();
     auto& state = radiosByBssid_[parsed->bssid];
     if (!parsed->ssid.empty()) {
         state.ssid = parsed->ssid;
@@ -538,6 +546,12 @@ void ScannerService::handlePacket(
         state.channel = parsed->channel;
     }
     state.lastSeenAt = now;
+    return PacketObservation{
+        .bssid = parsed->bssid,
+        .channel = parsed->channel,
+        .signalDbm = parsed->signalDbm,
+        .isNewRadio = isNewRadio,
+    };
 }
 
 void ScannerService::threadMain()
@@ -547,71 +561,106 @@ void ScannerService::threadMain()
 #else
     LOG_INFO(Network, "ScannerService thread started");
 
-    const auto channels = buildChannelPlan();
-    const auto dwell = std::chrono::milliseconds(std::max(50, config_.dwellMs));
-
     std::array<uint8_t, 8192> buffer{};
 
     while (!stopRequested_) {
-        for (const int channel : channels) {
-            if (stopRequested_) {
+        if (!planner_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        planner_->setFocusBand(requestedFocusBand_.load());
+        const ScanStep step = planner_->nextStep(std::chrono::steady_clock::now());
+        const auto setChannelResult = setChannel(step.tuning);
+        if (setChannelResult.isError()) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                currentTuning_.reset();
+                lastError_ = "Failed to set channel " + std::to_string(step.tuning.primaryChannel)
+                    + ": " + setChannelResult.errorValue();
+            }
+            notifySnapshotChanged();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            currentTuning_ = step.tuning;
+            lastError_.clear();
+        }
+
+        StepObservation observation{
+            .step = step,
+            .sawTraffic = false,
+            .radiosSeen = 0,
+            .newRadiosSeen = 0,
+            .strongestSignalDbm = std::nullopt,
+            .observedChannels = {},
+        };
+        std::unordered_set<std::string> observedBssids;
+        std::unordered_set<int> observedChannels;
+        const auto dwell = std::chrono::milliseconds(std::max(kMinDwellMs, step.dwellMs));
+        const auto start = std::chrono::steady_clock::now();
+
+        while (!stopRequested_ && std::chrono::steady_clock::now() - start < dwell) {
+            int fd = -1;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                fd = socketFd_;
+            }
+            if (fd < 0) {
                 break;
             }
 
-            const auto setChannelResult = setChannel(channel);
-            if (setChannelResult.isError()) {
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    lastError_ = "Failed to set channel " + std::to_string(channel) + ": "
-                        + setChannelResult.errorValue();
-                }
-                notifySnapshotChanged();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+
+            const int pollResult = ::poll(&pfd, 1, kPollTimeoutMs);
+            if (pollResult <= 0) {
+                continue;
+            }
+            if ((pfd.revents & POLLIN) == 0) {
                 continue;
             }
 
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                currentChannel_ = channel;
-                lastError_.clear();
+            const ssize_t received =
+                ::recvfrom(fd, buffer.data(), buffer.size(), 0, nullptr, nullptr);
+            if (received <= 0) {
+                continue;
             }
 
-            const auto start = std::chrono::steady_clock::now();
-            while (!stopRequested_ && std::chrono::steady_clock::now() - start < dwell) {
-                int fd = -1;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    fd = socketFd_;
-                }
-                if (fd < 0) {
-                    break;
-                }
-
-                pollfd pfd{};
-                pfd.fd = fd;
-                pfd.events = POLLIN;
-
-                const int pollResult = ::poll(&pfd, 1, kPollTimeoutMs);
-                if (pollResult <= 0) {
-                    continue;
-                }
-                if ((pfd.revents & POLLIN) == 0) {
-                    continue;
-                }
-
-                const ssize_t received =
-                    ::recvfrom(fd, buffer.data(), buffer.size(), 0, nullptr, nullptr);
-                if (received <= 0) {
-                    continue;
-                }
-
-                const auto now = std::chrono::steady_clock::now();
-                handlePacket(buffer.data(), static_cast<size_t>(received), channel, now);
+            const auto now = std::chrono::steady_clock::now();
+            const auto packetObservation = handlePacket(
+                buffer.data(), static_cast<size_t>(received), step.tuning.primaryChannel, now);
+            if (!packetObservation.has_value()) {
+                continue;
             }
 
-            pruneOldRadios(std::chrono::steady_clock::now());
-            notifySnapshotChanged();
+            observation.sawTraffic = true;
+            if (observedBssids.insert(packetObservation->bssid).second) {
+                ++observation.radiosSeen;
+                if (packetObservation->isNewRadio) {
+                    ++observation.newRadiosSeen;
+                }
+            }
+            if (packetObservation->signalDbm.has_value()
+                && (!observation.strongestSignalDbm.has_value()
+                    || packetObservation->signalDbm.value()
+                        > observation.strongestSignalDbm.value())) {
+                observation.strongestSignalDbm = packetObservation->signalDbm;
+            }
+            if (packetObservation->channel.has_value()) {
+                observedChannels.insert(packetObservation->channel.value());
+            }
         }
+
+        observation.observedChannels.assign(observedChannels.begin(), observedChannels.end());
+        std::sort(observation.observedChannels.begin(), observation.observedChannels.end());
+        planner_->recordObservation(observation, std::chrono::steady_clock::now());
+        pruneOldRadios(std::chrono::steady_clock::now());
+        notifySnapshotChanged();
     }
 
     LOG_INFO(Network, "ScannerService thread exiting");

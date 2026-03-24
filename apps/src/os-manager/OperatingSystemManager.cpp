@@ -404,7 +404,8 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
 {
     OsApi::ScannerSnapshotGet::Okay okay;
     okay.active = active;
-    okay.currentChannel = snapshot.currentChannel;
+    okay.focusBand = snapshot.focusBand;
+    okay.currentTuning = snapshot.currentTuning;
 
     const auto now = std::chrono::steady_clock::now();
     okay.radios.reserve(snapshot.radios.size());
@@ -428,8 +429,11 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
     else if (!lastError.empty()) {
         okay.detail = lastError;
     }
-    else if (okay.currentChannel.has_value()) {
-        okay.detail = "Scanning channel " + std::to_string(*okay.currentChannel) + ".";
+    else if (okay.currentTuning.has_value()) {
+        const auto& tuning = okay.currentTuning.value();
+        okay.detail = "Scanning " + scannerBandLabel(tuning.band) + " ch "
+            + std::to_string(tuning.primaryChannel) + " @ " + std::to_string(tuning.widthMhz)
+            + " MHz.";
     }
     else if (snapshot.running) {
         okay.detail = "Scanning.";
@@ -1333,6 +1337,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::StopUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::RestartUi::Cwc>(
         [this](OsApi::RestartUi::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerFocusSet::Cwc>(
+        [this](OsApi::ScannerFocusSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeEnter::Cwc>(
         [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
@@ -1407,6 +1413,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerFocusSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerSnapshotGet);
@@ -1527,6 +1534,23 @@ Result<OsApi::ScannerSnapshotGet::Okay, ApiError> OperatingSystemManager::getSca
     const auto snapshot = scannerService_->snapshot(maxAgeMs, maxRadios);
     okay = toApiScannerSnapshotOkay(snapshot, scannerService_->lastError(), true);
     return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
+}
+
+Result<OsApi::ScannerFocusSet::Okay, ApiError> OperatingSystemManager::setScannerFocus(
+    const OsApi::ScannerFocusSet::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    scannerService_->setFocusBand(command.band);
+    return Result<OsApi::ScannerFocusSet::Okay, ApiError>::okay(
+        OsApi::ScannerFocusSet::Okay{ .band = command.band });
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::

@@ -89,6 +89,13 @@ Any Idle::onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm)
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::ScannerFocusSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerFocusSet command received");
+    cwc.sendResponse(osm.setScannerFocus(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::ScannerModeEnter::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "ScannerModeEnter command received");

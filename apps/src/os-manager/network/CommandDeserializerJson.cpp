@@ -9,6 +9,7 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/ScannerFocusSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
@@ -96,6 +97,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::RestartUi::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::RestartUi::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::ScannerFocusSet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerFocusSet::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::ScannerModeEnter::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

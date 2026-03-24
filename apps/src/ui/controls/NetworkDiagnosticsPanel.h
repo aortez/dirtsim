@@ -2,6 +2,7 @@
 
 #include "core/network/WifiManager.h"
 #include "lvgl/lvgl.h"
+#include "os-manager/ScannerTypes.h"
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -116,7 +117,7 @@ public:
 private:
     enum class ViewMode { LanAccess, Scanner, Wifi, WifiConnectFlow, WifiDetails };
     enum class ConnectOverlayMode { PasswordEntry, Connecting };
-    enum class ScannerBand { Band24Ghz, Band5Ghz };
+    using ScannerBand = OsManager::ScannerBand;
 
     lv_obj_t* container_;
     lv_obj_t* connectProgressCancelButton_ = nullptr;
@@ -234,7 +235,8 @@ private:
 
     struct ScannerSnapshot {
         bool active = false;
-        std::optional<int> currentChannel;
+        ScannerBand focusBand = ScannerBand::Band5Ghz;
+        std::optional<OsManager::ScannerTuning> currentTuning;
         std::string detail;
         std::vector<ScannerObservedRadio> radios;
     };
@@ -322,7 +324,7 @@ private:
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
     std::optional<std::chrono::steady_clock::time_point> scannerSnapshotActivityAt_;
-    std::optional<int> scannerCurrentChannel_;
+    std::optional<OsManager::ScannerTuning> scannerCurrentTuning_;
     size_t scannerObservedRadioCount_ = 0;
     std::vector<ScannerObservedRadio> scannerObservedRadios_;
     std::unordered_map<std::string, ScannerRadioRowState> scannerRadioRowsByKey_;

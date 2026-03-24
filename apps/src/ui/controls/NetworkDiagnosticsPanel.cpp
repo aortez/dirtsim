@@ -5,6 +5,7 @@
 #include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotChanged.h"
 #include "os-manager/api/NetworkSnapshotGet.h"
+#include "os-manager/api/ScannerFocusSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerSnapshotChanged.h"
@@ -145,6 +146,43 @@ void setNetworkDiagnosticsModeAsync(const bool active)
         }
         catch (const std::exception& e) {
             LOG_WARN(Controls, "Network diagnostics mode update failed: {}", e.what());
+        }
+    }).detach();
+}
+
+void setScannerFocusBandAsync(const OsManager::ScannerBand band)
+{
+    std::thread([band]() {
+        try {
+            Network::WebSocketService client;
+            const auto connectResult = client.connect("ws://localhost:9090", 2000);
+            if (connectResult.isError()) {
+                LOG_WARN(
+                    Controls,
+                    "Failed to connect to os-manager for scanner focus update: {}",
+                    connectResult.errorValue());
+                return;
+            }
+
+            OsApi::ScannerFocusSet::Command cmd{ .band = band };
+            const auto response =
+                client.sendCommandAndGetResponse<OsApi::ScannerFocusSet::Okay>(cmd, 2000);
+            client.disconnect();
+
+            if (response.isError()) {
+                LOG_WARN(Controls, "ScannerFocusSet transport failed: {}", response.errorValue());
+                return;
+            }
+            if (response.value().isError()) {
+                LOG_WARN(
+                    Controls, "ScannerFocusSet failed: {}", response.value().errorValue().message);
+                return;
+            }
+
+            LOG_INFO(Controls, "Scanner focus set to {}.", OsManager::scannerBandLabel(band));
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "Scanner focus update failed: {}", e.what());
         }
     }).detach();
 }
@@ -1429,7 +1467,8 @@ void NetworkDiagnosticsPanel::startEventStream()
                         Network::deserialize_payload<OsApi::ScannerSnapshotChanged>(payload);
                     ScannerSnapshot snapshot;
                     snapshot.active = changed.snapshot.active;
-                    snapshot.currentChannel = changed.snapshot.currentChannel;
+                    snapshot.focusBand = changed.snapshot.focusBand;
+                    snapshot.currentTuning = changed.snapshot.currentTuning;
                     snapshot.detail = changed.snapshot.detail;
                     snapshot.radios.reserve(changed.snapshot.radios.size());
                     for (const auto& radio : changed.snapshot.radios) {
@@ -2562,7 +2601,7 @@ bool NetworkDiagnosticsPanel::isScannerSnapshotStale() const
 void NetworkDiagnosticsPanel::resetScannerSnapshotState()
 {
     scannerSnapshotActivityAt_.reset();
-    scannerCurrentChannel_.reset();
+    scannerCurrentTuning_.reset();
     scannerObservedRadioCount_ = 0;
     scannerObservedRadios_.clear();
     scannerRadioOrder_.clear();
@@ -3561,7 +3600,8 @@ bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
                     const auto& okay = response.value().value();
                     ScannerSnapshot snapshot;
                     snapshot.active = okay.active;
-                    snapshot.currentChannel = okay.currentChannel;
+                    snapshot.focusBand = okay.focusBand;
+                    snapshot.currentTuning = okay.currentTuning;
                     snapshot.detail = okay.detail;
                     snapshot.radios.reserve(okay.radios.size());
                     for (const auto& radio : okay.radios) {
@@ -4281,13 +4321,12 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
         return;
     }
 
-    scannerCurrentChannel_ = snapshot.currentChannel;
+    scannerCurrentTuning_ = snapshot.currentTuning;
     scannerObservedRadioCount_ = snapshot.radios.size();
     scannerObservedRadios_ = snapshot.radios;
     scannerSnapshotReceived_ = true;
-    if (!hadSnapshot && scannerCurrentChannel_.has_value()) {
-        scannerSelectedBand_ =
-            scannerCurrentChannel_.value() <= 14 ? ScannerBand::Band24Ghz : ScannerBand::Band5Ghz;
+    if (!hadSnapshot) {
+        scannerSelectedBand_ = snapshot.focusBand;
     }
     updateScannerStatusLabel();
 
@@ -4573,8 +4612,8 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
     std::string text;
     if (scannerModeActive_) {
         std::vector<std::string> parts{ "Scanner active" };
-        if (scannerCurrentChannel_.has_value()) {
-            parts.push_back("ch " + std::to_string(scannerCurrentChannel_.value()));
+        if (scannerCurrentTuning_.has_value()) {
+            parts.push_back("ch " + std::to_string(scannerCurrentTuning_->primaryChannel));
         }
         if (scannerSnapshotReceived_) {
             parts.push_back(std::to_string(scannerObservedRadioCount_) + " radios");
@@ -5079,6 +5118,9 @@ void NetworkDiagnosticsPanel::onScannerBand24Clicked(lv_event_t* e)
     self->updateScannerBandControls();
     self->updateScannerPlotVisibility();
     self->updateScannerRadioList();
+    if (self->scannerModeActive_) {
+        setScannerFocusBandAsync(self->scannerSelectedBand_);
+    }
 }
 
 void NetworkDiagnosticsPanel::onScannerBand5Clicked(lv_event_t* e)
@@ -5096,6 +5138,9 @@ void NetworkDiagnosticsPanel::onScannerBand5Clicked(lv_event_t* e)
     self->updateScannerBandControls();
     self->updateScannerPlotVisibility();
     self->updateScannerRadioList();
+    if (self->scannerModeActive_) {
+        setScannerFocusBandAsync(self->scannerSelectedBand_);
+    }
 }
 
 void NetworkDiagnosticsPanel::onScannerRadiosListScroll(lv_event_t* e)

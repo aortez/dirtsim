@@ -2,6 +2,7 @@
 
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "os-manager/ScannerTypes.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
 #include <cstdint>
@@ -51,14 +52,15 @@ struct Command {
 
 struct Okay {
     bool active = false;
-    std::optional<int> currentChannel;
+    OsManager::ScannerBand focusBand = OsManager::ScannerBand::Band5Ghz;
+    std::optional<OsManager::ScannerTuning> currentTuning;
     std::string detail;
     std::vector<ObservedRadioInfo> radios;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 API_STANDARD_TYPES();

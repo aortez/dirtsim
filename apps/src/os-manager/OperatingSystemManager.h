@@ -13,6 +13,7 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
+#include "os-manager/api/ScannerFocusSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
@@ -123,6 +124,8 @@ public:
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
         const OsApi::RemoteCliRun::Command& command);
+    Result<OsApi::ScannerFocusSet::Okay, ApiError> setScannerFocus(
+        const OsApi::ScannerFocusSet::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
     Result<OsApi::ScannerSnapshotGet::Okay, ApiError> getScannerSnapshot(
