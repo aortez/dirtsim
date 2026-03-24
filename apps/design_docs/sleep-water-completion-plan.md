@@ -254,10 +254,11 @@ problems.
   such as:
   - max face velocity,
   - max local water-volume delta,
-  - free-surface presence,
+  - interface-only face-speed disturbance,
   - recent centralized deposit/removal/displacement,
   - drain/inlet/impact disturbance.
-- Allow the interior of large calm pools to qualify for sleep while keeping the active shell awake.
+- Allow the interior of large calm pools, and calm portions of the exposed shell, to qualify for
+  sleep while disturbed surface regions stay awake.
 - Start with a tracked-only slice:
   - compute and expose the new MAC-water quiet state in the region tracker and debug overlays,
   - use shared solver/world signals rather than scenario-specific wake code,
@@ -277,7 +278,9 @@ problems.
 #### Target Behavior
 
 - Pool interiors can sleep.
-- Free surfaces, drains, inlets, moving-solid contacts, and recent splash zones stay awake.
+- Calm free surfaces can quiet when their disturbance signals stay below threshold.
+- Disturbed free surfaces, drains, inlets, moving-solid contacts, and recent splash zones stay
+  awake.
 - Dirt/water interface regions remain conservative until the policy is clearly stable.
 - The first implementation slice changes tracker state only; runtime enforcement stays off for water.
 - Scenario code remains responsible for authoring physical water inputs, not for choosing wake

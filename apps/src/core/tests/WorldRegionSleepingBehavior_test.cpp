@@ -4516,6 +4516,7 @@ TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegions
 
     int sleepingInteriorRegions = 0;
     int awakeExposedRegions = 0;
+    int quietExposedRegions = 0;
 
     for (const RegionCoord& region : buckets.interior_water_regions) {
         const RegionFrameSample sample = sampleRegionFrame(world, region, kWaterSettleSteps);
@@ -4536,6 +4537,9 @@ TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegions
         if (sample.state == RegionState::Awake) {
             awakeExposedRegions++;
         }
+        else {
+            quietExposedRegions++;
+        }
 
         EXPECT_EQ(sample.sleep_skipped_force_processing_cells, 0)
             << "Expected exposed water regions to remain tracked-only during the first MAC water "
@@ -4547,8 +4551,11 @@ TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegions
 
     EXPECT_GT(sleepingInteriorRegions, 0)
         << "Expected at least one calm pool interior region to reach Sleeping state.";
+    EXPECT_GT(quietExposedRegions, 0)
+        << "Expected at least one calm exposed water region to become quiet under the selective "
+           "surface-disturbance policy.";
     EXPECT_GT(awakeExposedRegions, 0)
-        << "Expected the pool shell to retain at least one Awake interface region.";
+        << "Expected the pool shell to retain at least one Awake disturbed surface region.";
 }
 
 TEST(WorldRegionSleepingBehaviorTest, InterfaceFaceSpeedSeparatesPerturbedSurfaceFromCalmInterior)

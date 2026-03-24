@@ -44,8 +44,8 @@ public:
         float static_load_delta_epsilon = 0.02f;
         float velocity_epsilon = 0.01f;
         bool keep_empty_adjacent_awake = true;
-        bool keep_mac_water_interface_face_speed_awake = false;
-        bool keep_mac_water_interface_awake = true;
+        bool keep_mac_water_interface_face_speed_awake = true;
+        bool keep_mac_water_interface_awake = false;
         bool keep_mixed_material_awake = true;
         bool keep_organism_regions_awake = true;
         bool keep_water_adjacent_awake = true;
