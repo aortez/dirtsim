@@ -20,6 +20,15 @@ enum class WakeReason : uint8_t {
     NeighborTopologyChanged,
     GravityChanged,
     WaterInterface,
+    Velocity,
+    LivePressureDelta,
+    StaticLoadDelta,
+    EmptyAdjacency,
+    MixedMaterial,
+    Organism,
+    MacWaterVolumeDelta,
+    MacWaterInterfaceFaceSpeed,
+    WaterAdjacency,
 };
 
 struct RegionDebugInfo {

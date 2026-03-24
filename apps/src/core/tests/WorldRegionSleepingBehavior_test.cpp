@@ -815,6 +815,32 @@ float maxMacWaterInterfaceFaceSpeed(const World& world, const std::vector<Region
     return max_face_speed;
 }
 
+std::optional<RegionCoord> selectQuietExposedWaterRegionNearCenter(
+    const World& world, const WaterRegionBuckets& buckets)
+{
+    const int center_region_x = world.getData().region_debug_blocks_x / 2;
+    int best_distance =
+        world.getData().region_debug_blocks_x + world.getData().region_debug_blocks_y;
+    std::optional<RegionCoord> selected_region;
+
+    for (const RegionCoord& region : buckets.exposed_water_regions) {
+        if (world.getRegionActivityTracker().getRegionState(region.x, region.y)
+            == RegionState::Awake) {
+            continue;
+        }
+
+        const int distance = std::abs(region.x - center_region_x);
+        if (distance >= best_distance) {
+            continue;
+        }
+
+        best_distance = distance;
+        selected_region = region;
+    }
+
+    return selected_region;
+}
+
 bool regionEquals(RegionCoord a, RegionCoord b)
 {
     return a.x == b.x && a.y == b.y;
@@ -2457,6 +2483,24 @@ char wakeReasonToChar(WakeReason reason)
             return 'G';
         case WakeReason::WaterInterface:
             return 'W';
+        case WakeReason::Velocity:
+            return 'V';
+        case WakeReason::LivePressureDelta:
+            return 'P';
+        case WakeReason::StaticLoadDelta:
+            return 'L';
+        case WakeReason::EmptyAdjacency:
+            return 'E';
+        case WakeReason::MixedMaterial:
+            return 'C';
+        case WakeReason::Organism:
+            return 'O';
+        case WakeReason::MacWaterVolumeDelta:
+            return 'D';
+        case WakeReason::MacWaterInterfaceFaceSpeed:
+            return 'F';
+        case WakeReason::WaterAdjacency:
+            return 'A';
     }
 
     return '?';
@@ -4625,6 +4669,86 @@ TEST(WorldRegionSleepingBehaviorTest, InterfaceFaceSpeedSeparatesPerturbedSurfac
     EXPECT_GT(awakePerturbedExposedRegions, 0)
         << "Expected at least one perturbed surface region to stay Awake under an interface-face-"
            "speed wake policy.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, FallingMetalIntoCalmPoolWakesNearbyWaterRegion)
+{
+    constexpr int kImpactFrames = 96;
+    constexpr int kProjectileBottomY = 7;
+    constexpr int kProjectileTopY = 6;
+    constexpr double kProjectileVelocityY = 8.0;
+
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+    settleWorld(world, kWaterSettleSteps);
+
+    const GridOfCells settledGrid = makeGrid(world);
+    const WaterRegionBuckets settledBuckets = classifyWaterRegions(world, settledGrid);
+    const std::optional<RegionCoord> quietSurfaceRegion =
+        selectQuietExposedWaterRegionNearCenter(world, settledBuckets);
+
+    SCOPED_TRACE(dumpWaterPoolDiagnostics());
+
+    ASSERT_TRUE(quietSurfaceRegion.has_value())
+        << "Expected the settled pool to contain at least one quiet exposed/interface region.";
+    ASSERT_NE(
+        world.getRegionActivityTracker().getRegionState(
+            quietSurfaceRegion->x, quietSurfaceRegion->y),
+        RegionState::Awake)
+        << "Expected the chosen impact target region to start quiet before the solid impact.";
+
+    const int impactCenterX = quietSurfaceRegion->x * kRegionSize + kRegionSize / 2;
+    for (int y = kProjectileTopY; y <= kProjectileBottomY; ++y) {
+        for (int x = impactCenterX - 1; x <= impactCenterX + 1; ++x) {
+            world.replaceMaterialAtCell(
+                Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::Metal);
+            world.getData().at(x, y).velocity = Vector2d{ 0.0, kProjectileVelocityY };
+        }
+    }
+
+    std::optional<RegionCoord> firstAwakeRegion;
+    std::optional<WakeReason> firstAwakeReason;
+    WaterRegionBuckets currentBuckets = settledBuckets;
+
+    for (int frame = 1; frame <= kImpactFrames && !firstAwakeReason.has_value(); ++frame) {
+        world.advanceTime(kDt);
+
+        const GridOfCells currentGrid = makeGrid(world);
+        currentBuckets = classifyWaterRegions(world, currentGrid);
+
+        for (const RegionCoord& region : currentBuckets.water_regions) {
+            if (std::abs(region.x - quietSurfaceRegion->x) > 1
+                || std::abs(region.y - quietSurfaceRegion->y) > 1) {
+                continue;
+            }
+
+            const RegionFrameSample sample =
+                sampleRegionFrame(world, region, kWaterSettleSteps + frame);
+            if (sample.state != RegionState::Awake) {
+                continue;
+            }
+            if (sample.wake_reason == WakeReason::None
+                || sample.wake_reason == WakeReason::ExternalMutation) {
+                continue;
+            }
+
+            firstAwakeRegion = region;
+            firstAwakeReason = sample.wake_reason;
+            break;
+        }
+    }
+
+    SCOPED_TRACE(dumpWaterRegionDetails(world, currentBuckets, kWaterSettleSteps + kImpactFrames));
+
+    ASSERT_TRUE(firstAwakeRegion.has_value())
+        << "Expected a calm surface neighborhood near the impact to wake under a non-authored "
+           "disturbance signal.";
+    ASSERT_TRUE(firstAwakeReason.has_value())
+        << "Expected the nearby wake to report a concrete tracker wake cause.";
+    EXPECT_EQ(*firstAwakeReason, WakeReason::LivePressureDelta)
+        << "Expected the falling-solid water impact to register through the centralized pressure "
+           "disturbance signal.";
 }
 
 TEST(

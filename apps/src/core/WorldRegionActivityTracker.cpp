@@ -76,50 +76,52 @@ bool hasWaterVolumeAdjacency(const DirtSim::WaterVolumeView& waterView, int x, i
     return false;
 }
 
-bool shouldForceAwake(
-    const RegionSummary& summary, const WorldRegionActivityTracker::Config& config)
+WakeReason forceAwakeReason(
+    const RegionSummary& summary,
+    const WorldRegionActivityTracker::Config& config,
+    WakeReason touched_reason)
 {
     if (summary.touched_this_frame) {
-        return true;
+        return touched_reason == WakeReason::None ? WakeReason::ExternalMutation : touched_reason;
     }
     if (summary.max_velocity > config.velocity_epsilon) {
-        return true;
+        return WakeReason::Velocity;
     }
     if (summary.max_live_pressure_delta > config.live_pressure_delta_epsilon) {
-        return true;
+        return WakeReason::LivePressureDelta;
     }
     if (summary.max_static_load_delta > config.static_load_delta_epsilon) {
-        return true;
+        return WakeReason::StaticLoadDelta;
     }
     if (config.keep_empty_adjacent_awake && summary.has_empty_adjacency) {
-        return true;
+        return WakeReason::EmptyAdjacency;
     }
     if (config.keep_mixed_material_awake && summary.has_mixed_material) {
-        return true;
+        return WakeReason::MixedMaterial;
     }
     if (config.keep_organism_regions_awake && summary.has_organism) {
-        return true;
+        return WakeReason::Organism;
     }
     if (summary.has_mac_bulk_water) {
         if (summary.max_mac_water_volume_delta > config.mac_water_volume_delta_epsilon) {
-            return true;
+            return WakeReason::MacWaterVolumeDelta;
         }
         if (config.keep_mac_water_interface_face_speed_awake
             && summary.max_mac_water_interface_face_speed
                 > config.mac_water_interface_face_speed_epsilon) {
-            return true;
+            return WakeReason::MacWaterInterfaceFaceSpeed;
         }
         if (config.keep_mac_water_interface_awake && summary.has_mac_water_interface) {
-            return true;
+            return WakeReason::WaterInterface;
         }
 
-        return false;
+        return WakeReason::None;
     }
     if (config.keep_water_adjacent_awake && summary.has_water_adjacency) {
-        return true;
+        return WakeReason::WaterAdjacency;
     }
 
-    return false;
+    return WakeReason::None;
 }
 
 uint16_t saturatingIncrement(uint16_t value)
@@ -234,7 +236,7 @@ void WorldRegionActivityTracker::beginFrame(
 }
 
 void WorldRegionActivityTracker::summarizeFrame(
-    const World& world, const GridOfCells& grid, uint32_t /*timestep*/)
+    const World& world, const GridOfCells& grid, uint32_t timestep)
 {
     if (world_width_ != grid.getWidth() || world_height_ != grid.getHeight()
         || blocks_x_ != grid.getBlocksX() || blocks_y_ != grid.getBlocksY()) {
@@ -338,10 +340,21 @@ void WorldRegionActivityTracker::summarizeFrame(
     for (size_t region_idx = 0; region_idx < region_meta_.size(); ++region_idx) {
         RegionMeta& meta = region_meta_[region_idx];
         const RegionSummary& summary = region_summary_[region_idx];
+        WakeReason touched_reason = WakeReason::None;
+        if (summary.touched_this_frame) {
+            touched_reason = region_pending_wake_reason_[region_idx];
+            if (touched_reason == WakeReason::None && meta.last_wake_step == timestep
+                && meta.last_wake_reason != WakeReason::None) {
+                touched_reason = meta.last_wake_reason;
+            }
+        }
+        const WakeReason awake_reason = forceAwakeReason(summary, config_, touched_reason);
 
-        if (shouldForceAwake(summary, config_)) {
+        if (awake_reason != WakeReason::None) {
             meta.quiet_frames = 0;
             meta.state = RegionState::Awake;
+            meta.last_wake_reason = awake_reason;
+            meta.last_wake_step = timestep;
             continue;
         }
 
