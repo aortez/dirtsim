@@ -150,9 +150,9 @@ void setNetworkDiagnosticsModeAsync(const bool active)
     }).detach();
 }
 
-void setScannerFocusBandAsync(const OsManager::ScannerBand band)
+void setScannerFocusAsync(const OsManager::ScannerBand band, const int widthMhz)
 {
-    std::thread([band]() {
+    std::thread([band, widthMhz]() {
         try {
             Network::WebSocketService client;
             const auto connectResult = client.connect("ws://localhost:9090", 2000);
@@ -164,7 +164,7 @@ void setScannerFocusBandAsync(const OsManager::ScannerBand band)
                 return;
             }
 
-            OsApi::ScannerFocusSet::Command cmd{ .band = band };
+            OsApi::ScannerFocusSet::Command cmd{ .band = band, .widthMhz = widthMhz };
             const auto response =
                 client.sendCommandAndGetResponse<OsApi::ScannerFocusSet::Okay>(cmd, 2000);
             client.disconnect();
@@ -179,7 +179,11 @@ void setScannerFocusBandAsync(const OsManager::ScannerBand band)
                 return;
             }
 
-            LOG_INFO(Controls, "Scanner focus set to {}.", OsManager::scannerBandLabel(band));
+            LOG_INFO(
+                Controls,
+                "Scanner focus set to {} @ {} MHz.",
+                OsManager::scannerBandLabel(band),
+                widthMhz);
         }
         catch (const std::exception& e) {
             LOG_WARN(Controls, "Scanner focus update failed: {}", e.what());
@@ -956,6 +960,30 @@ void NetworkDiagnosticsPanel::createUI()
                               .callback(onScannerBand5Clicked, this)
                               .buildOrLog();
 
+    scannerWidth20Button_ = LVGLBuilder::actionButton(scannerControlsRow)
+                                .text("20")
+                                .mode(LVGLBuilder::ActionMode::Toggle)
+                                .checked(scannerSelected5GhzWidthMhz_ == 20)
+                                .size(NETWORK_SCANNER_BAND_BUTTON_SIZE)
+                                .callback(onScannerWidth20Clicked, this)
+                                .buildOrLog();
+
+    scannerWidth40Button_ = LVGLBuilder::actionButton(scannerControlsRow)
+                                .text("40")
+                                .mode(LVGLBuilder::ActionMode::Toggle)
+                                .checked(scannerSelected5GhzWidthMhz_ == 40)
+                                .size(NETWORK_SCANNER_BAND_BUTTON_SIZE)
+                                .callback(onScannerWidth40Clicked, this)
+                                .buildOrLog();
+
+    scannerWidth80Button_ = LVGLBuilder::actionButton(scannerControlsRow)
+                                .text("80")
+                                .mode(LVGLBuilder::ActionMode::Toggle)
+                                .checked(scannerSelected5GhzWidthMhz_ == 80)
+                                .size(NETWORK_SCANNER_BAND_BUTTON_SIZE)
+                                .callback(onScannerWidth80Clicked, this)
+                                .buildOrLog();
+
     scannerEnterButton_ = LVGLBuilder::actionButton(scannerControlsRow)
                               .text("Scan")
                               .mode(LVGLBuilder::ActionMode::Push)
@@ -1468,6 +1496,7 @@ void NetworkDiagnosticsPanel::startEventStream()
                     ScannerSnapshot snapshot;
                     snapshot.active = changed.snapshot.active;
                     snapshot.focusBand = changed.snapshot.focusBand;
+                    snapshot.focusWidthMhz = changed.snapshot.focusWidthMhz;
                     snapshot.currentTuning = changed.snapshot.currentTuning;
                     snapshot.detail = changed.snapshot.detail;
                     snapshot.radios.reserve(changed.snapshot.radios.size());
@@ -2665,6 +2694,15 @@ std::string NetworkDiagnosticsPanel::scannerSelectedBandLabel() const
     return "Selected";
 }
 
+int NetworkDiagnosticsPanel::scannerSelectedWidthMhz() const
+{
+    if (scannerSelectedBand_ == ScannerBand::Band24Ghz) {
+        return scannerDefaultWidthMhz(scannerSelectedBand_);
+    }
+
+    return scannerSelected5GhzWidthMhz_;
+}
+
 void NetworkDiagnosticsPanel::updateScannerRadioRowDisplay(
     ScannerRadioRowState& rowState, const ScannerObservedRadio& radio)
 {
@@ -3601,6 +3639,7 @@ bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
                     ScannerSnapshot snapshot;
                     snapshot.active = okay.active;
                     snapshot.focusBand = okay.focusBand;
+                    snapshot.focusWidthMhz = okay.focusWidthMhz;
                     snapshot.currentTuning = okay.currentTuning;
                     snapshot.detail = okay.detail;
                     snapshot.radios.reserve(okay.radios.size());
@@ -4327,6 +4366,10 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     scannerSnapshotReceived_ = true;
     if (!hadSnapshot) {
         scannerSelectedBand_ = snapshot.focusBand;
+        if (snapshot.focusBand == ScannerBand::Band5Ghz
+            && scannerWidthSupported(snapshot.focusBand, snapshot.focusWidthMhz)) {
+            scannerSelected5GhzWidthMhz_ = snapshot.focusWidthMhz;
+        }
     }
     updateScannerStatusLabel();
 
@@ -4382,6 +4425,26 @@ void NetworkDiagnosticsPanel::updateScannerBandControls()
     const bool bandButtonsEnabled = scannerModeActive_ && !isActionInProgress();
     setActionButtonEnabled(scannerBand24Button_, bandButtonsEnabled);
     setActionButtonEnabled(scannerBand5Button_, bandButtonsEnabled);
+    updateScannerWidthControls();
+}
+
+void NetworkDiagnosticsPanel::updateScannerWidthControls()
+{
+    const bool showWidthButtons =
+        scannerModeActive_ && scannerSelectedBand_ == ScannerBand::Band5Ghz;
+    const bool widthButtonsEnabled = showWidthButtons && !isActionInProgress();
+
+    setObjectVisible(scannerWidth20Button_, showWidthButtons);
+    setObjectVisible(scannerWidth40Button_, showWidthButtons);
+    setObjectVisible(scannerWidth80Button_, showWidthButtons);
+
+    setActionButtonChecked(scannerWidth20Button_, scannerSelected5GhzWidthMhz_ == 20);
+    setActionButtonChecked(scannerWidth40Button_, scannerSelected5GhzWidthMhz_ == 40);
+    setActionButtonChecked(scannerWidth80Button_, scannerSelected5GhzWidthMhz_ == 80);
+
+    setActionButtonEnabled(scannerWidth20Button_, widthButtonsEnabled);
+    setActionButtonEnabled(scannerWidth40Button_, widthButtonsEnabled);
+    setActionButtonEnabled(scannerWidth80Button_, widthButtonsEnabled);
 }
 
 void NetworkDiagnosticsPanel::updateScannerControls()
@@ -4613,7 +4676,9 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
     if (scannerModeActive_) {
         std::vector<std::string> parts{ "Scanner active" };
         if (scannerCurrentTuning_.has_value()) {
-            parts.push_back("ch " + std::to_string(scannerCurrentTuning_->primaryChannel));
+            parts.push_back(
+                "ch " + std::to_string(scannerCurrentTuning_->primaryChannel) + " @ "
+                + std::to_string(scannerCurrentTuning_->widthMhz) + " MHz");
         }
         if (scannerSnapshotReceived_) {
             parts.push_back(std::to_string(scannerObservedRadioCount_) + " radios");
@@ -5119,7 +5184,7 @@ void NetworkDiagnosticsPanel::onScannerBand24Clicked(lv_event_t* e)
     self->updateScannerPlotVisibility();
     self->updateScannerRadioList();
     if (self->scannerModeActive_) {
-        setScannerFocusBandAsync(self->scannerSelectedBand_);
+        setScannerFocusAsync(self->scannerSelectedBand_, self->scannerSelectedWidthMhz());
     }
 }
 
@@ -5139,7 +5204,61 @@ void NetworkDiagnosticsPanel::onScannerBand5Clicked(lv_event_t* e)
     self->updateScannerPlotVisibility();
     self->updateScannerRadioList();
     if (self->scannerModeActive_) {
-        setScannerFocusBandAsync(self->scannerSelectedBand_);
+        setScannerFocusAsync(self->scannerSelectedBand_, self->scannerSelectedWidthMhz());
+    }
+}
+
+void NetworkDiagnosticsPanel::onScannerWidth20Clicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->scannerSelected5GhzWidthMhz_ = 20;
+    self->updateScannerWidthControls();
+    if (self->scannerModeActive_ && self->scannerSelectedBand_ == ScannerBand::Band5Ghz) {
+        setScannerFocusAsync(ScannerBand::Band5Ghz, self->scannerSelected5GhzWidthMhz_);
+    }
+}
+
+void NetworkDiagnosticsPanel::onScannerWidth40Clicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->scannerSelected5GhzWidthMhz_ = 40;
+    self->updateScannerWidthControls();
+    if (self->scannerModeActive_ && self->scannerSelectedBand_ == ScannerBand::Band5Ghz) {
+        setScannerFocusAsync(ScannerBand::Band5Ghz, self->scannerSelected5GhzWidthMhz_);
+    }
+}
+
+void NetworkDiagnosticsPanel::onScannerWidth80Clicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->scannerSelected5GhzWidthMhz_ = 80;
+    self->updateScannerWidthControls();
+    if (self->scannerModeActive_ && self->scannerSelectedBand_ == ScannerBand::Band5Ghz) {
+        setScannerFocusAsync(ScannerBand::Band5Ghz, self->scannerSelected5GhzWidthMhz_);
     }
 }
 

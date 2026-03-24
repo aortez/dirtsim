@@ -14,7 +14,7 @@ public:
 
     Result<std::monostate, std::string> start() override;
     void stop() override;
-    Result<std::monostate, std::string> setChannel20MHz(int channel) override;
+    Result<std::monostate, std::string> setTuning(const ScannerTuning& tuning) override;
 
 private:
     Result<std::vector<uint8_t>, std::string> transact(const std::vector<uint8_t>& payload);

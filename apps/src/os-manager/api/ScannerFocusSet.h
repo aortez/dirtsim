@@ -18,20 +18,22 @@ struct Okay;
 
 struct Command {
     OsManager::ScannerBand band = OsManager::ScannerBand::Band5Ghz;
+    int widthMhz = 20;
 
     API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {
     OsManager::ScannerBand band = OsManager::ScannerBand::Band5Ghz;
+    int widthMhz = 20;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 API_STANDARD_TYPES();

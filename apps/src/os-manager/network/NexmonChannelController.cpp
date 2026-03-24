@@ -116,13 +116,13 @@ void NexmonChannelController::stop()
 #endif
 }
 
-Result<std::monostate, std::string> NexmonChannelController::setChannel20MHz(int channel)
+Result<std::monostate, std::string> NexmonChannelController::setTuning(const ScannerTuning& tuning)
 {
 #ifndef __linux__
-    static_cast<void>(channel);
+    static_cast<void>(tuning);
     return Result<std::monostate, std::string>::error("Nexmon channel control requires Linux");
 #else
-    const auto payloadResult = NexmonChannelProtocol::buildSetChanspecPayload(channel);
+    const auto payloadResult = NexmonChannelProtocol::buildSetChanspecPayload(tuning);
     if (payloadResult.isError()) {
         return Result<std::monostate, std::string>::error(payloadResult.errorValue());
     }

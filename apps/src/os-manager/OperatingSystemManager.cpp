@@ -89,7 +89,7 @@ public:
 
     void stop() override {}
 
-    Result<std::monostate, std::string> setChannel20MHz(int) override
+    Result<std::monostate, std::string> setTuning(const ScannerTuning&) override
     {
         return Result<std::monostate, std::string>::error(errorMessage_);
     }
@@ -405,6 +405,7 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
     OsApi::ScannerSnapshotGet::Okay okay;
     okay.active = active;
     okay.focusBand = snapshot.focusBand;
+    okay.focusWidthMhz = snapshot.focusWidthMhz;
     okay.currentTuning = snapshot.currentTuning;
 
     const auto now = std::chrono::steady_clock::now();
@@ -1548,9 +1549,15 @@ Result<OsApi::ScannerFocusSet::Okay, ApiError> OperatingSystemManager::setScanne
             ApiError("Scanner service is unavailable."));
     }
 
-    scannerService_->setFocusBand(command.band);
+    const auto setFocusResult = scannerService_->setFocus(command.band, command.widthMhz);
+    if (setFocusResult.isError()) {
+        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(
+            ApiError(setFocusResult.errorValue()));
+    }
+
+    publishScannerSnapshotChanged(status.active, std::nullopt);
     return Result<OsApi::ScannerFocusSet::Okay, ApiError>::okay(
-        OsApi::ScannerFocusSet::Okay{ .band = command.band });
+        OsApi::ScannerFocusSet::Okay{ .band = command.band, .widthMhz = command.widthMhz });
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::

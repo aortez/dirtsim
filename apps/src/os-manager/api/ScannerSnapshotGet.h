@@ -53,6 +53,7 @@ struct Command {
 struct Okay {
     bool active = false;
     OsManager::ScannerBand focusBand = OsManager::ScannerBand::Band5Ghz;
+    int focusWidthMhz = 20;
     std::optional<OsManager::ScannerTuning> currentTuning;
     std::string detail;
     std::vector<ObservedRadioInfo> radios;
@@ -60,7 +61,7 @@ struct Okay {
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 API_STANDARD_TYPES();

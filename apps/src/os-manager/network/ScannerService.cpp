@@ -25,7 +25,6 @@ namespace {
 
 constexpr int kPollTimeoutMs = 50;
 constexpr int kMinDwellMs = 100;
-constexpr int kWidth20Mhz = 20;
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -369,7 +368,7 @@ Result<std::monostate, std::string> ScannerService::start()
 
     if (planner_) {
         planner_->reset();
-        planner_->setFocusBand(requestedFocusBand_.load());
+        planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
     }
 
     running_ = true;
@@ -417,6 +416,9 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
     Snapshot snapshot;
     snapshot.running = running_;
     snapshot.focusBand = requestedFocusBand_.load();
+    snapshot.focusWidthMhz = requestedFocusBand_.load() == ScannerBand::Band24Ghz
+        ? scannerDefaultWidthMhz(ScannerBand::Band24Ghz)
+        : requestedFocusWidthMhz_.load();
 
     const auto now = std::chrono::steady_clock::now();
     const auto maxAge = std::chrono::milliseconds(maxAgeMs);
@@ -471,9 +473,23 @@ std::string ScannerService::lastError() const
     return lastError_;
 }
 
-void ScannerService::setFocusBand(const ScannerBand band)
+Result<std::monostate, std::string> ScannerService::setFocus(
+    const ScannerBand band, const int widthMhz)
 {
+    if (!scannerWidthSupported(band, widthMhz)) {
+        return Result<std::monostate, std::string>::error(
+            "Unsupported " + scannerBandLabel(band) + " scanner width " + std::to_string(widthMhz)
+            + " MHz");
+    }
+
     requestedFocusBand_ = band;
+    if (band == ScannerBand::Band5Ghz) {
+        requestedFocusWidthMhz_ = widthMhz;
+    }
+    else {
+        requestedFocusWidthMhz_ = scannerDefaultWidthMhz(band);
+    }
+    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 void ScannerService::setSnapshotChangedCallback(SnapshotChangedCallback callback)
@@ -489,12 +505,7 @@ Result<std::monostate, std::string> ScannerService::setChannel(const ScannerTuni
             "Missing dependency for scannerChannelController");
     }
 
-    if (tuning.widthMhz != kWidth20Mhz) {
-        return Result<std::monostate, std::string>::error(
-            "Unsupported scanner tuning width " + std::to_string(tuning.widthMhz) + " MHz");
-    }
-
-    return channelController_->setChannel20MHz(tuning.primaryChannel);
+    return channelController_->setTuning(tuning);
 }
 
 void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
@@ -569,7 +580,7 @@ void ScannerService::threadMain()
             continue;
         }
 
-        planner_->setFocusBand(requestedFocusBand_.load());
+        planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
         const ScanStep step = planner_->nextStep(std::chrono::steady_clock::now());
         const auto setChannelResult = setChannel(step.tuning);
         if (setChannelResult.isError()) {

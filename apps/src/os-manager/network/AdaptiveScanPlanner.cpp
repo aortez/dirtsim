@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
-#include <span>
+#include <utility>
 
 namespace DirtSim {
 namespace OsManager {
@@ -10,31 +10,82 @@ namespace OsManager {
 namespace {
 
 constexpr int kWidth20Mhz = 20;
+constexpr int kWidth40Mhz = 40;
+constexpr int kWidth80Mhz = 80;
 
 constexpr std::array<int, 11> kBand24Channels{ { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 } };
 constexpr std::array<int, 9> kBand5Channels{ { 36, 40, 44, 48, 149, 153, 157, 161, 165 } };
 
-std::span<const int> channelsForBand(const ScannerBand band)
+bool scannerTuningMatchesFocus(
+    const ScannerTuning& tuning, const ScannerBand band, const int widthMhz)
 {
-    switch (band) {
-        case ScannerBand::Band24Ghz:
-            return kBand24Channels;
-        case ScannerBand::Band5Ghz:
-            return kBand5Channels;
-    }
-
-    return {};
+    return tuning.band == band && tuning.widthMhz == widthMhz;
 }
 
-ScannerTuning tuningForPrimaryChannel(const int channel)
+bool scannerTuningsEqual(const ScannerTuning& a, const ScannerTuning& b)
 {
-    const auto band = scannerBandFromChannel(channel).value_or(ScannerBand::Band5Ghz);
+    return a.band == b.band && a.primaryChannel == b.primaryChannel && a.widthMhz == b.widthMhz
+        && a.centerChannel == b.centerChannel;
+}
+
+ScannerTuning makeScannerTuning(
+    const ScannerBand band,
+    const int primaryChannel,
+    const int widthMhz,
+    const std::optional<int> centerChannel)
+{
     return ScannerTuning{
         .band = band,
-        .primaryChannel = channel,
-        .widthMhz = kWidth20Mhz,
-        .centerChannel = std::nullopt,
+        .primaryChannel = primaryChannel,
+        .widthMhz = widthMhz,
+        .centerChannel = centerChannel,
     };
+}
+
+std::vector<ScannerTuning> supportedScannerTunings()
+{
+    std::vector<ScannerTuning> tunings;
+    tunings.reserve(36);
+
+    for (const int channel : kBand24Channels) {
+        tunings.push_back(
+            makeScannerTuning(ScannerBand::Band24Ghz, channel, kWidth20Mhz, std::nullopt));
+    }
+
+    for (const int channel : kBand5Channels) {
+        tunings.push_back(
+            makeScannerTuning(ScannerBand::Band5Ghz, channel, kWidth20Mhz, std::nullopt));
+    }
+
+    for (const auto& [primaryChannel, centerChannel] : std::array<std::pair<int, int>, 8>{ {
+             { 36, 38 },
+             { 40, 38 },
+             { 44, 46 },
+             { 48, 46 },
+             { 149, 151 },
+             { 153, 151 },
+             { 157, 159 },
+             { 161, 159 },
+         } }) {
+        tunings.push_back(
+            makeScannerTuning(ScannerBand::Band5Ghz, primaryChannel, kWidth40Mhz, centerChannel));
+    }
+
+    for (const auto& [primaryChannel, centerChannel] : std::array<std::pair<int, int>, 8>{ {
+             { 36, 42 },
+             { 40, 42 },
+             { 44, 42 },
+             { 48, 42 },
+             { 149, 155 },
+             { 153, 155 },
+             { 157, 155 },
+             { 161, 155 },
+         } }) {
+        tunings.push_back(
+            makeScannerTuning(ScannerBand::Band5Ghz, primaryChannel, kWidth80Mhz, centerChannel));
+    }
+
+    return tunings;
 }
 
 int64_t ageMsOrMax(
@@ -51,9 +102,8 @@ int64_t ageMsOrMax(
 } // namespace
 
 struct AdaptiveScanPlanner::Impl {
-    struct ChannelState {
-        int channel = 0;
-        ScannerBand band = ScannerBand::Band5Ghz;
+    struct TuningState {
+        ScannerTuning tuning;
         int consecutiveEmptyVisits = 0;
         size_t lastNewRadiosSeen = 0;
         std::optional<std::chrono::steady_clock::time_point> lastObservedAt;
@@ -63,23 +113,10 @@ struct AdaptiveScanPlanner::Impl {
 
     explicit Impl(const AdaptiveScanPlannerConfig& config) : config(config)
     {
-        for (const int channel : kBand24Channels) {
-            channelStates.push_back(
-                ChannelState{
-                    .channel = channel,
-                    .band = ScannerBand::Band24Ghz,
-                    .consecutiveEmptyVisits = 0,
-                    .lastNewRadiosSeen = 0,
-                    .lastObservedAt = std::nullopt,
-                    .lastVisitedAt = std::nullopt,
-                    .strongestSignalDbm = std::nullopt,
-                });
-        }
-        for (const int channel : kBand5Channels) {
-            channelStates.push_back(
-                ChannelState{
-                    .channel = channel,
-                    .band = ScannerBand::Band5Ghz,
+        for (const auto& tuning : supportedScannerTunings()) {
+            tuningStates.push_back(
+                TuningState{
+                    .tuning = tuning,
                     .consecutiveEmptyVisits = 0,
                     .lastNewRadiosSeen = 0,
                     .lastObservedAt = std::nullopt,
@@ -89,27 +126,51 @@ struct AdaptiveScanPlanner::Impl {
         }
     }
 
-    ChannelState& channelStateFor(const int channel)
+    TuningState& tuningStateFor(const ScannerTuning& tuning)
     {
         const auto it = std::find_if(
-            channelStates.begin(), channelStates.end(), [channel](const ChannelState& state) {
-                return state.channel == channel;
+            tuningStates.begin(), tuningStates.end(), [&tuning](const TuningState& state) {
+                return scannerTuningsEqual(state.tuning, tuning);
             });
         return *it;
     }
 
-    const ChannelState& channelStateFor(const int channel) const
+    const TuningState& tuningStateFor(const ScannerTuning& tuning) const
     {
         const auto it = std::find_if(
-            channelStates.begin(), channelStates.end(), [channel](const ChannelState& state) {
-                return state.channel == channel;
+            tuningStates.begin(), tuningStates.end(), [&tuning](const TuningState& state) {
+                return scannerTuningsEqual(state.tuning, tuning);
             });
         return *it;
+    }
+
+    std::vector<TuningState*> focusCandidates()
+    {
+        std::vector<TuningState*> candidates;
+        for (auto& state : tuningStates) {
+            if (!scannerTuningMatchesFocus(state.tuning, focusBand, focusWidthMhz)) {
+                continue;
+            }
+            candidates.push_back(&state);
+        }
+        return candidates;
+    }
+
+    std::vector<const TuningState*> focusCandidates() const
+    {
+        std::vector<const TuningState*> candidates;
+        for (const auto& state : tuningStates) {
+            if (!scannerTuningMatchesFocus(state.tuning, focusBand, focusWidthMhz)) {
+                continue;
+            }
+            candidates.push_back(&state);
+        }
+        return candidates;
     }
 
     bool candidatePreferredForDiscovery(
-        const ChannelState& candidate,
-        const ChannelState& currentBest,
+        const TuningState& candidate,
+        const TuningState& currentBest,
         const std::chrono::steady_clock::time_point now) const
     {
         const int64_t candidateVisitedAgeMs = ageMsOrMax(candidate.lastVisitedAt, now);
@@ -132,19 +193,18 @@ struct AdaptiveScanPlanner::Impl {
             return candidate.consecutiveEmptyVisits < currentBest.consecutiveEmptyVisits;
         }
 
-        return candidate.channel < currentBest.channel;
+        return candidate.tuning.primaryChannel < currentBest.tuning.primaryChannel;
     }
 
-    bool hasOverdueChannel(const std::chrono::steady_clock::time_point now) const
+    bool hasOverdueCandidate(const std::chrono::steady_clock::time_point now) const
     {
-        for (const int channel : channelsForBand(focusBand)) {
-            const auto& state = channelStateFor(channel);
-            if (!state.lastVisitedAt.has_value()) {
+        for (const TuningState* state : focusCandidates()) {
+            if (!state->lastVisitedAt.has_value()) {
                 continue;
             }
 
             const auto age =
-                std::chrono::duration_cast<std::chrono::milliseconds>(now - *state.lastVisitedAt);
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - *state->lastVisitedAt);
             if (age.count() > config.maxRevisitAgeMs) {
                 return true;
             }
@@ -162,54 +222,52 @@ struct AdaptiveScanPlanner::Impl {
         return std::clamp(baseDwellMs + jitter, config.minDwellMs, config.maxDwellMs);
     }
 
-    int selectDiscoveryChannel(const std::chrono::steady_clock::time_point now) const
+    ScannerTuning selectDiscoveryTuning(const std::chrono::steady_clock::time_point now) const
     {
-        const auto channels = channelsForBand(focusBand);
-        int bestChannel = channels.front();
-        for (const int channel : channels.subspan(1)) {
-            const auto& candidate = channelStateFor(channel);
-            const auto& currentBest = channelStateFor(bestChannel);
-            if (candidatePreferredForDiscovery(candidate, currentBest, now)) {
-                bestChannel = channel;
+        const auto candidates = focusCandidates();
+        const TuningState* bestState = candidates.front();
+        for (const TuningState* candidate : candidates) {
+            if (candidate == bestState) {
+                continue;
+            }
+            if (candidatePreferredForDiscovery(*candidate, *bestState, now)) {
+                bestState = candidate;
             }
         }
 
-        return bestChannel;
+        return bestState->tuning;
     }
 
-    int selectTrackingChannel()
+    ScannerTuning selectTrackingTuning()
     {
-        const auto channels = channelsForBand(focusBand);
-        size_t& index =
-            focusBand == ScannerBand::Band24Ghz ? nextBand24TrackingIndex : nextBand5TrackingIndex;
-        const int channel = channels[index % channels.size()];
-        index = (index + 1) % channels.size();
-        return channel;
+        const auto candidates = focusCandidates();
+        const size_t index = nextTrackingIndex % candidates.size();
+        const ScannerTuning tuning = candidates[index]->tuning;
+        nextTrackingIndex = (nextTrackingIndex + 1) % candidates.size();
+        return tuning;
     }
 
-    void syncTrackingCursorAfterChannel(const int channel)
+    void syncTrackingCursorAfterTuning(const ScannerTuning& tuning)
     {
-        const auto band = scannerBandFromChannel(channel);
-        if (!band.has_value()) {
+        const auto candidates = focusCandidates();
+        const auto it =
+            std::find_if(candidates.begin(), candidates.end(), [&tuning](const TuningState* state) {
+                return scannerTuningsEqual(state->tuning, tuning);
+            });
+        if (it == candidates.end()) {
+            nextTrackingIndex = 0;
             return;
         }
 
-        const auto channels = channelsForBand(*band);
-        const auto it = std::find(channels.begin(), channels.end(), channel);
-        if (it == channels.end()) {
-            return;
-        }
-
-        size_t& index =
-            *band == ScannerBand::Band24Ghz ? nextBand24TrackingIndex : nextBand5TrackingIndex;
-        index = (static_cast<size_t>(std::distance(channels.begin(), it)) + 1) % channels.size();
+        nextTrackingIndex =
+            (static_cast<size_t>(std::distance(candidates.begin(), it)) + 1) % candidates.size();
     }
 
     AdaptiveScanPlannerConfig config;
-    std::vector<ChannelState> channelStates;
+    int focusWidthMhz = kWidth20Mhz;
+    size_t nextTrackingIndex = 0;
+    std::vector<TuningState> tuningStates;
     ScannerBand focusBand = ScannerBand::Band5Ghz;
-    size_t nextBand24TrackingIndex = 0;
-    size_t nextBand5TrackingIndex = 0;
     int stepsSinceDiscovery = 0;
     uint32_t jitterState = 0;
 };
@@ -224,7 +282,7 @@ AdaptiveScanPlanner::~AdaptiveScanPlanner() = default;
 
 void AdaptiveScanPlanner::reset()
 {
-    for (auto& state : impl_->channelStates) {
+    for (auto& state : impl_->tuningStates) {
         state.consecutiveEmptyVisits = 0;
         state.lastNewRadiosSeen = 0;
         state.lastObservedAt.reset();
@@ -232,33 +290,37 @@ void AdaptiveScanPlanner::reset()
         state.strongestSignalDbm.reset();
     }
 
-    impl_->nextBand24TrackingIndex = 0;
-    impl_->nextBand5TrackingIndex = 0;
+    impl_->focusWidthMhz = kWidth20Mhz;
+    impl_->nextTrackingIndex = 0;
     impl_->stepsSinceDiscovery = config_.trackingStepsPerDiscovery;
     impl_->jitterState = config_.rngSeed;
 }
 
-void AdaptiveScanPlanner::setFocusBand(const ScannerBand band)
+void AdaptiveScanPlanner::setFocus(const ScannerBand band, const int widthMhz)
 {
-    if (impl_->focusBand == band) {
+    const int effectiveWidthMhz =
+        scannerWidthSupported(band, widthMhz) ? widthMhz : scannerDefaultWidthMhz(band);
+    if (impl_->focusBand == band && impl_->focusWidthMhz == effectiveWidthMhz) {
         return;
     }
 
     impl_->focusBand = band;
+    impl_->focusWidthMhz = effectiveWidthMhz;
+    impl_->nextTrackingIndex = 0;
     impl_->stepsSinceDiscovery = config_.trackingStepsPerDiscovery;
 }
 
 ScanStep AdaptiveScanPlanner::nextStep(const std::chrono::steady_clock::time_point now)
 {
-    const bool shouldForceDiscovery = impl_->hasOverdueChannel(now);
+    const bool shouldForceDiscovery = impl_->hasOverdueCandidate(now);
     const bool shouldUseDiscovery =
         shouldForceDiscovery || impl_->stepsSinceDiscovery >= config_.trackingStepsPerDiscovery;
 
-    const int channel =
-        shouldUseDiscovery ? impl_->selectDiscoveryChannel(now) : impl_->selectTrackingChannel();
+    const ScannerTuning tuning =
+        shouldUseDiscovery ? impl_->selectDiscoveryTuning(now) : impl_->selectTrackingTuning();
     if (shouldUseDiscovery) {
         impl_->stepsSinceDiscovery = 0;
-        impl_->syncTrackingCursorAfterChannel(channel);
+        impl_->syncTrackingCursorAfterTuning(tuning);
     }
     else {
         ++impl_->stepsSinceDiscovery;
@@ -268,7 +330,7 @@ ScanStep AdaptiveScanPlanner::nextStep(const std::chrono::steady_clock::time_poi
         ? impl_->jitteredDwellMs(config_.discoveryDwellMs, config_.discoveryJitterMs)
         : impl_->jitteredDwellMs(config_.trackingDwellMs, config_.trackingJitterMs);
     return ScanStep{
-        .tuning = tuningForPrimaryChannel(channel),
+        .tuning = tuning,
         .dwellMs = dwellMs,
     };
 }
@@ -276,7 +338,7 @@ ScanStep AdaptiveScanPlanner::nextStep(const std::chrono::steady_clock::time_poi
 void AdaptiveScanPlanner::recordObservation(
     const StepObservation& observation, const std::chrono::steady_clock::time_point now)
 {
-    auto& state = impl_->channelStateFor(observation.step.tuning.primaryChannel);
+    auto& state = impl_->tuningStateFor(observation.step.tuning);
     state.lastVisitedAt = now;
     if (observation.sawTraffic) {
         state.consecutiveEmptyVisits = 0;

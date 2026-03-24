@@ -144,6 +144,9 @@ private:
     lv_obj_t* scannerRefreshButton_ = nullptr;
     lv_obj_t* scannerStatusLabel_ = nullptr;
     lv_obj_t* scannerView_ = nullptr;
+    lv_obj_t* scannerWidth20Button_ = nullptr;
+    lv_obj_t* scannerWidth40Button_ = nullptr;
+    lv_obj_t* scannerWidth80Button_ = nullptr;
     lv_obj_t* wifiStatusLabel_ = nullptr;
     lv_obj_t* wifiView_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
@@ -236,6 +239,7 @@ private:
     struct ScannerSnapshot {
         bool active = false;
         ScannerBand focusBand = ScannerBand::Band5Ghz;
+        int focusWidthMhz = 20;
         std::optional<OsManager::ScannerTuning> currentTuning;
         std::string detail;
         std::vector<ScannerObservedRadio> radios;
@@ -335,6 +339,7 @@ private:
     bool scannerSnapshotStale_ = false;
     bool scannerStatusUnavailable_ = false;
     ScannerBand scannerSelectedBand_ = ScannerBand::Band5Ghz;
+    int scannerSelected5GhzWidthMhz_ = 20;
     bool scannerRadiosListScrolling_ = false;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
@@ -390,6 +395,7 @@ private:
     std::string scannerRadioIdentity(const ScannerObservedRadio& radio) const;
     bool scannerRadioMatchesSelectedBand(const ScannerObservedRadio& radio) const;
     std::string scannerSelectedBandLabel() const;
+    int scannerSelectedWidthMhz() const;
     void updateCurrentConnectionSummary();
     void updateDetailsLastScanLabel();
     void updateDetailsSignalHistoryPlots();
@@ -411,6 +417,7 @@ private:
     void updateScannerStaleState();
     void updateScannerStatusLabel();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
+    void updateScannerWidthControls();
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWebSocketTokenLabel();
@@ -447,6 +454,9 @@ private:
     static void onScannerExitClicked(lv_event_t* e);
     static void onScannerBand24Clicked(lv_event_t* e);
     static void onScannerBand5Clicked(lv_event_t* e);
+    static void onScannerWidth20Clicked(lv_event_t* e);
+    static void onScannerWidth40Clicked(lv_event_t* e);
+    static void onScannerWidth80Clicked(lv_event_t* e);
     static void onScannerRadiosListScroll(lv_event_t* e);
     static void onScannerRefreshClicked(lv_event_t* e);
     static void onLiveScanToggleChanged(lv_event_t* e);

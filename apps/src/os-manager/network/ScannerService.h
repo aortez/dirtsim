@@ -35,6 +35,7 @@ public:
         bool running = false;
         std::optional<ScannerTuning> currentTuning;
         ScannerBand focusBand = ScannerBand::Band5Ghz;
+        int focusWidthMhz = 20;
         std::vector<ObservedRadio> radios;
     };
 
@@ -58,7 +59,7 @@ public:
 
     Snapshot snapshot(uint64_t maxAgeMs, size_t maxRadios) const;
     std::string lastError() const;
-    void setFocusBand(ScannerBand band);
+    Result<std::monostate, std::string> setFocus(ScannerBand band, int widthMhz);
     void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
 private:
@@ -96,6 +97,7 @@ private:
     SnapshotChangedCallback snapshotChangedCallback_;
     std::unique_ptr<ScanPlanner> planner_;
     std::atomic<ScannerBand> requestedFocusBand_{ ScannerBand::Band5Ghz };
+    std::atomic<int> requestedFocusWidthMhz_{ 20 };
 
     std::atomic<bool> stopRequested_{ false };
     std::atomic<bool> running_{ false };

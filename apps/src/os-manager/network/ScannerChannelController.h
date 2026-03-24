@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Result.h"
+#include "os-manager/ScannerTypes.h"
 #include <string>
 #include <variant>
 
@@ -13,7 +14,7 @@ public:
 
     virtual Result<std::monostate, std::string> start() = 0;
     virtual void stop() = 0;
-    virtual Result<std::monostate, std::string> setChannel20MHz(int channel) = 0;
+    virtual Result<std::monostate, std::string> setTuning(const ScannerTuning& tuning) = 0;
 };
 
 } // namespace OsManager

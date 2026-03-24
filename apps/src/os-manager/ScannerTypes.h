@@ -41,6 +41,23 @@ inline void from_json(const nlohmann::json& j, ScannerBand& band)
     throw std::runtime_error("Invalid ScannerBand: " + text);
 }
 
+inline int scannerDefaultWidthMhz(ScannerBand /*band*/)
+{
+    return 20;
+}
+
+inline bool scannerWidthSupported(ScannerBand band, int widthMhz)
+{
+    switch (band) {
+        case ScannerBand::Band24Ghz:
+            return widthMhz == 20;
+        case ScannerBand::Band5Ghz:
+            return widthMhz == 20 || widthMhz == 40 || widthMhz == 80;
+    }
+
+    return false;
+}
+
 struct ScannerTuning {
     ScannerBand band = ScannerBand::Band5Ghz;
     int primaryChannel = 0;

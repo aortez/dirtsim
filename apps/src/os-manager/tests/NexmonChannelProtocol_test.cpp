@@ -8,6 +8,20 @@ using namespace DirtSim::OsManager;
 
 namespace {
 
+ScannerTuning makeTuning(
+    const ScannerBand band,
+    const int primaryChannel,
+    const int widthMhz,
+    const std::optional<int> centerChannel = std::nullopt)
+{
+    return ScannerTuning{
+        .band = band,
+        .primaryChannel = primaryChannel,
+        .widthMhz = widthMhz,
+        .centerChannel = centerChannel,
+    };
+}
+
 TEST(NexmonChannelProtocolTest, EncodeChanspec20MHzSupportsCurrentScanPlan)
 {
     const std::vector<std::pair<int, uint32_t>> cases = {
@@ -44,7 +58,8 @@ TEST(NexmonChannelProtocolTest, BuildGetChanspecPayloadMatchesSpec)
 
 TEST(NexmonChannelProtocolTest, BuildSetChanspecPayloadMatchesSpec)
 {
-    const auto result = NexmonChannelProtocol::buildSetChanspecPayload(153);
+    const auto result =
+        NexmonChannelProtocol::buildSetChanspecPayload(makeTuning(ScannerBand::Band5Ghz, 153, 20));
 
     ASSERT_TRUE(result.isValue());
     const std::vector<uint8_t> expected = {
@@ -53,6 +68,33 @@ TEST(NexmonChannelProtocolTest, BuildSetChanspecPayloadMatchesSpec)
         0x65, 0x63, 0x00, 0x99, 0xd0, 0x00, 0x00, 0x00, 0x00, 0x00,
     };
     EXPECT_EQ(result.value(), expected);
+}
+
+TEST(NexmonChannelProtocolTest, EncodeChanspecSupports5GHz40MHz)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 153, 40, 151));
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value(), 0xd997u);
+}
+
+TEST(NexmonChannelProtocolTest, EncodeChanspecSupports5GHz80MHz)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 157, 80, 155));
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value(), 0xe29bu);
+}
+
+TEST(NexmonChannelProtocolTest, EncodeChanspecRejectsUnsupported5GHz80PrimaryChannel)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 165, 80));
+
+    ASSERT_TRUE(result.isError());
+    EXPECT_EQ(result.errorValue(), "Unsupported 80 MHz scanner channel 165");
 }
 
 TEST(NexmonChannelProtocolTest, ParseGetChanspecPayloadExtractsValue)

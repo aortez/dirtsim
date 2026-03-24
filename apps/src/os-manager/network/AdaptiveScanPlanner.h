@@ -25,7 +25,7 @@ public:
     ~AdaptiveScanPlanner() override;
 
     void reset() override;
-    void setFocusBand(ScannerBand band) override;
+    void setFocus(ScannerBand band, int widthMhz) override;
     ScanStep nextStep(std::chrono::steady_clock::time_point now) override;
     void recordObservation(
         const StepObservation& observation, std::chrono::steady_clock::time_point now) override;
