@@ -50,94 +50,135 @@ void writeCommonPayloadPrefix(std::vector<uint8_t>& payload, uint32_t commandId,
 
 bool isSupported5GHzScannerChannel(int channel)
 {
-    switch (channel) {
-        case 36:
-        case 40:
-        case 44:
-        case 48:
-        case 149:
-        case 153:
-        case 157:
-        case 161:
-        case 165:
-            return true;
-        default:
-            return false;
+    return scannerChannelListContains(scannerBandPrimaryChannels(ScannerBand::Band5Ghz), channel);
+}
+
+bool isSupported5GHzScannerChannelForWidth(const int widthMhz, const int channel)
+{
+    if (widthMhz == 20) {
+        return isSupported5GHzScannerChannel(channel);
     }
+
+    for (const int centerChannel : scannerManualTargetChannels(ScannerBand::Band5Ghz, widthMhz)) {
+        const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
+            ScannerTuning{
+                .band = ScannerBand::Band5Ghz,
+                .primaryChannel = centerChannel,
+                .widthMhz = widthMhz,
+                .centerChannel = centerChannel,
+            });
+        if (scannerChannelListContains(coveredChannels, channel)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 Result<uint32_t, std::string> encode5GHz40MHzChanspec(const ScannerTuning& tuning)
 {
-    struct Case {
-        int primaryChannel;
-        int centerChannel;
-        uint32_t sideband;
-    };
-    for (const auto& candidate : std::array<Case, 8>{ {
-             { 36, 38, kControlSidebandLower },
-             { 40, 38, kControlSidebandLowerUpper },
-             { 44, 46, kControlSidebandLower },
-             { 48, 46, kControlSidebandLowerUpper },
-             { 149, 151, kControlSidebandLower },
-             { 153, 151, kControlSidebandLowerUpper },
-             { 157, 159, kControlSidebandLower },
-             { 161, 159, kControlSidebandLowerUpper },
-         } }) {
-        if (candidate.primaryChannel != tuning.primaryChannel) {
-            continue;
-        }
-
-        if (tuning.centerChannel.has_value()
-            && tuning.centerChannel.value() != candidate.centerChannel) {
-            return Result<uint32_t, std::string>::error(
-                "Invalid 40 MHz center channel " + std::to_string(tuning.centerChannel.value())
-                + " for primary channel " + std::to_string(tuning.primaryChannel));
-        }
-
-        return Result<uint32_t, std::string>::okay(
-            kBand5Ghz | kWidth40Mhz | candidate.sideband
-            | static_cast<uint32_t>(candidate.centerChannel));
+    if (!isSupported5GHzScannerChannelForWidth(40, tuning.primaryChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Unsupported 40 MHz scanner channel " + std::to_string(tuning.primaryChannel));
     }
 
-    return Result<uint32_t, std::string>::error(
-        "Unsupported 40 MHz scanner channel " + std::to_string(tuning.primaryChannel));
+    if (!tuning.centerChannel.has_value()) {
+        return Result<uint32_t, std::string>::error(
+            "Missing 40 MHz center channel for primary channel "
+            + std::to_string(tuning.primaryChannel));
+    }
+
+    const int centerChannel = tuning.centerChannel.value();
+    if (!scannerChannelListContains(
+            scannerManualTargetChannels(ScannerBand::Band5Ghz, 40), centerChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Unsupported 40 MHz center channel " + std::to_string(centerChannel));
+    }
+
+    const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
+        ScannerTuning{
+            .band = ScannerBand::Band5Ghz,
+            .primaryChannel = tuning.primaryChannel,
+            .widthMhz = 40,
+            .centerChannel = centerChannel,
+        });
+    if (!scannerChannelListContains(coveredChannels, tuning.primaryChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Invalid 40 MHz center channel " + std::to_string(centerChannel)
+            + " for primary channel " + std::to_string(tuning.primaryChannel));
+    }
+
+    switch (tuning.primaryChannel - centerChannel) {
+        case -2:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth40Mhz | kControlSidebandLower
+                | static_cast<uint32_t>(centerChannel));
+        case 2:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth40Mhz | kControlSidebandLowerUpper
+                | static_cast<uint32_t>(centerChannel));
+        default:
+            return Result<uint32_t, std::string>::error(
+                "Invalid 40 MHz center channel " + std::to_string(centerChannel)
+                + " for primary channel " + std::to_string(tuning.primaryChannel));
+    }
 }
 
 Result<uint32_t, std::string> encode5GHz80MHzChanspec(const ScannerTuning& tuning)
 {
-    struct Case {
-        int primaryChannel;
-        int centerChannel;
-        uint32_t sideband;
-    };
-    for (const auto& candidate : std::array<Case, 8>{ {
-             { 36, 42, kControlSidebandLower },
-             { 40, 42, kControlSidebandLowerUpper },
-             { 44, 42, kControlSidebandUpperLower },
-             { 48, 42, kControlSidebandUpperUpper },
-             { 149, 155, kControlSidebandLower },
-             { 153, 155, kControlSidebandLowerUpper },
-             { 157, 155, kControlSidebandUpperLower },
-             { 161, 155, kControlSidebandUpperUpper },
-         } }) {
-        if (candidate.primaryChannel != tuning.primaryChannel) {
-            continue;
-        }
-
-        if (tuning.centerChannel.has_value()
-            && tuning.centerChannel.value() != candidate.centerChannel) {
-            return Result<uint32_t, std::string>::error(
-                "Invalid 80 MHz center channel " + std::to_string(tuning.centerChannel.value())
-                + " for primary channel " + std::to_string(tuning.primaryChannel));
-        }
-
-        return Result<uint32_t, std::string>::okay(
-            kBand5Ghz | kWidth80Mhz | candidate.sideband
-            | static_cast<uint32_t>(candidate.centerChannel));
+    if (!isSupported5GHzScannerChannelForWidth(80, tuning.primaryChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Unsupported 80 MHz scanner channel " + std::to_string(tuning.primaryChannel));
     }
 
-    return Result<uint32_t, std::string>::error(
-        "Unsupported 80 MHz scanner channel " + std::to_string(tuning.primaryChannel));
+    if (!tuning.centerChannel.has_value()) {
+        return Result<uint32_t, std::string>::error(
+            "Missing 80 MHz center channel for primary channel "
+            + std::to_string(tuning.primaryChannel));
+    }
+
+    const int centerChannel = tuning.centerChannel.value();
+    if (!scannerChannelListContains(
+            scannerManualTargetChannels(ScannerBand::Band5Ghz, 80), centerChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Unsupported 80 MHz center channel " + std::to_string(centerChannel));
+    }
+
+    const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
+        ScannerTuning{
+            .band = ScannerBand::Band5Ghz,
+            .primaryChannel = tuning.primaryChannel,
+            .widthMhz = 80,
+            .centerChannel = centerChannel,
+        });
+    if (!scannerChannelListContains(coveredChannels, tuning.primaryChannel)) {
+        return Result<uint32_t, std::string>::error(
+            "Invalid 80 MHz center channel " + std::to_string(centerChannel)
+            + " for primary channel " + std::to_string(tuning.primaryChannel));
+    }
+
+    switch (tuning.primaryChannel - centerChannel) {
+        case -6:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth80Mhz | kControlSidebandLower
+                | static_cast<uint32_t>(centerChannel));
+        case -2:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth80Mhz | kControlSidebandLowerUpper
+                | static_cast<uint32_t>(centerChannel));
+        case 2:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth80Mhz | kControlSidebandUpperLower
+                | static_cast<uint32_t>(centerChannel));
+        case 6:
+            return Result<uint32_t, std::string>::okay(
+                kBand5Ghz | kWidth80Mhz | kControlSidebandUpperUpper
+                | static_cast<uint32_t>(centerChannel));
+        default:
+            return Result<uint32_t, std::string>::error(
+                "Invalid 80 MHz center channel " + std::to_string(centerChannel)
+                + " for primary channel " + std::to_string(tuning.primaryChannel));
+    }
 }
 
 } // namespace

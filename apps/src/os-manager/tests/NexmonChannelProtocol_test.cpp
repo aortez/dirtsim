@@ -22,13 +22,17 @@ ScannerTuning makeTuning(
     };
 }
 
-TEST(NexmonChannelProtocolTest, EncodeChanspec20MHzSupportsCurrentScanPlan)
+TEST(NexmonChannelProtocolTest, EncodeChanspec20MHzSupportsAllTargetChannels)
 {
     const std::vector<std::pair<int, uint32_t>> cases = {
         { 1, 0x1001 },   { 2, 0x1002 },   { 3, 0x1003 },   { 4, 0x1004 },   { 5, 0x1005 },
         { 6, 0x1006 },   { 7, 0x1007 },   { 8, 0x1008 },   { 9, 0x1009 },   { 10, 0x100a },
         { 11, 0x100b },  { 36, 0xd024 },  { 40, 0xd028 },  { 44, 0xd02c },  { 48, 0xd030 },
-        { 149, 0xd095 }, { 153, 0xd099 }, { 157, 0xd09d }, { 161, 0xd0a1 }, { 165, 0xd0a5 },
+        { 52, 0xd034 },  { 56, 0xd038 },  { 60, 0xd03c },  { 64, 0xd040 },  { 100, 0xd064 },
+        { 104, 0xd068 }, { 108, 0xd06c }, { 112, 0xd070 }, { 116, 0xd074 }, { 120, 0xd078 },
+        { 124, 0xd07c }, { 128, 0xd080 }, { 132, 0xd084 }, { 136, 0xd088 }, { 140, 0xd08c },
+        { 144, 0xd090 }, { 149, 0xd095 }, { 153, 0xd099 }, { 157, 0xd09d }, { 161, 0xd0a1 },
+        { 165, 0xd0a5 },
     };
 
     for (const auto& [channel, expected] : cases) {
@@ -88,6 +92,24 @@ TEST(NexmonChannelProtocolTest, EncodeChanspecSupports5GHz80MHz)
     EXPECT_EQ(result.value(), 0xe29bu);
 }
 
+TEST(NexmonChannelProtocolTest, EncodeChanspecSupports5GHz40MHzDfsBlock)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 52, 40, 54));
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value(), 0xd836u);
+}
+
+TEST(NexmonChannelProtocolTest, EncodeChanspecSupports5GHz80MHzDfsBlock)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 108, 80, 106));
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value(), 0xe26au);
+}
+
 TEST(NexmonChannelProtocolTest, EncodeChanspecRejectsUnsupported5GHz80PrimaryChannel)
 {
     const auto result =
@@ -95,6 +117,15 @@ TEST(NexmonChannelProtocolTest, EncodeChanspecRejectsUnsupported5GHz80PrimaryCha
 
     ASSERT_TRUE(result.isError());
     EXPECT_EQ(result.errorValue(), "Unsupported 80 MHz scanner channel 165");
+}
+
+TEST(NexmonChannelProtocolTest, EncodeChanspecRejectsUnsupported5GHz80CenterChannel)
+{
+    const auto result =
+        NexmonChannelProtocol::encodeChanspec(makeTuning(ScannerBand::Band5Ghz, 149, 80, 171));
+
+    ASSERT_TRUE(result.isError());
+    EXPECT_EQ(result.errorValue(), "Unsupported 80 MHz center channel 171");
 }
 
 TEST(NexmonChannelProtocolTest, ParseGetChanspecPayloadExtractsValue)

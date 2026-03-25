@@ -12,7 +12,8 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
-#include "os-manager/api/ScannerFocusSet.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerProbeRun.h"
@@ -159,7 +160,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);
-    registerCommand<OsApi::ScannerFocusSet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::ScannerConfigGet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::ScannerConfigSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::ScannerModeEnter::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::ScannerModeExit::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::ScannerProbeRun::Cwc>(osHandlers_, osExampleHandlers_);

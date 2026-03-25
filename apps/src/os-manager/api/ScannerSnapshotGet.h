@@ -24,8 +24,9 @@ struct ObservedRadioInfo {
     std::optional<int> signalDbm;
     std::optional<int> channel;
     std::optional<uint64_t> lastSeenAgeMs;
+    OsManager::ScannerObservationKind observationKind = OsManager::ScannerObservationKind::Direct;
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 inline void to_json(nlohmann::json& j, const ObservedRadioInfo& info)
@@ -52,8 +53,7 @@ struct Command {
 
 struct Okay {
     bool active = false;
-    OsManager::ScannerBand focusBand = OsManager::ScannerBand::Band5Ghz;
-    int focusWidthMhz = 20;
+    OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
     std::optional<OsManager::ScannerTuning> currentTuning;
     std::string detail;
     std::vector<ObservedRadioInfo> radios;
@@ -61,7 +61,7 @@ struct Okay {
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<6>;
+    using serialize = zpp::bits::members<5>;
 };
 
 API_STANDARD_TYPES();

@@ -9,7 +9,8 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
-#include "os-manager/api/ScannerFocusSet.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerProbeRun.h"
@@ -99,9 +100,13 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::RestartUi::Command::fromJson(cmd));
         }
-        else if (commandName == OsApi::ScannerFocusSet::Command::name()) {
+        else if (commandName == OsApi::ScannerConfigGet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
-                OsApi::ScannerFocusSet::Command::fromJson(cmd));
+                OsApi::ScannerConfigGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::ScannerConfigSet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerConfigSet::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::ScannerModeEnter::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

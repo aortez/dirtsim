@@ -20,7 +20,8 @@ struct Idle {
     Any onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RestartServer::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm);
-    Any onEvent(const OsApi::ScannerFocusSet::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::ScannerConfigGet::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::ScannerConfigSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::ScannerModeEnter::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::ScannerProbeRun::Cwc& cwc, OperatingSystemManager& osm);

@@ -25,6 +25,7 @@ namespace {
 
 constexpr int kPollTimeoutMs = 50;
 constexpr int kMinDwellMs = 100;
+constexpr int kManualDwellMs = 250;
 constexpr int kProbeTimeoutPaddingMs = 5000;
 
 uint16_t readLe16(const uint8_t* data)
@@ -380,7 +381,10 @@ Result<std::monostate, std::string> ScannerService::start()
 
     if (planner_) {
         planner_->reset();
-        planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (requestedConfig_.mode == ScannerConfigMode::Auto) {
+            planner_->setAutoConfig(requestedConfig_.autoConfig);
+        }
     }
 
     running_ = true;
@@ -427,16 +431,13 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
 {
     Snapshot snapshot;
     snapshot.running = running_;
-    snapshot.focusBand = requestedFocusBand_.load();
-    snapshot.focusWidthMhz = requestedFocusBand_.load() == ScannerBand::Band24Ghz
-        ? scannerDefaultWidthMhz(ScannerBand::Band24Ghz)
-        : requestedFocusWidthMhz_.load();
 
     const auto now = std::chrono::steady_clock::now();
     const auto maxAge = std::chrono::milliseconds(maxAgeMs);
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        snapshot.config = requestedConfig_;
         snapshot.currentTuning = currentTuning_;
         snapshot.radios.reserve(radiosByBssid_.size());
         for (const auto& [bssid, state] : radiosByBssid_) {
@@ -450,6 +451,7 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
             radio.signalDbm = state.signalDbm;
             radio.channel = state.channel;
             radio.lastSeenAt = state.lastSeenAt;
+            radio.observationKind = state.observationKind;
             snapshot.radios.push_back(std::move(radio));
         }
     }
@@ -477,6 +479,12 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
     }
 
     return snapshot;
+}
+
+ScannerConfig ScannerService::config() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return requestedConfig_;
 }
 
 std::string ScannerService::lastError() const
@@ -529,21 +537,22 @@ Result<ScannerService::ProbeResult, std::string> ScannerService::runProbe(
     return future.get();
 }
 
-Result<std::monostate, std::string> ScannerService::setFocus(
-    const ScannerBand band, const int widthMhz)
+Result<std::monostate, std::string> ScannerService::setConfig(const ScannerConfig& config)
 {
-    if (!scannerWidthSupported(band, widthMhz)) {
+    if (!scannerWidthSupported(config.autoConfig.band, config.autoConfig.widthMhz)) {
         return Result<std::monostate, std::string>::error(
-            "Unsupported " + scannerBandLabel(band) + " scanner width " + std::to_string(widthMhz)
-            + " MHz");
+            "Unsupported " + scannerBandLabel(config.autoConfig.band) + " scanner width "
+            + std::to_string(config.autoConfig.widthMhz) + " MHz");
     }
 
-    requestedFocusBand_ = band;
-    if (band == ScannerBand::Band5Ghz) {
-        requestedFocusWidthMhz_ = widthMhz;
+    const auto manualTuningResult = scannerManualTargetToTuning(config.manualConfig);
+    if (manualTuningResult.isError()) {
+        return Result<std::monostate, std::string>::error(manualTuningResult.errorValue());
     }
-    else {
-        requestedFocusWidthMhz_ = scannerDefaultWidthMhz(band);
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        requestedConfig_ = config;
     }
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
@@ -619,9 +628,12 @@ std::shared_ptr<ScannerService::PendingProbe> ScannerService::currentProbe() con
 }
 
 std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
-    const uint8_t* data, size_t length, int channelHint, std::chrono::steady_clock::time_point now)
+    const uint8_t* data,
+    size_t length,
+    const ScannerTuning& tuning,
+    std::chrono::steady_clock::time_point now)
 {
-    const auto parsed = parseBeaconOrProbeResponse(data, length, channelHint);
+    const auto parsed = parseBeaconOrProbeResponse(data, length, tuning.primaryChannel);
     if (!parsed.has_value() || parsed->bssid.empty()) {
         return std::nullopt;
     }
@@ -638,6 +650,11 @@ std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
     }
     if (parsed->channel.has_value()) {
         state.channel = parsed->channel;
+        state.observationKind =
+            scannerObservationKindForPrimaryChannel(tuning, parsed->channel.value());
+    }
+    else {
+        state.observationKind = ScannerObservationKind::Direct;
     }
     state.lastSeenAt = now;
     return PacketObservation{
@@ -672,8 +689,35 @@ void ScannerService::threadMain()
             };
         }
         else {
-            planner_->setFocus(requestedFocusBand_.load(), requestedFocusWidthMhz_.load());
-            step = planner_->nextStep(std::chrono::steady_clock::now());
+            ScannerConfig configCopy;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                configCopy = requestedConfig_;
+            }
+
+            if (configCopy.mode == ScannerConfigMode::Manual) {
+                const auto manualTuningResult =
+                    scannerManualTargetToTuning(configCopy.manualConfig);
+                if (manualTuningResult.isError()) {
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        currentTuning_.reset();
+                        lastError_ = manualTuningResult.errorValue();
+                    }
+                    notifySnapshotChanged();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                step = ScanStep{
+                    .tuning = manualTuningResult.value(),
+                    .dwellMs = kManualDwellMs,
+                };
+            }
+            else {
+                planner_->setAutoConfig(configCopy.autoConfig);
+                step = planner_->nextStep(std::chrono::steady_clock::now());
+            }
         }
 
         const auto setChannelResult = setChannel(step.tuning);
@@ -744,8 +788,8 @@ void ScannerService::threadMain()
             }
 
             const auto now = std::chrono::steady_clock::now();
-            const auto packetObservation = handlePacket(
-                buffer.data(), static_cast<size_t>(received), step.tuning.primaryChannel, now);
+            const auto packetObservation =
+                handlePacket(buffer.data(), static_cast<size_t>(received), step.tuning, now);
             if (!packetObservation.has_value()) {
                 continue;
             }
@@ -784,6 +828,16 @@ void ScannerService::threadMain()
             }
         }
         else {
+            ScannerConfig configCopy;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                configCopy = requestedConfig_;
+            }
+            if (configCopy.mode != ScannerConfigMode::Auto) {
+                pruneOldRadios(std::chrono::steady_clock::now());
+                notifySnapshotChanged();
+                continue;
+            }
             planner_->recordObservation(observation, std::chrono::steady_clock::now());
         }
         pruneOldRadios(std::chrono::steady_clock::now());

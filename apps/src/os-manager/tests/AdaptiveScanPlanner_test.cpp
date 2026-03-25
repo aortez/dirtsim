@@ -1,5 +1,4 @@
 #include "os-manager/network/AdaptiveScanPlanner.h"
-#include <array>
 #include <chrono>
 #include <gtest/gtest.h>
 
@@ -51,7 +50,8 @@ AdaptiveScanPlannerConfig deterministicPlannerConfig()
 TEST(AdaptiveScanPlannerTest, DiscoveryAdvancesTrackingCursor)
 {
     AdaptiveScanPlanner planner(deterministicPlannerConfig());
-    planner.setFocus(ScannerBand::Band5Ghz, kWidth20Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band5Ghz, .widthMhz = kWidth20Mhz });
 
     const auto start = std::chrono::steady_clock::time_point{};
     const auto first = planner.nextStep(start);
@@ -75,7 +75,8 @@ TEST(AdaptiveScanPlannerTest, DiscoveryAdvancesTrackingCursor)
 TEST(AdaptiveScanPlannerTest, FocusSwitchReturnsChannelsFromNewBand)
 {
     AdaptiveScanPlanner planner(deterministicPlannerConfig());
-    planner.setFocus(ScannerBand::Band24Ghz, kWidth20Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band24Ghz, .widthMhz = kWidth20Mhz });
 
     const auto start = std::chrono::steady_clock::time_point{};
     const auto first = planner.nextStep(start);
@@ -83,7 +84,8 @@ TEST(AdaptiveScanPlannerTest, FocusSwitchReturnsChannelsFromNewBand)
     EXPECT_GE(first.tuning.primaryChannel, 1);
     EXPECT_LE(first.tuning.primaryChannel, 11);
 
-    planner.setFocus(ScannerBand::Band5Ghz, kWidth20Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band5Ghz, .widthMhz = kWidth20Mhz });
     const auto second = planner.nextStep(start + std::chrono::milliseconds(1));
     EXPECT_EQ(second.tuning.band, ScannerBand::Band5Ghz);
     EXPECT_GE(second.tuning.primaryChannel, 36);
@@ -93,14 +95,17 @@ TEST(AdaptiveScanPlannerTest, FocusWidthReturnsTuningsFromRequested5GHzWidth)
 {
     AdaptiveScanPlanner planner(deterministicPlannerConfig());
 
-    planner.setFocus(ScannerBand::Band5Ghz, kWidth80Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band5Ghz, .widthMhz = kWidth80Mhz });
     const auto start = std::chrono::steady_clock::time_point{};
     const auto first = planner.nextStep(start);
     EXPECT_EQ(first.tuning.band, ScannerBand::Band5Ghz);
     EXPECT_EQ(first.tuning.widthMhz, kWidth80Mhz);
     ASSERT_TRUE(first.tuning.centerChannel.has_value());
     EXPECT_TRUE(
-        first.tuning.centerChannel.value() == 42 || first.tuning.centerChannel.value() == 155);
+        first.tuning.centerChannel.value() == 42 || first.tuning.centerChannel.value() == 58
+        || first.tuning.centerChannel.value() == 106 || first.tuning.centerChannel.value() == 122
+        || first.tuning.centerChannel.value() == 138 || first.tuning.centerChannel.value() == 155);
 
     planner.recordObservation(
         StepObservation{
@@ -113,13 +118,18 @@ TEST(AdaptiveScanPlannerTest, FocusWidthReturnsTuningsFromRequested5GHzWidth)
         },
         start);
 
-    planner.setFocus(ScannerBand::Band5Ghz, kWidth40Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band5Ghz, .widthMhz = kWidth40Mhz });
     const auto second = planner.nextStep(start + std::chrono::milliseconds(1));
     EXPECT_EQ(second.tuning.band, ScannerBand::Band5Ghz);
     EXPECT_EQ(second.tuning.widthMhz, kWidth40Mhz);
     ASSERT_TRUE(second.tuning.centerChannel.has_value());
     EXPECT_TRUE(
         second.tuning.centerChannel.value() == 38 || second.tuning.centerChannel.value() == 46
+        || second.tuning.centerChannel.value() == 54 || second.tuning.centerChannel.value() == 62
+        || second.tuning.centerChannel.value() == 102 || second.tuning.centerChannel.value() == 110
+        || second.tuning.centerChannel.value() == 118 || second.tuning.centerChannel.value() == 126
+        || second.tuning.centerChannel.value() == 134 || second.tuning.centerChannel.value() == 142
         || second.tuning.centerChannel.value() == 151
         || second.tuning.centerChannel.value() == 159);
 }
@@ -127,9 +137,10 @@ TEST(AdaptiveScanPlannerTest, FocusWidthReturnsTuningsFromRequested5GHzWidth)
 TEST(AdaptiveScanPlannerTest, DiscoveryPrioritizesOldestVisitedChannelOverRecentQuietChannel)
 {
     AdaptiveScanPlanner planner(deterministicPlannerConfig());
-    planner.setFocus(ScannerBand::Band5Ghz, kWidth20Mhz);
+    planner.setAutoConfig(
+        ScannerAutoConfig{ .band = ScannerBand::Band5Ghz, .widthMhz = kWidth20Mhz });
 
-    const std::array<int, 9> channels{ { 36, 40, 44, 48, 149, 153, 157, 161, 165 } };
+    const auto channels = scannerBandPrimaryChannels(ScannerBand::Band5Ghz);
     auto now = std::chrono::steady_clock::time_point{};
     for (const int channel : channels) {
         planner.recordObservation(

@@ -10,34 +10,32 @@
 
 namespace DirtSim {
 namespace OsApi {
-namespace ScannerFocusSet {
+namespace ScannerConfigSet {
 
-DEFINE_API_NAME(ScannerFocusSet);
+DEFINE_API_NAME(ScannerConfigSet);
 
 struct Okay;
 
 struct Command {
-    OsManager::ScannerBand band = OsManager::ScannerBand::Band5Ghz;
-    int widthMhz = 20;
+    OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
 
     API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<1>;
 };
 
 struct Okay {
-    OsManager::ScannerBand band = OsManager::ScannerBand::Band5Ghz;
-    int widthMhz = 20;
+    OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<1>;
 };
 
 API_STANDARD_TYPES();
 
-} // namespace ScannerFocusSet
+} // namespace ScannerConfigSet
 } // namespace OsApi
 } // namespace DirtSim

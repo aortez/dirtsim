@@ -28,7 +28,7 @@ public:
     virtual ~ScanPlanner() = default;
 
     virtual void reset() = 0;
-    virtual void setFocus(ScannerBand band, int widthMhz) = 0;
+    virtual void setAutoConfig(const ScannerAutoConfig& config) = 0;
     virtual ScanStep nextStep(std::chrono::steady_clock::time_point now) = 0;
     virtual void recordObservation(
         const StepObservation& observation, std::chrono::steady_clock::time_point now) = 0;

@@ -30,13 +30,13 @@ public:
         std::optional<int> signalDbm;
         std::optional<int> channel;
         std::chrono::steady_clock::time_point lastSeenAt;
+        ScannerObservationKind observationKind = ScannerObservationKind::Direct;
     };
 
     struct Snapshot {
         bool running = false;
+        ScannerConfig config = scannerDefaultConfig();
         std::optional<ScannerTuning> currentTuning;
-        ScannerBand focusBand = ScannerBand::Band5Ghz;
-        int focusWidthMhz = 20;
         std::vector<ObservedRadio> radios;
     };
 
@@ -79,9 +79,10 @@ public:
     void stop();
 
     Snapshot snapshot(uint64_t maxAgeMs, size_t maxRadios) const;
+    ScannerConfig config() const;
     std::string lastError() const;
     Result<ProbeResult, std::string> runProbe(const ProbeRequest& request);
-    Result<std::monostate, std::string> setFocus(ScannerBand band, int widthMhz);
+    Result<std::monostate, std::string> setConfig(const ScannerConfig& config);
     void setSnapshotChangedCallback(SnapshotChangedCallback callback);
 
 private:
@@ -90,6 +91,7 @@ private:
         std::optional<int> signalDbm;
         std::optional<int> channel;
         std::chrono::steady_clock::time_point lastSeenAt;
+        ScannerObservationKind observationKind = ScannerObservationKind::Direct;
     };
 
     void threadMain();
@@ -115,7 +117,7 @@ private:
     std::optional<PacketObservation> handlePacket(
         const uint8_t* data,
         size_t length,
-        int channelHint,
+        const ScannerTuning& tuning,
         std::chrono::steady_clock::time_point now);
 
     Config config_;
@@ -125,13 +127,12 @@ private:
     std::unordered_map<std::string, RadioState> radiosByBssid_;
     std::optional<ScannerTuning> currentTuning_;
     std::string lastError_;
+    ScannerConfig requestedConfig_ = scannerDefaultConfig();
     int socketFd_ = -1;
     mutable std::mutex probeMutex_;
     std::shared_ptr<PendingProbe> pendingProbe_;
     SnapshotChangedCallback snapshotChangedCallback_;
     std::unique_ptr<ScanPlanner> planner_;
-    std::atomic<ScannerBand> requestedFocusBand_{ ScannerBand::Band5Ghz };
-    std::atomic<int> requestedFocusWidthMhz_{ 20 };
 
     std::atomic<bool> stopRequested_{ false };
     std::atomic<bool> running_{ false };

@@ -404,8 +404,7 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
 {
     OsApi::ScannerSnapshotGet::Okay okay;
     okay.active = active;
-    okay.focusBand = snapshot.focusBand;
-    okay.focusWidthMhz = snapshot.focusWidthMhz;
+    okay.config = snapshot.config;
     okay.currentTuning = snapshot.currentTuning;
 
     const auto now = std::chrono::steady_clock::now();
@@ -416,6 +415,7 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
         info.ssid = radio.ssid;
         info.signalDbm = radio.signalDbm;
         info.channel = radio.channel;
+        info.observationKind = radio.observationKind;
         if (radio.lastSeenAt.time_since_epoch().count() > 0) {
             info.lastSeenAgeMs = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(now - radio.lastSeenAt)
@@ -430,7 +430,14 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
     else if (!lastError.empty()) {
         okay.detail = lastError;
     }
-    else if (okay.currentTuning.has_value()) {
+    else if (active && okay.config.mode == ScannerConfigMode::Manual) {
+        const auto& manualConfig = okay.config.manualConfig;
+        okay.detail = "Listening " + scannerBandLabel(manualConfig.band) + " "
+            + scannerManualTargetShortLabel(
+                          manualConfig.band, manualConfig.widthMhz, manualConfig.targetChannel)
+            + " @ " + std::to_string(manualConfig.widthMhz) + " MHz.";
+    }
+    else if (active && okay.currentTuning.has_value()) {
         const auto& tuning = okay.currentTuning.value();
         okay.detail = "Scanning " + scannerBandLabel(tuning.band) + " ch "
             + std::to_string(tuning.primaryChannel) + " @ " + std::to_string(tuning.widthMhz)
@@ -1338,8 +1345,10 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::StopUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::RestartUi::Cwc>(
         [this](OsApi::RestartUi::Cwc cwc) { queueEvent(cwc); });
-    wsService_.registerHandler<OsApi::ScannerFocusSet::Cwc>(
-        [this](OsApi::ScannerFocusSet::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerConfigGet::Cwc>(
+        [this](OsApi::ScannerConfigGet::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerConfigSet::Cwc>(
+        [this](OsApi::ScannerConfigSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeEnter::Cwc>(
         [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
@@ -1416,7 +1425,8 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
-            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerFocusSet);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerConfigGet);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerConfigSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerProbeRun);
@@ -1540,27 +1550,43 @@ Result<OsApi::ScannerSnapshotGet::Okay, ApiError> OperatingSystemManager::getSca
     return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
 }
 
-Result<OsApi::ScannerFocusSet::Okay, ApiError> OperatingSystemManager::setScannerFocus(
-    const OsApi::ScannerFocusSet::Command& command)
+Result<OsApi::ScannerConfigGet::Okay, ApiError> OperatingSystemManager::getScannerConfig(
+    const OsApi::ScannerConfigGet::Command& /*command*/)
 {
     const auto status = readScannerModeStatusInternal();
     if (!status.available) {
-        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(ApiError(status.detail));
+        return Result<OsApi::ScannerConfigGet::Okay, ApiError>::error(ApiError(status.detail));
     }
     if (!scannerService_) {
-        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(
+        return Result<OsApi::ScannerConfigGet::Okay, ApiError>::error(
             ApiError("Scanner service is unavailable."));
     }
 
-    const auto setFocusResult = scannerService_->setFocus(command.band, command.widthMhz);
-    if (setFocusResult.isError()) {
-        return Result<OsApi::ScannerFocusSet::Okay, ApiError>::error(
-            ApiError(setFocusResult.errorValue()));
+    return Result<OsApi::ScannerConfigGet::Okay, ApiError>::okay(
+        OsApi::ScannerConfigGet::Okay{ .config = scannerService_->config() });
+}
+
+Result<OsApi::ScannerConfigSet::Okay, ApiError> OperatingSystemManager::setScannerConfig(
+    const OsApi::ScannerConfigSet::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    const auto setConfigResult = scannerService_->setConfig(command.config);
+    if (setConfigResult.isError()) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(
+            ApiError(setConfigResult.errorValue()));
     }
 
     publishScannerSnapshotChanged(status.active, std::nullopt);
-    return Result<OsApi::ScannerFocusSet::Okay, ApiError>::okay(
-        OsApi::ScannerFocusSet::Okay{ .band = command.band, .widthMhz = command.widthMhz });
+    return Result<OsApi::ScannerConfigSet::Okay, ApiError>::okay(
+        OsApi::ScannerConfigSet::Okay{ .config = scannerService_->config() });
 }
 
 Result<OsApi::ScannerProbeRun::Okay, ApiError> OperatingSystemManager::runScannerProbe(

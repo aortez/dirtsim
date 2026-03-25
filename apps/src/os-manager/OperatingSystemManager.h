@@ -13,7 +13,8 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
-#include "os-manager/api/ScannerFocusSet.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerProbeRun.h"
@@ -125,8 +126,10 @@ public:
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
         const OsApi::RemoteCliRun::Command& command);
-    Result<OsApi::ScannerFocusSet::Okay, ApiError> setScannerFocus(
-        const OsApi::ScannerFocusSet::Command& command);
+    Result<OsApi::ScannerConfigGet::Okay, ApiError> getScannerConfig(
+        const OsApi::ScannerConfigGet::Command& command);
+    Result<OsApi::ScannerConfigSet::Okay, ApiError> setScannerConfig(
+        const OsApi::ScannerConfigSet::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
     Result<OsApi::ScannerProbeRun::Okay, ApiError> runScannerProbe(

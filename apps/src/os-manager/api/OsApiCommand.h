@@ -9,7 +9,8 @@
 #include "RestartAudio.h"
 #include "RestartServer.h"
 #include "RestartUi.h"
-#include "ScannerFocusSet.h"
+#include "ScannerConfigGet.h"
+#include "ScannerConfigSet.h"
 #include "ScannerModeEnter.h"
 #include "ScannerModeExit.h"
 #include "ScannerProbeRun.h"
@@ -46,7 +47,8 @@ using OsApiCommand = std::variant<
     RestartAudio::Command,
     RestartServer::Command,
     RestartUi::Command,
-    ScannerFocusSet::Command,
+    ScannerConfigGet::Command,
+    ScannerConfigSet::Command,
     ScannerModeEnter::Command,
     ScannerModeExit::Command,
     ScannerProbeRun::Command,

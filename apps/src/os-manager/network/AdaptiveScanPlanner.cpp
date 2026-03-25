@@ -1,6 +1,5 @@
 #include "AdaptiveScanPlanner.h"
 #include <algorithm>
-#include <array>
 #include <limits>
 #include <utility>
 
@@ -13,13 +12,9 @@ constexpr int kWidth20Mhz = 20;
 constexpr int kWidth40Mhz = 40;
 constexpr int kWidth80Mhz = 80;
 
-constexpr std::array<int, 11> kBand24Channels{ { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 } };
-constexpr std::array<int, 9> kBand5Channels{ { 36, 40, 44, 48, 149, 153, 157, 161, 165 } };
-
-bool scannerTuningMatchesFocus(
-    const ScannerTuning& tuning, const ScannerBand band, const int widthMhz)
+bool scannerTuningMatchesConfig(const ScannerTuning& tuning, const ScannerAutoConfig& config)
 {
-    return tuning.band == band && tuning.widthMhz == widthMhz;
+    return tuning.band == config.band && tuning.widthMhz == config.widthMhz;
 }
 
 bool scannerTuningsEqual(const ScannerTuning& a, const ScannerTuning& b)
@@ -45,44 +40,46 @@ ScannerTuning makeScannerTuning(
 std::vector<ScannerTuning> supportedScannerTunings()
 {
     std::vector<ScannerTuning> tunings;
-    tunings.reserve(36);
+    tunings.reserve(84);
 
-    for (const int channel : kBand24Channels) {
+    for (const int channel : scannerBandPrimaryChannels(ScannerBand::Band24Ghz)) {
         tunings.push_back(
             makeScannerTuning(ScannerBand::Band24Ghz, channel, kWidth20Mhz, std::nullopt));
     }
 
-    for (const int channel : kBand5Channels) {
+    for (const int channel : scannerBandPrimaryChannels(ScannerBand::Band5Ghz)) {
         tunings.push_back(
             makeScannerTuning(ScannerBand::Band5Ghz, channel, kWidth20Mhz, std::nullopt));
     }
 
-    for (const auto& [primaryChannel, centerChannel] : std::array<std::pair<int, int>, 8>{ {
-             { 36, 38 },
-             { 40, 38 },
-             { 44, 46 },
-             { 48, 46 },
-             { 149, 151 },
-             { 153, 151 },
-             { 157, 159 },
-             { 161, 159 },
-         } }) {
-        tunings.push_back(
-            makeScannerTuning(ScannerBand::Band5Ghz, primaryChannel, kWidth40Mhz, centerChannel));
+    for (const int centerChannel :
+         scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth40Mhz)) {
+        const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
+            ScannerTuning{
+                .band = ScannerBand::Band5Ghz,
+                .primaryChannel = centerChannel,
+                .widthMhz = kWidth40Mhz,
+                .centerChannel = centerChannel,
+            });
+        for (const int primaryChannel : coveredChannels) {
+            tunings.push_back(makeScannerTuning(
+                ScannerBand::Band5Ghz, primaryChannel, kWidth40Mhz, centerChannel));
+        }
     }
 
-    for (const auto& [primaryChannel, centerChannel] : std::array<std::pair<int, int>, 8>{ {
-             { 36, 42 },
-             { 40, 42 },
-             { 44, 42 },
-             { 48, 42 },
-             { 149, 155 },
-             { 153, 155 },
-             { 157, 155 },
-             { 161, 155 },
-         } }) {
-        tunings.push_back(
-            makeScannerTuning(ScannerBand::Band5Ghz, primaryChannel, kWidth80Mhz, centerChannel));
+    for (const int centerChannel :
+         scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth80Mhz)) {
+        const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
+            ScannerTuning{
+                .band = ScannerBand::Band5Ghz,
+                .primaryChannel = centerChannel,
+                .widthMhz = kWidth80Mhz,
+                .centerChannel = centerChannel,
+            });
+        for (const int primaryChannel : coveredChannels) {
+            tunings.push_back(makeScannerTuning(
+                ScannerBand::Band5Ghz, primaryChannel, kWidth80Mhz, centerChannel));
+        }
     }
 
     return tunings;
@@ -148,7 +145,7 @@ struct AdaptiveScanPlanner::Impl {
     {
         std::vector<TuningState*> candidates;
         for (auto& state : tuningStates) {
-            if (!scannerTuningMatchesFocus(state.tuning, focusBand, focusWidthMhz)) {
+            if (!scannerTuningMatchesConfig(state.tuning, autoConfig)) {
                 continue;
             }
             candidates.push_back(&state);
@@ -160,7 +157,7 @@ struct AdaptiveScanPlanner::Impl {
     {
         std::vector<const TuningState*> candidates;
         for (const auto& state : tuningStates) {
-            if (!scannerTuningMatchesFocus(state.tuning, focusBand, focusWidthMhz)) {
+            if (!scannerTuningMatchesConfig(state.tuning, autoConfig)) {
                 continue;
             }
             candidates.push_back(&state);
@@ -264,10 +261,12 @@ struct AdaptiveScanPlanner::Impl {
     }
 
     AdaptiveScanPlannerConfig config;
-    int focusWidthMhz = kWidth20Mhz;
+    ScannerAutoConfig autoConfig{
+        .band = ScannerBand::Band5Ghz,
+        .widthMhz = kWidth20Mhz,
+    };
     size_t nextTrackingIndex = 0;
     std::vector<TuningState> tuningStates;
-    ScannerBand focusBand = ScannerBand::Band5Ghz;
     int stepsSinceDiscovery = 0;
     uint32_t jitterState = 0;
 };
@@ -290,22 +289,28 @@ void AdaptiveScanPlanner::reset()
         state.strongestSignalDbm.reset();
     }
 
-    impl_->focusWidthMhz = kWidth20Mhz;
+    impl_->autoConfig = ScannerAutoConfig{
+        .band = ScannerBand::Band5Ghz,
+        .widthMhz = kWidth20Mhz,
+    };
     impl_->nextTrackingIndex = 0;
     impl_->stepsSinceDiscovery = config_.trackingStepsPerDiscovery;
     impl_->jitterState = config_.rngSeed;
 }
 
-void AdaptiveScanPlanner::setFocus(const ScannerBand band, const int widthMhz)
+void AdaptiveScanPlanner::setAutoConfig(const ScannerAutoConfig& config)
 {
-    const int effectiveWidthMhz =
-        scannerWidthSupported(band, widthMhz) ? widthMhz : scannerDefaultWidthMhz(band);
-    if (impl_->focusBand == band && impl_->focusWidthMhz == effectiveWidthMhz) {
+    const int effectiveWidthMhz = scannerWidthSupported(config.band, config.widthMhz)
+        ? config.widthMhz
+        : scannerDefaultWidthMhz(config.band);
+    if (impl_->autoConfig.band == config.band && impl_->autoConfig.widthMhz == effectiveWidthMhz) {
         return;
     }
 
-    impl_->focusBand = band;
-    impl_->focusWidthMhz = effectiveWidthMhz;
+    impl_->autoConfig = ScannerAutoConfig{
+        .band = config.band,
+        .widthMhz = effectiveWidthMhz,
+    };
     impl_->nextTrackingIndex = 0;
     impl_->stepsSinceDiscovery = config_.trackingStepsPerDiscovery;
 }

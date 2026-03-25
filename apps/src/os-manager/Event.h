@@ -9,7 +9,8 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
-#include "os-manager/api/ScannerFocusSet.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
 #include "os-manager/api/ScannerProbeRun.h"
@@ -55,7 +56,8 @@ public:
         OsApi::RestartAudio::Cwc,
         OsApi::RestartServer::Cwc,
         OsApi::RestartUi::Cwc,
-        OsApi::ScannerFocusSet::Cwc,
+        OsApi::ScannerConfigGet::Cwc,
+        OsApi::ScannerConfigSet::Cwc,
         OsApi::ScannerModeEnter::Cwc,
         OsApi::ScannerModeExit::Cwc,
         OsApi::ScannerProbeRun::Cwc,

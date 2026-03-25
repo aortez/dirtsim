@@ -23,6 +23,7 @@ class WebSocketService;
 namespace Ui {
 
 class TimeSeriesPlotWidget;
+class ScannerChannelMapWidget;
 class UserSettingsManager;
 
 /**
@@ -133,20 +134,18 @@ private:
     lv_obj_t* connectFlowView_ = nullptr;
     lv_obj_t* networkDetailsView_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
-    lv_obj_t* scannerBand24Button_ = nullptr;
-    lv_obj_t* scannerBand5Button_ = nullptr;
-    lv_obj_t* scannerChannelPlot24Container_ = nullptr;
-    lv_obj_t* scannerChannelPlot5Container_ = nullptr;
+    lv_obj_t* scannerBandDropdown_ = nullptr;
+    lv_obj_t* scannerConfigEditor_ = nullptr;
     lv_obj_t* scannerEnterButton_ = nullptr;
     lv_obj_t* scannerExitButton_ = nullptr;
+    lv_obj_t* scannerModeDropdown_ = nullptr;
     lv_obj_t* scannerRadiosHeaderLabel_ = nullptr;
     lv_obj_t* scannerRadiosList_ = nullptr;
     lv_obj_t* scannerRefreshButton_ = nullptr;
     lv_obj_t* scannerStatusLabel_ = nullptr;
+    lv_obj_t* scannerTargetDropdown_ = nullptr;
     lv_obj_t* scannerView_ = nullptr;
-    lv_obj_t* scannerWidth20Button_ = nullptr;
-    lv_obj_t* scannerWidth40Button_ = nullptr;
-    lv_obj_t* scannerWidth80Button_ = nullptr;
+    lv_obj_t* scannerWidthDropdown_ = nullptr;
     lv_obj_t* wifiStatusLabel_ = nullptr;
     lv_obj_t* wifiView_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
@@ -209,6 +208,7 @@ private:
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
+        std::optional<Result<OsManager::ScannerConfig, std::string>> scannerConfigResult;
         std::optional<std::vector<Network::WifiAccessPointInfo>> accessPoints;
         std::optional<std::string> activeBssid;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
@@ -234,12 +234,13 @@ private:
         std::optional<int> signalDbm;
         std::optional<int> channel;
         std::optional<uint64_t> lastSeenAgeMs;
+        OsManager::ScannerObservationKind observationKind =
+            OsManager::ScannerObservationKind::Direct;
     };
 
     struct ScannerSnapshot {
         bool active = false;
-        ScannerBand focusBand = ScannerBand::Band5Ghz;
-        int focusWidthMhz = 20;
+        OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
         std::optional<OsManager::ScannerTuning> currentTuning;
         std::string detail;
         std::vector<ScannerObservedRadio> radios;
@@ -284,8 +285,10 @@ private:
         bool diagnosticsModeUpdateInProgress = false;
         bool scannerEnterInProgress = false;
         bool scannerExitInProgress = false;
+        bool scannerConfigSetInProgress = false;
         bool webSocketUpdateInProgress = false;
         bool webUiUpdateInProgress = false;
+        std::optional<Result<OsManager::ScannerConfig, std::string>> pendingScannerConfigSet;
     };
 
     std::vector<NetworkInterfaceInfo> localAddresses_;
@@ -296,8 +299,7 @@ private:
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::vector<std::unique_ptr<NetworkDetailsContext>> networkDetailsContexts_;
     std::vector<NetworkDetailsPlotBinding> networkDetailsPlotBindings_;
-    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot24_;
-    std::unique_ptr<TimeSeriesPlotWidget> scannerChannelPlot5_;
+    std::unique_ptr<ScannerChannelMapWidget> scannerChannelMap_;
     std::shared_ptr<AsyncState> asyncState_;
     std::shared_ptr<Network::WebSocketService> eventClient_;
     AsyncActionState actionState_;
@@ -338,8 +340,8 @@ private:
     bool scannerSnapshotReceived_ = false;
     bool scannerSnapshotStale_ = false;
     bool scannerStatusUnavailable_ = false;
-    ScannerBand scannerSelectedBand_ = ScannerBand::Band5Ghz;
-    int scannerSelected5GhzWidthMhz_ = 20;
+    OsManager::ScannerConfig scannerConfig_ = OsManager::scannerDefaultConfig();
+    bool scannerConfigSetInProgress_ = false;
     bool scannerRadiosListScrolling_ = false;
     bool liveScanToggleLocked_ = false;
     bool webUiToggleLocked_ = false;
@@ -349,6 +351,7 @@ private:
     bool hasEventStreamConnection() const;
     void startEventStream();
     bool startAsyncRefresh(bool forceRefresh);
+    bool startAsyncScannerConfigSet(const OsManager::ScannerConfig& config);
     bool startAsyncScannerEnter();
     bool startAsyncScannerExit();
     bool startAsyncScannerSnapshot();
@@ -408,16 +411,16 @@ private:
     void updatePasswordVisibilityButton();
     void updateScannerRadioRowDisplay(
         ScannerRadioRowState& rowState, const ScannerObservedRadio& radio);
+    void updateScannerConfigControls();
     void updateScannerSnapshot(const Result<ScannerSnapshot, ScannerSnapshotError>& result);
-    void updateScannerBandControls();
     void updateScannerControls();
-    void updateScannerPlotVisibility();
+    void updateScannerConfigEditorVisibility();
+    void updateScannerChannelMap();
     void updateScannerRadioList();
     void updateScannerRadioRowOrder();
     void updateScannerStaleState();
     void updateScannerStatusLabel();
     void updateScannerStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
-    void updateScannerWidthControls();
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
     void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     void updateWebSocketTokenLabel();
@@ -450,15 +453,14 @@ private:
     static void onPasswordKeyboardEvent(lv_event_t* e);
     static void onPasswordTextAreaEvent(lv_event_t* e);
     static void onPasswordVisibilityClicked(lv_event_t* e);
+    static void onScannerBandChanged(lv_event_t* e);
     static void onScannerEnterClicked(lv_event_t* e);
     static void onScannerExitClicked(lv_event_t* e);
-    static void onScannerBand24Clicked(lv_event_t* e);
-    static void onScannerBand5Clicked(lv_event_t* e);
-    static void onScannerWidth20Clicked(lv_event_t* e);
-    static void onScannerWidth40Clicked(lv_event_t* e);
-    static void onScannerWidth80Clicked(lv_event_t* e);
+    static void onScannerModeChanged(lv_event_t* e);
     static void onScannerRadiosListScroll(lv_event_t* e);
     static void onScannerRefreshClicked(lv_event_t* e);
+    static void onScannerTargetChanged(lv_event_t* e);
+    static void onScannerWidthChanged(lv_event_t* e);
     static void onLiveScanToggleChanged(lv_event_t* e);
     static void onWebSocketToggleChanged(lv_event_t* e);
     static void onWebUiToggleChanged(lv_event_t* e);
