@@ -7,6 +7,7 @@
 #include "core/WorldRegionActivityTracker.h"
 #include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/SandboxScenario.h"
+#include "core/water/WaterSim.h"
 #include "core/water/WaterVolumeView.h"
 
 #include <gtest/gtest.h>
@@ -845,6 +846,36 @@ std::optional<RegionCoord> selectQuietExposedWaterRegionNearCenter(
         }
 
         const int distance = std::abs(region.x - center_region_x);
+        if (distance >= best_distance) {
+            continue;
+        }
+
+        best_distance = distance;
+        selected_region = region;
+    }
+
+    return selected_region;
+}
+
+std::optional<RegionCoord> selectQuietInteriorWaterRegionNearCell(
+    const World& world, const WaterRegionBuckets& buckets, int target_x, int target_y)
+{
+    const int target_region_x =
+        std::clamp(target_x / kRegionSize, 0, world.getData().region_debug_blocks_x - 1);
+    const int target_region_y =
+        std::clamp(target_y / kRegionSize, 0, world.getData().region_debug_blocks_y - 1);
+    int best_distance =
+        world.getData().region_debug_blocks_x + world.getData().region_debug_blocks_y;
+    std::optional<RegionCoord> selected_region;
+
+    for (const RegionCoord& region : buckets.interior_water_regions) {
+        if (world.getRegionActivityTracker().getRegionState(region.x, region.y)
+            == RegionState::Awake) {
+            continue;
+        }
+
+        const int distance =
+            std::abs(region.x - target_region_x) + std::abs(region.y - target_region_y);
         if (distance >= best_distance) {
             continue;
         }
@@ -4930,6 +4961,96 @@ TEST(WorldRegionSleepingBehaviorTest, SurfacePulseReturnsToQuietAfterOneShotDist
         << "Expected passive wake to happen before the region returns to quiet.";
     EXPECT_NE(lastSample.state, RegionState::Awake)
         << "Expected the disturbed surface region to finish the recovery window in a quiet state.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, GuidedDrainPulseHandsOffToPassiveWakeThenQuiets)
+{
+    constexpr int kDrainPulseFrames = 12;
+    constexpr int kRecoveryFrames = 1200;
+    constexpr int kGuideTargetX = 28;
+    constexpr int kGuideTargetY = 20;
+
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+    settleWorld(world, kWaterSettleSteps);
+
+    const GridOfCells settledGrid = makeGrid(world);
+    const WaterRegionBuckets settledBuckets = classifyWaterRegions(world, settledGrid);
+    const std::optional<RegionCoord> quietGuideRegion =
+        selectQuietInteriorWaterRegionNearCell(world, settledBuckets, kGuideTargetX, kGuideTargetY);
+
+    ASSERT_TRUE(quietGuideRegion.has_value())
+        << "Expected the settled pool to contain a quiet interior region near the guided drain.";
+
+    const GuidedWaterDrain drain{
+        .guideStartX = 16,
+        .guideEndX = 47,
+        .guideTopY = 18,
+        .guideBottomY = 26,
+        .mouthStartX = 30,
+        .mouthEndX = 33,
+        .mouthY = 27,
+        .guideDownwardSpeed = 3.0f,
+        .guideLateralSpeed = 2.5f,
+        .mouthDownwardSpeed = 4.0f,
+        .drainRatePerSecond = 2.0f,
+    };
+
+    std::optional<int> firstAuthoredWakeFrame;
+    std::optional<int> firstPassiveWakeFrame;
+    std::optional<WakeReason> firstPassiveWakeReason;
+    std::optional<int> firstQuietReturnFrame;
+    RegionFrameSample lastSample = sampleRegionFrame(world, *quietGuideRegion, kWaterSettleSteps);
+
+    for (int frame = 1; frame <= kRecoveryFrames; ++frame) {
+        if (frame <= kDrainPulseFrames) {
+            world.queueGuidedWaterDrain(drain);
+        }
+
+        world.advanceTime(kDt);
+        lastSample = sampleRegionFrame(world, *quietGuideRegion, kWaterSettleSteps + frame);
+
+        if (!firstAuthoredWakeFrame.has_value() && lastSample.state == RegionState::Awake
+            && lastSample.wake_reason == WakeReason::ExternalMutation) {
+            firstAuthoredWakeFrame = frame;
+        }
+
+        if (!firstPassiveWakeFrame.has_value() && frame > kDrainPulseFrames
+            && lastSample.state == RegionState::Awake && lastSample.wake_reason != WakeReason::None
+            && lastSample.wake_reason != WakeReason::ExternalMutation) {
+            firstPassiveWakeFrame = frame;
+            firstPassiveWakeReason = lastSample.wake_reason;
+        }
+
+        if (firstPassiveWakeFrame.has_value() && !firstQuietReturnFrame.has_value()
+            && lastSample.state != RegionState::Awake) {
+            firstQuietReturnFrame = frame;
+            break;
+        }
+    }
+
+    SCOPED_TRACE(dumpWaterRegionDetails(
+        world, classifyWaterRegions(world, makeGrid(world)), kWaterSettleSteps + kRecoveryFrames));
+
+    ASSERT_TRUE(firstAuthoredWakeFrame.has_value())
+        << "Expected the guided drain pulse to wake the interior guide region through the authored "
+           "wake path while the drain request is active.";
+    ASSERT_TRUE(firstPassiveWakeFrame.has_value())
+        << "Expected the guided drain pulse to hand off to a passive wake cause after the drain "
+           "request stops.";
+    ASSERT_TRUE(firstPassiveWakeReason.has_value())
+        << "Expected the passive guided drain wake to report a concrete cause.";
+    EXPECT_GT(*firstPassiveWakeFrame, kDrainPulseFrames)
+        << "Expected the passive wake to start only after the authored drain pulse ends.";
+    EXPECT_EQ(*firstPassiveWakeReason, WakeReason::MacWaterVolumeDelta)
+        << "Expected submerged guided-drain flow to stay awake via MAC water volume change once "
+           "the explicit request expires.";
+    ASSERT_TRUE(firstQuietReturnFrame.has_value())
+        << "Expected the guided drain region to return to quiet after the residual flow settles.";
+    EXPECT_LT(*firstPassiveWakeFrame, *firstQuietReturnFrame)
+        << "Expected passive wake to happen before the guide region returns to quiet.";
+    EXPECT_NE(lastSample.state, RegionState::Awake)
+        << "Expected the guided drain region to finish the recovery window in a quiet state.";
 }
 
 TEST(
