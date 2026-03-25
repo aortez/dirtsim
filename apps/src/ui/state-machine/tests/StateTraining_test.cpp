@@ -6,6 +6,7 @@
 #include "core/UUID.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
@@ -725,6 +726,91 @@ TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+}
+
+TEST(StateTrainingTest, TrainingActiveMutationControlsUpdateUsesLiveCommandAndPersistsSettings)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    Api::EvolutionMutationControlsSet::Okay mutationOkay{
+        .mutationConfig =
+            MutationConfig{
+                .useBudget = true,
+                .perturbationsPerOffspring = 320,
+                .resetsPerOffspring = 3,
+                .sigma = 0.072,
+            },
+        .stagnationWindowGenerations = 9,
+        .recoveryWindowGenerations = 4,
+        .controlMode = AdaptiveMutationControlMode::Explore,
+    };
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getUserSettings(),
+    };
+    settingsOkay.settings.mutationConfig = mutationOkay.mutationConfig;
+    settingsOkay.settings.evolutionConfig.stagnationWindowGenerations =
+        mutationOkay.stagnationWindowGenerations;
+    settingsOkay.settings.evolutionConfig.recoveryWindowGenerations =
+        mutationOkay.recoveryWindowGenerations;
+
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionMutationControlsSet::Command>(
+        mutationOkay);
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    TrainingActive trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+    fixture.mockWebSocketService->clearSentCommands();
+
+    TrainingMutationControlsUpdatedEvent evt{
+        .evolution = fixture.stateMachine->getUserSettings().evolutionConfig,
+        .mutation = fixture.stateMachine->getUserSettings().mutationConfig,
+        .controlMode = AdaptiveMutationControlMode::Explore,
+    };
+    evt.mutation.useBudget = true;
+    evt.mutation.perturbationsPerOffspring = 320;
+    evt.mutation.resetsPerOffspring = 3;
+    evt.mutation.sigma = 0.072;
+    evt.evolution.stagnationWindowGenerations = 9;
+    evt.evolution.recoveryWindowGenerations = 4;
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(newState.getVariant()));
+    trainingState = std::move(std::get<TrainingActive>(newState.getVariant()));
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_EQ(sentCommands.size(), 2u);
+    EXPECT_EQ(sentCommands[0], "EvolutionMutationControlsSet");
+    EXPECT_EQ(sentCommands[1], "UserSettingsPatch");
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentEnvelopes().size(), 2u);
+    const auto sentMutationCmd =
+        Network::deserialize_payload<Api::EvolutionMutationControlsSet::Command>(
+            fixture.mockWebSocketService->sentEnvelopes()[0].payload);
+    EXPECT_EQ(sentMutationCmd.controlMode, AdaptiveMutationControlMode::Explore);
+    EXPECT_EQ(sentMutationCmd.mutationConfig.perturbationsPerOffspring, 320);
+    EXPECT_EQ(sentMutationCmd.mutationConfig.resetsPerOffspring, 3);
+    EXPECT_DOUBLE_EQ(sentMutationCmd.mutationConfig.sigma, 0.072);
+    EXPECT_EQ(sentMutationCmd.stagnationWindowGenerations, 9);
+    EXPECT_EQ(sentMutationCmd.recoveryWindowGenerations, 4);
+
+    const auto& local = fixture.stateMachine->getUserSettings();
+    EXPECT_EQ(local.mutationConfig.perturbationsPerOffspring, 320);
+    EXPECT_EQ(local.mutationConfig.resetsPerOffspring, 3);
+    EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, 0.072);
+    EXPECT_EQ(local.evolutionConfig.stagnationWindowGenerations, 9);
+    EXPECT_EQ(local.evolutionConfig.recoveryWindowGenerations, 4);
+
+    trainingState.view_.reset();
+    fixture.stateMachine->uiManager_.reset();
 }
 
 TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)

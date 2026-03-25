@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
+#include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
@@ -42,6 +43,11 @@ constexpr size_t kTelemetrySignatureLimit = 6;
 constexpr size_t kFitnessDistributionBinCount = 16;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
 constexpr size_t kRobustFitnessSampleWindow = 7;
+constexpr int kMutationControlPerturbationsMax = 5000;
+constexpr int kMutationControlRecoveryWindowMax = 100;
+constexpr int kMutationControlResetsMax = 200;
+constexpr double kMutationControlSigmaMax = 0.3;
+constexpr int kMutationControlStagnationWindowMax = 100;
 
 constexpr std::string_view adaptiveMutationModeName(AdaptiveMutationMode mode)
 {
@@ -54,6 +60,21 @@ constexpr std::string_view adaptiveMutationModeName(AdaptiveMutationMode mode)
             return "rescue";
         case AdaptiveMutationMode::Recover:
             return "recover";
+    }
+    return "unknown";
+}
+
+constexpr std::string_view adaptiveMutationControlModeName(AdaptiveMutationControlMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationControlMode::Auto:
+            return "auto";
+        case AdaptiveMutationControlMode::Baseline:
+            return "baseline";
+        case AdaptiveMutationControlMode::Explore:
+            return "explore";
+        case AdaptiveMutationControlMode::Rescue:
+            return "rescue";
     }
     return "unknown";
 }
@@ -78,6 +99,46 @@ int clampArchiveMetric(size_t value)
     return value > static_cast<size_t>(std::numeric_limits<int>::max())
         ? std::numeric_limits<int>::max()
         : static_cast<int>(value);
+}
+
+AdaptiveMutationControlMode adaptiveMutationControlModeSanitize(AdaptiveMutationControlMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationControlMode::Auto:
+        case AdaptiveMutationControlMode::Baseline:
+        case AdaptiveMutationControlMode::Explore:
+        case AdaptiveMutationControlMode::Rescue:
+            return mode;
+    }
+
+    return AdaptiveMutationControlMode::Auto;
+}
+
+Api::EvolutionMutationControlsSet::Okay evolutionMutationControlsApply(
+    Evolution& evolution, const Api::EvolutionMutationControlsSet::Command& command)
+{
+    evolution.mutationConfig.perturbationsPerOffspring = std::clamp(
+        command.mutationConfig.perturbationsPerOffspring, 0, kMutationControlPerturbationsMax);
+    evolution.mutationConfig.resetsPerOffspring =
+        std::clamp(command.mutationConfig.resetsPerOffspring, 0, kMutationControlResetsMax);
+    evolution.mutationConfig.sigma =
+        std::clamp(command.mutationConfig.sigma, 0.0, kMutationControlSigmaMax);
+    if (!std::isfinite(evolution.mutationConfig.sigma)) {
+        evolution.mutationConfig.sigma = MutationConfig{}.sigma;
+    }
+
+    evolution.evolutionConfig.stagnationWindowGenerations =
+        std::clamp(command.stagnationWindowGenerations, 1, kMutationControlStagnationWindowMax);
+    evolution.evolutionConfig.recoveryWindowGenerations =
+        std::clamp(command.recoveryWindowGenerations, 0, kMutationControlRecoveryWindowMax);
+    evolution.mutationControlMode_ = adaptiveMutationControlModeSanitize(command.controlMode);
+
+    return Api::EvolutionMutationControlsSet::Okay{
+        .mutationConfig = evolution.mutationConfig,
+        .stagnationWindowGenerations = evolution.evolutionConfig.stagnationWindowGenerations,
+        .recoveryWindowGenerations = evolution.evolutionConfig.recoveryWindowGenerations,
+        .controlMode = evolution.mutationControlMode_,
+    };
 }
 
 std::vector<std::string> managedArchiveBrainKindsGet(const TrainingSpec& trainingSpec)
@@ -750,6 +811,29 @@ Any Evolution::onEvent(const Api::EvolutionPauseSet::Cwc& cwc, StateMachine& dsm
 
     Api::EvolutionPauseSet::Okay okay{ .paused = trainingPaused_ };
     cwc.sendResponse(Api::EvolutionPauseSet::Response::okay(std::move(okay)));
+    return std::move(*this);
+}
+
+Any Evolution::onEvent(const Api::EvolutionMutationControlsSet::Cwc& cwc, StateMachine& dsm)
+{
+    const Api::EvolutionMutationControlsSet::Okay applied =
+        evolutionMutationControlsApply(*this, cwc.command);
+
+    LOG_INFO(
+        State,
+        "Evolution: mutation controls updated control_mode={} use_budget={} perturbations={} "
+        "resets={} sigma={:.4f} stagnation_window={} recovery_window={}",
+        adaptiveMutationControlModeName(applied.controlMode),
+        applied.mutationConfig.useBudget,
+        applied.mutationConfig.perturbationsPerOffspring,
+        applied.mutationConfig.resetsPerOffspring,
+        applied.mutationConfig.sigma,
+        applied.stagnationWindowGenerations,
+        applied.recoveryWindowGenerations);
+
+    cwc.sendResponse(Api::EvolutionMutationControlsSet::Response::okay(applied));
+    lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    broadcastProgress(dsm);
     return std::move(*this);
 }
 
@@ -1635,7 +1719,8 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         mutationConfig,
         trainingPhaseTracker_.status(),
         lastEffectiveAdaptiveMutation_,
-        evolutionConfig);
+        evolutionConfig,
+        mutationControlMode_);
     const MutationConfig& effectiveMutationConfig = effectiveAdaptiveMutation.mutationConfig;
 
     LOG_INFO(

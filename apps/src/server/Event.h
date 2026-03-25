@@ -5,6 +5,7 @@
 #include "api/ClockEventTrigger.h"
 #include "api/DiagramGet.h"
 #include "api/EventSubscribe.h"
+#include "api/EvolutionMutationControlsSet.h"
 #include "api/EvolutionPauseSet.h"
 #include "api/EvolutionStart.h"
 #include "api/EvolutionStop.h"
@@ -423,6 +424,7 @@ public:
         DirtSim::Api::ClockEventTrigger::Cwc,
         DirtSim::Api::DiagramGet::Cwc,
         DirtSim::Api::EventSubscribe::Cwc,
+        DirtSim::Api::EvolutionMutationControlsSet::Cwc,
         DirtSim::Api::EvolutionPauseSet::Cwc,
         DirtSim::Api::EvolutionStart::Cwc,
         DirtSim::Api::EvolutionStop::Cwc,

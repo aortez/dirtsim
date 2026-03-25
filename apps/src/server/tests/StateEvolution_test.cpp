@@ -6,6 +6,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
 #include "server/api/EventSubscribe.h"
+#include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStart.h"
@@ -2138,6 +2139,72 @@ TEST(StateEvolutionTest, EvolutionProgressReportsManagedArchiveOccupancyForTrain
     ASSERT_TRUE(progress.has_value());
     EXPECT_EQ(progress->totalGenomeCount, 3);
     EXPECT_EQ(progress->genomeArchiveMaxSize, 4);
+}
+
+TEST(StateEvolutionTest, EvolutionMutationControlsSetUpdatesRunningConfig)
+{
+    TestStateMachineFixture fixture;
+    eventSubscribe(fixture, "events");
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    State::Any currentState = std::move(evolutionState);
+    StateAnyEvolutionGuard guard{ .state = &currentState,
+                                  .stateMachine = fixture.stateMachine.get() };
+
+    bool callbackInvoked = false;
+    Api::EvolutionMutationControlsSet::Response response;
+    Api::EvolutionMutationControlsSet::Command cmd{
+        .mutationConfig =
+            MutationConfig{
+                .useBudget = true,
+                .perturbationsPerOffspring = 6000,
+                .resetsPerOffspring = 250,
+                .sigma = 0.5,
+            },
+        .stagnationWindowGenerations = 0,
+        .recoveryWindowGenerations = 999,
+        .controlMode = AdaptiveMutationControlMode::Rescue,
+    };
+    Api::EvolutionMutationControlsSet::Cwc cwc(
+        cmd, [&](Api::EvolutionMutationControlsSet::Response&& value) {
+            callbackInvoked = true;
+            response = std::move(value);
+        });
+
+    State::Any nextState =
+        std::get<Evolution>(currentState.getVariant()).onEvent(cwc, *fixture.stateMachine);
+
+    EXPECT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+    EXPECT_TRUE(std::holds_alternative<Evolution>(nextState.getVariant()));
+
+    const auto& okay = response.value();
+    EXPECT_EQ(okay.mutationConfig.perturbationsPerOffspring, 5000);
+    EXPECT_EQ(okay.mutationConfig.resetsPerOffspring, 200);
+    EXPECT_DOUBLE_EQ(okay.mutationConfig.sigma, 0.3);
+    EXPECT_EQ(okay.stagnationWindowGenerations, 1);
+    EXPECT_EQ(okay.recoveryWindowGenerations, 100);
+    EXPECT_EQ(okay.controlMode, AdaptiveMutationControlMode::Rescue);
+
+    currentState = std::move(nextState);
+    const auto& updated = std::get<Evolution>(currentState.getVariant());
+    EXPECT_EQ(updated.mutationConfig.perturbationsPerOffspring, 5000);
+    EXPECT_EQ(updated.mutationConfig.resetsPerOffspring, 200);
+    EXPECT_DOUBLE_EQ(updated.mutationConfig.sigma, 0.3);
+    EXPECT_EQ(updated.evolutionConfig.stagnationWindowGenerations, 1);
+    EXPECT_EQ(updated.evolutionConfig.recoveryWindowGenerations, 100);
+    EXPECT_EQ(updated.mutationControlMode_, AdaptiveMutationControlMode::Rescue);
+
+    const auto progress = latestEvolutionProgress(*fixture.mockWebSocketService);
+    ASSERT_TRUE(progress.has_value());
+    EXPECT_EQ(progress->trainingPhase, TrainingPhase::Normal);
 }
 
 TEST(StateEvolutionTest, EvolutionStopStillWorksWhilePaused)

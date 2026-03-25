@@ -74,13 +74,31 @@ double recoverySigmaResolve(
     return baseline + (previous - baseline) * std::clamp(factor, 0.0, 1.0);
 }
 
+TrainingPhase adaptiveMutationPhaseResolve(
+    TrainingPhase phase, AdaptiveMutationControlMode controlMode)
+{
+    switch (controlMode) {
+        case AdaptiveMutationControlMode::Auto:
+            return phase;
+        case AdaptiveMutationControlMode::Baseline:
+            return TrainingPhase::Normal;
+        case AdaptiveMutationControlMode::Explore:
+            return TrainingPhase::Plateau;
+        case AdaptiveMutationControlMode::Rescue:
+            return TrainingPhase::Stuck;
+    }
+
+    return phase;
+}
+
 } // namespace
 
 EffectiveAdaptiveMutation adaptiveMutationResolve(
     const MutationConfig& baselineConfig,
     const TrainingPhaseStatus& trainingPhaseStatus,
     const EffectiveAdaptiveMutation& previousEffective,
-    const EvolutionConfig& evolutionConfig)
+    const EvolutionConfig& evolutionConfig,
+    AdaptiveMutationControlMode controlMode)
 {
     EffectiveAdaptiveMutation effective{
         .mode = AdaptiveMutationMode::Baseline,
@@ -91,7 +109,7 @@ EffectiveAdaptiveMutation adaptiveMutationResolve(
         return effective;
     }
 
-    switch (trainingPhaseStatus.phase) {
+    switch (adaptiveMutationPhaseResolve(trainingPhaseStatus.phase, controlMode)) {
         case TrainingPhase::Normal:
             return effective;
         case TrainingPhase::Plateau:

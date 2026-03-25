@@ -3,8 +3,10 @@
 #include "core/RenderMessage.h"
 #include "core/Result.h"
 #include "core/ScenarioConfig.h"
+#include "core/organisms/evolution/AdaptiveMutation.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/scenarios/nes/NesControllerTelemetry.h"
+#include "server/api/EvolutionProgress.h"
 #include "ui/UserSettings.h"
 #include "ui/rendering/Starfield.h"
 #include <array>
@@ -90,6 +92,10 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void setMutationControls(
+        const MutationConfig& mutationConfig,
+        const EvolutionConfig& evolutionConfig,
+        AdaptiveMutationControlMode controlMode);
     void setNesControllerOverlayEnabled(bool enabled);
     void updateScenarioConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config);
     void showScenarioControlsOverlay();
@@ -118,11 +124,19 @@ private:
     void scheduleBestRender();
     static void renderBestWorldAsync(void* data);
     void createStreamPanel(lv_obj_t* parent);
+    void createMutationControlsOverlay();
     void createScenarioControlsOverlay();
+    void hideMutationControlsOverlay();
     void hideScenarioControlsOverlay();
+    void queueMutationControlsUpdatedEvent();
     void renderBestFitnessPresentation(const Api::FitnessPresentation& fitnessPresentation);
     void renderBestFitnessPresentationPlaceholder(const char* text);
+    void refreshMutationControlsOverlay();
     void refreshScenarioControlsOverlay();
+    void showMutationControlsOverlay();
+    void updateMutationButtonState();
+    void updateMutationControlsEnabled();
+    void updateMutationControlsSummary();
     void updateScenarioButtonState();
     void updateNesVideoOverlay(
         NesOverlayWidgets& overlay,
@@ -134,6 +148,13 @@ private:
     static void onStreamIntervalChanged(lv_event_t* e);
     static void onBestPlaybackToggled(lv_event_t* e);
     static void onBestPlaybackIntervalChanged(lv_event_t* e);
+    static void onMutationControlModeChanged(lv_event_t* e);
+    static void onMutationControlsClicked(lv_event_t* e);
+    static void onMutationPerturbationsChanged(lv_event_t* e);
+    static void onMutationRecoveryWindowChanged(lv_event_t* e);
+    static void onMutationResetsChanged(lv_event_t* e);
+    static void onMutationSigmaChanged(lv_event_t* e);
+    static void onMutationStagnationWindowChanged(lv_event_t* e);
     static void onNesControllerOverlayToggled(lv_event_t* e);
     static void onStopTrainingClicked(lv_event_t* e);
     static void onPauseResumeClicked(lv_event_t* e);
@@ -186,6 +207,21 @@ private:
     lv_obj_t* streamIntervalStepper_ = nullptr;
     lv_obj_t* bestPlaybackToggle_ = nullptr;
     lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
+    lv_obj_t* mutationControlsButton_ = nullptr;
+    lv_obj_t* mutationControlsOverlay_ = nullptr;
+    lv_obj_t* mutationControlsOverlayContent_ = nullptr;
+    lv_obj_t* mutationControlsOverlayTitle_ = nullptr;
+    lv_obj_t* mutationControlModeDropdown_ = nullptr;
+    lv_obj_t* mutationControlPathLabel_ = nullptr;
+    lv_obj_t* mutationControlPhaseLabel_ = nullptr;
+    lv_obj_t* mutationControlResolvedLabel_ = nullptr;
+    lv_obj_t* mutationControlPendingLabel_ = nullptr;
+    lv_obj_t* mutationControlLegacyNoteLabel_ = nullptr;
+    lv_obj_t* mutationPerturbationsStepper_ = nullptr;
+    lv_obj_t* mutationRecoveryWindowStepper_ = nullptr;
+    lv_obj_t* mutationResetsStepper_ = nullptr;
+    lv_obj_t* mutationSigmaStepper_ = nullptr;
+    lv_obj_t* mutationStagnationWindowStepper_ = nullptr;
     lv_obj_t* nesControllerOverlayToggle_ = nullptr;
     lv_obj_t* pauseResumeButton_ = nullptr;
     lv_obj_t* pauseResumeLabel_ = nullptr;
@@ -218,17 +254,23 @@ private:
     std::unique_ptr<WorldData> bestSnapshotWorldData_;
     std::optional<NesControllerTelemetry> liveNesControllerTelemetry_ = std::nullopt;
     std::optional<NesControllerTelemetry> bestNesControllerTelemetry_ = std::nullopt;
+    AdaptiveMutationControlMode mutationControlMode_ = AdaptiveMutationControlMode::Auto;
     ScenarioConfig currentScenarioConfig_ = Config::Empty{};
     Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;
     Scenario::EnumType scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
     bool hasScenarioState_ = false;
+    bool mutationControlsOverlayVisible_ = false;
     bool scenarioControlsOverlayVisible_ = false;
+    TrainingPhase mutationControlLatestPhase_ = TrainingPhase::Normal;
+    Api::EvolutionBreedingTelemetry mutationControlLatestBreeding_{};
     double bestFitness_ = 0.0;
     int bestGeneration_ = 0;
     double bestSnapshotFitness_ = 0.0;
     int bestSnapshotGeneration_ = 0;
     bool hasBestSnapshot_ = false;
     bool hasShownBestSnapshot_ = false;
+    int mutationControlLatestCompletedGeneration_ = -1;
+    int mutationControlLatestGeneration_ = 0;
     std::shared_ptr<std::atomic<bool>> alive_;
 };
 

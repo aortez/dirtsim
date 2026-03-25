@@ -85,6 +85,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::EventSubscribe::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::EventSubscribe::Command::fromJson(cmd));
         }
+        else if (commandName == Api::EvolutionMutationControlsSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::EvolutionMutationControlsSet::Command::fromJson(cmd));
+        }
         else if (commandName == Api::EvolutionPauseSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::EvolutionPauseSet::Command::fromJson(cmd));

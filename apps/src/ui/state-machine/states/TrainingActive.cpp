@@ -6,6 +6,7 @@
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
@@ -404,6 +405,54 @@ State::Any TrainingActive::onEvent(const TrainingConfigUpdatedEvent& evt, StateM
         .mutationConfig = evt.mutation,
     };
     sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
+    return std::move(*this);
+}
+
+State::Any TrainingActive::onEvent(
+    const TrainingMutationControlsUpdatedEvent& evt, StateMachine& sm)
+{
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot update mutation controls");
+        return std::move(*this);
+    }
+
+    Api::EvolutionMutationControlsSet::Command cmd{
+        .mutationConfig = evt.mutation,
+        .stagnationWindowGenerations = evt.evolution.stagnationWindowGenerations,
+        .recoveryWindowGenerations = evt.evolution.recoveryWindowGenerations,
+        .controlMode = evt.controlMode,
+    };
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::EvolutionMutationControlsSet::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "Failed to send EvolutionMutationControlsSet: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(
+            State,
+            "Server EvolutionMutationControlsSet error: {}",
+            result.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    auto& settings = sm.getUserSettings();
+    settings.mutationConfig = result.value().value().mutationConfig;
+    settings.evolutionConfig.stagnationWindowGenerations =
+        result.value().value().stagnationWindowGenerations;
+    settings.evolutionConfig.recoveryWindowGenerations =
+        result.value().value().recoveryWindowGenerations;
+
+    Api::UserSettingsPatch::Command patchCmd{
+        .evolutionConfig = settings.evolutionConfig,
+        .mutationConfig = settings.mutationConfig,
+    };
+    sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);
+
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->setMutationControls(
+        settings.mutationConfig, settings.evolutionConfig, result.value().value().controlMode);
     return std::move(*this);
 }
 

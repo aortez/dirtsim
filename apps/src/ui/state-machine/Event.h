@@ -40,6 +40,7 @@
 #include "api/WebRtcCandidate.h"
 #include "core/PhysicsSettings.h"
 #include "core/api/UiUpdateEvent.h"
+#include "core/organisms/evolution/AdaptiveMutation.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -218,6 +219,13 @@ struct TrainingConfigUpdatedEvent {
     static constexpr const char* name() { return "TrainingConfigUpdatedEvent"; }
 };
 
+struct TrainingMutationControlsUpdatedEvent {
+    EvolutionConfig evolution;
+    MutationConfig mutation;
+    AdaptiveMutationControlMode controlMode = AdaptiveMutationControlMode::Auto;
+    static constexpr const char* name() { return "TrainingMutationControlsUpdatedEvent"; }
+};
+
 struct GenomeLoadClickedEvent {
     GenomeId genomeId;
     Scenario::EnumType scenarioId = Scenario::EnumType::Sandbox;
@@ -313,6 +321,7 @@ using Event = std::variant<
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
     TrainingConfigUpdatedEvent,
+    TrainingMutationControlsUpdatedEvent,
     TrainingStreamConfigChangedEvent,
     GenomeLoadClickedEvent,
     GenomeAddToTrainingClickedEvent,

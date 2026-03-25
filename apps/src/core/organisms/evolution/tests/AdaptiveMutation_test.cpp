@@ -149,3 +149,53 @@ TEST(AdaptiveMutationTest, LegacyPerWeightPathStaysAtBaseline)
     EXPECT_DOUBLE_EQ(effective.mutationConfig.resetRate, baseline.resetRate);
     EXPECT_DOUBLE_EQ(effective.mutationConfig.sigma, baseline.sigma);
 }
+
+TEST(AdaptiveMutationTest, ForcedBaselineIgnoresStuckPhase)
+{
+    const MutationConfig baseline = makeBudgetedBaseline();
+    const EffectiveAdaptiveMutation previous{
+        .mode = AdaptiveMutationMode::Rescue,
+        .mutationConfig =
+            MutationConfig{
+                .useBudget = true,
+                .perturbationsPerOffspring = 500,
+                .resetsPerOffspring = 4,
+                .sigma = 0.08,
+            },
+    };
+
+    const EffectiveAdaptiveMutation effective = adaptiveMutationResolve(
+        baseline,
+        TrainingPhaseStatus{ .phase = TrainingPhase::Stuck },
+        previous,
+        EvolutionConfig{},
+        AdaptiveMutationControlMode::Baseline);
+
+    EXPECT_EQ(effective.mode, AdaptiveMutationMode::Baseline);
+    EXPECT_EQ(
+        effective.mutationConfig.perturbationsPerOffspring, baseline.perturbationsPerOffspring);
+    EXPECT_EQ(effective.mutationConfig.resetsPerOffspring, baseline.resetsPerOffspring);
+    EXPECT_DOUBLE_EQ(effective.mutationConfig.sigma, baseline.sigma);
+}
+
+TEST(AdaptiveMutationTest, ForcedRescueOverridesNormalPhase)
+{
+    const MutationConfig baseline = makeBudgetedBaseline();
+    const EffectiveAdaptiveMutation previous{
+        .mode = AdaptiveMutationMode::Baseline,
+        .mutationConfig = baseline,
+    };
+
+    const EffectiveAdaptiveMutation effective = adaptiveMutationResolve(
+        baseline,
+        TrainingPhaseStatus{ .phase = TrainingPhase::Normal },
+        previous,
+        EvolutionConfig{},
+        AdaptiveMutationControlMode::Rescue);
+
+    EXPECT_EQ(effective.mode, AdaptiveMutationMode::Rescue);
+    EXPECT_GT(
+        effective.mutationConfig.perturbationsPerOffspring, baseline.perturbationsPerOffspring);
+    EXPECT_GT(effective.mutationConfig.resetsPerOffspring, baseline.resetsPerOffspring);
+    EXPECT_GT(effective.mutationConfig.sigma, baseline.sigma);
+}

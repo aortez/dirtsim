@@ -18,6 +18,7 @@
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
+#include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
 #include "server/evolution/EvaluationExecutor.h"
 #include "server/evolution/FitnessEvaluation.h"
@@ -97,6 +98,7 @@ struct Evolution {
     GenomeId bestGenomeId{};
     uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    AdaptiveMutationControlMode mutationControlMode_ = AdaptiveMutationControlMode::Auto;
     EffectiveAdaptiveMutation lastEffectiveAdaptiveMutation_{};
     TrainingPhaseTracker trainingPhaseTracker_;
     int lastCompletedGeneration_ = -1;
@@ -164,6 +166,7 @@ struct Evolution {
     // Returns a state to transition to, or nullopt to stay in Evolution.
     std::optional<Any> tick(StateMachine& dsm);
 
+    Any onEvent(const Api::EvolutionMutationControlsSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::EvolutionPauseSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
