@@ -299,6 +299,23 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutMatchesRandomGenomeSize)
     EXPECT_EQ(layout.totalSize(), static_cast<int>(genome.weights.size()));
 }
 
+TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
+{
+    const GenomeLayout layout = DuckNeuralNetRecurrentBrainV2::getGenomeLayout();
+
+    ASSERT_EQ(layout.segments.size(), 5u);
+    EXPECT_EQ(layout.segments[0].name, "input_h1");
+    EXPECT_EQ(layout.segments[0].size, 284672);
+    EXPECT_EQ(layout.segments[1].name, "h1_recurrent");
+    EXPECT_EQ(layout.segments[1].size, 4224);
+    EXPECT_EQ(layout.segments[2].name, "h1_to_h2");
+    EXPECT_EQ(layout.segments[2].size, 2048);
+    EXPECT_EQ(layout.segments[3].name, "h2_recurrent");
+    EXPECT_EQ(layout.segments[3].size, 1088);
+    EXPECT_EQ(layout.segments[4].name, "output");
+    EXPECT_EQ(layout.segments[4].size, 132);
+}
+
 TEST(DuckNeuralNetRecurrentBrainV2Test, RandomGenomesProduceCommandDiversity)
 {
     // Suppress noisy per-frame duck logging.
