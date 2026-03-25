@@ -30,6 +30,7 @@ public:
     void syncToSettings(const PhysicsSettings& settings) override;
 
     bool tryGetWaterActivityView(WaterActivityView& out) const override;
+    bool tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const override;
     bool tryGetWaterVolumeView(WaterVolumeView& out) const override;
     bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out) override;
 
@@ -38,6 +39,7 @@ public:
 
 private:
     void rebuildWaterActivityView(const std::vector<float>& previousWaterVolume);
+    void rebuildWaterSleepShadowStats(const World& world);
     void settleResidualWater();
     void applyGuidedWaterDrainOutflow(const GuidedWaterDrain& drain, float dt);
     void applyGuidedWaterDrainVelocityBias(const GuidedWaterDrain& drain);
@@ -52,6 +54,7 @@ private:
     std::vector<float> waterActivityMaxFaceSpeed_;
     std::vector<float> waterActivityVolumeDelta_;
     std::vector<uint8_t> waterActivityFlags_;
+    WaterSleepShadowStats waterSleepShadowStats_{};
     std::vector<float> uFaceVelocity_;
     std::vector<float> vFaceVelocity_;
 

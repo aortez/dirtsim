@@ -1099,6 +1099,11 @@ bool World::tryGetWaterActivityView(WaterActivityView& out) const
     return pImpl->water_sim_system_.tryGetWaterActivityView(out);
 }
 
+bool World::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
+{
+    return pImpl->water_sim_system_.tryGetWaterSleepShadowStats(out);
+}
+
 bool World::tryGetMutableWaterVolumeView(WaterVolumeMutableView& out)
 {
     return pImpl->water_sim_system_.tryGetMutableWaterVolumeView(out);

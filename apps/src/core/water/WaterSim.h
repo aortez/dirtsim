@@ -24,6 +24,16 @@ struct GuidedWaterDrain {
     float drainRatePerSecond = 0.0f;
 };
 
+struct WaterSleepShadowStats {
+    int blocksX = 0;
+    int blocksY = 0;
+    uint32_t totalWaterCells = 0;
+    uint32_t totalWaterRegions = 0;
+    uint32_t shadowActiveWaterRegions = 0;
+    uint32_t shadowSkippableWaterCells = 0;
+    uint32_t shadowSkippableWaterRegions = 0;
+};
+
 class IWaterSim {
 public:
     virtual ~IWaterSim() = default;
@@ -36,6 +46,7 @@ public:
     virtual void queueGuidedWaterDrain(const GuidedWaterDrain& /*drain*/) {}
 
     virtual bool tryGetWaterActivityView(WaterActivityView& /*out*/) const { return false; }
+    virtual bool tryGetWaterSleepShadowStats(WaterSleepShadowStats& /*out*/) const { return false; }
     virtual bool tryGetWaterVolumeView(WaterVolumeView& /*out*/) const { return false; }
     virtual bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& /*out*/) { return false; }
 };

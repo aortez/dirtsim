@@ -19,6 +19,7 @@ struct WorldData;
 struct PhysicsSettings;
 struct GuidedWaterDrain;
 struct WaterActivityView;
+struct WaterSleepShadowStats;
 struct WaterVolumeMutableView;
 struct WaterVolumeView;
 class LightCalculatorBase;
@@ -244,6 +245,7 @@ public:
     void setBulkWaterAmountAtCell(int x, int y, float amount);
 
     bool tryGetWaterActivityView(WaterActivityView& out) const;
+    bool tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const;
     bool tryGetWaterVolumeView(WaterVolumeView& out) const;
     bool tryGetMutableWaterVolumeView(WaterVolumeMutableView& out);
 

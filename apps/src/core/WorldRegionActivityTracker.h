@@ -70,6 +70,9 @@ public:
 
     bool isCellActive(int x, int y) const;
     bool isRegionActive(int block_x, int block_y) const;
+    // Returns whether a region would remain in the conservative solver-active mask this frame,
+    // including the current active halo and any pending authored wake requests.
+    bool wouldRegionBeActiveThisFrame(int block_x, int block_y) const;
 
     RegionState getRegionState(int block_x, int block_y) const;
     WakeReason getLastWakeReason(int block_x, int block_y) const;

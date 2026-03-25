@@ -8,6 +8,7 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/WorldRegionActivityTracker.h"
 
 namespace DirtSim {
 namespace {
@@ -32,6 +33,7 @@ size_t vFaceIndex(int width, int x, int y)
 void MacProjectionWaterSim::reset()
 {
     pendingGuidedWaterDrains_.clear();
+    waterSleepShadowStats_ = {};
     std::fill(waterVolume_.begin(), waterVolume_.end(), 0.0f);
     std::fill(previousWaterVolume_.begin(), previousWaterVolume_.end(), 0.0f);
     std::fill(waterActivityMaxFaceSpeed_.begin(), waterActivityMaxFaceSpeed_.end(), 0.0f);
@@ -55,6 +57,7 @@ void MacProjectionWaterSim::resize(int worldWidth, int worldHeight)
     width_ = worldWidth;
     height_ = worldHeight;
     pendingGuidedWaterDrains_.clear();
+    waterSleepShadowStats_ = {};
 
     const size_t cellCount = static_cast<size_t>(width_) * height_;
     const size_t uFaceCount = static_cast<size_t>(width_ + 1) * height_;
@@ -89,6 +92,16 @@ bool MacProjectionWaterSim::tryGetWaterActivityView(WaterActivityView& out) cons
     out.max_face_speed = waterActivityMaxFaceSpeed_;
     out.volume_delta = waterActivityVolumeDelta_;
     out.flags = waterActivityFlags_;
+    return true;
+}
+
+bool MacProjectionWaterSim::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
+{
+    if (width_ <= 0 || height_ <= 0) {
+        return false;
+    }
+
+    out = waterSleepShadowStats_;
     return true;
 }
 
@@ -147,6 +160,7 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     }
 
     std::copy(waterVolume_.begin(), waterVolume_.end(), previousWaterVolume_.begin());
+    rebuildWaterSleepShadowStats(world);
     if (deltaTimeSeconds <= 0.0) {
         rebuildWaterActivityView(previousWaterVolume_);
         return;
@@ -667,6 +681,66 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     }
 
     rebuildWaterActivityView(previousWaterVolume_);
+}
+
+void MacProjectionWaterSim::rebuildWaterSleepShadowStats(const World& world)
+{
+    waterSleepShadowStats_ = {};
+    if (width_ <= 0 || height_ <= 0) {
+        return;
+    }
+
+    constexpr float kVolumeEpsilon = 0.0001f;
+    constexpr int kRegionSize = 8;
+    const int blocksX = std::max(0, (width_ + 7) / 8);
+    const int blocksY = std::max(0, (height_ + 7) / 8);
+    waterSleepShadowStats_.blocksX = blocksX;
+    waterSleepShadowStats_.blocksY = blocksY;
+
+    const size_t regionCount = static_cast<size_t>(blocksX) * static_cast<size_t>(blocksY);
+    std::vector<uint8_t> regionHasWater(regionCount, 0);
+
+    const WorldRegionActivityTracker& tracker = world.getRegionActivityTracker();
+
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
+            const size_t idx = cellIndex(width_, x, y);
+            if (solidMask_[idx] != 0 || waterVolume_[idx] <= kVolumeEpsilon) {
+                continue;
+            }
+
+            waterSleepShadowStats_.totalWaterCells++;
+
+            const int blockX = x / kRegionSize;
+            const int blockY = y / kRegionSize;
+            const int regionIdx = blockY * blocksX + blockX;
+            if (regionIdx >= 0 && static_cast<size_t>(regionIdx) < regionHasWater.size()) {
+                regionHasWater[static_cast<size_t>(regionIdx)] = 1;
+            }
+
+            if (!tracker.wouldRegionBeActiveThisFrame(blockX, blockY)) {
+                waterSleepShadowStats_.shadowSkippableWaterCells++;
+            }
+        }
+    }
+
+    for (int blockY = 0; blockY < blocksY; ++blockY) {
+        for (int blockX = 0; blockX < blocksX; ++blockX) {
+            const int regionIdx = blockY * blocksX + blockX;
+            if (regionIdx < 0 || static_cast<size_t>(regionIdx) >= regionHasWater.size()
+                || regionHasWater[static_cast<size_t>(regionIdx)] == 0) {
+                continue;
+            }
+
+            waterSleepShadowStats_.totalWaterRegions++;
+            if (tracker.wouldRegionBeActiveThisFrame(blockX, blockY)) {
+                waterSleepShadowStats_.shadowActiveWaterRegions++;
+            }
+            else {
+                waterSleepShadowStats_.shadowSkippableWaterRegions++;
+            }
+        }
+    }
 }
 
 void MacProjectionWaterSim::rebuildWaterActivityView(const std::vector<float>& previousWaterVolume)

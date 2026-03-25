@@ -452,6 +452,26 @@ bool WorldRegionActivityTracker::isRegionActive(int block_x, int block_y) const
     return region_active_[idx] != 0;
 }
 
+bool WorldRegionActivityTracker::wouldRegionBeActiveThisFrame(int block_x, int block_y) const
+{
+    if (block_x < 0 || block_y < 0 || block_x >= blocks_x_ || block_y >= blocks_y_) {
+        return false;
+    }
+
+    for (int halo_y = std::max(0, block_y - 1); halo_y <= std::min(blocks_y_ - 1, block_y + 1);
+         ++halo_y) {
+        for (int halo_x = std::max(0, block_x - 1); halo_x <= std::min(blocks_x_ - 1, block_x + 1);
+             ++halo_x) {
+            const int idx = regionIndex(halo_x, halo_y);
+            if (isActiveState(region_meta_[idx].state) || region_wake_requested_[idx] != 0) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 RegionState WorldRegionActivityTracker::getRegionState(int block_x, int block_y) const
 {
     return getRegionMeta(block_x, block_y).state;

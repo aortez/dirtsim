@@ -831,6 +831,14 @@ float maxMacWaterSurfaceHeightDelta(const World& world, const std::vector<Region
     return max_delta;
 }
 
+WaterSleepShadowStats requireWaterSleepShadowStats(const World& world)
+{
+    WaterSleepShadowStats stats{};
+    EXPECT_TRUE(world.tryGetWaterSleepShadowStats(stats))
+        << "Expected MAC water sleep shadow stats to be available in MAC mode.";
+    return stats;
+}
+
 std::optional<RegionCoord> selectQuietExposedWaterRegionNearCenter(
     const World& world, const WaterRegionBuckets& buckets)
 {
@@ -4677,6 +4685,60 @@ TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegions
         << "Expected the pool shell to retain at least one Awake disturbed surface region.";
 }
 
+TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolShadowStatsExposeSkippableWaterRegions)
+{
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+
+    settleWorld(world, kWaterSettleSteps);
+
+    const GridOfCells grid = makeGrid(world);
+    const WaterRegionBuckets buckets = classifyWaterRegions(world, grid);
+    const WaterSleepShadowStats stats = requireWaterSleepShadowStats(world);
+
+    SCOPED_TRACE(dumpWaterRegionDetails(world, buckets, kWaterSettleSteps));
+
+    EXPECT_GT(stats.totalWaterRegions, 0u);
+    EXPECT_GT(stats.totalWaterCells, 0u);
+    EXPECT_GT(stats.shadowActiveWaterRegions, 0u)
+        << "Expected the calm pool to retain some active water regions near the disturbed shell.";
+    EXPECT_GT(stats.shadowSkippableWaterRegions, 0u)
+        << "Expected the calm pool to expose some quiet water regions that would be skippable at "
+           "the solver boundary.";
+    EXPECT_GT(stats.shadowSkippableWaterCells, 0u)
+        << "Expected the calm pool to expose some quiet water cells that would be skippable at "
+           "the solver boundary.";
+    EXPECT_EQ(
+        stats.totalWaterRegions,
+        stats.shadowActiveWaterRegions + stats.shadowSkippableWaterRegions);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, PerturbedWaterPoolShadowStatsIncreaseActiveCoverage)
+{
+    constexpr int kEarlyObservationSteps = 64;
+
+    World settledWorld(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(settledWorld);
+    settleWorld(settledWorld, kWaterSettleSteps);
+    const WaterSleepShadowStats settledStats = requireWaterSleepShadowStats(settledWorld);
+
+    World perturbedWorld(kWorldWidth, kWorldHeight);
+    initializePerturbedWaterPoolWorld(perturbedWorld);
+    settleWorld(perturbedWorld, kEarlyObservationSteps);
+    const GridOfCells perturbedGrid = makeGrid(perturbedWorld);
+    const WaterRegionBuckets perturbedBuckets = classifyWaterRegions(perturbedWorld, perturbedGrid);
+    const WaterSleepShadowStats perturbedStats = requireWaterSleepShadowStats(perturbedWorld);
+
+    SCOPED_TRACE(dumpWaterRegionDetails(perturbedWorld, perturbedBuckets, kEarlyObservationSteps));
+
+    EXPECT_GT(perturbedStats.shadowActiveWaterRegions, settledStats.shadowActiveWaterRegions)
+        << "Expected the early perturbed pool to expand the active water footprint compared with "
+           "the settled pool shadow mask.";
+    EXPECT_LT(perturbedStats.shadowSkippableWaterRegions, perturbedStats.totalWaterRegions)
+        << "Expected the early perturbed pool to retain at least one active water region under "
+           "the solver shadow mask.";
+}
+
 TEST(WorldRegionSleepingBehaviorTest, InterfaceFaceSpeedSeparatesPerturbedSurfaceFromCalmInterior)
 {
     constexpr int kEarlyObservationSteps = 64;
@@ -4995,6 +5057,17 @@ TEST(WorldRegionSleepingBehaviorTest, GuidedDrainPulseHandsOffToPassiveWakeThenQ
         .mouthDownwardSpeed = 4.0f,
         .drainRatePerSecond = 2.0f,
     };
+
+    EXPECT_FALSE(world.getRegionActivityTracker().wouldRegionBeActiveThisFrame(
+        quietGuideRegion->x, quietGuideRegion->y))
+        << "Expected the settled guide region to start skippable under the solver shadow mask.";
+
+    world.queueGuidedWaterDrain(drain);
+
+    EXPECT_TRUE(world.getRegionActivityTracker().wouldRegionBeActiveThisFrame(
+        quietGuideRegion->x, quietGuideRegion->y))
+        << "Expected an authored guided drain request to mark the guide region active before the "
+           "MAC step runs.";
 
     std::optional<int> firstAuthoredWakeFrame;
     std::optional<int> firstPassiveWakeFrame;

@@ -67,6 +67,15 @@ bool WaterSimSystem::tryGetWaterActivityView(WaterActivityView& out) const
     return sim_->tryGetWaterActivityView(out);
 }
 
+bool WaterSimSystem::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
+{
+    if (!sim_) {
+        return false;
+    }
+
+    return sim_->tryGetWaterSleepShadowStats(out);
+}
+
 bool WaterSimSystem::tryGetWaterVolumeView(WaterVolumeView& out) const
 {
     if (!sim_) {
