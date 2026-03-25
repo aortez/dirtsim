@@ -815,6 +815,21 @@ float maxMacWaterInterfaceFaceSpeed(const World& world, const std::vector<Region
     return max_face_speed;
 }
 
+float maxMacWaterSurfaceHeightDelta(const World& world, const std::vector<RegionCoord>& regions)
+{
+    float max_delta = 0.0f;
+
+    for (const RegionCoord& region : regions) {
+        max_delta = std::max(
+            max_delta,
+            world.getRegionActivityTracker()
+                .getRegionSummary(region.x, region.y)
+                .max_mac_water_surface_height_delta);
+    }
+
+    return max_delta;
+}
+
 std::optional<RegionCoord> selectQuietExposedWaterRegionNearCenter(
     const World& world, const WaterRegionBuckets& buckets)
 {
@@ -885,6 +900,32 @@ WorldRegionActivityTracker runFrozenTrackerReplay(
     tracker.setConfig(config);
 
     for (int frame = 0; frame < frames; ++frame) {
+        tracker.beginFrame(world, grid, static_cast<uint32_t>(frame));
+        tracker.summarizeFrame(world, grid, static_cast<uint32_t>(frame));
+    }
+
+    return tracker;
+}
+
+WorldRegionActivityTracker runLiveTrackerReplay(
+    World& world, const WorldRegionActivityTracker::Config& config, int frames)
+{
+    WorldRegionActivityTracker tracker;
+    tracker.setConfig(config);
+    {
+        const GridOfCells initialGrid = makeGrid(world);
+        tracker.resize(
+            world.getData().width,
+            world.getData().height,
+            initialGrid.getBlocksX(),
+            initialGrid.getBlocksY());
+        tracker.beginFrame(world, initialGrid, 0);
+        tracker.summarizeFrame(world, initialGrid, 0);
+    }
+
+    for (int frame = 1; frame <= frames; ++frame) {
+        world.advanceTime(kDt);
+        const GridOfCells grid = makeGrid(world);
         tracker.beginFrame(world, grid, static_cast<uint32_t>(frame));
         tracker.summarizeFrame(world, grid, static_cast<uint32_t>(frame));
     }
@@ -1132,6 +1173,7 @@ std::string dumpWaterRegionDetails(const World& world, const WaterRegionBuckets&
             << " macIface=" << summary.has_mac_water_interface
             << " macFace=" << summary.max_mac_water_face_speed
             << " macIfaceFace=" << summary.max_mac_water_interface_face_speed
+            << " macSurfDelta=" << summary.max_mac_water_surface_height_delta
             << " macDelta=" << summary.max_mac_water_volume_delta
             << " waterAdj=" << summary.has_water_adjacency
             << " touched=" << summary.touched_this_frame << "\n";
@@ -2499,6 +2541,8 @@ char wakeReasonToChar(WakeReason reason)
             return 'D';
         case WakeReason::MacWaterInterfaceFaceSpeed:
             return 'F';
+        case WakeReason::MacWaterSurfaceHeightDelta:
+            return 'H';
         case WakeReason::WaterAdjacency:
             return 'A';
     }
@@ -4671,6 +4715,77 @@ TEST(WorldRegionSleepingBehaviorTest, InterfaceFaceSpeedSeparatesPerturbedSurfac
            "speed wake policy.";
 }
 
+TEST(WorldRegionSleepingBehaviorTest, SurfaceHeightDeltaSeparatesPerturbedSurfaceFromCalmInterior)
+{
+    constexpr int kEarlyObservationSteps = 64;
+    constexpr float kSurfaceHeightDeltaThreshold = 0.001f;
+
+    World settledWorld(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(settledWorld);
+    settleWorld(settledWorld, kWaterSettleSteps);
+
+    const GridOfCells settledGrid = makeGrid(settledWorld);
+    const WaterRegionBuckets settledBuckets = classifyWaterRegions(settledWorld, settledGrid);
+    ASSERT_FALSE(settledBuckets.interior_water_regions.empty())
+        << "Expected the settled pool to contain interior bulk-water regions.";
+
+    World perturbedWorld(kWorldWidth, kWorldHeight);
+    initializePerturbedWaterPoolWorld(perturbedWorld);
+    settleWorld(perturbedWorld, kEarlyObservationSteps);
+
+    const GridOfCells perturbedGrid = makeGrid(perturbedWorld);
+    const WaterRegionBuckets perturbedBuckets = classifyWaterRegions(perturbedWorld, perturbedGrid);
+    ASSERT_FALSE(perturbedBuckets.exposed_water_regions.empty())
+        << "Expected the perturbed pool to contain exposed/interface bulk-water regions.";
+
+    SCOPED_TRACE(dumpWaterRegionDetails(settledWorld, settledBuckets, kWaterSettleSteps));
+    SCOPED_TRACE(dumpWaterRegionDetails(perturbedWorld, perturbedBuckets, kEarlyObservationSteps));
+
+    const float settledInteriorMaxSurfaceHeightDelta =
+        maxMacWaterSurfaceHeightDelta(settledWorld, settledBuckets.interior_water_regions);
+    const float perturbedExposedMaxSurfaceHeightDelta =
+        maxMacWaterSurfaceHeightDelta(perturbedWorld, perturbedBuckets.exposed_water_regions);
+
+    EXPECT_LT(settledInteriorMaxSurfaceHeightDelta, kSurfaceHeightDeltaThreshold);
+    EXPECT_GT(perturbedExposedMaxSurfaceHeightDelta, kSurfaceHeightDeltaThreshold);
+
+    WorldRegionActivityTracker::Config surfaceHeightOnlyConfig{};
+    surfaceHeightOnlyConfig.keep_empty_adjacent_awake = false;
+    surfaceHeightOnlyConfig.keep_mac_water_interface_face_speed_awake = false;
+    surfaceHeightOnlyConfig.keep_mac_water_interface_awake = false;
+    surfaceHeightOnlyConfig.keep_mac_water_surface_height_delta_awake = true;
+    surfaceHeightOnlyConfig.keep_mixed_material_awake = false;
+    surfaceHeightOnlyConfig.keep_organism_regions_awake = false;
+    surfaceHeightOnlyConfig.keep_water_adjacent_awake = false;
+    surfaceHeightOnlyConfig.live_pressure_delta_epsilon = 1000.0f;
+    surfaceHeightOnlyConfig.mac_water_interface_face_speed_epsilon = 1000.0f;
+    surfaceHeightOnlyConfig.mac_water_surface_height_delta_epsilon = kSurfaceHeightDeltaThreshold;
+    surfaceHeightOnlyConfig.mac_water_volume_delta_epsilon = 1000.0f;
+    surfaceHeightOnlyConfig.static_load_delta_epsilon = 1000.0f;
+    surfaceHeightOnlyConfig.velocity_epsilon = 1000.0f;
+
+    const WorldRegionActivityTracker settledTracker =
+        runLiveTrackerReplay(settledWorld, surfaceHeightOnlyConfig, 16);
+    const WorldRegionActivityTracker perturbedTracker =
+        runLiveTrackerReplay(perturbedWorld, surfaceHeightOnlyConfig, 16);
+
+    const int quietSettledInteriorRegions =
+        countQuietRegions(settledTracker, settledBuckets.interior_water_regions);
+    int awakePerturbedExposedRegions = 0;
+    for (const RegionCoord& region : perturbedBuckets.exposed_water_regions) {
+        if (perturbedTracker.getRegionState(region.x, region.y) == RegionState::Awake) {
+            awakePerturbedExposedRegions++;
+        }
+    }
+
+    EXPECT_GT(quietSettledInteriorRegions, 0)
+        << "Expected calm pool interior regions to remain eligible for quiet tracking under a "
+           "surface-height-delta wake policy.";
+    EXPECT_GT(awakePerturbedExposedRegions, 0)
+        << "Expected at least one perturbed surface region to stay Awake under a surface-height-"
+           "delta wake policy.";
+}
+
 TEST(WorldRegionSleepingBehaviorTest, FallingMetalIntoCalmPoolWakesNearbyWaterRegion)
 {
     constexpr int kImpactFrames = 96;
@@ -4749,6 +4864,72 @@ TEST(WorldRegionSleepingBehaviorTest, FallingMetalIntoCalmPoolWakesNearbyWaterRe
     EXPECT_EQ(*firstAwakeReason, WakeReason::LivePressureDelta)
         << "Expected the falling-solid water impact to register through the centralized pressure "
            "disturbance signal.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, SurfacePulseReturnsToQuietAfterOneShotDisturbance)
+{
+    constexpr int kPulseHalfWidth = 2;
+    constexpr int kPulseFrames = 1200;
+
+    World world(kWorldWidth, kWorldHeight);
+    initializeStillWaterPoolWorld(world);
+    settleWorld(world, kWaterSettleSteps);
+
+    const GridOfCells settledGrid = makeGrid(world);
+    const WaterRegionBuckets settledBuckets = classifyWaterRegions(world, settledGrid);
+    const std::optional<RegionCoord> quietSurfaceRegion =
+        selectQuietExposedWaterRegionNearCenter(world, settledBuckets);
+
+    ASSERT_TRUE(quietSurfaceRegion.has_value())
+        << "Expected the settled pool to contain a quiet exposed/interface region.";
+
+    const int pulseCenterX = quietSurfaceRegion->x * kRegionSize + kRegionSize / 2;
+    for (int x = pulseCenterX - kPulseHalfWidth; x <= pulseCenterX + kPulseHalfWidth; ++x) {
+        world.setBulkWaterAmountAtCell(x, 12, 0.0f);
+        world.setBulkWaterAmountAtCell(x, 11, 1.0f);
+    }
+
+    std::optional<int> firstPassiveWakeFrame;
+    std::optional<WakeReason> firstPassiveWakeReason;
+    std::optional<int> firstQuietReturnFrame;
+    RegionFrameSample lastSample = sampleRegionFrame(world, *quietSurfaceRegion, kWaterSettleSteps);
+
+    for (int frame = 1; frame <= kPulseFrames; ++frame) {
+        world.advanceTime(kDt);
+        lastSample = sampleRegionFrame(world, *quietSurfaceRegion, kWaterSettleSteps + frame);
+
+        if (!firstPassiveWakeFrame.has_value() && lastSample.state == RegionState::Awake
+            && lastSample.wake_reason != WakeReason::None
+            && lastSample.wake_reason != WakeReason::ExternalMutation) {
+            firstPassiveWakeFrame = frame;
+            firstPassiveWakeReason = lastSample.wake_reason;
+        }
+
+        if (firstPassiveWakeFrame.has_value() && !firstQuietReturnFrame.has_value()
+            && lastSample.state != RegionState::Awake) {
+            firstQuietReturnFrame = frame;
+            break;
+        }
+    }
+
+    SCOPED_TRACE(dumpWaterRegionDetails(
+        world, classifyWaterRegions(world, makeGrid(world)), kWaterSettleSteps + kPulseFrames));
+
+    ASSERT_TRUE(firstPassiveWakeFrame.has_value())
+        << "Expected the one-shot surface pulse to hand off from authored wake to a passive "
+           "water disturbance signal.";
+    ASSERT_TRUE(firstPassiveWakeReason.has_value())
+        << "Expected the one-shot surface pulse to report a concrete passive wake cause.";
+    EXPECT_NE(*firstPassiveWakeReason, WakeReason::ExternalMutation)
+        << "Expected the one-shot surface pulse to wake through a passive signal after the "
+           "authored frame.";
+    ASSERT_TRUE(firstQuietReturnFrame.has_value())
+        << "Expected the disturbed surface region to return to quiet after the one-shot pulse "
+           "settles.";
+    EXPECT_LT(*firstPassiveWakeFrame, *firstQuietReturnFrame)
+        << "Expected passive wake to happen before the region returns to quiet.";
+    EXPECT_NE(lastSample.state, RegionState::Awake)
+        << "Expected the disturbed surface region to finish the recovery window in a quiet state.";
 }
 
 TEST(

@@ -28,6 +28,7 @@ enum class WakeReason : uint8_t {
     Organism,
     MacWaterVolumeDelta,
     MacWaterInterfaceFaceSpeed,
+    MacWaterSurfaceHeightDelta,
     WaterAdjacency,
 };
 

@@ -46,6 +46,8 @@ bool isWaterCell(const Cell& cell)
     return !cell.isEmpty() && cell.material_type == EnumType::Water;
 }
 
+constexpr float kNoMacSurfaceHeight = -1.0f;
+
 bool hasWaterVolumeAt(const DirtSim::WaterVolumeView& waterView, int x, int y)
 {
     constexpr float kWaterVolumeEpsilon = 0.0001f;
@@ -61,6 +63,27 @@ bool hasWaterVolumeAt(const DirtSim::WaterVolumeView& waterView, int x, int y)
     }
 
     return waterView.volume[idx] > kWaterVolumeEpsilon;
+}
+
+std::vector<float> computeMacSurfaceEffectiveHeights(const DirtSim::WaterVolumeView& waterView)
+{
+    std::vector<float> effectiveHeights(
+        static_cast<size_t>(std::max(waterView.width, 0)), kNoMacSurfaceHeight);
+
+    for (int x = 0; x < waterView.width; ++x) {
+        for (int y = 0; y < waterView.height; ++y) {
+            if (!hasWaterVolumeAt(waterView, x, y)) {
+                continue;
+            }
+
+            const size_t idx = static_cast<size_t>(y) * static_cast<size_t>(waterView.width) + x;
+            const float fill = std::clamp(waterView.volume[idx], 0.0f, 1.0f);
+            effectiveHeights[static_cast<size_t>(x)] = static_cast<float>(y) + (1.0f - fill);
+            break;
+        }
+    }
+
+    return effectiveHeights;
 }
 
 bool hasWaterVolumeAdjacency(const DirtSim::WaterVolumeView& waterView, int x, int y)
@@ -105,6 +128,11 @@ WakeReason forceAwakeReason(
     if (summary.has_mac_bulk_water) {
         if (summary.max_mac_water_volume_delta > config.mac_water_volume_delta_epsilon) {
             return WakeReason::MacWaterVolumeDelta;
+        }
+        if (config.keep_mac_water_surface_height_delta_awake
+            && summary.max_mac_water_surface_height_delta
+                > config.mac_water_surface_height_delta_epsilon) {
+            return WakeReason::MacWaterSurfaceHeightDelta;
         }
         if (config.keep_mac_water_interface_face_speed_awake
             && summary.max_mac_water_interface_face_speed
@@ -155,6 +183,8 @@ void WorldRegionActivityTracker::reset()
         static_cast<size_t>(std::max(blocks_x_, 0)) * static_cast<size_t>(std::max(blocks_y_, 0));
 
     previous_live_pressure_.assign(cell_count, 0.0f);
+    previous_mac_surface_effective_height_.assign(
+        static_cast<size_t>(std::max(world_width_, 0)), kNoMacSurfaceHeight);
     previous_static_load_.assign(cell_count, 0.0f);
 
     region_meta_.assign(region_count, RegionMeta{});
@@ -337,6 +367,31 @@ void WorldRegionActivityTracker::summarizeFrame(
         }
     }
 
+    if (hasWaterVolume) {
+        const std::vector<float> currentSurfaceHeights =
+            computeMacSurfaceEffectiveHeights(waterView);
+        if (previous_mac_surface_effective_height_.size() != currentSurfaceHeights.size()) {
+            previous_mac_surface_effective_height_.assign(
+                currentSurfaceHeights.size(), kNoMacSurfaceHeight);
+        }
+
+        for (int x = 0; x < waterView.width; ++x) {
+            const float currentHeight = currentSurfaceHeights[static_cast<size_t>(x)];
+            if (currentHeight < 0.0f) {
+                continue;
+            }
+
+            const float previousHeight =
+                previous_mac_surface_effective_height_[static_cast<size_t>(x)];
+            const float delta =
+                previousHeight >= 0.0f ? std::abs(currentHeight - previousHeight) : 1.0f;
+            const int topY = std::clamp(static_cast<int>(currentHeight), 0, data.height - 1);
+            RegionSummary& summary = region_summary_[cellToRegionIndex(x, topY)];
+            summary.max_mac_water_surface_height_delta =
+                std::max(summary.max_mac_water_surface_height_delta, delta);
+        }
+    }
+
     for (size_t region_idx = 0; region_idx < region_meta_.size(); ++region_idx) {
         RegionMeta& meta = region_meta_[region_idx];
         const RegionSummary& summary = region_summary_[region_idx];
@@ -509,11 +564,28 @@ void WorldRegionActivityTracker::snapshotPreviousFields(const World& world)
     if (previous_static_load_.size() != cell_count) {
         previous_static_load_.resize(cell_count, 0.0f);
     }
+    if (previous_mac_surface_effective_height_.size()
+        != static_cast<size_t>(std::max(static_cast<int>(data.width), 0))) {
+        previous_mac_surface_effective_height_.assign(
+            static_cast<size_t>(std::max(static_cast<int>(data.width), 0)), kNoMacSurfaceHeight);
+    }
 
     for (size_t idx = 0; idx < cell_count; ++idx) {
         previous_live_pressure_[idx] = data.cells[idx].pressure;
         previous_static_load_[idx] = data.cells[idx].static_load;
     }
+
+    WaterVolumeView waterView{};
+    if (world.tryGetWaterVolumeView(waterView) && waterView.width == data.width
+        && waterView.height == data.height) {
+        previous_mac_surface_effective_height_ = computeMacSurfaceEffectiveHeights(waterView);
+        return;
+    }
+
+    std::fill(
+        previous_mac_surface_effective_height_.begin(),
+        previous_mac_surface_effective_height_.end(),
+        kNoMacSurfaceHeight);
 }
 
 } // namespace DirtSim

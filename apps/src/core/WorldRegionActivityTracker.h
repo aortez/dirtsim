@@ -24,6 +24,7 @@ struct RegionSummary {
     float max_velocity = 0.0f;
     float max_mac_water_face_speed = 0.0f;
     float max_mac_water_interface_face_speed = 0.0f;
+    float max_mac_water_surface_height_delta = 0.0f;
     float max_mac_water_volume_delta = 0.0f;
     float max_live_pressure_delta = 0.0f;
     float max_static_load_delta = 0.0f;
@@ -40,12 +41,14 @@ public:
         uint16_t quiet_frames_to_sleep = 12;
         float live_pressure_delta_epsilon = 0.02f;
         float mac_water_interface_face_speed_epsilon = 0.5f;
+        float mac_water_surface_height_delta_epsilon = 0.001f;
         float mac_water_volume_delta_epsilon = 0.0005f;
         float static_load_delta_epsilon = 0.02f;
         float velocity_epsilon = 0.01f;
         bool keep_empty_adjacent_awake = true;
-        bool keep_mac_water_interface_face_speed_awake = true;
+        bool keep_mac_water_interface_face_speed_awake = false;
         bool keep_mac_water_interface_awake = false;
+        bool keep_mac_water_surface_height_delta_awake = true;
         bool keep_mixed_material_awake = true;
         bool keep_organism_regions_awake = true;
         bool keep_water_adjacent_awake = true;
@@ -97,6 +100,7 @@ private:
     bool previous_gravity_initialized_ = false;
 
     std::vector<float> previous_live_pressure_;
+    std::vector<float> previous_mac_surface_effective_height_;
     std::vector<float> previous_static_load_;
 
     std::vector<RegionMeta> region_meta_;
