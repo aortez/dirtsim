@@ -1329,10 +1329,9 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = 0,
         .sigma = 0.5,
-        .resetRate = 0.0,
     };
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
@@ -1441,10 +1440,9 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = 5000,
         .sigma = 0.5,
-        .resetRate = 1.0,
     };
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
@@ -1499,10 +1497,9 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.048;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = 5000,
         .sigma = 0.5,
-        .resetRate = 1.0,
     };
     auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
@@ -1587,7 +1584,6 @@ TEST(StateEvolutionTest, AdaptiveBudgetedMutationTracksPhaseAndKeepsPopulationSi
     evolutionState.evolutionConfig.stagnationWindowGenerations = 1;
     evolutionState.evolutionConfig.recoveryWindowGenerations = 3;
     evolutionState.mutationConfig = MutationConfig{
-        .useBudget = true,
         .perturbationsPerOffspring = 10,
         .resetsPerOffspring = 1,
         .sigma = 0.05,
@@ -2163,7 +2159,6 @@ TEST(StateEvolutionTest, EvolutionMutationControlsSetUpdatesRunningConfig)
     Api::EvolutionMutationControlsSet::Command cmd{
         .mutationConfig =
             MutationConfig{
-                .useBudget = true,
                 .perturbationsPerOffspring = 6000,
                 .resetsPerOffspring = 250,
                 .sigma = 0.5,

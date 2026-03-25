@@ -590,7 +590,9 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     StartEvolutionButtonClickedEvent evt;
     evt.evolution.populationSize = 10;
     evt.evolution.maxGenerations = 5;
-    evt.mutation.rate = 0.1;
+    evt.mutation.perturbationsPerOffspring = 120;
+    evt.mutation.resetsPerOffspring = 2;
+    evt.mutation.sigma = 0.1;
     evt.training.scenarioId = Scenario::EnumType::TreeGermination;
     evt.training.organismType = OrganismType::TREE;
 
@@ -632,7 +634,9 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     StartEvolutionButtonClickedEvent evt;
     evt.evolution.populationSize = 10;
     evt.evolution.maxGenerations = 0;
-    evt.mutation.rate = 0.1;
+    evt.mutation.perturbationsPerOffspring = 120;
+    evt.mutation.resetsPerOffspring = 2;
+    evt.mutation.sigma = 0.1;
     evt.training.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     evt.training.organismType = OrganismType::NES_DUCK;
 
@@ -659,7 +663,9 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     };
     settingsOkay.settings.evolutionConfig.maxSimulationTime = 40.0;
     settingsOkay.settings.evolutionConfig.populationSize = 37;
-    settingsOkay.settings.mutationConfig.rate = 0.123;
+    settingsOkay.settings.mutationConfig.perturbationsPerOffspring = 321;
+    settingsOkay.settings.mutationConfig.resetsPerOffspring = 7;
+    settingsOkay.settings.mutationConfig.sigma = 0.123;
     settingsOkay.settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     settingsOkay.settings.trainingSpec.organismType = OrganismType::NES_DUCK;
 
@@ -684,7 +690,13 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     EXPECT_DOUBLE_EQ(
         local.evolutionConfig.maxSimulationTime,
         settingsOkay.settings.evolutionConfig.maxSimulationTime);
-    EXPECT_DOUBLE_EQ(local.mutationConfig.rate, settingsOkay.settings.mutationConfig.rate);
+    EXPECT_EQ(
+        local.mutationConfig.perturbationsPerOffspring,
+        settingsOkay.settings.mutationConfig.perturbationsPerOffspring);
+    EXPECT_EQ(
+        local.mutationConfig.resetsPerOffspring,
+        settingsOkay.settings.mutationConfig.resetsPerOffspring);
+    EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
 }
@@ -742,7 +754,6 @@ TEST(StateTrainingTest, TrainingActiveMutationControlsUpdateUsesLiveCommandAndPe
     Api::EvolutionMutationControlsSet::Okay mutationOkay{
         .mutationConfig =
             MutationConfig{
-                .useBudget = true,
                 .perturbationsPerOffspring = 320,
                 .resetsPerOffspring = 3,
                 .sigma = 0.072,
@@ -774,7 +785,6 @@ TEST(StateTrainingTest, TrainingActiveMutationControlsUpdateUsesLiveCommandAndPe
         .mutation = fixture.stateMachine->getUserSettings().mutationConfig,
         .controlMode = AdaptiveMutationControlMode::Explore,
     };
-    evt.mutation.useBudget = true;
     evt.mutation.perturbationsPerOffspring = 320;
     evt.mutation.resetsPerOffspring = 3;
     evt.mutation.sigma = 0.072;

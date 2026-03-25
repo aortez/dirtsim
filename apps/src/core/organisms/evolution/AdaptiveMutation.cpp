@@ -105,10 +105,6 @@ EffectiveAdaptiveMutation adaptiveMutationResolve(
         .mutationConfig = baselineConfig,
     };
 
-    if (!baselineConfig.useBudget) {
-        return effective;
-    }
-
     switch (adaptiveMutationPhaseResolve(trainingPhaseStatus.phase, controlMode)) {
         case TrainingPhase::Normal:
             return effective;

@@ -2701,9 +2701,9 @@ int main(int argc, char** argv)
     "maxSimulationTime": 600.0
   },
   "mutation": {
-    "rate": 0.015,
-    "sigma": 0.05,
-    "resetRate": 0.0005
+    "perturbationsPerOffspring": 200,
+    "resetsPerOffspring": 1,
+    "sigma": 0.05
   },
   "scenarioId": "TreeGermination",
   "organismType": "TREE",

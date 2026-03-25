@@ -821,10 +821,9 @@ Any Evolution::onEvent(const Api::EvolutionMutationControlsSet::Cwc& cwc, StateM
 
     LOG_INFO(
         State,
-        "Evolution: mutation controls updated control_mode={} use_budget={} perturbations={} "
-        "resets={} sigma={:.4f} stagnation_window={} recovery_window={}",
+        "Evolution: mutation controls updated control_mode={} perturbations={} resets={} "
+        "sigma={:.4f} stagnation_window={} recovery_window={}",
         adaptiveMutationControlModeName(applied.controlMode),
-        applied.mutationConfig.useBudget,
         applied.mutationConfig.perturbationsPerOffspring,
         applied.mutationConfig.resetsPerOffspring,
         applied.mutationConfig.sigma,
@@ -1725,11 +1724,9 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     LOG_INFO(
         State,
-        "Evolution: breeding config gen={} mode={} use_budget={} perturbations={} resets={} "
-        "sigma={:.4f}",
+        "Evolution: breeding config gen={} mode={} perturbations={} resets={} sigma={:.4f}",
         generation,
         adaptiveMutationModeName(effectiveAdaptiveMutation.mode),
-        effectiveMutationConfig.useBudget,
         effectiveMutationConfig.perturbationsPerOffspring,
         effectiveMutationConfig.resetsPerOffspring,
         effectiveMutationConfig.sigma);
@@ -1794,7 +1791,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     }
 
     lastEffectiveAdaptiveMutation_ = effectiveAdaptiveMutation;
-    lastGenTelemetry_.breedingUsesBudget = effectiveMutationConfig.useBudget;
+    lastGenTelemetry_.breedingUsesBudget = true;
     lastGenTelemetry_.breedingMutationMode = effectiveAdaptiveMutation.mode;
     lastGenTelemetry_.breedingResolvedPerturbationsPerOffspring =
         effectiveMutationConfig.perturbationsPerOffspring;

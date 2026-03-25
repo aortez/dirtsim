@@ -1823,10 +1823,9 @@ void TrainingActiveView::hideMutationControlsOverlay()
 
 void TrainingActiveView::updateMutationControlsEnabled()
 {
-    const bool budgeted = userSettings_.mutationConfig.useBudget;
-    setControlEnabled(mutationControlModeDropdown_, budgeted);
-    setControlEnabled(mutationPerturbationsStepper_, budgeted);
-    setControlEnabled(mutationResetsStepper_, budgeted);
+    setControlEnabled(mutationControlModeDropdown_, true);
+    setControlEnabled(mutationPerturbationsStepper_, true);
+    setControlEnabled(mutationResetsStepper_, true);
     setControlEnabled(mutationSigmaStepper_, true);
     setControlEnabled(mutationStagnationWindowStepper_, true);
     setControlEnabled(mutationRecoveryWindowStepper_, true);
@@ -1835,25 +1834,26 @@ void TrainingActiveView::updateMutationControlsEnabled()
         return;
     }
 
-    if (budgeted) {
-        lv_label_set_text(
-            mutationControlLegacyNoteLabel_,
-            "Applies on the next breeding generation. Manual mode overrides phase-driven staging.");
-        return;
-    }
-
     lv_label_set_text(
         mutationControlLegacyNoteLabel_,
-        "Adaptive staging is disabled for legacy per-weight mutation. Sigma still applies.");
+        "Live edits apply on the next breeding generation. The same baseline settings are also "
+        "available from Training Idle > Evolution Config before a run starts.");
 }
 
 void TrainingActiveView::updateMutationControlsSummary()
 {
     if (mutationControlPathLabel_) {
-        lv_label_set_text_fmt(
-            mutationControlPathLabel_,
-            "Path: %s",
-            userSettings_.mutationConfig.useBudget ? "Budgeted" : "Legacy");
+        char buf[128];
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Baseline: %d/%d/%.3f | Win: %d/%d",
+            userSettings_.mutationConfig.perturbationsPerOffspring,
+            userSettings_.mutationConfig.resetsPerOffspring,
+            userSettings_.mutationConfig.sigma,
+            userSettings_.evolutionConfig.stagnationWindowGenerations,
+            userSettings_.evolutionConfig.recoveryWindowGenerations);
+        lv_label_set_text(mutationControlPathLabel_, buf);
     }
 
     if (mutationControlPhaseLabel_) {
@@ -1872,7 +1872,7 @@ void TrainingActiveView::updateMutationControlsSummary()
             && mutationControlLatestGeneration_ == 0) {
             lv_label_set_text(mutationControlResolvedLabel_, "Resolved: --");
         }
-        else if (mutationControlLatestBreeding_.usesBudget) {
+        else {
             char buf[96];
             snprintf(
                 buf,
@@ -1880,15 +1880,6 @@ void TrainingActiveView::updateMutationControlsSummary()
                 "Resolved: %d/%d/%.3f",
                 mutationControlLatestBreeding_.resolvedPerturbationsPerOffspring,
                 mutationControlLatestBreeding_.resolvedResetsPerOffspring,
-                mutationControlLatestBreeding_.resolvedSigma);
-            lv_label_set_text(mutationControlResolvedLabel_, buf);
-        }
-        else {
-            char buf[96];
-            snprintf(
-                buf,
-                sizeof(buf),
-                "Resolved: legacy sigma %.3f",
                 mutationControlLatestBreeding_.resolvedSigma);
             lv_label_set_text(mutationControlResolvedLabel_, buf);
         }
@@ -3060,6 +3051,7 @@ void TrainingActiveView::onMutationPerturbationsChanged(lv_event_t* e)
 
     self->userSettings_.mutationConfig.perturbationsPerOffspring =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationPerturbationsStepper_);
+    self->updateMutationControlsSummary();
     self->queueMutationControlsUpdatedEvent();
 }
 
@@ -3072,6 +3064,7 @@ void TrainingActiveView::onMutationRecoveryWindowChanged(lv_event_t* e)
 
     self->userSettings_.evolutionConfig.recoveryWindowGenerations =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRecoveryWindowStepper_);
+    self->updateMutationControlsSummary();
     self->queueMutationControlsUpdatedEvent();
 }
 
@@ -3084,6 +3077,7 @@ void TrainingActiveView::onMutationResetsChanged(lv_event_t* e)
 
     self->userSettings_.mutationConfig.resetsPerOffspring =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationResetsStepper_);
+    self->updateMutationControlsSummary();
     self->queueMutationControlsUpdatedEvent();
 }
 
@@ -3096,6 +3090,7 @@ void TrainingActiveView::onMutationSigmaChanged(lv_event_t* e)
 
     self->userSettings_.mutationConfig.sigma =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationSigmaStepper_) / 1000.0;
+    self->updateMutationControlsSummary();
     self->queueMutationControlsUpdatedEvent();
 }
 
@@ -3108,6 +3103,7 @@ void TrainingActiveView::onMutationStagnationWindowChanged(lv_event_t* e)
 
     self->userSettings_.evolutionConfig.stagnationWindowGenerations =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationStagnationWindowStepper_);
+    self->updateMutationControlsSummary();
     self->queueMutationControlsUpdatedEvent();
 }
 

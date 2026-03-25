@@ -120,68 +120,46 @@ Genome mutate(
     Genome child = parent;
 
     std::normal_distribution<WeightType> noise(0.0f, config.sigma);
-    std::uniform_real_distribution<WeightType> coin(0.0f, 1.0f);
+    const size_t weightCount = child.weights.size();
+    const size_t resetCount = clampMutationCount(config.resetsPerOffspring, weightCount);
+    const size_t perturbCount =
+        clampMutationCount(config.perturbationsPerOffspring, weightCount - resetCount);
 
-    if (config.useBudget) {
-        const size_t weightCount = child.weights.size();
-        const size_t resetCount = clampMutationCount(config.resetsPerOffspring, weightCount);
-        const size_t perturbCount =
-            clampMutationCount(config.perturbationsPerOffspring, weightCount - resetCount);
+    DIRTSIM_ASSERT(!layout.segments.empty(), "Mutation: layout must have segments");
+    DIRTSIM_ASSERT(
+        layout.totalSize() == static_cast<int>(weightCount),
+        "Mutation: layout totalSize must match genome weight count");
 
-        DIRTSIM_ASSERT(!layout.segments.empty(), "Mutation: layout must have segments");
-        DIRTSIM_ASSERT(
-            layout.totalSize() == static_cast<int>(weightCount),
-            "Mutation: layout totalSize must match genome weight count");
-
-        // Resets: sample globally (reset count is typically very small, 1-2).
-        if (resetCount > 0) {
-            const auto resetIndices = sampleUniqueIndices(weightCount, resetCount, rng);
-            for (const size_t idx : resetIndices) {
-                child.weights[idx] = noise(rng) * 2.0f;
-                if (stats) {
-                    stats->resets++;
-                }
+    // Resets: sample globally (reset count is typically very small, 1-2).
+    if (resetCount > 0) {
+        const auto resetIndices = sampleUniqueIndices(weightCount, resetCount, rng);
+        for (const size_t idx : resetIndices) {
+            child.weights[idx] = noise(rng) * 2.0f;
+            if (stats) {
+                stats->resets++;
             }
-        }
-
-        // Perturbations: distribute across segments with floor-of-1 per segment.
-        const auto segBudgets = distributeBudget(layout, static_cast<int>(perturbCount));
-        int segOffset = 0;
-        for (size_t s = 0; s < layout.segments.size(); ++s) {
-            const int segSize = layout.segments[s].size;
-            const int segBudget = segBudgets[s];
-
-            if (segBudget > 0 && segSize > 0) {
-                const auto indices = sampleUniqueIndices(
-                    static_cast<size_t>(segSize), static_cast<size_t>(segBudget), rng);
-                for (const size_t localIdx : indices) {
-                    const size_t globalIdx = static_cast<size_t>(segOffset) + localIdx;
-                    child.weights[globalIdx] += noise(rng);
-                    if (stats) {
-                        stats->perturbations++;
-                    }
-                }
-            }
-            segOffset += segSize;
         }
     }
-    else {
-        // Per-weight (legacy) path: iterate every weight independently.
-        for (size_t i = 0; i < child.weights.size(); i++) {
-            const WeightType r = coin(rng);
-            if (r < config.resetRate) {
-                child.weights[i] = noise(rng) * 2.0f;
-                if (stats) {
-                    stats->resets++;
-                }
-            }
-            else if (r < config.resetRate + config.rate) {
-                child.weights[i] += noise(rng);
+
+    // Perturbations: distribute across segments with floor-of-1 per segment.
+    const auto segBudgets = distributeBudget(layout, static_cast<int>(perturbCount));
+    int segOffset = 0;
+    for (size_t s = 0; s < layout.segments.size(); ++s) {
+        const int segSize = layout.segments[s].size;
+        const int segBudget = segBudgets[s];
+
+        if (segBudget > 0 && segSize > 0) {
+            const auto indices = sampleUniqueIndices(
+                static_cast<size_t>(segSize), static_cast<size_t>(segBudget), rng);
+            for (const size_t localIdx : indices) {
+                const size_t globalIdx = static_cast<size_t>(segOffset) + localIdx;
+                child.weights[globalIdx] += noise(rng);
                 if (stats) {
                     stats->perturbations++;
                 }
             }
         }
+        segOffset += segSize;
     }
 
     return child;

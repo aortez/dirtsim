@@ -36,10 +36,9 @@ TEST_F(MutationTest, MutationChangesWeights)
     const Genome parent(kTestGenomeSize, 1.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = false,
-        .rate = 0.5, // High rate to ensure changes.
+        .perturbationsPerOffspring = 50,
+        .resetsPerOffspring = 0,
         .sigma = 0.1,
-        .resetRate = 0.0,
     };
 
     const Genome child = mutate(parent, config, layout, rng);
@@ -54,15 +53,14 @@ TEST_F(MutationTest, MutationChangesWeights)
     EXPECT_GT(changed, 0);
 }
 
-TEST_F(MutationTest, ZeroRateProducesIdenticalGenome)
+TEST_F(MutationTest, ZeroBudgetProducesIdenticalGenome)
 {
     const Genome parent(kTestGenomeSize, 1.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = 0,
         .sigma = 0.1,
-        .resetRate = 0.0,
     };
 
     const Genome child = mutate(parent, config, layout, rng);
@@ -76,10 +74,9 @@ TEST_F(MutationTest, MutationPreservesGenomeSize)
     const Genome parent = NeuralNetBrain::randomGenome(genRng);
     const auto layout = NeuralNetBrain::getGenomeLayout();
     const MutationConfig config{
-        .useBudget = false,
-        .rate = 0.1,
+        .perturbationsPerOffspring = 100,
+        .resetsPerOffspring = 1,
         .sigma = 0.05,
-        .resetRate = 0.001,
     };
 
     const Genome child = mutate(parent, config, layout, rng);
@@ -87,15 +84,14 @@ TEST_F(MutationTest, MutationPreservesGenomeSize)
     EXPECT_EQ(parent.weights.size(), child.weights.size());
 }
 
-TEST_F(MutationTest, HighResetRateChangesWeightsSignificantly)
+TEST_F(MutationTest, FullResetBudgetChangesWeightsSignificantly)
 {
     const Genome parent(kTestGenomeSize, 0.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = kTestGenomeSize,
         .sigma = 0.5,
-        .resetRate = 1.0, // Reset everything.
     };
 
     const Genome child = mutate(parent, config, layout, rng);
@@ -115,10 +111,9 @@ TEST_F(MutationTest, StatsCountsMutations)
     const Genome parent(kTestGenomeSize, 0.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = false,
-        .rate = 0.0,
+        .perturbationsPerOffspring = 0,
+        .resetsPerOffspring = kTestGenomeSize,
         .sigma = 0.5,
-        .resetRate = 1.0, // Reset everything.
     };
 
     MutationStats stats;
@@ -134,7 +129,6 @@ TEST_F(MutationTest, BudgetedMutationUsesFixedCounts)
     const Genome parent(kTestGenomeSize, 0.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = true,
         .perturbationsPerOffspring = 10,
         .resetsPerOffspring = 5,
         .sigma = 0.2,
@@ -153,7 +147,6 @@ TEST_F(MutationTest, BudgetedMutationClampsToGenomeSize)
     const Genome parent(kTestGenomeSize, 0.0f);
     const auto layout = makeTestLayout();
     const MutationConfig config{
-        .useBudget = true,
         .perturbationsPerOffspring = kTestGenomeSize,
         .resetsPerOffspring = kTestGenomeSize + 10,
         .sigma = 0.2,
@@ -182,7 +175,6 @@ TEST_F(MutationTest, LayerAwareFloorOfOnePerSegment)
     };
     const Genome parent(100, 0.0f);
     const MutationConfig config{
-        .useBudget = true,
         .perturbationsPerOffspring = 10,
         .resetsPerOffspring = 0,
         .sigma = 1.0,
@@ -227,7 +219,6 @@ TEST_F(MutationTest, LayerAwareProportionalDistribution)
     };
     const Genome parent(100, 0.0f);
     const MutationConfig config{
-        .useBudget = true,
         .perturbationsPerOffspring = 50,
         .resetsPerOffspring = 0,
         .sigma = 1.0,

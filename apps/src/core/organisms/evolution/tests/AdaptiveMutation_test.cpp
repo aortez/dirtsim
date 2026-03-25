@@ -9,7 +9,6 @@ namespace {
 MutationConfig makeBudgetedBaseline()
 {
     return MutationConfig{
-        .useBudget = true,
         .perturbationsPerOffspring = 200,
         .resetsPerOffspring = 1,
         .sigma = 0.05,
@@ -76,7 +75,6 @@ TEST(AdaptiveMutationTest, RecoveryDecaysPreviousEffectiveSettingsTowardBaseline
         .mode = AdaptiveMutationMode::Rescue,
         .mutationConfig =
             MutationConfig{
-                .useBudget = true,
                 .perturbationsPerOffspring = 500,
                 .resetsPerOffspring = 4,
                 .sigma = 0.08,
@@ -116,19 +114,13 @@ TEST(AdaptiveMutationTest, RecoveryDecaysPreviousEffectiveSettingsTowardBaseline
     EXPECT_DOUBLE_EQ(lateRecovery.mutationConfig.sigma, baseline.sigma);
 }
 
-TEST(AdaptiveMutationTest, LegacyPerWeightPathStaysAtBaseline)
+TEST(AdaptiveMutationTest, NormalPhaseKeepsBaselineSettings)
 {
-    const MutationConfig baseline{
-        .useBudget = false,
-        .rate = 0.2,
-        .sigma = 0.3,
-        .resetRate = 0.1,
-    };
+    const MutationConfig baseline = makeBudgetedBaseline();
     const EffectiveAdaptiveMutation previous{
         .mode = AdaptiveMutationMode::Rescue,
         .mutationConfig =
             MutationConfig{
-                .useBudget = true,
                 .perturbationsPerOffspring = 500,
                 .resetsPerOffspring = 4,
                 .sigma = 0.08,
@@ -138,15 +130,15 @@ TEST(AdaptiveMutationTest, LegacyPerWeightPathStaysAtBaseline)
     const EffectiveAdaptiveMutation effective = adaptiveMutationResolve(
         baseline,
         TrainingPhaseStatus{
-            .phase = TrainingPhase::Stuck,
+            .phase = TrainingPhase::Normal,
         },
         previous,
         EvolutionConfig{});
 
     EXPECT_EQ(effective.mode, AdaptiveMutationMode::Baseline);
-    EXPECT_FALSE(effective.mutationConfig.useBudget);
-    EXPECT_DOUBLE_EQ(effective.mutationConfig.rate, baseline.rate);
-    EXPECT_DOUBLE_EQ(effective.mutationConfig.resetRate, baseline.resetRate);
+    EXPECT_EQ(
+        effective.mutationConfig.perturbationsPerOffspring, baseline.perturbationsPerOffspring);
+    EXPECT_EQ(effective.mutationConfig.resetsPerOffspring, baseline.resetsPerOffspring);
     EXPECT_DOUBLE_EQ(effective.mutationConfig.sigma, baseline.sigma);
 }
 
@@ -157,7 +149,6 @@ TEST(AdaptiveMutationTest, ForcedBaselineIgnoresStuckPhase)
         .mode = AdaptiveMutationMode::Rescue,
         .mutationConfig =
             MutationConfig{
-                .useBudget = true,
                 .perturbationsPerOffspring = 500,
                 .resetsPerOffspring = 4,
                 .sigma = 0.08,
