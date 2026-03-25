@@ -68,6 +68,25 @@ bool DuckClockEvaluationTracker::floorObstacleMatches(
     return left.start_x == right.start_x && left.width == right.width && left.type == right.type;
 }
 
+double DuckClockEvaluationTracker::resolveTraversalProgress(
+    int x, int worldWidth, WallZone lastTouchedWallZone)
+{
+    const int leftBoundary = kWallTouchZoneWidth;
+    const int rightBoundary = std::max(0, worldWidth - (kWallTouchZoneWidth + 1));
+    const double span = std::max(1, rightBoundary - leftBoundary);
+
+    switch (lastTouchedWallZone) {
+        case WallZone::Left:
+            return std::clamp((static_cast<double>(x) - leftBoundary) / span, 0.0, 1.0);
+        case WallZone::Right:
+            return std::clamp((static_cast<double>(rightBoundary) - x) / span, 0.0, 1.0);
+        case WallZone::None:
+            return 0.0;
+    }
+
+    return 0.0;
+}
+
 void DuckClockEvaluationTracker::markExitedThroughDoor(double simTime)
 {
     artifacts_.bestExitDoorDistanceCells = 0.0;
@@ -99,6 +118,7 @@ void DuckClockEvaluationTracker::reset()
 {
     artifacts_ = DuckClockEvaluationArtifacts{};
     activeOpportunityObstacles_.clear();
+    currentTraversalProgress_ = 0.0;
     currentWallZone_ = WallZone::None;
     jumpAttempt_.reset();
     lastTouchedWallZone_ = WallZone::None;
@@ -122,6 +142,7 @@ DuckClockEvaluationTracker::WallZone DuckClockEvaluationTracker::resolveWallZone
 void DuckClockEvaluationTracker::update(const DuckClockTrackerFrame& frame)
 {
     updateTraversalState(frame);
+    updateTraversalProgress(frame);
     updateExitDoorDistance(frame);
     updateObstacleOpportunities(frame);
 
@@ -223,6 +244,15 @@ void DuckClockEvaluationTracker::updateExitDoorDistance(const DuckClockTrackerFr
     artifacts_.exitDoorDistanceObserved = true;
 }
 
+void DuckClockEvaluationTracker::updateTraversalProgress(const DuckClockTrackerFrame& frame)
+{
+    currentTraversalProgress_ = std::max(
+        currentTraversalProgress_,
+        resolveTraversalProgress(frame.duckAnchorCell.x, frame.worldWidth, lastTouchedWallZone_));
+    artifacts_.traversalProgress =
+        static_cast<double>(artifacts_.fullTraversals) + currentTraversalProgress_;
+}
+
 void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFrame& frame)
 {
     const WallZone wallZone = resolveWallZone(frame.duckAnchorCell.x, frame.worldWidth);
@@ -237,6 +267,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             if (lastTouchedWallZone_ == WallZone::Right) {
                 ++artifacts_.fullTraversals;
                 activeOpportunityObstacles_.clear();
+                currentTraversalProgress_ = 0.0;
             }
             lastTouchedWallZone_ = WallZone::Left;
             break;
@@ -245,6 +276,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             if (lastTouchedWallZone_ == WallZone::Left) {
                 ++artifacts_.fullTraversals;
                 activeOpportunityObstacles_.clear();
+                currentTraversalProgress_ = 0.0;
             }
             lastTouchedWallZone_ = WallZone::Right;
             break;

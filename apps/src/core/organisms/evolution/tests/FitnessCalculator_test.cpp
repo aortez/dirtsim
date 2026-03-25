@@ -652,22 +652,138 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndProximityBo
     const DuckFitnessBreakdown baseBreakdown = DuckEvaluator::evaluateWithBreakdown(baseContext);
     const DuckFitnessBreakdown boostedBreakdown =
         DuckEvaluator::evaluateWithBreakdown(boostedContext);
+    const double blendedClearScore = 0.7 + (0.3 * (1.0 - std::exp(-1.0 / 3.0)));
 
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalScore, 1.0 - std::exp(-1.0));
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalBonus, 0.45 * (1.0 - std::exp(-1.0)));
-    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearScore, 1.0);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearBonus, 0.12);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearScore, 1.0);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearBonus, 0.18);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleScore, 1.0);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleBonus, 0.3);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearScore, blendedClearScore);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearBonus, 0.12 * blendedClearScore);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearScore, blendedClearScore);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearBonus, 0.18 * blendedClearScore);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleScore, blendedClearScore);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleBonus, 0.3 * blendedClearScore);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityScore, 0.5);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityBonus, 0.125);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorBonus, 0.0);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.clockBonus, 0.425 + (0.45 * (1.0 - std::exp(-1.0))));
+    EXPECT_DOUBLE_EQ(
+        boostedBreakdown.clockBonus,
+        (0.3 * blendedClearScore) + 0.125 + (0.45 * (1.0 - std::exp(-1.0))));
     EXPECT_DOUBLE_EQ(
         boostedBreakdown.totalFitness - baseBreakdown.totalFitness,
-        0.425 + (0.45 * (1.0 - std::exp(-1.0))));
+        (0.3 * blendedClearScore) + 0.125 + (0.45 * (1.0 - std::exp(-1.0))));
+}
+
+TEST(FitnessCalculatorTest, DuckClockTraversalScoreIncludesPartialReturnProgress)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 2.0, 0.0 },
+        });
+
+    const FitnessContext fullTraversalContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .fullTraversals = 1,
+                        .traversalProgress = 1.0,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+    const FitnessContext partialReturnContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .fullTraversals = 1,
+                        .traversalProgress = 1.5,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+
+    const DuckFitnessBreakdown fullTraversalBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(fullTraversalContext);
+    const DuckFitnessBreakdown partialReturnBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(partialReturnContext);
+
+    EXPECT_GT(partialReturnBreakdown.traversalScore, fullTraversalBreakdown.traversalScore);
+    EXPECT_GT(partialReturnBreakdown.traversalBonus, fullTraversalBreakdown.traversalBonus);
+    EXPECT_GT(partialReturnBreakdown.totalFitness, fullTraversalBreakdown.totalFitness);
+}
+
+TEST(FitnessCalculatorTest, DuckClockObstacleScoreRewardsRepeatedSuccessfulClears)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 2.0, 0.0 },
+        });
+
+    const FitnessContext oneLapContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .hurdleClears = 1,
+                        .hurdleOpportunities = 1,
+                        .pitClears = 1,
+                        .pitOpportunities = 1,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+    const FitnessContext repeatedCleanLapContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .hurdleClears = 3,
+                        .hurdleOpportunities = 3,
+                        .pitClears = 3,
+                        .pitOpportunities = 3,
+                    },
+            },
+        .organismTrackingHistory = &history,
+    };
+
+    const DuckFitnessBreakdown oneLapBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(oneLapContext);
+    const DuckFitnessBreakdown repeatedCleanLapBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(repeatedCleanLapContext);
+
+    EXPECT_GT(repeatedCleanLapBreakdown.hurdleClearScore, oneLapBreakdown.hurdleClearScore);
+    EXPECT_GT(repeatedCleanLapBreakdown.pitClearScore, oneLapBreakdown.pitClearScore);
+    EXPECT_GT(repeatedCleanLapBreakdown.obstacleScore, oneLapBreakdown.obstacleScore);
+    EXPECT_GT(repeatedCleanLapBreakdown.obstacleBonus, oneLapBreakdown.obstacleBonus);
 }
 
 TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesFullExitBonus)

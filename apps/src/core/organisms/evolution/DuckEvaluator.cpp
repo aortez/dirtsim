@@ -31,6 +31,9 @@ struct DuckClockScoringConfig {
     double exitDoorProximityRadiusCells = 10.0;
     double exitDoorCompletionBonus = 0.5;
     double exitDoorProximityWeight = 0.25;
+    double obstacleClearCountReference = 3.0;
+    double obstacleClearCountWeight = 0.30;
+    double obstacleClearRateWeight = 0.70;
     double hurdleScoreWeight = 0.40;
     double obstacleWeight = 0.30;
     double pitScoreWeight = 0.60;
@@ -150,6 +153,20 @@ double computeOpportunityRate(double clears, double opportunities)
     return MovementScoring::clamp01(clears / opportunities);
 }
 
+double computeObstacleClearScore(double clears, double opportunities)
+{
+    if (opportunities <= 0.0) {
+        return 0.0;
+    }
+
+    const double creditedClears = std::min(clears, opportunities);
+    const double rateScore = computeOpportunityRate(creditedClears, opportunities);
+    const double countScore = MovementScoring::saturatingScore(
+        creditedClears, kDuckClockScoringConfig.obstacleClearCountReference);
+    return (kDuckClockScoringConfig.obstacleClearRateWeight * rateScore)
+        + (kDuckClockScoringConfig.obstacleClearCountWeight * countScore);
+}
+
 } // namespace
 
 double DuckEvaluator::evaluate(const FitnessContext& context)
@@ -222,14 +239,16 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
         breakdown.pitClears = static_cast<double>(clock.pitClears);
         breakdown.pitOpportunities = static_cast<double>(clock.pitOpportunities);
         breakdown.rightWallTouches = static_cast<double>(clock.rightWallTouches);
+        const double traversalProgress =
+            std::max(breakdown.fullTraversals, clock.traversalProgress);
         breakdown.traversalScore = MovementScoring::saturatingScore(
-            breakdown.fullTraversals, kDuckClockScoringConfig.traversalReference);
+            traversalProgress, kDuckClockScoringConfig.traversalReference);
         breakdown.traversalBonus =
             kDuckClockScoringConfig.traversalWeight * breakdown.traversalScore;
         breakdown.pitClearScore =
-            computeOpportunityRate(breakdown.pitClears, breakdown.pitOpportunities);
+            computeObstacleClearScore(breakdown.pitClears, breakdown.pitOpportunities);
         breakdown.hurdleClearScore =
-            computeOpportunityRate(breakdown.hurdleClears, breakdown.hurdleOpportunities);
+            computeObstacleClearScore(breakdown.hurdleClears, breakdown.hurdleOpportunities);
         breakdown.obstacleScore = (kDuckClockScoringConfig.pitScoreWeight * breakdown.pitClearScore)
             + (kDuckClockScoringConfig.hurdleScoreWeight * breakdown.hurdleClearScore);
         breakdown.pitClearBonus = kDuckClockScoringConfig.obstacleWeight

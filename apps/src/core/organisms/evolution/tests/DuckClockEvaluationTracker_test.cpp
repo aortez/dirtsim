@@ -39,8 +39,54 @@ TEST(DuckClockEvaluationTrackerTest, RecordsWallTouchesTraversalsAndExitDistance
     EXPECT_EQ(artifacts.leftWallTouches, 1);
     EXPECT_EQ(artifacts.rightWallTouches, 1);
     EXPECT_EQ(artifacts.fullTraversals, 1);
+    EXPECT_DOUBLE_EQ(artifacts.traversalProgress, 1.0);
     EXPECT_TRUE(artifacts.exitDoorDistanceObserved);
     EXPECT_DOUBLE_EQ(artifacts.bestExitDoorDistanceCells, 1.0);
+}
+
+TEST(DuckClockEvaluationTrackerTest, TracksPartialTraversalProgressBetweenWallTouches)
+{
+    DuckClockEvaluationTracker tracker;
+    tracker.reset();
+
+    const std::array<FloorObstacle, 0> noObstacles{};
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 1, 8 },
+            .duckOnGround = true,
+            .obstacles = noObstacles,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 10, 8 },
+            .duckOnGround = true,
+            .obstacles = noObstacles,
+        });
+
+    DuckClockEvaluationArtifacts artifacts = tracker.buildArtifacts();
+    EXPECT_EQ(artifacts.fullTraversals, 0);
+    EXPECT_NEAR(artifacts.traversalProgress, 8.0 / 15.0, 1e-9);
+
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 18, 8 },
+            .duckOnGround = true,
+            .obstacles = noObstacles,
+        });
+    tracker.update(
+        DuckClockTrackerFrame{
+            .worldWidth = 20,
+            .duckAnchorCell = { 10, 8 },
+            .duckOnGround = true,
+            .obstacles = noObstacles,
+        });
+
+    artifacts = tracker.buildArtifacts();
+    EXPECT_EQ(artifacts.fullTraversals, 1);
+    EXPECT_NEAR(artifacts.traversalProgress, 1.0 + (7.0 / 15.0), 1e-9);
 }
 
 TEST(DuckClockEvaluationTrackerTest, CountsPitAndHurdleClearsAcrossJumpArcs)
