@@ -41,11 +41,21 @@ struct Okay {
     double cpu_percent = 0.0;
     double memory_percent = 0.0;
 
+    // Conservative MAC-water solver shadow stats. When available, these describe how much of the
+    // current water footprint would remain active or skippable under the tracked sleep mask,
+    // without actually skipping solver work yet.
+    bool water_sleep_shadow_available = false;
+    uint32_t water_sleep_shadow_total_cells = 0;
+    uint32_t water_sleep_shadow_total_regions = 0;
+    uint32_t water_sleep_shadow_active_regions = 0;
+    uint32_t water_sleep_shadow_skippable_cells = 0;
+    uint32_t water_sleep_shadow_skippable_regions = 0;
+
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
 
     // zpp_bits serialization.
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<14>;
 };
 
 using OkayType = Okay;

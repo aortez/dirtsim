@@ -3,12 +3,14 @@
 #include "core/World.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterSim.h"
 #include "core/water/WaterVolumeView.h"
 #include "server/UserSettings.h"
 #include "server/api/BulkWaterSet.h"
 #include "server/api/CellSet.h"
 #include "server/api/SpawnDirtBall.h"
 #include "server/api/SpawnWaterBall.h"
+#include "server/api/StatusGet.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
@@ -58,6 +60,20 @@ void applyCleanScenario(SimRunning& simRunning)
     ASSERT_NE(scenario, nullptr);
     ASSERT_EQ(simRunning.session.getScenarioId(), Scenario::EnumType::Sandbox);
     scenario->setConfig(cleanConfig, *world);
+}
+
+void fillStillPool(World& world)
+{
+    const WorldData& data = world.getData();
+    const int startX = std::max(2, data.width / 4);
+    const int endX = std::min(data.width - 3, (data.width * 3) / 4);
+    const int surfaceY = std::max(2, data.height / 2);
+
+    for (int y = surfaceY; y < data.height - 1; ++y) {
+        for (int x = startX; x <= endX; ++x) {
+            world.setBulkWaterAmountAtCell(x, y, 1.0f);
+        }
+    }
 }
 
 bool hasLegacyWaterCells(const World& world)
@@ -275,6 +291,54 @@ TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
     EXPECT_EQ(
         worldData.water_volume->size(),
         static_cast<size_t>(expected_width) * static_cast<size_t>(expected_height));
+}
+
+TEST(StateSimRunningTest, StatusGet_ReturnsWaterSleepShadowStats)
+{
+    constexpr int kSettleFrames = 32;
+
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(simRunning);
+    World* world = simRunning.session.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    fillStillPool(*world);
+    for (int frame = 0; frame < kSettleFrames; ++frame) {
+        simRunning.tick(*fixture.stateMachine);
+    }
+
+    WaterSleepShadowStats expectedStats{};
+    ASSERT_TRUE(world->tryGetWaterSleepShadowStats(expectedStats));
+    EXPECT_GT(expectedStats.totalWaterRegions, 0u);
+
+    bool callbackInvoked = false;
+    Api::StatusGet::Response capturedResponse;
+
+    Api::StatusGet::Command cmd;
+    Api::StatusGet::Cwc cwc(cmd, [&](Api::StatusGet::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    SimRunning& updatedState = std::get<SimRunning>(newState.getVariant());
+
+    ASSERT_TRUE(callbackInvoked) << "StatusGet callback should be invoked";
+    ASSERT_TRUE(capturedResponse.isValue()) << "StatusGet should return success";
+
+    const Api::StatusGet::Okay& status = capturedResponse.value();
+    EXPECT_TRUE(status.water_sleep_shadow_available);
+    EXPECT_EQ(status.timestep, static_cast<int32_t>(updatedState.stepCount));
+    EXPECT_EQ(status.water_sleep_shadow_total_cells, expectedStats.totalWaterCells);
+    EXPECT_EQ(status.water_sleep_shadow_total_regions, expectedStats.totalWaterRegions);
+    EXPECT_EQ(status.water_sleep_shadow_active_regions, expectedStats.shadowActiveWaterRegions);
+    EXPECT_EQ(status.water_sleep_shadow_skippable_cells, expectedStats.shadowSkippableWaterCells);
+    EXPECT_EQ(
+        status.water_sleep_shadow_skippable_regions, expectedStats.shadowSkippableWaterRegions);
 }
 
 /**

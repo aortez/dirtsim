@@ -24,6 +24,7 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterSim.h"
 #include "core/water/WaterVolumeView.h"
 #include "server/EventProcessor.h"
 #include "server/StateMachine.h"
@@ -1240,6 +1241,17 @@ State::Any SimRunning::onEvent(const Api::StatusGet::Cwc& cwc, StateMachine& /*d
     }
     status.width = worldData->width;
     status.height = worldData->height;
+    if (const World* world = session.getWorld()) {
+        WaterSleepShadowStats shadowStats{};
+        if (world->tryGetWaterSleepShadowStats(shadowStats)) {
+            status.water_sleep_shadow_available = true;
+            status.water_sleep_shadow_total_cells = shadowStats.totalWaterCells;
+            status.water_sleep_shadow_total_regions = shadowStats.totalWaterRegions;
+            status.water_sleep_shadow_active_regions = shadowStats.shadowActiveWaterRegions;
+            status.water_sleep_shadow_skippable_cells = shadowStats.shadowSkippableWaterCells;
+            status.water_sleep_shadow_skippable_regions = shadowStats.shadowSkippableWaterRegions;
+        }
+    }
 
     spdlog::debug(
         "SimRunning: API status_get (step {}, {}x{})",

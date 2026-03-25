@@ -37,6 +37,7 @@
 #include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/water/WaterSim.h"
 #include "core/water/WaterVolumeView.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/HttpServer.h"
@@ -968,6 +969,20 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
                 using T = std::decay_t<decltype(state)>;
                 if constexpr (std::is_same_v<T, State::SimRunning>) {
                     status.scenario_id = state.session.getScenarioId();
+                    if (const World* world = state.session.getWorld()) {
+                        WaterSleepShadowStats shadowStats{};
+                        if (world->tryGetWaterSleepShadowStats(shadowStats)) {
+                            status.water_sleep_shadow_available = true;
+                            status.water_sleep_shadow_total_cells = shadowStats.totalWaterCells;
+                            status.water_sleep_shadow_total_regions = shadowStats.totalWaterRegions;
+                            status.water_sleep_shadow_active_regions =
+                                shadowStats.shadowActiveWaterRegions;
+                            status.water_sleep_shadow_skippable_cells =
+                                shadowStats.shadowSkippableWaterCells;
+                            status.water_sleep_shadow_skippable_regions =
+                                shadowStats.shadowSkippableWaterRegions;
+                        }
+                    }
                 }
                 else if constexpr (std::is_same_v<T, State::Error>) {
                     status.error_message = state.error_message;
