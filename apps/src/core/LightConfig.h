@@ -18,6 +18,7 @@ struct LightConfig {
     float ambient_intensity;
     uint32_t sky_color;
     float sky_intensity;
+    float local_light_indirect_scale;
     int steps_per_frame;
     uint32_t sun_color;
     float sun_intensity;

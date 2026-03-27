@@ -115,6 +115,7 @@ protected:
             .ambient_intensity = 0.3f,
             .sky_color = ColorNames::skyBlue(),
             .sky_intensity = 0.0f,
+            .local_light_indirect_scale = 1.0f,
             .steps_per_frame = 25,
             .sun_color = ColorNames::warmSunlight(),
             .sun_intensity = 1.0f,

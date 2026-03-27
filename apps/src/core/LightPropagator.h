@@ -11,9 +11,13 @@ class Timers;
 
 namespace DirtSim {
 
+class Cell;
 class GridOfCells;
 class World;
 struct LightConfig;
+struct PointLight;
+struct RotatingLight;
+struct SpotLight;
 struct WorldData;
 
 // 8 compass directions for light propagation.
@@ -83,17 +87,54 @@ public:
     void setAmbientBoost(ColorNames::RgbF boost) override;
 
 private:
+    void applyDirectLocalLights(World& world, const GridOfCells& grid, float indirect_scale);
+    void applyDirectPointLight(
+        const PointLight& light, World& world, const GridOfCells& grid, float indirect_scale);
+    void applyDirectRotatingLight(
+        const RotatingLight& light, World& world, const GridOfCells& grid, float indirect_scale);
+    void applyDirectSpotLight(
+        const SpotLight& light, World& world, const GridOfCells& grid, float indirect_scale);
+    void applyLocalIndirectSpill(WorldData& data, bool air_fast_path);
     void applyFlatBasic(WorldData& data);
     void clearPropagatedState();
+    void clearLocalSpillState();
     void ensureBufferSizes(int width, int height);
+    float getSpotAngularFactor(
+        const Vector2f& light_pos,
+        float direction,
+        float arc_width,
+        float focus,
+        const Vector2f& target_pos) const;
+    void propagateFieldStep(
+        const WorldData& data,
+        bool air_fast_path,
+        const GridBuffer<DirectionalLight>& src,
+        GridBuffer<DirectionalLight>& dst);
     void propagateStep(const WorldData& data, bool air_fast_path);
     void injectSources(World& world, const LightConfig& config);
     void applyAmbient(WorldData& data, const LightConfig& config);
+    void seedIndirectSpill(
+        int x,
+        int y,
+        const ColorNames::RgbF& direct_light,
+        const Cell& cell,
+        float indirect_strength);
     void storeRawLight(WorldData& data);
+    ColorNames::RgbF traceRay(
+        const GridOfCells& grid,
+        const WorldData& data,
+        float x0,
+        float y0,
+        int x1,
+        int y1,
+        ColorNames::RgbF color) const;
 
     GridBuffer<DirectionalLight> light_field_;
     GridBuffer<DirectionalLight> light_field_next_;
+    GridBuffer<DirectionalLight> spill_field_;
+    GridBuffer<DirectionalLight> spill_field_next_;
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
+    bool has_spill_seed_ = false;
     bool inFlatBasicMode_ = false;
     ColorNames::RgbF ambient_boost_{};
     LightBuffer raw_light_;

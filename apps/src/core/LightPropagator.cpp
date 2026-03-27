@@ -87,6 +87,14 @@ void LightPropagator::clearPropagatedState()
 {
     light_field_.clear();
     light_field_next_.clear();
+    clearLocalSpillState();
+}
+
+void LightPropagator::clearLocalSpillState()
+{
+    spill_field_.clear();
+    spill_field_next_.clear();
+    has_spill_seed_ = false;
 }
 
 void LightPropagator::ensureBufferSizes(int width, int height)
@@ -95,12 +103,20 @@ void LightPropagator::ensureBufferSizes(int width, int height)
         light_field_.resize(width, height);
         light_field_next_.resize(width, height);
     }
+    if (spill_field_.width != width || spill_field_.height != height) {
+        spill_field_.resize(width, height);
+        spill_field_next_.resize(width, height);
+    }
     if (emissive_overlay_.width != width || emissive_overlay_.height != height) {
         emissive_overlay_.resize(width, height, ColorNames::RgbF{});
     }
 }
 
-void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
+void LightPropagator::propagateFieldStep(
+    const WorldData& data,
+    bool air_fast_path,
+    const GridBuffer<DirectionalLight>& src,
+    GridBuffer<DirectionalLight>& dst)
 {
     const int width = data.width;
     const int height = data.height;
@@ -126,7 +142,7 @@ void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
             const float fill = cell.fill_ratio;
             const float eff_opacity = props.opacity * fill;
 
-            auto& dst = light_field_next_.at(x, y);
+            auto& dst_cell = dst.at(x, y);
 
             // Fast path: near-transparent cells just forward light with no scatter.
             if (air_fast_path && eff_opacity < kTransparentThreshold) {
@@ -139,10 +155,10 @@ void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
                         continue;
                     }
 
-                    const ColorNames::RgbF& incoming = light_field_.at(ux, uy).channel[di];
-                    dst.channel[di].r += incoming.r;
-                    dst.channel[di].g += incoming.g;
-                    dst.channel[di].b += incoming.b;
+                    const ColorNames::RgbF& incoming = src.at(ux, uy).channel[di];
+                    dst_cell.channel[di].r += incoming.r;
+                    dst_cell.channel[di].g += incoming.g;
+                    dst_cell.channel[di].b += incoming.b;
                 }
                 continue;
             }
@@ -172,20 +188,20 @@ void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
                     continue;
                 }
 
-                const ColorNames::RgbF incoming = light_field_.at(ux, uy).channel[di];
+                const ColorNames::RgbF incoming = src.at(ux, uy).channel[di];
 
                 if (incoming.r < 0.001f && incoming.g < 0.001f && incoming.b < 0.001f) {
                     continue;
                 }
 
                 // Forward transmission.
-                auto& fwd = dst.channel[di];
+                auto& fwd = dst_cell.channel[di];
                 fwd.r += incoming.r * transmit_tint.r;
                 fwd.g += incoming.g * transmit_tint.g;
                 fwd.b += incoming.b * transmit_tint.b;
 
                 // Specular reflection.
-                auto& spec = dst.channel[static_cast<int>(opposite(d))];
+                auto& spec = dst_cell.channel[static_cast<int>(opposite(d))];
                 spec.r += incoming.r * specular_tint.r;
                 spec.g += incoming.g * specular_tint.g;
                 spec.b += incoming.b * specular_tint.b;
@@ -199,13 +215,18 @@ void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
             // Distribute accumulated diffuse once across all 8 directions.
             if (diff_r > 0.0f || diff_g > 0.0f || diff_b > 0.0f) {
                 for (int dj = 0; dj < 8; ++dj) {
-                    dst.channel[dj].r += diff_r * kWeights[dj];
-                    dst.channel[dj].g += diff_g * kWeights[dj];
-                    dst.channel[dj].b += diff_b * kWeights[dj];
+                    dst_cell.channel[dj].r += diff_r * kWeights[dj];
+                    dst_cell.channel[dj].g += diff_g * kWeights[dj];
+                    dst_cell.channel[dj].b += diff_b * kWeights[dj];
                 }
             }
         }
     }
+}
+
+void LightPropagator::propagateStep(const WorldData& data, bool air_fast_path)
+{
+    propagateFieldStep(data, air_fast_path, light_field_, light_field_next_);
 }
 
 void LightPropagator::injectSources(World& world, const LightConfig& config)
@@ -272,60 +293,332 @@ void LightPropagator::injectSources(World& world, const LightConfig& config)
         }
     }
 
-    // Point lights, spot lights, rotating lights from LightManager.
-    world.getLightManager().forEachLight([&](LightId /*id*/, const Light& light) {
+    // LightManager local lights use a direct pass for smooth cone/radius shaping.
+}
+
+void LightPropagator::applyDirectLocalLights(
+    World& world, const GridOfCells& grid, float indirect_scale)
+{
+    const LightManager& lights = world.getLightManager();
+    if (lights.count() == 0) {
+        return;
+    }
+
+    lights.forEachLight([&](LightId /*id*/, const Light& light) {
         std::visit(
-            [&](const auto& l) {
-                const int lx = static_cast<int>(l.position.x);
-                const int ly = static_cast<int>(l.position.y);
-                if (lx < 0 || lx >= width || ly < 0 || ly >= height) {
-                    return;
-                }
-
-                const ColorNames::RgbF color = ColorNames::toRgbF(l.color) * l.intensity;
-
-                using LightType = std::decay_t<decltype(l)>;
-
+            [&](const auto& typed_light) {
+                using LightType = std::decay_t<decltype(typed_light)>;
                 if constexpr (std::is_same_v<LightType, PointLight>) {
-                    // Point light: inject into all 8 directions.
-                    const ColorNames::RgbF per_dir = color * (1.0f / 8.0f);
-                    auto& dst = light_field_next_.at(lx, ly);
-                    for (int di = 0; di < 8; ++di) {
-                        dst.channel[di] += per_dir;
-                    }
+                    applyDirectPointLight(typed_light, world, grid, indirect_scale);
                 }
-                else if constexpr (
-                    std::is_same_v<LightType, SpotLight>
-                    || std::is_same_v<LightType, RotatingLight>) {
-                    // Spot/rotating light: inject into directions within the cone.
-                    auto& dst = light_field_next_.at(lx, ly);
-                    for (int di = 0; di < 8; ++di) {
-                        // Direction angle for each compass direction.
-                        constexpr float dir_angles[] = {
-                            static_cast<float>(M_PI * 0.5),   // N: 90 degrees.
-                            static_cast<float>(M_PI * 0.25),  // NE: 45 degrees.
-                            0.0f,                             // E: 0 degrees.
-                            static_cast<float>(-M_PI * 0.25), // SE: -45 degrees.
-                            static_cast<float>(-M_PI * 0.5),  // S: -90 degrees.
-                            static_cast<float>(-M_PI * 0.75), // SW: -135 degrees.
-                            static_cast<float>(M_PI),         // W: 180 degrees.
-                            static_cast<float>(M_PI * 0.75),  // NW: 135 degrees.
-                        };
-                        float angle_diff = std::fabs(
-                            std::remainder(
-                                dir_angles[di] - l.direction, 2.0f * static_cast<float>(M_PI)));
-                        const float half_arc = l.arc_width * 0.5f;
-                        if (angle_diff <= half_arc) {
-                            // Angular falloff within cone.
-                            float factor = 1.0f - (angle_diff / half_arc) * l.focus;
-                            factor = std::max(0.0f, factor);
-                            dst.channel[di] += color * factor;
-                        }
-                    }
+                else if constexpr (std::is_same_v<LightType, SpotLight>) {
+                    applyDirectSpotLight(typed_light, world, grid, indirect_scale);
+                }
+                else if constexpr (std::is_same_v<LightType, RotatingLight>) {
+                    applyDirectRotatingLight(typed_light, world, grid, indirect_scale);
                 }
             },
             light.getVariant());
     });
+}
+
+void LightPropagator::applyDirectPointLight(
+    const PointLight& light, World& world, const GridOfCells& grid, float indirect_scale)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    if (light.intensity <= 0.0f || light.radius <= 0.0f) {
+        return;
+    }
+
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const float light_x = light.position.x;
+    const float light_y = light.position.y;
+    const int light_cell_x = static_cast<int>(light_x);
+    const int light_cell_y = static_cast<int>(light_y);
+    if (light_cell_x < 0 || light_cell_x >= width || light_cell_y < 0 || light_cell_y >= height) {
+        return;
+    }
+
+    const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const RgbF light_color = toRgbF(light.color) * light.intensity;
+    const int min_x = std::max(0, light_cell_x - radius_int);
+    const int max_x = std::min(width - 1, light_cell_x + radius_int);
+    const int min_y = std::max(0, light_cell_y - radius_int);
+    const int max_y = std::min(height - 1, light_cell_y + radius_int);
+
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            const float dx = (static_cast<float>(x) + 0.5f) - light_x;
+            const float dy = (static_cast<float>(y) + 0.5f) - light_y;
+            const float dist = std::sqrt(dx * dx + dy * dy);
+
+            if (dist > light.radius) {
+                continue;
+            }
+
+            const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            const RgbF direct = received * falloff;
+            data.colors.at(x, y) += direct;
+            seedIndirectSpill(
+                x, y, direct, data.at(x, y), light.indirect_strength * indirect_scale);
+        }
+    }
+}
+
+void LightPropagator::applyDirectRotatingLight(
+    const RotatingLight& light, World& world, const GridOfCells& grid, float indirect_scale)
+{
+    applyDirectSpotLight(
+        SpotLight{ .position = light.position,
+                   .color = light.color,
+                   .intensity = light.intensity,
+                   .radius = light.radius,
+                   .attenuation = light.attenuation,
+                   .indirect_strength = light.indirect_strength,
+                   .direction = light.direction,
+                   .arc_width = light.arc_width,
+                   .focus = light.focus },
+        world,
+        grid,
+        indirect_scale);
+}
+
+void LightPropagator::applyDirectSpotLight(
+    const SpotLight& light, World& world, const GridOfCells& grid, float indirect_scale)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    if (light.intensity <= 0.0f || light.radius <= 0.0f || light.arc_width <= 0.0f) {
+        return;
+    }
+
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const float light_x = light.position.x;
+    const float light_y = light.position.y;
+    const int light_cell_x = static_cast<int>(light_x);
+    const int light_cell_y = static_cast<int>(light_y);
+    if (light_cell_x < 0 || light_cell_x >= width || light_cell_y < 0 || light_cell_y >= height) {
+        return;
+    }
+
+    const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const RgbF light_color = toRgbF(light.color) * light.intensity;
+    const int min_x = std::max(0, light_cell_x - radius_int);
+    const int max_x = std::min(width - 1, light_cell_x + radius_int);
+    const int min_y = std::max(0, light_cell_y - radius_int);
+    const int max_y = std::min(height - 1, light_cell_y + radius_int);
+
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            const float dx = (static_cast<float>(x) + 0.5f) - light_x;
+            const float dy = (static_cast<float>(y) + 0.5f) - light_y;
+            const float dist = std::sqrt(dx * dx + dy * dy);
+
+            if (dist > light.radius) {
+                continue;
+            }
+
+            const float angular_factor = getSpotAngularFactor(
+                Vector2f{ light_x, light_y },
+                light.direction,
+                light.arc_width,
+                light.focus,
+                Vector2f{ static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f });
+            if (angular_factor <= 0.0f) {
+                continue;
+            }
+
+            const float falloff = angular_factor / (1.0f + dist * dist * light.attenuation);
+            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            const RgbF direct = received * falloff;
+            data.colors.at(x, y) += direct;
+            seedIndirectSpill(
+                x, y, direct, data.at(x, y), light.indirect_strength * indirect_scale);
+        }
+    }
+}
+
+void LightPropagator::applyLocalIndirectSpill(WorldData& data, bool air_fast_path)
+{
+    if (!has_spill_seed_) {
+        return;
+    }
+
+    constexpr int kSpillSteps = 2;
+    const int width = data.width;
+    const int height = data.height;
+    for (int step = 0; step < kSpillSteps; ++step) {
+        spill_field_next_.clear();
+        propagateFieldStep(data, air_fast_path, spill_field_, spill_field_next_);
+        std::swap(spill_field_, spill_field_next_);
+
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                data.colors.at(x, y) += spill_field_.at(x, y).total();
+            }
+        }
+    }
+}
+
+void LightPropagator::seedIndirectSpill(
+    int x, int y, const ColorNames::RgbF& direct_light, const Cell& cell, float indirect_strength)
+{
+    if (indirect_strength <= 0.0f) {
+        return;
+    }
+
+    const auto& props = cell.material().light;
+    const float fill = cell.fill_ratio;
+    const float effective_opacity = props.opacity * fill;
+    if (effective_opacity < 0.02f || props.scatter <= 0.0f) {
+        return;
+    }
+
+    const ColorNames::RgbF white{ 1.0f, 1.0f, 1.0f };
+    const ColorNames::RgbF tint = ColorNames::lerp(white, ColorNames::toRgbF(props.tint), fill);
+    const float scatter_strength = effective_opacity * props.scatter * indirect_strength;
+    const ColorNames::RgbF spill = direct_light * tint * scatter_strength;
+    if (spill.r < 0.001f && spill.g < 0.001f && spill.b < 0.001f) {
+        return;
+    }
+
+    auto& dst = spill_field_.at(x, y);
+    const ColorNames::RgbF per_dir = spill * (1.0f / 8.0f);
+    for (int di = 0; di < 8; ++di) {
+        dst.channel[di] += per_dir;
+    }
+    has_spill_seed_ = true;
+}
+
+float LightPropagator::getSpotAngularFactor(
+    const Vector2f& light_pos,
+    float direction,
+    float arc_width,
+    float focus,
+    const Vector2f& target_pos) const
+{
+    if (arc_width <= 0.0f) {
+        return 0.0f;
+    }
+
+    const Vector2f to_target = target_pos - light_pos;
+    const float target_angle = std::atan2(to_target.y, to_target.x);
+
+    float angle_diff = target_angle - direction;
+    while (angle_diff > M_PI) {
+        angle_diff -= 2.0f * static_cast<float>(M_PI);
+    }
+    while (angle_diff < -M_PI) {
+        angle_diff += 2.0f * static_cast<float>(M_PI);
+    }
+
+    const float half_arc = arc_width * 0.5f;
+    const float abs_diff = std::abs(angle_diff);
+    if (abs_diff > half_arc) {
+        return 0.0f;
+    }
+
+    const float norm_angle = abs_diff / half_arc;
+    return std::pow(1.0f - norm_angle, focus);
+}
+
+ColorNames::RgbF LightPropagator::traceRay(
+    const GridOfCells& grid,
+    const WorldData& data,
+    float x0,
+    float y0,
+    int x1,
+    int y1,
+    ColorNames::RgbF color) const
+{
+    const int width = grid.getWidth();
+    const int height = grid.getHeight();
+    const ColorNames::RgbF white{ 1.0f, 1.0f, 1.0f };
+    const float target_x = static_cast<float>(x1) + 0.5f;
+    const float target_y = static_cast<float>(y1) + 0.5f;
+    const float dx = target_x - x0;
+    const float dy = target_y - y0;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+
+    if (dist < 0.001f) {
+        return color;
+    }
+
+    const float dir_x = dx / dist;
+    const float dir_y = dy / dist;
+    constexpr float kEpsilon = 1e-5f;
+    const float x0_adj = x0 + dir_x * kEpsilon;
+    const float y0_adj = y0 + dir_y * kEpsilon;
+
+    int cell_x = static_cast<int>(std::floor(x0_adj));
+    int cell_y = static_cast<int>(std::floor(y0_adj));
+    const int step_x = (dir_x > 0.0f) ? 1 : -1;
+    const int step_y = (dir_y > 0.0f) ? 1 : -1;
+    const float tDeltaX = (dir_x != 0.0f) ? std::abs(1.0f / dir_x) : 1e9f;
+    const float tDeltaY = (dir_y != 0.0f) ? std::abs(1.0f / dir_y) : 1e9f;
+
+    float tMaxX = 1e9f;
+    if (dir_x > 0.0f) {
+        tMaxX = (std::floor(x0_adj) + 1.0f - x0_adj) / dir_x;
+    }
+    else if (dir_x < 0.0f) {
+        tMaxX = (x0_adj - std::floor(x0_adj)) / -dir_x;
+    }
+
+    float tMaxY = 1e9f;
+    if (dir_y > 0.0f) {
+        tMaxY = (std::floor(y0_adj) + 1.0f - y0_adj) / dir_y;
+    }
+    else if (dir_y < 0.0f) {
+        tMaxY = (y0_adj - std::floor(y0_adj)) / -dir_y;
+    }
+
+    const int max_steps = width + height;
+    for (int step = 0; step < max_steps; ++step) {
+        if (cell_x == x1 && cell_y == y1) {
+            break;
+        }
+
+        if (cell_x < 0 || cell_x >= width || cell_y < 0 || cell_y >= height) {
+            return {};
+        }
+
+        const uint64_t packed = grid.getMaterialNeighborhood(cell_x, cell_y).raw();
+        const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+        const auto& light_props = Material::getProperties(mat).light;
+        const Cell& cell = data.cells[static_cast<size_t>(cell_y) * width + cell_x];
+        const float fill = cell.fill_ratio;
+        const float effective_opacity = light_props.opacity * fill;
+        const float transmittance = 1.0f - effective_opacity;
+        color *= transmittance;
+
+        const ColorNames::RgbF base_tint = ColorNames::toRgbF(light_props.tint);
+        const ColorNames::RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+        color *= effective_tint;
+
+        if (color.r < 0.001f && color.g < 0.001f && color.b < 0.001f) {
+            return {};
+        }
+
+        if (tMaxX < tMaxY) {
+            tMaxX += tDeltaX;
+            cell_x += step_x;
+        }
+        else {
+            tMaxY += tDeltaY;
+            cell_y += step_y;
+        }
+    }
+
+    return color;
 }
 
 void LightPropagator::applyAmbient(WorldData& data, const LightConfig& config)
@@ -382,7 +675,7 @@ void LightPropagator::storeRawLight(WorldData& data)
 }
 
 void LightPropagator::calculate(
-    World& world, const GridOfCells& /*grid*/, const LightConfig& config, Timers& timers)
+    World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
 {
     ScopeTimer total_timer(timers, "light_calculation");
 
@@ -404,6 +697,7 @@ void LightPropagator::calculate(
         case LightMode::Propagated:
         case LightMode::Fast: {
             ScopeTimer t(timers, "light_propagate");
+            clearLocalSpillState();
 
             if (config.temporal_persistence) {
                 // Temporal mode: decay existing field and run one correction step.
@@ -431,6 +725,12 @@ void LightPropagator::calculate(
 
             ScopeTimer ambientTimer(timers, "light_ambient");
             applyAmbient(data, config);
+
+            ScopeTimer directTimer(timers, "light_direct_local");
+            applyDirectLocalLights(world, grid, config.local_light_indirect_scale);
+
+            ScopeTimer spillTimer(timers, "light_direct_local_spill");
+            applyLocalIndirectSpill(data, config.air_fast_path);
             ambient_boost_ = {};
             break;
         }

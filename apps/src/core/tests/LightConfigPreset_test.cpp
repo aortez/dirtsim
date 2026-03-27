@@ -14,6 +14,7 @@ TEST(LightConfigPresetTest, FastPresetUpdatesManagedFieldsOnly)
     config.sky_intensity = 0.17f;
     config.sun_color = ColorNames::torchOrange();
     config.sun_intensity = 0.91f;
+    config.local_light_indirect_scale = 1.7f;
 
     applyLightModePreset(config, LightMode::Fast);
 
@@ -28,6 +29,7 @@ TEST(LightConfigPresetTest, FastPresetUpdatesManagedFieldsOnly)
     EXPECT_FLOAT_EQ(config.sky_intensity, 0.17f);
     EXPECT_EQ(config.sun_color, ColorNames::torchOrange());
     EXPECT_FLOAT_EQ(config.sun_intensity, 0.91f);
+    EXPECT_FLOAT_EQ(config.local_light_indirect_scale, 1.7f);
 }
 
 TEST(LightConfigPresetTest, PropagatedPresetUpdatesManagedFieldsOnly)
@@ -39,6 +41,7 @@ TEST(LightConfigPresetTest, PropagatedPresetUpdatesManagedFieldsOnly)
     config.temporal_persistence = true;
     config.ambient_color = ColorNames::nightAmbient();
     config.ambient_intensity = 0.11f;
+    config.local_light_indirect_scale = 0.4f;
 
     applyLightModePreset(config, LightMode::Propagated);
 
@@ -49,6 +52,7 @@ TEST(LightConfigPresetTest, PropagatedPresetUpdatesManagedFieldsOnly)
     EXPECT_FALSE(config.temporal_persistence);
     EXPECT_EQ(config.ambient_color, ColorNames::nightAmbient());
     EXPECT_FLOAT_EQ(config.ambient_intensity, 0.11f);
+    EXPECT_FLOAT_EQ(config.local_light_indirect_scale, 0.4f);
 }
 
 TEST(LightConfigPresetTest, ManualTuningPersistsUntilNextPresetApplication)
