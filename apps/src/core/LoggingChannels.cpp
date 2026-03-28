@@ -24,6 +24,154 @@ std::string toString(LogChannel channel)
 bool LoggingChannels::initialized_ = false;
 std::vector<spdlog::sink_ptr> LoggingChannels::sharedSinks_;
 
+namespace {
+
+struct SinkSettings {
+    bool consoleEnabled = true;
+    spdlog::level::level_enum consoleLevel = spdlog::level::info;
+    bool fileEnabled = true;
+    spdlog::level::level_enum fileLevel = spdlog::level::debug;
+    std::string filePath = "dirtsim.log";
+    bool fileTruncate = true;
+    bool fileUseRotation = true;
+    size_t fileMaxFiles = 3;
+    size_t fileMaxSizeMb = 10;
+};
+
+nlohmann::json makeDefaultConfig(const std::string& defaultLogFilePath)
+{
+#ifdef DIRTSIM_PRODUCTION_BUILD
+    return {
+        { "defaults",
+          { { "console_level", "info" },
+            { "file_level", "info" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
+            { "flush_interval_ms", 1000 } } },
+        { "sinks",
+          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
+            { "file",
+              { { "enabled", true },
+                { "level", "info" },
+                { "path", defaultLogFilePath },
+                { "truncate", false },
+                { "max_size_mb", 10 },
+                { "max_files", 3 } } },
+            { "specialized",
+              { { "swap_trace",
+                  { { "enabled", false },
+                    { "channel_filter", nlohmann::json::array({ "swap" }) },
+                    { "path", "swap-trace.log" },
+                    { "level", "trace" } } },
+                { "physics_deep",
+                  { { "enabled", false },
+                    { "channel_filter",
+                      nlohmann::json::array({ "physics", "collision", "cohesion" }) },
+                    { "path", "physics-deep.log" },
+                    { "level", "trace" } } } } } } },
+        { "channels",
+          { { "brain", "info" },
+            { "collision", "info" },
+            { "cohesion", "info" },
+            { "friction", "info" },
+            { "network", "info" },
+            { "physics", "info" },
+            { "pressure", "info" },
+            { "scenario", "info" },
+            { "state", "info" },
+            { "support", "info" },
+            { "swap", "warn" },
+            { "ui", "info" },
+            { "viscosity", "info" } } },
+        { "runtime",
+          { { "allow_reload", true }, { "watch_config", false }, { "reload_signal", "SIGUSR1" } } }
+    };
+#else
+    return {
+        { "defaults",
+          { { "console_level", "info" },
+            { "file_level", "debug" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
+            { "flush_interval_ms", 1000 } } },
+        { "sinks",
+          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
+            { "file",
+              { { "enabled", true },
+                { "level", "debug" },
+                { "path", defaultLogFilePath },
+                { "truncate", true },
+                { "max_size_mb", 10 },
+                { "max_files", 3 } } },
+            { "specialized",
+              { { "swap_trace",
+                  { { "enabled", false },
+                    { "channel_filter", nlohmann::json::array({ "swap" }) },
+                    { "path", "swap-trace.log" },
+                    { "level", "trace" } } },
+                { "physics_deep",
+                  { { "enabled", false },
+                    { "channel_filter",
+                      nlohmann::json::array({ "physics", "collision", "cohesion" }) },
+                    { "path", "physics-deep.log" },
+                    { "level", "trace" } } } } } } },
+        { "channels",
+          { { "brain", "info" },
+            { "collision", "info" },
+            { "cohesion", "info" },
+            { "friction", "info" },
+            { "network", "info" },
+            { "physics", "info" },
+            { "pressure", "info" },
+            { "scenario", "info" },
+            { "state", "debug" },
+            { "support", "info" },
+            { "swap", "warn" },
+            { "ui", "info" },
+            { "viscosity", "info" } } },
+        { "runtime",
+          { { "allow_reload", true }, { "watch_config", false }, { "reload_signal", "SIGUSR1" } } }
+    };
+#endif
+}
+
+std::vector<spdlog::sink_ptr> createConfiguredSinks(
+    const SinkSettings& sinkSettings, bool logFileSinkCreation = false)
+{
+    std::vector<spdlog::sink_ptr> sinks;
+
+    if (sinkSettings.consoleEnabled) {
+        auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        consoleSink->set_level(sinkSettings.consoleLevel);
+        sinks.push_back(consoleSink);
+    }
+
+    if (sinkSettings.fileEnabled) {
+        std::shared_ptr<spdlog::sinks::sink> fileSink;
+        if (sinkSettings.fileUseRotation) {
+            const size_t maxSizeBytes = sinkSettings.fileMaxSizeMb * 1024 * 1024;
+            fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                sinkSettings.filePath, maxSizeBytes, sinkSettings.fileMaxFiles);
+            if (logFileSinkCreation) {
+                spdlog::info(
+                    "Using rotating file sink: {} (max {} MB, {} files)",
+                    sinkSettings.filePath,
+                    sinkSettings.fileMaxSizeMb,
+                    sinkSettings.fileMaxFiles);
+            }
+        }
+        else {
+            fileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                sinkSettings.filePath, sinkSettings.fileTruncate);
+        }
+
+        fileSink->set_level(sinkSettings.fileLevel);
+        sinks.push_back(fileSink);
+    }
+
+    return sinks;
+}
+
+} // namespace
+
 void LoggingChannels::initialize(
     spdlog::level::level_enum consoleLevel,
     spdlog::level::level_enum fileLevel,
@@ -241,7 +389,9 @@ spdlog::level::level_enum LoggingChannels::parseLevelString(const std::string& l
 }
 
 bool LoggingChannels::initializeFromConfig(
-    const std::string& configPath, const std::string& componentName)
+    const std::string& configPath,
+    const std::string& componentName,
+    const std::string& defaultLogFilePath)
 {
     if (initialized_) {
         spdlog::warn("LoggingChannels already initialized, skipping re-initialization");
@@ -249,86 +399,19 @@ bool LoggingChannels::initializeFromConfig(
     }
 
     // Load config with .local override support.
-    auto config = loadConfigFile(configPath);
+    auto config = loadConfigFile(configPath, defaultLogFilePath);
 
     // Apply configuration with component name.
-    applyConfig(config, componentName);
+    applyConfig(config, componentName, defaultLogFilePath);
 
     initialized_ = true;
     return true;
 }
 
-bool LoggingChannels::createDefaultConfigFile(const std::string& path)
+bool LoggingChannels::createDefaultConfigFile(
+    const std::string& path, const std::string& defaultLogFilePath)
 {
-    // Default configuration (differs for production vs development builds).
-#ifdef DIRTSIM_PRODUCTION_BUILD
-    // Production defaults: less verbose, rotating logs.
-    nlohmann::json defaultConfig = {
-        { "defaults",
-          { { "console_level", "info" },
-            { "file_level", "info" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
-            { "flush_interval_ms", 1000 } } },
-        { "sinks",
-          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
-            { "file",
-              { { "enabled", true },
-                { "level", "info" },
-                { "path", "dirtsim.log" },
-                { "truncate", false },
-                { "max_size_mb", 10 },
-                { "max_files", 3 } } },
-#else
-    // Development defaults: verbose logging, truncate for fresh logs each run.
-    nlohmann::json defaultConfig = {
-        { "defaults",
-          { { "console_level", "info" },
-            { "file_level", "debug" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
-            { "flush_interval_ms", 1000 } } },
-        { "sinks",
-          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
-            { "file",
-              { { "enabled", true },
-                { "level", "debug" },
-                { "path", "dirtsim.log" },
-                { "truncate", true },
-                { "max_size_mb", 10 },
-                { "max_files", 3 } } },
-#endif
-            { "specialized",
-              { { "swap_trace",
-                  { { "enabled", false },
-                    { "channel_filter", nlohmann::json::array({ "swap" }) },
-                    { "path", "swap-trace.log" },
-                    { "level", "trace" } } },
-                { "physics_deep",
-                  { { "enabled", false },
-                    { "channel_filter",
-                      nlohmann::json::array({ "physics", "collision", "cohesion" }) },
-                    { "path", "physics-deep.log" },
-                    { "level", "trace" } } } } } } },
-        { "channels",
-          { { "brain", "info" },
-            { "collision", "info" },
-            { "cohesion", "info" },
-            { "friction", "info" },
-            { "network", "info" },
-            { "physics", "info" },
-            { "pressure", "info" },
-            { "scenario", "info" },
-#ifdef DIRTSIM_PRODUCTION_BUILD
-            { "state", "info" },
-#else
-            { "state", "debug" },
-#endif
-            { "support", "info" },
-            { "swap", "warn" },
-            { "ui", "info" },
-            { "viscosity", "info" } } },
-        { "runtime",
-          { { "allow_reload", true }, { "watch_config", false }, { "reload_signal", "SIGUSR1" } } }
-    };
+    const auto defaultConfig = makeDefaultConfig(defaultLogFilePath);
 
     try {
         std::ofstream configFile(path);
@@ -346,65 +429,12 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
     }
 }
 
-nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
+nlohmann::json LoggingChannels::loadConfigFile(
+    const std::string& configPath, const std::string& defaultLogFilePath)
 {
     namespace fs = std::filesystem;
 
-    // Default configuration (in-memory fallback, differs for production vs development).
-#ifdef DIRTSIM_PRODUCTION_BUILD
-    // Production defaults.
-    nlohmann::json defaultConfig = {
-        { "defaults",
-          { { "console_level", "info" },
-            { "file_level", "info" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
-            { "flush_interval_ms", 1000 } } },
-        { "sinks",
-          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
-            { "file",
-              { { "enabled", true },
-                { "level", "info" },
-                { "path", "dirtsim.log" },
-                { "truncate", false },
-                { "max_size_mb", 10 },
-                { "max_files", 3 } } } } },
-#else
-    // Development defaults.
-    nlohmann::json defaultConfig = {
-        { "defaults",
-          { { "console_level", "info" },
-            { "file_level", "debug" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
-            { "flush_interval_ms", 1000 } } },
-        { "sinks",
-          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
-            { "file",
-              { { "enabled", true },
-                { "level", "debug" },
-                { "path", "dirtsim.log" },
-                { "truncate", true },
-                { "max_size_mb", 10 },
-                { "max_files", 3 } } } } },
-#endif
-        { "channels",
-          { { "brain", "info" },
-            { "collision", "info" },
-            { "cohesion", "info" },
-            { "friction", "info" },
-            { "network", "info" },
-            { "physics", "info" },
-            { "pressure", "info" },
-            { "scenario", "info" },
-#ifdef DIRTSIM_PRODUCTION_BUILD
-            { "state", "info" },
-#else
-            { "state", "debug" },
-#endif
-            { "support", "info" },
-            { "swap", "info" },
-            { "ui", "info" },
-            { "viscosity", "info" } } }
-    };
+    auto defaultConfig = makeDefaultConfig(defaultLogFilePath);
 
     // Try .local version first.
     std::string localPath = configPath + ".local";
@@ -421,7 +451,7 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
     else {
         // Neither file exists - create default config file.
         spdlog::info("Config file not found, creating default: {}", configPath);
-        if (createDefaultConfigFile(configPath)) {
+        if (createDefaultConfigFile(configPath, defaultLogFilePath)) {
             pathToUse = configPath;
         }
         else {
@@ -455,7 +485,10 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
     }
 }
 
-void LoggingChannels::applyConfig(const nlohmann::json& config, const std::string& componentName)
+void LoggingChannels::applyConfig(
+    const nlohmann::json& config,
+    const std::string& componentName,
+    const std::string& defaultLogFilePath)
 {
     // Extract defaults with fallbacks.
     auto consoleLevel = spdlog::level::info;
@@ -503,8 +536,17 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
         spdlog::warn("Error reading defaults from config: {}, using built-in defaults", e.what());
     }
 
-    // Create sinks.
-    std::vector<spdlog::sink_ptr> sinks;
+    SinkSettings sinkSettings = {
+        .consoleEnabled = true,
+        .consoleLevel = consoleLevel,
+        .fileEnabled = true,
+        .fileLevel = fileLevel,
+        .filePath = defaultLogFilePath,
+        .fileTruncate = true,
+        .fileUseRotation = true,
+        .fileMaxFiles = 3,
+        .fileMaxSizeMb = 10,
+    };
 
     try {
         if (config.contains("sinks")) {
@@ -513,47 +555,20 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
             // Console sink.
             if (sinksConfig.contains("console")) {
                 auto& consoleCfg = sinksConfig["console"];
-                bool enabled = consoleCfg.value("enabled", true);
-                if (enabled) {
-                    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-                    auto level = parseLevelString(consoleCfg.value("level", "info"));
-                    console_sink->set_level(level);
-                    sinks.push_back(console_sink);
-                }
+                sinkSettings.consoleEnabled = consoleCfg.value("enabled", true);
+                sinkSettings.consoleLevel = parseLevelString(consoleCfg.value("level", "info"));
             }
 
             // File sink.
             if (sinksConfig.contains("file")) {
                 auto& fileCfg = sinksConfig["file"];
-                bool enabled = fileCfg.value("enabled", true);
-                if (enabled) {
-                    // All components use the same log file (component prefix distinguishes them).
-                    std::string path = fileCfg.value("path", "dirtsim.log");
-                    auto level = parseLevelString(fileCfg.value("level", "debug"));
-
-                    // Use rotating sink if max_size_mb is specified, otherwise basic sink.
-                    std::shared_ptr<spdlog::sinks::sink> file_sink;
-                    if (fileCfg.contains("max_size_mb")) {
-                        size_t maxSizeMB = fileCfg.value("max_size_mb", 10);
-                        size_t maxFiles = fileCfg.value("max_files", 3);
-                        size_t maxSizeBytes = maxSizeMB * 1024 * 1024;
-                        file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-                            path, maxSizeBytes, maxFiles);
-                        spdlog::info(
-                            "Using rotating file sink: {} (max {} MB, {} files)",
-                            path,
-                            maxSizeMB,
-                            maxFiles);
-                    }
-                    else {
-                        bool truncate = fileCfg.value("truncate", true);
-                        file_sink =
-                            std::make_shared<spdlog::sinks::basic_file_sink_mt>(path, truncate);
-                    }
-
-                    file_sink->set_level(level);
-                    sinks.push_back(file_sink);
-                }
+                sinkSettings.fileEnabled = fileCfg.value("enabled", true);
+                sinkSettings.fileLevel = parseLevelString(fileCfg.value("level", "debug"));
+                sinkSettings.filePath = fileCfg.value("path", defaultLogFilePath);
+                sinkSettings.fileTruncate = fileCfg.value("truncate", true);
+                sinkSettings.fileUseRotation = fileCfg.contains("max_size_mb");
+                sinkSettings.fileMaxSizeMb = fileCfg.value("max_size_mb", 10);
+                sinkSettings.fileMaxFiles = fileCfg.value("max_files", 3);
             }
 
             // Specialized sinks.
@@ -564,15 +579,20 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
     }
     catch (const std::exception& e) {
         spdlog::error("Error creating sinks from config: {}, using defaults", e.what());
-        // Create default sinks if config failed.
-        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_level(consoleLevel);
-        auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", true);
-        file_sink->set_level(fileLevel);
-        sinks = { console_sink, file_sink };
+        sinkSettings = {
+            .consoleEnabled = true,
+            .consoleLevel = consoleLevel,
+            .fileEnabled = true,
+            .fileLevel = fileLevel,
+            .filePath = defaultLogFilePath,
+            .fileTruncate = true,
+            .fileUseRotation = true,
+            .fileMaxFiles = 3,
+            .fileMaxSizeMb = 10,
+        };
     }
 
-    sharedSinks_ = sinks;
+    sharedSinks_ = createConfiguredSinks(sinkSettings, true);
 
     // Set pattern on all sinks (so all loggers sharing these sinks get the pattern).
     for (auto& sink : sharedSinks_) {
@@ -612,31 +632,7 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
     }
 
     // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
-    std::vector<spdlog::sink_ptr> defaultSinks;
-    for (const auto& sharedSink : sharedSinks_) {
-        // Clone sink configuration but create new instances for default logger.
-        if (auto* consoleSink =
-                dynamic_cast<spdlog::sinks::stdout_color_sink_mt*>(sharedSink.get())) {
-            auto default_console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-            default_console_sink->set_level(consoleSink->level());
-            defaultSinks.push_back(default_console_sink);
-        }
-        else if (
-            auto* fileSink = dynamic_cast<spdlog::sinks::basic_file_sink_mt*>(sharedSink.get())) {
-            auto default_file_sink =
-                std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", false);
-            default_file_sink->set_level(fileSink->level());
-            defaultSinks.push_back(default_file_sink);
-        }
-        else if (
-            auto* rotatingSink =
-                dynamic_cast<spdlog::sinks::rotating_file_sink_mt*>(sharedSink.get())) {
-            auto default_file_sink =
-                std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", false);
-            default_file_sink->set_level(rotatingSink->level());
-            defaultSinks.push_back(default_file_sink);
-        }
-    }
+    auto defaultSinks = createConfiguredSinks(sinkSettings);
 
     // Set pattern on default logger sinks (omits channel name to avoid redundancy).
     std::string defaultPattern = componentName == "default"

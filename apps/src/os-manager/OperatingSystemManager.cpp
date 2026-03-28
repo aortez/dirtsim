@@ -7,10 +7,13 @@
 #include "core/network/JsonProtocol.h"
 #include "os-manager/api/NetworkDiagnosticsModeSet.h"
 #include "os-manager/api/NetworkSnapshotChanged.h"
+#include "os-manager/api/ScannerSnapshotChanged.h"
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "os-manager/network/NetworkService.h"
+#include "os-manager/network/NexmonChannelController.h"
 #include "os-manager/network/PeerAdvertisement.h"
 #include "os-manager/network/PeerDiscovery.h"
+#include "os-manager/network/ScannerChannelController.h"
 #include "os-manager/network/ScannerService.h"
 #include "os-manager/ssh/RemoteSshExecutor.h"
 #include "server/api/StatusGet.h"
@@ -58,6 +61,8 @@ constexpr const char* kScannerStateFile = "/run/dirtsim/scanner_mode_active";
 constexpr const char* kNexmonModulePath = "/usr/lib/nexmon/brcmfmac.ko";
 constexpr const char* kNexmonFirmwarePath = "/usr/lib/nexmon/cyfmac43455-sdio-standard.bin";
 constexpr size_t kScannerOutputLogLimit = 400;
+constexpr uint64_t kScannerPushSnapshotMaxAgeMs = 15000;
+constexpr size_t kScannerPushSnapshotMaxRadios = 48;
 constexpr const char* kWifiInterfaceName = "wlan0";
 
 struct ParsedScannerModeStatus {
@@ -70,6 +75,33 @@ Result<std::monostate, ApiError> makeMissingDependencyError(const std::string& n
 {
     return Result<std::monostate, ApiError>::error(ApiError("Missing dependency for " + name));
 }
+
+class UnavailableScannerChannelController : public ScannerChannelController {
+public:
+    explicit UnavailableScannerChannelController(std::string errorMessage)
+        : errorMessage_(std::move(errorMessage))
+    {}
+
+    Result<uint32_t, std::string> readbackChanspec() override
+    {
+        return Result<uint32_t, std::string>::error(errorMessage_);
+    }
+
+    Result<std::monostate, std::string> start() override
+    {
+        return Result<std::monostate, std::string>::error(errorMessage_);
+    }
+
+    void stop() override {}
+
+    Result<std::monostate, std::string> setTuning(const ScannerTuning&) override
+    {
+        return Result<std::monostate, std::string>::error(errorMessage_);
+    }
+
+private:
+    std::string errorMessage_;
+};
 
 std::string getEnvValue(const char* name)
 {
@@ -366,6 +398,66 @@ OsApi::NetworkSnapshotGet::Okay toApiNetworkSnapshotOkay(const NetworkService::S
     for (const auto& accessPoint : snapshot.accessPoints) {
         okay.accessPoints.push_back(toApiWifiAccessPointInfo(accessPoint));
     }
+    return okay;
+}
+
+OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
+    const ScannerService::Snapshot& snapshot,
+    const std::string& lastError,
+    bool active,
+    const std::optional<std::string>& detailOverride = std::nullopt)
+{
+    OsApi::ScannerSnapshotGet::Okay okay;
+    okay.active = active;
+    okay.config = snapshot.config;
+    okay.currentTuning = snapshot.currentTuning;
+
+    const auto now = std::chrono::steady_clock::now();
+    okay.radios.reserve(snapshot.radios.size());
+    for (const auto& radio : snapshot.radios) {
+        OsApi::ScannerSnapshotGet::ObservedRadioInfo info;
+        info.bssid = radio.bssid;
+        info.ssid = radio.ssid;
+        info.signalDbm = radio.signalDbm;
+        info.channel = radio.channel;
+        info.observationKind = radio.observationKind;
+        if (radio.lastSeenAt.time_since_epoch().count() > 0) {
+            info.lastSeenAgeMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - radio.lastSeenAt)
+                    .count());
+        }
+        okay.radios.push_back(std::move(info));
+    }
+
+    if (detailOverride.has_value()) {
+        okay.detail = *detailOverride;
+    }
+    else if (!lastError.empty()) {
+        okay.detail = lastError;
+    }
+    else if (active && okay.config.mode == ScannerConfigMode::Manual) {
+        const auto& manualConfig = okay.config.manualConfig;
+        okay.detail = "Listening " + scannerBandLabel(manualConfig.band) + " "
+            + scannerManualTargetShortLabel(
+                          manualConfig.band, manualConfig.widthMhz, manualConfig.targetChannel)
+            + " @ " + std::to_string(manualConfig.widthMhz) + " MHz.";
+    }
+    else if (active && okay.currentTuning.has_value()) {
+        const auto& tuning = okay.currentTuning.value();
+        okay.detail = "Scanning " + scannerBandLabel(tuning.band) + " ch "
+            + std::to_string(tuning.primaryChannel) + " @ " + std::to_string(tuning.widthMhz)
+            + " MHz.";
+    }
+    else if (snapshot.running) {
+        okay.detail = "Scanning.";
+    }
+    else if (active) {
+        okay.detail = "Scanner capture stopped.";
+    }
+    else {
+        okay.detail = "Scanner mode is not active.";
+    }
+
     return okay;
 }
 
@@ -986,12 +1078,8 @@ private:
 OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
 {
     initializeDefaultDependencies();
-    networkService_ = std::make_unique<NetworkService>();
-    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
+    initializeServices();
     setupWebSocketService();
-    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
-        publishNetworkSnapshotChanged(snapshot);
-    });
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
 }
@@ -1000,12 +1088,8 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
     : port_(port), backendConfig_(backendConfig)
 {
     initializeDefaultDependencies();
-    networkService_ = std::make_unique<NetworkService>();
-    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
+    initializeServices();
     setupWebSocketService();
-    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
-        publishNetworkSnapshotChanged(snapshot);
-    });
     webSocketToken_ = generateWebSocketToken();
     initializePeerDiscovery();
 }
@@ -1015,11 +1099,6 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
       dependencies_(std::move(mode.dependencies)),
       backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
-    networkService_ = std::make_unique<NetworkService>();
-    scannerService_ = std::make_unique<ScannerService>(dependencies_.processRunner);
-    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
-        publishNetworkSnapshotChanged(snapshot);
-    });
     if (!dependencies_.serviceCommand) {
         dependencies_.serviceCommand = [](const std::string&, const std::string&) {
             return makeMissingDependencyError("serviceCommand");
@@ -1046,6 +1125,11 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
                 "Missing dependency for processRunner");
         };
     }
+    if (!dependencies_.scannerChannelController) {
+        dependencies_.scannerChannelController =
+            std::make_shared<UnavailableScannerChannelController>(
+                "Missing dependency for scannerChannelController");
+    }
 
     if (!dependencies_.homeDirResolver) {
         dependencies_.homeDirResolver = [](const std::string& user) {
@@ -1061,6 +1145,7 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
         };
     }
 
+    initializeServices();
     webSocketToken_ = generateWebSocketToken();
 }
 
@@ -1111,6 +1196,17 @@ Result<std::monostate, std::string> OperatingSystemManager::start()
 
     LOG_INFO(Network, "os-manager WebSocket listening on port {}", port_);
     return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+void OperatingSystemManager::initializeServices()
+{
+    networkService_ = std::make_unique<NetworkService>();
+    scannerService_ = std::make_unique<ScannerService>(dependencies_.scannerChannelController);
+    networkService_->setSnapshotChangedCallback([this](const NetworkService::Snapshot& snapshot) {
+        publishNetworkSnapshotChanged(snapshot);
+    });
+    scannerService_->setSnapshotChangedCallback(
+        [this]() { publishScannerSnapshotChanged(true, std::nullopt); });
 }
 
 void OperatingSystemManager::stop()
@@ -1254,10 +1350,16 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::StopUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::RestartUi::Cwc>(
         [this](OsApi::RestartUi::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerConfigGet::Cwc>(
+        [this](OsApi::ScannerConfigGet::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerConfigSet::Cwc>(
+        [this](OsApi::ScannerConfigSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeEnter::Cwc>(
         [this](OsApi::ScannerModeEnter::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerModeExit::Cwc>(
         [this](OsApi::ScannerModeExit::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::ScannerProbeRun::Cwc>(
+        [this](OsApi::ScannerProbeRun::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::ScannerSnapshotGet::Cwc>(
         [this](OsApi::ScannerSnapshotGet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::Reboot::Cwc>(
@@ -1328,8 +1430,11 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerConfigGet);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerConfigSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeEnter);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerModeExit);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerProbeRun);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::ScannerSnapshotGet);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
@@ -1446,36 +1551,99 @@ Result<OsApi::ScannerSnapshotGet::Okay, ApiError> OperatingSystemManager::getSca
     }
 
     const auto snapshot = scannerService_->snapshot(maxAgeMs, maxRadios);
-    okay.currentChannel = snapshot.currentChannel;
-
-    const auto now = std::chrono::steady_clock::now();
-    okay.radios.reserve(snapshot.radios.size());
-    for (const auto& radio : snapshot.radios) {
-        OsApi::ScannerSnapshotGet::ObservedRadioInfo info;
-        info.bssid = radio.bssid;
-        info.ssid = radio.ssid;
-        info.signalDbm = radio.signalDbm;
-        info.channel = radio.channel;
-        if (radio.lastSeenAt.time_since_epoch().count() > 0) {
-            info.lastSeenAgeMs = static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(now - radio.lastSeenAt)
-                    .count());
-        }
-        okay.radios.push_back(std::move(info));
-    }
-
-    const std::string lastError = scannerService_->lastError();
-    if (!lastError.empty()) {
-        okay.detail = lastError;
-    }
-    else if (okay.currentChannel.has_value()) {
-        okay.detail = "Scanning channel " + std::to_string(*okay.currentChannel) + ".";
-    }
-    else {
-        okay.detail = "Scanning.";
-    }
-
+    okay = toApiScannerSnapshotOkay(snapshot, scannerService_->lastError(), true);
     return Result<OsApi::ScannerSnapshotGet::Okay, ApiError>::okay(std::move(okay));
+}
+
+Result<OsApi::ScannerConfigGet::Okay, ApiError> OperatingSystemManager::getScannerConfig(
+    const OsApi::ScannerConfigGet::Command& /*command*/)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerConfigGet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerConfigGet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    return Result<OsApi::ScannerConfigGet::Okay, ApiError>::okay(
+        OsApi::ScannerConfigGet::Okay{ .config = scannerService_->config() });
+}
+
+Result<OsApi::ScannerConfigSet::Okay, ApiError> OperatingSystemManager::setScannerConfig(
+    const OsApi::ScannerConfigSet::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    const auto setConfigResult = scannerService_->setConfig(command.config);
+    if (setConfigResult.isError()) {
+        return Result<OsApi::ScannerConfigSet::Okay, ApiError>::error(
+            ApiError(setConfigResult.errorValue()));
+    }
+
+    publishScannerSnapshotChanged(status.active, std::nullopt);
+    return Result<OsApi::ScannerConfigSet::Okay, ApiError>::okay(
+        OsApi::ScannerConfigSet::Okay{ .config = scannerService_->config() });
+}
+
+Result<OsApi::ScannerProbeRun::Okay, ApiError> OperatingSystemManager::runScannerProbe(
+    const OsApi::ScannerProbeRun::Command& command)
+{
+    const auto status = readScannerModeStatusInternal();
+    if (!status.available) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(ApiError(status.detail));
+    }
+    if (!status.active) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Scanner mode is not active."));
+    }
+    if (!scannerService_) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Scanner service is unavailable."));
+    }
+
+    const auto startResult = scannerService_->start();
+    if (startResult.isError()) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError("Capture unavailable: " + startResult.errorValue()));
+    }
+
+    const auto probeResult = scannerService_->runProbe(
+        ScannerService::ProbeRequest{
+            .tuning = command.tuning,
+            .dwellMs = command.dwellMs,
+            .sampleCount = command.sampleCount,
+        });
+    if (probeResult.isError()) {
+        return Result<OsApi::ScannerProbeRun::Okay, ApiError>::error(
+            ApiError(probeResult.errorValue()));
+    }
+
+    OsApi::ScannerProbeRun::Okay okay{
+        .tuning = probeResult.value().tuning,
+        .dwellMs = probeResult.value().dwellMs,
+        .dwells = {},
+    };
+    okay.dwells.reserve(probeResult.value().dwells.size());
+    for (const auto& dwell : probeResult.value().dwells) {
+        okay.dwells.push_back(
+            OsApi::ScannerProbeRun::ProbeDwellInfo{
+                .sawTraffic = dwell.sawTraffic,
+                .radiosSeen = dwell.radiosSeen,
+                .newRadiosSeen = dwell.newRadiosSeen,
+                .strongestSignalDbm = dwell.strongestSignalDbm,
+                .observedChannels = dwell.observedChannels,
+            });
+    }
+    return Result<OsApi::ScannerProbeRun::Okay, ApiError>::okay(std::move(okay));
 }
 
 Result<OsApi::NetworkDiagnosticsModeSet::Okay, ApiError> OperatingSystemManager::
@@ -2260,6 +2428,7 @@ Result<OsApi::ScannerModeEnter::Okay, ApiError> OperatingSystemManager::enterSca
     if (captureError.has_value()) {
         LOG_WARN(State, "Scanner mode entered, but capture failed: {}", *captureError);
         okay.detail = "Scanner mode active on wlan0, but capture failed: " + *captureError;
+        publishScannerSnapshotChanged(true, okay.detail);
     }
     else {
         LOG_INFO(State, "Scanner mode entered successfully.");
@@ -2296,6 +2465,7 @@ Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScann
         OsApi::ScannerModeExit::Okay okay;
         okay.active = false;
         okay.detail = "Normal Wi-Fi mode already active.";
+        publishScannerSnapshotChanged(false, okay.detail);
         return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
     }
 
@@ -2337,6 +2507,7 @@ Result<OsApi::ScannerModeExit::Okay, ApiError> OperatingSystemManager::exitScann
         LOG_INFO(State, "Scanner mode exited. Restored normal Wi-Fi mode.");
         okay.detail = "Restored normal Wi-Fi mode.";
     }
+    publishScannerSnapshotChanged(false, okay.detail);
     return Result<OsApi::ScannerModeExit::Okay, ApiError>::okay(std::move(okay));
 }
 
@@ -2832,6 +3003,27 @@ void OperatingSystemManager::publishNetworkSnapshotChanged(const NetworkService:
     wsService_.broadcastBinary(Network::serialize_envelope(envelope));
 }
 
+void OperatingSystemManager::publishScannerSnapshotChanged(
+    bool active, const std::optional<std::string>& detailOverride)
+{
+    if (!enableNetworking_ || !scannerService_) {
+        return;
+    }
+
+    const auto snapshot =
+        scannerService_->snapshot(kScannerPushSnapshotMaxAgeMs, kScannerPushSnapshotMaxRadios);
+    const OsApi::ScannerSnapshotChanged event{
+        .snapshot = toApiScannerSnapshotOkay(
+            snapshot, scannerService_->lastError(), active, detailOverride),
+    };
+    const Network::MessageEnvelope envelope{
+        .id = 0,
+        .message_type = std::string(OsApi::ScannerSnapshotChanged::name()),
+        .payload = Network::serialize_payload(event),
+    };
+    wsService_.broadcastBinary(Network::serialize_envelope(envelope));
+}
+
 OperatingSystemManager::DiskStats OperatingSystemManager::getDiskStats(
     const std::string& path) const
 {
@@ -3089,6 +3281,7 @@ void OperatingSystemManager::initializeDefaultDependencies()
                 RemoteSshExecutor executor(getPeerClientKeyPath());
                 return executor.run(peer, argv, timeoutMs);
             };
+        dependencies_.scannerChannelController = std::make_shared<NexmonChannelController>();
         return;
     }
 
@@ -3119,6 +3312,7 @@ void OperatingSystemManager::initializeDefaultDependencies()
             RemoteSshExecutor executor(getPeerClientKeyPath());
             return executor.run(peer, argv, timeoutMs);
         };
+    dependencies_.scannerChannelController = std::make_shared<NexmonChannelController>();
 }
 
 OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()

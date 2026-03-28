@@ -89,6 +89,20 @@ Any Idle::onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm)
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::ScannerConfigGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerConfigGet command received");
+    cwc.sendResponse(osm.getScannerConfig(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::ScannerConfigSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerConfigSet command received");
+    cwc.sendResponse(osm.setScannerConfig(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::ScannerModeEnter::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "ScannerModeEnter command received");
@@ -100,6 +114,13 @@ Any Idle::onEvent(const OsApi::ScannerModeExit::Cwc& cwc, OperatingSystemManager
 {
     LOG_INFO(State, "ScannerModeExit command received");
     cwc.sendResponse(osm.exitScannerMode());
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::ScannerProbeRun::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "ScannerProbeRun command received");
+    cwc.sendResponse(osm.runScannerProbe(cwc.command));
     return Idle{};
 }
 

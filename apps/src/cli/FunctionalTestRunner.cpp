@@ -1000,9 +1000,19 @@ Result<UiApi::NetworkDiagnosticsGet::Okay, std::string> waitForUiScannerMode(
         std::max(timeoutMs, 20000),
         description,
         [active](const UiApi::NetworkDiagnosticsGet::Okay& diagnostics, std::string& lastError) {
-            if (diagnostics.screen == "Scanner" && diagnostics.scanner_mode_active == active) {
-                lastError.clear();
-                return true;
+            if (diagnostics.screen == "Scanner") {
+                if (active && diagnostics.scanner_mode_active && diagnostics.scanner_exit_enabled
+                    && !diagnostics.scanner_enter_enabled) {
+                    lastError.clear();
+                    return true;
+                }
+
+                if (!active && !diagnostics.scanner_mode_active
+                    && diagnostics.scanner_mode_available && diagnostics.scanner_enter_enabled
+                    && !diagnostics.scanner_exit_enabled) {
+                    lastError.clear();
+                    return true;
+                }
             }
 
             lastError.clear();
@@ -1786,6 +1796,38 @@ Result<std::monostate, std::string> exitScannerModeViaBackend(
     if (exitResult.isError()) {
         return Result<std::monostate, std::string>::error(
             "OS ScannerModeExit failed: " + exitResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> ensureScannerModeInactive(
+    Network::WebSocketService& osManagerClient, int timeoutMs)
+{
+    auto statusResult = requestSystemStatus(osManagerClient, getPollingRequestTimeoutMs(timeoutMs));
+    if (statusResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "SystemStatus failed: " + statusResult.errorValue());
+    }
+
+    const auto& status = statusResult.value();
+    if (!status.scanner_mode_available) {
+        return Result<std::monostate, std::string>::error(
+            "Scanner mode unavailable: " + status.scanner_mode_detail);
+    }
+    if (!status.scanner_mode_active) {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    auto exitResult = exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+    if (exitResult.isError()) {
+        return exitResult;
+    }
+
+    auto inactiveResult =
+        waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+    if (inactiveResult.isError()) {
+        return Result<std::monostate, std::string>::error(inactiveResult.errorValue());
     }
 
     return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -5677,6 +5719,156 @@ FunctionalTestSummary FunctionalTestRunner::runCanExerciseWifiAndScanner(
 
     return FunctionalTestSummary{
         .name = "canExerciseWifiAndScanner",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .success_screenshot_path = successScreenshotPath,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanRecoverScannerUiAfterOutOfBandExit(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    static_cast<void>(serverAddress);
+
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService osManagerClient;
+    Network::WebSocketService uiClient;
+    std::optional<std::string> successScreenshotPath;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto osConnectResult = osManagerClient.connect(osManagerAddress, timeoutMs);
+        if (osConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to os-manager: " + osConnectResult.errorValue());
+        }
+
+        auto systemStatusResult = waitForSystemStatusOk(osManagerClient, timeoutMs);
+        if (systemStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(systemStatusResult.errorValue());
+        }
+
+        auto scannerInactiveResult = ensureScannerModeInactive(osManagerClient, timeoutMs);
+        if (scannerInactiveResult.isError()) {
+            return scannerInactiveResult;
+        }
+
+        auto uiConnectResult = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnectResult.errorValue());
+        }
+
+        auto scannerScreenResult = ensureUiInNetworkScannerScreen(uiClient, timeoutMs);
+        if (scannerScreenResult.isError()) {
+            return scannerScreenResult;
+        }
+
+        auto scannerReadyResult = waitForUiScannerMode(uiClient, false, std::max(timeoutMs, 20000));
+        if (scannerReadyResult.isError()) {
+            return Result<std::monostate, std::string>::error(scannerReadyResult.errorValue());
+        }
+
+        auto scannerEnterResult = pressUiScannerEnter(uiClient, timeoutMs);
+        if (scannerEnterResult.isError()) {
+            return scannerEnterResult;
+        }
+
+        auto systemScannerActiveResult =
+            waitForSystemScannerMode(osManagerClient, true, std::max(timeoutMs, 20000));
+        if (systemScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerActiveResult.errorValue());
+        }
+
+        auto uiScannerActiveResult =
+            waitForUiScannerMode(uiClient, true, std::max(timeoutMs, 20000));
+        if (uiScannerActiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(uiScannerActiveResult.errorValue());
+        }
+
+        auto scannerSnapshotResult =
+            waitForSystemScannerSnapshot(osManagerClient, std::max(timeoutMs, 20000));
+        if (scannerSnapshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "ScannerSnapshotGet failed after entering scanner mode: "
+                + scannerSnapshotResult.errorValue());
+        }
+
+        auto scannerExitResult =
+            exitScannerModeViaBackend(osManagerClient, std::max(timeoutMs, 60000));
+        if (scannerExitResult.isError()) {
+            return scannerExitResult;
+        }
+
+        auto systemScannerInactiveResult =
+            waitForSystemScannerMode(osManagerClient, false, std::max(timeoutMs, 60000));
+        if (systemScannerInactiveResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                systemScannerInactiveResult.errorValue());
+        }
+
+        auto uiScannerRecoveredResult =
+            waitForUiScannerMode(uiClient, false, std::max(timeoutMs, 60000));
+        if (uiScannerRecoveredResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                uiScannerRecoveredResult.errorValue());
+        }
+
+        auto screenshotResult = captureUiScreenshotPng(
+            uiClient, "canRecoverScannerUiAfterOutOfBandExit", "scanner-recovered", timeoutMs);
+        if (screenshotResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                screenshotResult.errorValue().message);
+        }
+        successScreenshotPath = screenshotResult.value();
+        std::cerr << "Saved scanner recovery screenshot to " << *successScreenshotPath << std::endl;
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    if (osManagerClient.isConnected()) {
+        const auto cleanupResult = ensureScannerModeInactive(osManagerClient, timeoutMs);
+        if (cleanupResult.isError()) {
+            if (testResult.isError()) {
+                testResult = Result<std::monostate, std::string>::error(
+                    testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+            }
+            else {
+                testResult = Result<std::monostate, std::string>::error(
+                    "Cleanup failed: " + cleanupResult.errorValue());
+            }
+        }
+    }
+
+    uiClient.disconnect();
+    osManagerClient.disconnect();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canRecoverScannerUiAfterOutOfBandExit",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

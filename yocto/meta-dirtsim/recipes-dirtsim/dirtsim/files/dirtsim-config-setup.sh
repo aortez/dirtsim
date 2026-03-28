@@ -2,6 +2,9 @@
 # DirtSim configuration setup - runs once at boot before services start.
 # Ensures proper permissions for config files and directories.
 
+# Ensure config directory exists before services try to read or create files there.
+mkdir -p /etc/dirtsim
+
 # Fix permissions on .local config overrides so dirtsim user can read them.
 if ls /etc/dirtsim/*.local >/dev/null 2>&1; then
     chmod 644 /etc/dirtsim/*.local
@@ -15,6 +18,7 @@ if [ -d /home/dirtsim ]; then
 fi
 
 # Ensure dirtsim user owns their working directory.
+mkdir -p /data/dirtsim
 if [ -d /data/dirtsim ]; then
     chown -R dirtsim:dirtsim /data/dirtsim
     echo "Set ownership on /data/dirtsim"

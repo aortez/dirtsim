@@ -1,13 +1,14 @@
 [Unit]
 Description=DirtSim Configuration Setup (x86)
 DefaultDependencies=no
+RequiresMountsFor=/data/dirtsim
 After=local-fs.target
-Before=dirtsim-server.service dirtsim-ui.service
+Before=dirtsim-audio.service dirtsim-os-manager.service dirtsim-server.service dirtsim-ui.service
 
 [Service]
 Type=oneshot
 # Ensure working directory and config permissions without external scripts.
-ExecStart=/bin/sh -c 'mkdir -p /data/dirtsim && chown -R dirtsim:dirtsim /data/dirtsim && if ls /etc/dirtsim/*.local >/dev/null 2>&1; then chmod 644 /etc/dirtsim/*.local; fi'
+ExecStart=/bin/sh -c 'mkdir -p /data/dirtsim /etc/dirtsim && chown -R dirtsim:dirtsim /data/dirtsim && if ls /etc/dirtsim/*.local >/dev/null 2>&1; then chmod 644 /etc/dirtsim/*.local; fi'
 RemainAfterExit=yes
 
 [Install]

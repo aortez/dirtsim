@@ -643,6 +643,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/TrainingResultBrowserPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
+    src/ui/widgets/ScannerChannelMapWidget.cpp
     src/ui/widgets/TimeSeriesPlotWidget.cpp
 )
 target_include_directories(dirtsim-ui-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
@@ -709,6 +710,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerConfigGet.cpp
     src/os-manager/api/ScannerModeEnter.cpp
     src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
@@ -724,7 +726,10 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/AdaptiveScanPlanner.cpp
     src/os-manager/network/NetworkService.cpp
+    src/os-manager/network/NexmonChannelController.cpp
+    src/os-manager/network/NexmonChannelProtocol.cpp
     src/os-manager/network/ScannerService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
@@ -779,6 +784,7 @@ add_executable(cli
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerConfigGet.cpp
     src/os-manager/api/ScannerModeEnter.cpp
     src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
@@ -819,9 +825,12 @@ add_executable(dirtsim-tests
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
+    src/os-manager/tests/AdaptiveScanPlanner_test.cpp
+    src/os-manager/tests/NexmonChannelProtocol_test.cpp
     src/os-manager/tests/PeerTrust_test.cpp
     src/os-manager/tests/ProcessRunner_test.cpp
     src/os-manager/tests/RemoteCliRun_test.cpp
+    src/os-manager/tests/ScannerTypes_test.cpp
     src/os-manager/tests/StateError_test.cpp
     src/os-manager/tests/StateIdle_test.cpp
     src/os-manager/tests/StateRebooting_test.cpp
@@ -838,6 +847,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/ScannerConfigGet.cpp
     src/os-manager/api/ScannerModeEnter.cpp
     src/os-manager/api/ScannerModeExit.cpp
     src/os-manager/api/StartAudio.cpp
@@ -853,7 +863,10 @@ add_executable(dirtsim-tests
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/AdaptiveScanPlanner.cpp
     src/os-manager/network/NetworkService.cpp
+    src/os-manager/network/NexmonChannelController.cpp
+    src/os-manager/network/NexmonChannelProtocol.cpp
     src/os-manager/network/ScannerService.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp

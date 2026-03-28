@@ -13,8 +13,11 @@
 #include "os-manager/api/NetworkSnapshotGet.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/RemoteCliRun.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerProbeRun.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
@@ -45,6 +48,7 @@ namespace OsManager {
 class LocalProcessBackend;
 class PeerAdvertisement;
 class PeerDiscoveryInterface;
+class ScannerChannelController;
 class ScannerService;
 struct PeerInfo;
 
@@ -86,6 +90,7 @@ public:
         std::function<Result<OsApi::RemoteCliRun::Okay, ApiError>(
             const PeerTrustBundle&, const std::vector<std::string>&, int)>
             remoteCliRunner;
+        std::shared_ptr<ScannerChannelController> scannerChannelController;
     };
 
     struct TestMode {
@@ -121,8 +126,14 @@ public:
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
     Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
         const OsApi::RemoteCliRun::Command& command);
+    Result<OsApi::ScannerConfigGet::Okay, ApiError> getScannerConfig(
+        const OsApi::ScannerConfigGet::Command& command);
+    Result<OsApi::ScannerConfigSet::Okay, ApiError> setScannerConfig(
+        const OsApi::ScannerConfigSet::Command& command);
     Result<OsApi::ScannerModeEnter::Okay, ApiError> enterScannerMode();
     Result<OsApi::ScannerModeExit::Okay, ApiError> exitScannerMode();
+    Result<OsApi::ScannerProbeRun::Okay, ApiError> runScannerProbe(
+        const OsApi::ScannerProbeRun::Command& command);
     Result<OsApi::ScannerSnapshotGet::Okay, ApiError> getScannerSnapshot(
         const OsApi::ScannerSnapshotGet::Command& command);
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
@@ -204,9 +215,12 @@ private:
     void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);
+    void initializeServices();
     void initializeDefaultDependencies();
     void initializePeerDiscovery();
     void publishNetworkSnapshotChanged(const NetworkService::Snapshot& snapshot);
+    void publishScannerSnapshotChanged(
+        bool active, const std::optional<std::string>& detailOverride = std::nullopt);
 
     uint16_t port_ = 0;
     bool enableNetworking_ = true;

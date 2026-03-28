@@ -31,6 +31,8 @@ void signalHandler(int signum)
 
 int main(int argc, char** argv)
 {
+    static constexpr const char* kDefaultLogFilePath = "dirtsim-os-manager.log";
+
     args::ArgumentParser parser(
         "DirtSim OS Manager",
         "Privileged process for system control and health reporting via WebSocket.");
@@ -66,7 +68,7 @@ int main(int argc, char** argv)
 
     const uint16_t port = portArg ? args::get(portArg) : 9090;
 
-    LoggingChannels::initializeFromConfig(args::get(logConfig), "os-manager");
+    LoggingChannels::initializeFromConfig(args::get(logConfig), "os-manager", kDefaultLogFilePath);
     if (logChannels) {
         LoggingChannels::configureFromString(args::get(logChannels));
         SLOG_INFO("Applied channel overrides: {}", args::get(logChannels));

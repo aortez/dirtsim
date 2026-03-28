@@ -1,17 +1,22 @@
 #include "ScannerService.h"
 #include "core/LoggingChannels.h"
+#include "os-manager/network/AdaptiveScanPlanner.h"
+#include "os-manager/network/NexmonChannelProtocol.h"
+#include "os-manager/network/ScannerChannelController.h"
 #include <algorithm>
-#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <memory>
 #include <poll.h>
 #include <sys/socket.h>
+#include <unordered_set>
 
 #ifdef __linux__
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <net/if.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #endif
 
@@ -21,7 +26,14 @@ namespace OsManager {
 namespace {
 
 constexpr int kPollTimeoutMs = 50;
-constexpr int kSetChannelTimeoutMs = 2000;
+constexpr int kMinDwellMs = 100;
+constexpr int kManualDwellMs = 250;
+constexpr int kProbeTimeoutPaddingMs = 5000;
+constexpr auto kIncidentalObservationLogCooldown = std::chrono::seconds(5);
+constexpr auto kManualReadbackSampleInterval = std::chrono::milliseconds(100);
+
+enum class ParsedChannelSource { DsParameterSet = 0, HtOperation, Radiotap, Hint };
+enum class ParsedManagementSubtype { ProbeRequest = 4, ProbeResponse = 5, Beacon = 8 };
 
 uint16_t readLe16(const uint8_t* data)
 {
@@ -62,6 +74,59 @@ std::string formatMac(const uint8_t mac[6])
     return std::string(buf);
 }
 
+#ifdef __linux__
+std::optional<std::string> interfaceMacAddress(const std::string& interfaceName)
+{
+    const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return std::nullopt;
+    }
+
+    ifreq request{};
+    std::snprintf(request.ifr_name, sizeof(request.ifr_name), "%s", interfaceName.c_str());
+    if (::ioctl(fd, SIOCGIFHWADDR, &request) < 0) {
+        ::close(fd);
+        return std::nullopt;
+    }
+
+    ::close(fd);
+    const auto* mac = reinterpret_cast<const uint8_t*>(request.ifr_hwaddr.sa_data);
+    return formatMac(mac);
+}
+#endif
+
+bool isBroadcastMac(const std::string& mac)
+{
+    return mac == "FF:FF:FF:FF:FF:FF";
+}
+
+std::string receiverRoleLabel(
+    const std::string& receiverMac, const std::optional<std::string>& localInterfaceMac)
+{
+    if (isBroadcastMac(receiverMac)) {
+        return "Broadcast";
+    }
+    if (localInterfaceMac == receiverMac) {
+        return "Local";
+    }
+    if (localInterfaceMac.has_value()) {
+        return "Foreign";
+    }
+    return "Unknown";
+}
+
+std::string transmitterRoleLabel(
+    const std::string& transmitterMac, const std::optional<std::string>& localInterfaceMac)
+{
+    if (localInterfaceMac == transmitterMac) {
+        return "Local";
+    }
+    if (localInterfaceMac.has_value()) {
+        return "Foreign";
+    }
+    return "Unknown";
+}
+
 std::string sanitizeSsid(const uint8_t* data, size_t length)
 {
     std::string ssid;
@@ -100,6 +165,17 @@ struct RadiotapInfo {
     std::optional<int> signalDbm;
     std::optional<int> channelFreqMhz;
 };
+
+ScannerService::ProbeDwell probeDwellFromObservation(const StepObservation& observation)
+{
+    return ScannerService::ProbeDwell{
+        .sawTraffic = observation.sawTraffic,
+        .radiosSeen = static_cast<uint32_t>(observation.radiosSeen),
+        .newRadiosSeen = static_cast<uint32_t>(observation.newRadiosSeen),
+        .strongestSignalDbm = observation.strongestSignalDbm,
+        .observedChannels = observation.observedChannels,
+    };
+}
 
 RadiotapInfo parseRadiotap(const uint8_t* data, size_t length)
 {
@@ -206,10 +282,54 @@ RadiotapInfo parseRadiotap(const uint8_t* data, size_t length)
 
 struct ParsedBeacon {
     std::string bssid;
+    std::string receiverMac;
     std::string ssid;
     std::optional<int> signalDbm;
     std::optional<int> channel;
+    std::optional<int> radiotapChannel;
+    std::optional<int> radiotapFreqMhz;
+    ParsedChannelSource channelSource = ParsedChannelSource::Hint;
+    ParsedManagementSubtype subtype = ParsedManagementSubtype::Beacon;
 };
+
+struct ParsedProbeRequest {
+    std::string receiverMac;
+    std::string transmitterMac;
+    std::string ssid;
+    std::optional<int> signalDbm;
+    std::optional<int> radiotapChannel;
+    std::optional<int> radiotapFreqMhz;
+};
+
+std::string parsedChannelSourceLabel(const ParsedChannelSource source)
+{
+    switch (source) {
+        case ParsedChannelSource::DsParameterSet:
+            return "DS";
+        case ParsedChannelSource::HtOperation:
+            return "HT";
+        case ParsedChannelSource::Radiotap:
+            return "Radiotap";
+        case ParsedChannelSource::Hint:
+            return "Hint";
+    }
+
+    return "Unknown";
+}
+
+std::string parsedManagementSubtypeLabel(const ParsedManagementSubtype subtype)
+{
+    switch (subtype) {
+        case ParsedManagementSubtype::Beacon:
+            return "Beacon";
+        case ParsedManagementSubtype::ProbeRequest:
+            return "ProbeRequest";
+        case ParsedManagementSubtype::ProbeResponse:
+            return "ProbeResponse";
+    }
+
+    return "Unknown";
+}
 
 std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
     const uint8_t* data, size_t length, int channelHint)
@@ -232,11 +352,13 @@ std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
         return std::nullopt;
     }
 
-    // Management header: addr3 at offset 16.
+    // Management header: addr1 at offset 4 and addr3 at offset 16.
+    const uint8_t* receiverMac = frame + 4;
     const uint8_t* bssidMac = frame + 16;
 
     std::string ssid;
     std::optional<int> channel;
+    std::optional<int> radiotapChannel;
 
     std::optional<int> dsChannel;
     std::optional<int> htPrimaryChannel;
@@ -264,35 +386,104 @@ std::optional<ParsedBeacon> parseBeaconOrProbeResponse(
         offset += len;
     }
 
+    if (rt.channelFreqMhz.has_value()) {
+        radiotapChannel = frequencyToChannel(*rt.channelFreqMhz);
+    }
+
+    ParsedChannelSource channelSource = ParsedChannelSource::Hint;
     if (dsChannel.has_value()) {
         channel = dsChannel;
+        channelSource = ParsedChannelSource::DsParameterSet;
     }
     else if (htPrimaryChannel.has_value()) {
         channel = htPrimaryChannel;
+        channelSource = ParsedChannelSource::HtOperation;
     }
-    else if (rt.channelFreqMhz.has_value()) {
-        channel = frequencyToChannel(*rt.channelFreqMhz);
+    else if (radiotapChannel.has_value()) {
+        channel = radiotapChannel;
+        channelSource = ParsedChannelSource::Radiotap;
     }
     else if (channelHint > 0) {
         channel = channelHint;
+        channelSource = ParsedChannelSource::Hint;
     }
 
     ParsedBeacon parsed;
     parsed.bssid = formatMac(reinterpret_cast<const uint8_t (*)[6]>(bssidMac)[0]);
+    parsed.receiverMac = formatMac(reinterpret_cast<const uint8_t (*)[6]>(receiverMac)[0]);
     parsed.ssid = std::move(ssid);
     parsed.signalDbm = rt.signalDbm;
     parsed.channel = channel;
+    parsed.radiotapChannel = radiotapChannel;
+    parsed.radiotapFreqMhz = rt.channelFreqMhz;
+    parsed.channelSource = channelSource;
+    parsed.subtype =
+        subtype == 5 ? ParsedManagementSubtype::ProbeResponse : ParsedManagementSubtype::Beacon;
+    return parsed;
+}
+
+std::optional<ParsedProbeRequest> parseProbeRequest(const uint8_t* data, size_t length)
+{
+    const RadiotapInfo rt = parseRadiotap(data, length);
+    if (rt.headerLength == 0 || rt.headerLength > length) {
+        return std::nullopt;
+    }
+
+    const uint8_t* frame = data + rt.headerLength;
+    const size_t frameLength = length - rt.headerLength;
+    if (frameLength < 24) {
+        return std::nullopt;
+    }
+
+    const uint16_t fc = readLe16(frame);
+    const int type = (fc >> 2) & 0x3;
+    const int subtype = (fc >> 4) & 0xF;
+    if (type != 0 || subtype != 4) {
+        return std::nullopt;
+    }
+
+    ParsedProbeRequest parsed;
+    parsed.receiverMac = formatMac(frame + 4);
+    parsed.transmitterMac = formatMac(frame + 10);
+    parsed.signalDbm = rt.signalDbm;
+    parsed.radiotapFreqMhz = rt.channelFreqMhz;
+    if (rt.channelFreqMhz.has_value()) {
+        parsed.radiotapChannel = frequencyToChannel(*rt.channelFreqMhz);
+    }
+
+    size_t offset = 24;
+    while (offset + 2 <= frameLength) {
+        const uint8_t id = frame[offset];
+        const uint8_t len = frame[offset + 1];
+        offset += 2;
+        if (offset + len > frameLength) {
+            break;
+        }
+
+        if (id == 0) {
+            parsed.ssid = sanitizeSsid(frame + offset, len);
+            break;
+        }
+
+        offset += len;
+    }
+
     return parsed;
 }
 
 } // namespace
 
-ScannerService::ScannerService(ProcessRunner processRunner)
-    : config_(), processRunner_(std::move(processRunner))
+ScannerService::ScannerService(std::shared_ptr<ScannerChannelController> channelController)
+    : config_(),
+      channelController_(std::move(channelController)),
+      planner_(std::make_unique<AdaptiveScanPlanner>())
 {}
 
-ScannerService::ScannerService(Config config, ProcessRunner processRunner)
-    : config_(std::move(config)), processRunner_(std::move(processRunner))
+ScannerService::ScannerService(
+    Config config, std::shared_ptr<ScannerChannelController> channelController)
+    : config_(std::move(config)),
+      channelController_(std::move(channelController)),
+      planner_(std::make_unique<AdaptiveScanPlanner>())
 {}
 
 ScannerService::~ScannerService()
@@ -337,22 +528,52 @@ Result<std::monostate, std::string> ScannerService::start()
         return Result<std::monostate, std::string>::error(error);
     }
 
+    if (!channelController_) {
+        ::close(fd);
+        return Result<std::monostate, std::string>::error(
+            "Missing dependency for scannerChannelController");
+    }
+
+    const auto channelControllerStartResult = channelController_->start();
+    if (channelControllerStartResult.isError()) {
+        ::close(fd);
+        return Result<std::monostate, std::string>::error(
+            channelControllerStartResult.errorValue());
+    }
+
+    localInterfaceMac_ = interfaceMacAddress(config_.interfaceName);
+
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        currentChannel_.reset();
+        currentTuning_.reset();
         lastError_.clear();
+        manualReadbackExpectedChanspec_.reset();
+        manualReadbackLastSampleAt_.reset();
+        manualReadbackLastUnexpectedChanspec_.reset();
+        probeRequestLoggedAtByKey_.clear();
         radiosByBssid_.clear();
         socketFd_ = fd;
     }
 
+    if (planner_) {
+        planner_->reset();
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (requestedConfig_.mode == ScannerConfigMode::Auto) {
+            planner_->setAutoConfig(requestedConfig_.autoConfig);
+        }
+    }
+
     running_ = true;
     thread_ = std::thread(&ScannerService::threadMain, this);
+    notifySnapshotChanged();
     return Result<std::monostate, std::string>::okay(std::monostate{});
 #endif
 }
 
 void ScannerService::stop()
 {
+    const bool wasRunning = running_;
+
 #ifdef __linux__
     stopRequested_ = true;
     if (thread_.joinable()) {
@@ -364,16 +585,26 @@ void ScannerService::stop()
         std::lock_guard<std::mutex> lock(mutex_);
         fd = socketFd_;
         socketFd_ = -1;
-        currentChannel_.reset();
+        currentTuning_.reset();
         lastError_.clear();
+        manualReadbackExpectedChanspec_.reset();
+        manualReadbackLastSampleAt_.reset();
+        manualReadbackLastUnexpectedChanspec_.reset();
+        probeRequestLoggedAtByKey_.clear();
         radiosByBssid_.clear();
     }
     if (fd >= 0) {
         ::close(fd);
     }
+    if (channelController_) {
+        channelController_->stop();
+    }
 #endif
 
     running_ = false;
+    if (wasRunning) {
+        notifySnapshotChanged();
+    }
 }
 
 ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxRadios) const
@@ -386,7 +617,8 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        snapshot.currentChannel = currentChannel_;
+        snapshot.config = requestedConfig_;
+        snapshot.currentTuning = currentTuning_;
         snapshot.radios.reserve(radiosByBssid_.size());
         for (const auto& [bssid, state] : radiosByBssid_) {
             if (maxAgeMs > 0 && now - state.lastSeenAt > maxAge) {
@@ -399,6 +631,7 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
             radio.signalDbm = state.signalDbm;
             radio.channel = state.channel;
             radio.lastSeenAt = state.lastSeenAt;
+            radio.observationKind = state.observationKind;
             snapshot.radios.push_back(std::move(radio));
         }
     }
@@ -428,40 +661,96 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
     return snapshot;
 }
 
+ScannerConfig ScannerService::config() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return requestedConfig_;
+}
+
 std::string ScannerService::lastError() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return lastError_;
 }
 
-std::vector<int> ScannerService::buildChannelPlan() const
+Result<ScannerService::ProbeResult, std::string> ScannerService::runProbe(
+    const ProbeRequest& request)
 {
-    std::vector<int> channels;
-    channels.reserve(24);
-
-    // 2.4 GHz: 1-11.
-    for (int ch = 1; ch <= 11; ++ch) {
-        channels.push_back(ch);
+    if (!running_) {
+        return Result<ProbeResult, std::string>::error("Scanner service is not running.");
+    }
+    if (request.sampleCount == 0) {
+        return Result<ProbeResult, std::string>::error(
+            "Scanner probe sampleCount must be at least 1.");
+    }
+    if (!scannerWidthSupported(request.tuning.band, request.tuning.widthMhz)) {
+        return Result<ProbeResult, std::string>::error(
+            "Unsupported " + scannerBandLabel(request.tuning.band) + " scanner width "
+            + std::to_string(request.tuning.widthMhz) + " MHz");
     }
 
-    // 5 GHz: common non-DFS ranges.
-    for (int ch : { 36, 40, 44, 48, 149, 153, 157, 161, 165 }) {
-        channels.push_back(ch);
+    auto probe = std::make_shared<PendingProbe>();
+    probe->request = request;
+    probe->result = ProbeResult{
+        .tuning = request.tuning,
+        .dwellMs = std::max(kMinDwellMs, request.dwellMs),
+        .dwells = {},
+    };
+    probe->result.dwells.reserve(request.sampleCount);
+
+    auto future = probe->promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(probeMutex_);
+        if (pendingProbe_ && !pendingProbe_->completed) {
+            return Result<ProbeResult, std::string>::error("Scanner probe already running.");
+        }
+        pendingProbe_ = probe;
     }
 
-    return channels;
+    const int totalDwellMs =
+        std::max(kMinDwellMs, request.dwellMs) * static_cast<int>(request.sampleCount);
+    const auto timeout = std::chrono::milliseconds(totalDwellMs + kProbeTimeoutPaddingMs);
+    if (future.wait_for(timeout) != std::future_status::ready) {
+        return Result<ProbeResult, std::string>::error("Scanner probe timed out.");
+    }
+
+    return future.get();
 }
 
-bool ScannerService::setChannel(int channel) const
+Result<std::monostate, std::string> ScannerService::setConfig(const ScannerConfig& config)
 {
-    if (!processRunner_) {
-        return false;
+    if (!scannerWidthSupported(config.autoConfig.band, config.autoConfig.widthMhz)) {
+        return Result<std::monostate, std::string>::error(
+            "Unsupported " + scannerBandLabel(config.autoConfig.band) + " scanner width "
+            + std::to_string(config.autoConfig.widthMhz) + " MHz");
     }
 
-    const auto result = processRunner_(
-        { "iw", "dev", config_.interfaceName, "set", "channel", std::to_string(channel) },
-        kSetChannelTimeoutMs);
-    return result.isValue() && result.value().exitCode == 0;
+    const auto manualTuningResult = scannerManualTargetToTuning(config.manualConfig);
+    if (manualTuningResult.isError()) {
+        return Result<std::monostate, std::string>::error(manualTuningResult.errorValue());
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        requestedConfig_ = config;
+    }
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+void ScannerService::setSnapshotChangedCallback(SnapshotChangedCallback callback)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshotChangedCallback_ = std::move(callback);
+}
+
+Result<std::monostate, std::string> ScannerService::setChannel(const ScannerTuning& tuning)
+{
+    if (!channelController_) {
+        return Result<std::monostate, std::string>::error(
+            "Missing dependency for scannerChannelController");
+    }
+
+    return channelController_->setTuning(tuning);
 }
 
 void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
@@ -478,15 +767,191 @@ void ScannerService::pruneOldRadios(std::chrono::steady_clock::time_point now)
     }
 }
 
-void ScannerService::handlePacket(
-    const uint8_t* data, size_t length, int channelHint, std::chrono::steady_clock::time_point now)
+void ScannerService::notifySnapshotChanged()
 {
-    const auto parsed = parseBeaconOrProbeResponse(data, length, channelHint);
-    if (!parsed.has_value() || parsed->bssid.empty()) {
+    SnapshotChangedCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        callback = snapshotChangedCallback_;
+    }
+
+    if (callback) {
+        callback();
+    }
+}
+
+void ScannerService::completeProbe(
+    const std::shared_ptr<PendingProbe>& probe, Result<ProbeResult, std::string> result)
+{
+    if (!probe) {
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(probeMutex_);
+        if (probe->completed) {
+            return;
+        }
+        probe->completed = true;
+        if (pendingProbe_ == probe) {
+            pendingProbe_.reset();
+        }
+    }
+
+    probe->promise.set_value(std::move(result));
+}
+
+std::shared_ptr<ScannerService::PendingProbe> ScannerService::currentProbe() const
+{
+    std::lock_guard<std::mutex> lock(probeMutex_);
+    return pendingProbe_;
+}
+
+void ScannerService::resetManualReadbackSampler()
+{
+    manualReadbackExpectedChanspec_.reset();
+    manualReadbackLastSampleAt_.reset();
+    manualReadbackLastUnexpectedChanspec_.reset();
+}
+
+void ScannerService::maybeSampleManualReadback(
+    const ScannerTuning& tuning, const std::chrono::steady_clock::time_point now)
+{
+    if (!channelController_) {
+        return;
+    }
+
+    const auto expectedChanspecResult = NexmonChannelProtocol::encodeChanspec(tuning);
+    if (expectedChanspecResult.isError()) {
+        return;
+    }
+
+    const uint32_t expectedChanspec = expectedChanspecResult.value();
+    if (!manualReadbackExpectedChanspec_.has_value()
+        || manualReadbackExpectedChanspec_.value() != expectedChanspec) {
+        manualReadbackExpectedChanspec_ = expectedChanspec;
+        manualReadbackLastSampleAt_.reset();
+        manualReadbackLastUnexpectedChanspec_.reset();
+    }
+
+    if (manualReadbackLastSampleAt_.has_value()
+        && now - manualReadbackLastSampleAt_.value() < kManualReadbackSampleInterval) {
+        return;
+    }
+    manualReadbackLastSampleAt_ = now;
+
+    const auto readbackResult = channelController_->readbackChanspec();
+    if (readbackResult.isError()) {
+        return;
+    }
+
+    const uint32_t actualChanspec = readbackResult.value();
+    if (actualChanspec == manualReadbackExpectedChanspec_.value()) {
+        if (manualReadbackLastUnexpectedChanspec_.has_value()) {
+            LOG_INFO(
+                Network,
+                "Scanner manual tuning readback recovered: requested={}, actual={}",
+                NexmonChannelProtocol::describeChanspec(manualReadbackExpectedChanspec_.value()),
+                NexmonChannelProtocol::describeChanspec(actualChanspec));
+            manualReadbackLastUnexpectedChanspec_.reset();
+        }
+        return;
+    }
+
+    if (manualReadbackLastUnexpectedChanspec_ == actualChanspec) {
+        return;
+    }
+
+    manualReadbackLastUnexpectedChanspec_ = actualChanspec;
+    LOG_INFO(
+        Network,
+        "Scanner manual tuning readback mismatch: requested={}, actual={}",
+        NexmonChannelProtocol::describeChanspec(manualReadbackExpectedChanspec_.value()),
+        NexmonChannelProtocol::describeChanspec(actualChanspec));
+}
+
+void ScannerService::maybeLogProbeRequest(
+    const uint8_t* data,
+    size_t length,
+    const ScannerTuning& tuning,
+    std::chrono::steady_clock::time_point now)
+{
+    const auto parsed = parseProbeRequest(data, length);
+    if (!parsed.has_value() || parsed->transmitterMac.empty() || !parsed->radiotapChannel) {
+        return;
+    }
+
+    if (scannerObservationKindForObservedChannel(tuning, parsed->radiotapChannel.value())
+        != ScannerObservationKind::Incidental) {
+        return;
+    }
+
+    const std::string logKey = parsed->transmitterMac + "|" + parsed->receiverMac + "|"
+        + std::to_string(parsed->radiotapChannel.value());
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = probeRequestLoggedAtByKey_.find(logKey);
+        if (it != probeRequestLoggedAtByKey_.end()
+            && now - it->second < kIncidentalObservationLogCooldown) {
+            return;
+        }
+        probeRequestLoggedAtByKey_[logKey] = now;
+    }
+
+    const auto tuningCoveredChannels = scannerTuningCoveredPrimaryChannels(tuning);
+    const std::string tuningSpanLabel =
+        scannerChannelSpanLabel(tuningCoveredChannels, tuning.widthMhz);
+    const std::string ssidLabel = !parsed->ssid.empty() ? parsed->ssid : "<wildcard>";
+    const std::string signalLabel =
+        parsed->signalDbm.has_value() ? std::to_string(parsed->signalDbm.value()) + " dBm" : "n/a";
+    const std::string radiotapFreqLabel = parsed->radiotapFreqMhz.has_value()
+        ? std::to_string(parsed->radiotapFreqMhz.value()) + " MHz"
+        : "n/a";
+    const std::string radiotapChannelLabel = std::to_string(parsed->radiotapChannel.value());
+    const std::string receiverRole = receiverRoleLabel(parsed->receiverMac, localInterfaceMac_);
+    const std::string transmitterRole =
+        transmitterRoleLabel(parsed->transmitterMac, localInterfaceMac_);
+    const std::string localMacLabel =
+        localInterfaceMac_.has_value() ? localInterfaceMac_.value() : "n/a";
+
+    LOG_INFO(
+        Network,
+        "Scanner incidental observation: subtype={}, transmitter_mac={}, transmitter_role={}, "
+        "receiver_mac={}, receiver_role={}, local_mac={}, ssid={}, radiotap_freq={}, "
+        "radiotap_channel={}, tuned_primary={}, tuned_width={} MHz, tuned_span={}, signal={}",
+        parsedManagementSubtypeLabel(ParsedManagementSubtype::ProbeRequest),
+        parsed->transmitterMac,
+        transmitterRole,
+        parsed->receiverMac,
+        receiverRole,
+        localMacLabel,
+        ssidLabel,
+        radiotapFreqLabel,
+        radiotapChannelLabel,
+        tuning.primaryChannel,
+        tuning.widthMhz,
+        tuningSpanLabel,
+        signalLabel);
+}
+
+std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
+    const uint8_t* data,
+    size_t length,
+    const ScannerTuning& tuning,
+    std::chrono::steady_clock::time_point now)
+{
+    maybeLogProbeRequest(data, length, tuning, now);
+
+    const auto parsed = parseBeaconOrProbeResponse(data, length, tuning.primaryChannel);
+    if (!parsed.has_value() || parsed->bssid.empty()) {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> incidentalObservationLog;
     std::lock_guard<std::mutex> lock(mutex_);
+    const auto existingIt = radiosByBssid_.find(parsed->bssid);
+    const bool isNewRadio = existingIt == radiosByBssid_.end();
     auto& state = radiosByBssid_[parsed->bssid];
     if (!parsed->ssid.empty()) {
         state.ssid = parsed->ssid;
@@ -496,8 +961,61 @@ void ScannerService::handlePacket(
     }
     if (parsed->channel.has_value()) {
         state.channel = parsed->channel;
+        state.observationKind =
+            scannerObservationKindForPrimaryChannel(tuning, parsed->channel.value());
+        if (state.observationKind == ScannerObservationKind::Incidental) {
+            const bool shouldLog = !state.lastIncidentalLoggedAt.has_value()
+                || now - state.lastIncidentalLoggedAt.value() >= kIncidentalObservationLogCooldown
+                || state.lastIncidentalLoggedChannel != parsed->channel;
+            if (shouldLog) {
+                const auto tuningCoveredChannels = scannerTuningCoveredPrimaryChannels(tuning);
+                const std::string tuningSpanLabel =
+                    scannerChannelSpanLabel(tuningCoveredChannels, tuning.widthMhz);
+                const std::string ssidLabel = !parsed->ssid.empty() ? parsed->ssid : "<hidden>";
+                const std::string signalLabel = parsed->signalDbm.has_value()
+                    ? std::to_string(parsed->signalDbm.value()) + " dBm"
+                    : "n/a";
+                const std::string radiotapFreqLabel = parsed->radiotapFreqMhz.has_value()
+                    ? std::to_string(parsed->radiotapFreqMhz.value()) + " MHz"
+                    : "n/a";
+                const std::string radiotapChannelLabel = parsed->radiotapChannel.has_value()
+                    ? std::to_string(parsed->radiotapChannel.value())
+                    : "n/a";
+                const std::string receiverRole =
+                    receiverRoleLabel(parsed->receiverMac, localInterfaceMac_);
+                const std::string localMacLabel =
+                    localInterfaceMac_.has_value() ? localInterfaceMac_.value() : "n/a";
+
+                incidentalObservationLog = "Scanner incidental observation: subtype="
+                    + parsedManagementSubtypeLabel(parsed->subtype) + ", bssid=" + parsed->bssid
+                    + ", receiver_mac=" + parsed->receiverMac + ", receiver_role=" + receiverRole
+                    + ", local_mac=" + localMacLabel + ", ssid=" + ssidLabel
+                    + ", parsed_channel=" + std::to_string(parsed->channel.value()) + ", source="
+                    + parsedChannelSourceLabel(parsed->channelSource) + ", radiotap_freq="
+                    + radiotapFreqLabel + ", radiotap_channel=" + radiotapChannelLabel
+                    + ", tuned_primary=" + std::to_string(tuning.primaryChannel)
+                    + ", tuned_width=" + std::to_string(tuning.widthMhz) + " MHz"
+                    + ", tuned_span=" + tuningSpanLabel + ", signal=" + signalLabel;
+                state.lastIncidentalLoggedAt = now;
+                state.lastIncidentalLoggedChannel = parsed->channel;
+            }
+        }
+    }
+    else {
+        state.observationKind = ScannerObservationKind::Direct;
     }
     state.lastSeenAt = now;
+
+    if (incidentalObservationLog.has_value()) {
+        LOG_INFO(Network, "{}", incidentalObservationLog.value());
+    }
+
+    return PacketObservation{
+        .bssid = parsed->bssid,
+        .channel = parsed->channel,
+        .signalDbm = parsed->signalDbm,
+        .isNewRadio = isNewRadio,
+    };
 }
 
 void ScannerService::threadMain()
@@ -507,66 +1025,188 @@ void ScannerService::threadMain()
 #else
     LOG_INFO(Network, "ScannerService thread started");
 
-    const auto channels = buildChannelPlan();
-    const auto dwell = std::chrono::milliseconds(std::max(50, config_.dwellMs));
-
     std::array<uint8_t, 8192> buffer{};
 
     while (!stopRequested_) {
-        for (const int channel : channels) {
-            if (stopRequested_) {
+        const auto probe = currentProbe();
+        if (!probe && !planner_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        ScanStep step;
+        bool manualMode = false;
+        if (probe) {
+            resetManualReadbackSampler();
+            step = ScanStep{
+                .tuning = probe->request.tuning,
+                .dwellMs = std::max(kMinDwellMs, probe->request.dwellMs),
+            };
+        }
+        else {
+            ScannerConfig configCopy;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                configCopy = requestedConfig_;
+            }
+
+            if (configCopy.mode == ScannerConfigMode::Manual) {
+                manualMode = true;
+                const auto manualTuningResult =
+                    scannerManualTargetToTuning(configCopy.manualConfig);
+                if (manualTuningResult.isError()) {
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        currentTuning_.reset();
+                        lastError_ = manualTuningResult.errorValue();
+                    }
+                    notifySnapshotChanged();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                step = ScanStep{
+                    .tuning = manualTuningResult.value(),
+                    .dwellMs = kManualDwellMs,
+                };
+            }
+            else {
+                resetManualReadbackSampler();
+                planner_->setAutoConfig(configCopy.autoConfig);
+                step = planner_->nextStep(std::chrono::steady_clock::now());
+            }
+        }
+
+        const auto setChannelResult = setChannel(step.tuning);
+        if (setChannelResult.isError()) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                currentTuning_.reset();
+                lastError_ = "Failed to set channel " + std::to_string(step.tuning.primaryChannel)
+                    + ": " + setChannelResult.errorValue();
+            }
+            if (probe) {
+                completeProbe(
+                    probe,
+                    Result<ProbeResult, std::string>::error(
+                        "Failed to set probe tuning " + std::to_string(step.tuning.primaryChannel)
+                        + ": " + setChannelResult.errorValue()));
+            }
+            notifySnapshotChanged();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            currentTuning_ = step.tuning;
+            lastError_.clear();
+        }
+
+        StepObservation observation{
+            .step = step,
+            .sawTraffic = false,
+            .radiosSeen = 0,
+            .newRadiosSeen = 0,
+            .strongestSignalDbm = std::nullopt,
+            .observedChannels = {},
+        };
+        std::unordered_set<std::string> observedBssids;
+        std::unordered_set<int> observedChannels;
+        const auto dwell = std::chrono::milliseconds(std::max(kMinDwellMs, step.dwellMs));
+        const auto start = std::chrono::steady_clock::now();
+
+        while (!stopRequested_ && std::chrono::steady_clock::now() - start < dwell) {
+            if (manualMode) {
+                maybeSampleManualReadback(step.tuning, std::chrono::steady_clock::now());
+            }
+
+            int fd = -1;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                fd = socketFd_;
+            }
+            if (fd < 0) {
                 break;
             }
 
-            if (!setChannel(channel)) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                lastError_ = "Failed to set channel " + std::to_string(channel);
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            pollfd pfd{};
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+
+            const int pollResult = ::poll(&pfd, 1, kPollTimeoutMs);
+            if (pollResult <= 0) {
+                continue;
+            }
+            if ((pfd.revents & POLLIN) == 0) {
                 continue;
             }
 
+            const ssize_t received =
+                ::recvfrom(fd, buffer.data(), buffer.size(), 0, nullptr, nullptr);
+            if (received <= 0) {
+                continue;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            const auto packetObservation =
+                handlePacket(buffer.data(), static_cast<size_t>(received), step.tuning, now);
+            if (!packetObservation.has_value()) {
+                continue;
+            }
+
+            observation.sawTraffic = true;
+            if (observedBssids.insert(packetObservation->bssid).second) {
+                ++observation.radiosSeen;
+                if (packetObservation->isNewRadio) {
+                    ++observation.newRadiosSeen;
+                }
+            }
+            if (packetObservation->signalDbm.has_value()
+                && (!observation.strongestSignalDbm.has_value()
+                    || packetObservation->signalDbm.value()
+                        > observation.strongestSignalDbm.value())) {
+                observation.strongestSignalDbm = packetObservation->signalDbm;
+            }
+            if (packetObservation->channel.has_value()) {
+                observedChannels.insert(packetObservation->channel.value());
+            }
+        }
+
+        observation.observedChannels.assign(observedChannels.begin(), observedChannels.end());
+        std::sort(observation.observedChannels.begin(), observation.observedChannels.end());
+        if (probe) {
+            probe->result.dwells.push_back(probeDwellFromObservation(observation));
+            if (probe->result.dwells.size() >= probe->request.sampleCount) {
+                completeProbe(
+                    probe,
+                    Result<ProbeResult, std::string>::okay(
+                        ProbeResult{
+                            .tuning = probe->result.tuning,
+                            .dwellMs = probe->result.dwellMs,
+                            .dwells = probe->result.dwells,
+                        }));
+            }
+        }
+        else {
+            ScannerConfig configCopy;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                currentChannel_ = channel;
+                configCopy = requestedConfig_;
             }
-
-            const auto start = std::chrono::steady_clock::now();
-            while (!stopRequested_ && std::chrono::steady_clock::now() - start < dwell) {
-                int fd = -1;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    fd = socketFd_;
-                }
-                if (fd < 0) {
-                    break;
-                }
-
-                pollfd pfd{};
-                pfd.fd = fd;
-                pfd.events = POLLIN;
-
-                const int pollResult = ::poll(&pfd, 1, kPollTimeoutMs);
-                if (pollResult <= 0) {
-                    continue;
-                }
-                if ((pfd.revents & POLLIN) == 0) {
-                    continue;
-                }
-
-                const ssize_t received =
-                    ::recvfrom(fd, buffer.data(), buffer.size(), 0, nullptr, nullptr);
-                if (received <= 0) {
-                    continue;
-                }
-
-                const auto now = std::chrono::steady_clock::now();
-                handlePacket(buffer.data(), static_cast<size_t>(received), channel, now);
+            if (configCopy.mode != ScannerConfigMode::Auto) {
+                pruneOldRadios(std::chrono::steady_clock::now());
+                notifySnapshotChanged();
+                continue;
             }
-
-            pruneOldRadios(std::chrono::steady_clock::now());
+            planner_->recordObservation(observation, std::chrono::steady_clock::now());
         }
+        pruneOldRadios(std::chrono::steady_clock::now());
+        notifySnapshotChanged();
     }
 
+    completeProbe(
+        currentProbe(), Result<ProbeResult, std::string>::error("Scanner thread stopped."));
     LOG_INFO(Network, "ScannerService thread exiting");
 #endif
 }

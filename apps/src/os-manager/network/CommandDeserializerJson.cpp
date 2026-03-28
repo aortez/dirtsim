@@ -9,8 +9,11 @@
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/ScannerConfigGet.h"
+#include "os-manager/api/ScannerConfigSet.h"
 #include "os-manager/api/ScannerModeEnter.h"
 #include "os-manager/api/ScannerModeExit.h"
+#include "os-manager/api/ScannerProbeRun.h"
 #include "os-manager/api/ScannerSnapshotGet.h"
 #include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
@@ -97,6 +100,14 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::RestartUi::Command::fromJson(cmd));
         }
+        else if (commandName == OsApi::ScannerConfigGet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerConfigGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::ScannerConfigSet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerConfigSet::Command::fromJson(cmd));
+        }
         else if (commandName == OsApi::ScannerModeEnter::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::ScannerModeEnter::Command::fromJson(cmd));
@@ -104,6 +115,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::ScannerModeExit::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::ScannerModeExit::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::ScannerProbeRun::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::ScannerProbeRun::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::ScannerSnapshotGet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
