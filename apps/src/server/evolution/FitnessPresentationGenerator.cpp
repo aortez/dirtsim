@@ -151,7 +151,7 @@ Api::FitnessPresentation duckPresentationBuild(
     presentation.sections.push_back(makeSection(
         "survival",
         "Survival",
-        duck.survivalScore,
+        duck.survivalPoints,
         {
             makeMetric(
                 "lifespan",
@@ -161,9 +161,9 @@ Api::FitnessPresentation duckPresentationBuild(
                 duck.survivalScore,
                 "seconds"),
             makeMetric(
-                "survival_adjusted_points",
-                "Survival-Adjusted Points",
-                duck.survivalAdjustedPoints,
+                "survival_points",
+                "Survival Points",
+                duck.survivalPoints,
                 std::nullopt,
                 std::nullopt,
                 "score"),

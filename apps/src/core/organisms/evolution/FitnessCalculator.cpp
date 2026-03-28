@@ -10,6 +10,10 @@ double computeFitnessForOrganism(const FitnessContext& context)
 {
     switch (context.organismType) {
         case OrganismType::DUCK: {
+            DIRTSIM_ASSERT(
+                context.duckArtifacts.has_value() && context.duckArtifacts->clock.has_value(),
+                "FitnessCalculator: duck fitness is Clock-only and requires duck clock "
+                "evaluation artifacts");
             return DuckEvaluator::evaluate(context);
         }
         case OrganismType::GOOSE: {

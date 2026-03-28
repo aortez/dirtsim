@@ -40,7 +40,7 @@ struct DuckFitnessBreakdown {
     double exitDoorTime = 0.0;
     double healthAverage = 0.0;
     double exitDoorCompletionPoints = 0.0;
-    double survivalAdjustedPoints = 0.0;
+    double survivalPoints = 0.0;
     double totalFitness = 0.0;
 };
 

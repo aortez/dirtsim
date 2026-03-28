@@ -43,39 +43,6 @@ OrganismTrackingHistory makeHistory(std::initializer_list<Vector2d> positions)
 }
 } // namespace
 
-TEST(FitnessResultTest, DefaultFitnessIgnoresEnergy)
-{
-    FitnessResult base{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    FitnessResult boosted{ .lifespan = 10.0, .maxEnergy = 100.0 };
-    const EvolutionConfig config = makeConfig();
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 5.0, 0.0 },
-        });
-
-    const FitnessContext baseContext{
-        .result = base,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 10,
-        .worldHeight = 10,
-        .evolutionConfig = config,
-        .organismTrackingHistory = &history,
-    };
-    const FitnessContext boostedContext{
-        .result = boosted,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 10,
-        .worldHeight = 10,
-        .evolutionConfig = config,
-        .organismTrackingHistory = &history,
-    };
-    const double baseFitness = computeFitnessForOrganism(baseContext);
-    const double boostedFitness = computeFitnessForOrganism(boostedContext);
-
-    EXPECT_DOUBLE_EQ(baseFitness, boostedFitness);
-}
-
 TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
 {
     FitnessResult lowEnergy{ .lifespan = 10.0, .maxEnergy = 0.0 };

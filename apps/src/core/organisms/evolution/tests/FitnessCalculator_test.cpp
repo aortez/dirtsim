@@ -510,7 +510,7 @@ TEST(FitnessCalculatorTest, GooseFitnessPrefersHorizontalMovement)
     EXPECT_GT(horizontalFitness, verticalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckClockSurvivalScalesClockPoints)
+TEST(FitnessCalculatorTest, DuckClockRewardsFasterCourseRates)
 {
     EvolutionConfig config = makeConfig();
     config.maxSimulationTime = 100.0;
@@ -550,9 +550,13 @@ TEST(FitnessCalculatorTest, DuckClockSurvivalScalesClockPoints)
 
     EXPECT_DOUBLE_EQ(fullBreakdown.survivalScore, 1.0);
     EXPECT_DOUBLE_EQ(halfBreakdown.survivalScore, 0.5);
-    EXPECT_NEAR(
-        halfBreakdown.survivalAdjustedPoints * 2.0, fullBreakdown.survivalAdjustedPoints, 1e-9);
-    EXPECT_NEAR(halfBreakdown.totalFitness * 2.0, fullBreakdown.totalFitness, 1e-9);
+    EXPECT_DOUBLE_EQ(fullBreakdown.traversalRatePer100Seconds, 2.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.traversalRatePer100Seconds, 4.0);
+    EXPECT_DOUBLE_EQ(fullBreakdown.obstacleClearRatePer100Seconds, 2.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.obstacleClearRatePer100Seconds, 4.0);
+    EXPECT_DOUBLE_EQ(fullBreakdown.survivalPoints, 100.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.survivalPoints, 50.0);
+    EXPECT_GT(halfBreakdown.totalFitness, fullBreakdown.totalFitness);
 }
 
 TEST(FitnessCalculatorTest, DuckClockObstacleRateRewardsMoreRepeatedClears)
@@ -601,6 +605,33 @@ TEST(FitnessCalculatorTest, DuckClockObstacleRateRewardsMoreRepeatedClears)
     EXPECT_GT(repeatedClearBreakdown.totalFitness, oneClearBreakdown.totalFitness);
 }
 
+TEST(FitnessCalculatorTest, DuckClockClampsDisplayedClearCountsToValidOpportunities)
+{
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .pitClears = 3,
+                .pitOpportunities = 1,
+            }),
+    };
+
+    const DuckFitnessBreakdown breakdown = DuckEvaluator::evaluateWithBreakdown(context);
+    EXPECT_DOUBLE_EQ(breakdown.pitClears, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClears, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleOpportunities, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClearRatePer100Seconds, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClearRatePoints, 100.0);
+}
+
 TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards)
 {
     EvolutionConfig config = makeConfig();
@@ -639,7 +670,8 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards
         DuckEvaluator::evaluateWithBreakdown(boostedContext);
     const double obstacleCompetence = obstacleCompetenceExpected(2.0, 2.0);
 
-    EXPECT_DOUBLE_EQ(baseBreakdown.totalFitness, 0.0);
+    EXPECT_DOUBLE_EQ(baseBreakdown.survivalPoints, 100.0);
+    EXPECT_DOUBLE_EQ(baseBreakdown.totalFitness, 100.0);
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalRatePer100Seconds, 2.5);
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalPoints, 1250.0);
     EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleClearRatePer100Seconds, 2.0);
@@ -649,9 +681,11 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityScore, 0.5);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityPoints, 50.0);
     EXPECT_NEAR(boostedBreakdown.coursePoints, 1250.0 + 200.0 + (100.0 * obstacleCompetence), 1e-9);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.survivalPoints, 100.0);
     EXPECT_NEAR(
         boostedBreakdown.totalFitness,
-        boostedBreakdown.coursePoints + boostedBreakdown.exitDoorProximityPoints,
+        boostedBreakdown.survivalPoints + boostedBreakdown.coursePoints
+            + boostedBreakdown.exitDoorProximityPoints,
         1e-9);
 }
 
@@ -776,8 +810,9 @@ TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesCompletionPoints)
     EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityScore, 1.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityPoints, 100.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorCompletionPoints, 150.0);
+    EXPECT_DOUBLE_EQ(breakdown.survivalPoints, 100.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorTime, 8.0);
-    EXPECT_DOUBLE_EQ(breakdown.totalFitness, 250.0);
+    EXPECT_DOUBLE_EQ(breakdown.totalFitness, 350.0);
 }
 
 } // namespace DirtSim

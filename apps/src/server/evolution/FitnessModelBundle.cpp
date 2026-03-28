@@ -217,8 +217,7 @@ DuckFitnessBreakdown duckFitnessBreakdownAverage(
     merged.healthAverage = averageDouble(first.healthAverage, second.healthAverage);
     merged.exitDoorCompletionPoints =
         averageDouble(first.exitDoorCompletionPoints, second.exitDoorCompletionPoints);
-    merged.survivalAdjustedPoints =
-        averageDouble(first.survivalAdjustedPoints, second.survivalAdjustedPoints);
+    merged.survivalPoints = averageDouble(first.survivalPoints, second.survivalPoints);
     merged.totalFitness = totalFitness;
     return merged;
 }

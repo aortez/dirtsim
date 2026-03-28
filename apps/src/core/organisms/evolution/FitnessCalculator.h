@@ -54,6 +54,7 @@ struct FitnessContext {
     int worldHeight;
     const EvolutionConfig& evolutionConfig;
     const Organism::Body* finalOrganism = nullptr;
+    // Duck fitness is Clock-only and requires duckArtifacts.clock.
     std::optional<DuckEvaluationArtifacts> duckArtifacts = std::nullopt;
     const NesFitnessDetails* nesFitnessDetails = nullptr;
     const OrganismTrackingHistory* organismTrackingHistory = nullptr;

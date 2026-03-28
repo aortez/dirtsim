@@ -53,6 +53,7 @@ private:
     void updateTraversalState(const DuckClockTrackerFrame& frame);
 
     DuckClockEvaluationArtifacts artifacts_{};
+    std::vector<FloorObstacle> activeClearedObstacles_;
     std::vector<FloorObstacle> activeOpportunityObstacles_;
     double currentTraversalProgress_ = 0.0;
     std::optional<JumpAttempt> jumpAttempt_ = std::nullopt;

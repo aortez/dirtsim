@@ -35,8 +35,10 @@ const Api::FitnessPresentationSection* fitnessSectionFind(
 TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown)
 {
     const double obstacleCompetenceScore = 1.0 - std::exp(-1.0);
+    const double survivalPoints = 50.0;
+    const double totalFitness = 3263.2120558828557;
     const FitnessEvaluation evaluation{
-        .totalFitness = 831.6060279414279,
+        .totalFitness = totalFitness,
         .details =
             DuckFitnessBreakdown{
                 .survivalRaw = 50.0,
@@ -51,19 +53,19 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
                 .damageTotal = 2.5,
                 .fullTraversals = 2.0,
                 .traversalProgress = 2.5,
-                .traversalRatePer100Seconds = 2.5,
-                .traversalPoints = 1250.0,
+                .traversalRatePer100Seconds = 5.0,
+                .traversalPoints = 2500.0,
                 .hurdleClears = 2.0,
                 .hurdleOpportunities = 2.0,
                 .pitClears = 1.0,
                 .pitOpportunities = 1.0,
                 .obstacleClears = 3.0,
                 .obstacleOpportunities = 3.0,
-                .obstacleClearRatePer100Seconds = 3.0,
-                .obstacleClearRatePoints = 300.0,
+                .obstacleClearRatePer100Seconds = 6.0,
+                .obstacleClearRatePoints = 600.0,
                 .obstacleCompetenceScore = obstacleCompetenceScore,
                 .obstacleCompetencePoints = 100.0 * obstacleCompetenceScore,
-                .coursePoints = 1550.0 + (100.0 * obstacleCompetenceScore),
+                .coursePoints = 3100.0 + (100.0 * obstacleCompetenceScore),
                 .exitDoorDistanceObserved = true,
                 .exitedThroughDoor = false,
                 .bestExitDoorDistanceCells = 5.0,
@@ -72,8 +74,8 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
                 .exitDoorTime = 23.0,
                 .healthAverage = 0.9,
                 .exitDoorCompletionPoints = 0.0,
-                .survivalAdjustedPoints = 831.6060279414279,
-                .totalFitness = 831.6060279414279,
+                .survivalPoints = survivalPoints,
+                .totalFitness = totalFitness,
             },
     };
 
@@ -81,10 +83,10 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
         fitnessEvaluationDuckPresentationGenerate(evaluation);
     EXPECT_EQ(presentation.organismType, OrganismType::DUCK);
     EXPECT_EQ(presentation.modelId, "duck");
-    EXPECT_DOUBLE_EQ(presentation.totalFitness, 831.6060279414279);
+    EXPECT_DOUBLE_EQ(presentation.totalFitness, totalFitness);
     EXPECT_EQ(
         presentation.summary,
-        "Survival 0.5000 | Traversal 2.5000/100s | Clears 3.0000/100s | Exit no");
+        "Survival 0.5000 | Traversal 5.0000/100s | Clears 6.0000/100s | Exit no");
     ASSERT_EQ(presentation.sections.size(), 4u);
     EXPECT_EQ(presentation.sections[0].key, "survival");
     EXPECT_EQ(presentation.sections[1].key, "clock_course");
@@ -99,6 +101,11 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
     EXPECT_DOUBLE_EQ(lifespan->reference.value(), 100.0);
     ASSERT_TRUE(lifespan->normalized.has_value());
     EXPECT_DOUBLE_EQ(lifespan->normalized.value(), 0.5);
+
+    const Api::FitnessPresentationMetric* survivalPointsMetric =
+        fitnessMetricFind(presentation.sections[0], "survival_points");
+    ASSERT_NE(survivalPointsMetric, nullptr);
+    EXPECT_DOUBLE_EQ(survivalPointsMetric->value, survivalPoints);
 
     const Api::FitnessPresentationMetric* traversalProgress =
         fitnessMetricFind(presentation.sections[1], "traversal_progress");
@@ -126,8 +133,10 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
 TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBreakdown)
 {
     const double obstacleCompetenceScore = 1.0 - std::exp(-2.0 / 3.0);
+    const double survivalPoints = 75.0;
+    const double totalFitness = 1973.658288096741;
     const FitnessEvaluation evaluation{
-        .totalFitness = 1161.4937163594232,
+        .totalFitness = totalFitness,
         .details =
             DuckFitnessBreakdown{
                 .survivalRaw = 75.0,
@@ -142,8 +151,8 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
                 .damageTotal = 1.5,
                 .fullTraversals = 2.0,
                 .traversalProgress = 2.0,
-                .traversalRatePer100Seconds = 2.0,
-                .traversalPoints = 1000.0,
+                .traversalRatePer100Seconds = 8.0 / 3.0,
+                .traversalPoints = 4000.0 / 3.0,
                 .hurdleClears = 1.0,
                 .hurdleOpportunities = 1.0,
                 .leftWallTouches = 2.0,
@@ -151,12 +160,12 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
                 .pitOpportunities = 1.0,
                 .obstacleClears = 2.0,
                 .obstacleOpportunities = 2.0,
-                .obstacleClearRatePer100Seconds = 2.0,
-                .obstacleClearRatePoints = 200.0,
+                .obstacleClearRatePer100Seconds = 8.0 / 3.0,
+                .obstacleClearRatePoints = 800.0 / 3.0,
                 .obstacleCompetenceScore = obstacleCompetenceScore,
                 .obstacleCompetencePoints = 100.0 * obstacleCompetenceScore,
                 .rightWallTouches = 3.0,
-                .coursePoints = 1200.0 + (100.0 * obstacleCompetenceScore),
+                .coursePoints = 1600.0 + (100.0 * obstacleCompetenceScore),
                 .exitDoorDistanceObserved = true,
                 .exitedThroughDoor = true,
                 .bestExitDoorDistanceCells = 0.0,
@@ -165,8 +174,8 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
                 .exitDoorTime = 27.5,
                 .healthAverage = 0.8,
                 .exitDoorCompletionPoints = 150.0,
-                .survivalAdjustedPoints = 1011.4937163594232,
-                .totalFitness = 1161.4937163594232,
+                .survivalPoints = survivalPoints,
+                .totalFitness = totalFitness,
             },
     };
 
@@ -176,14 +185,14 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
     EXPECT_EQ(presentation.modelId, "duck");
     EXPECT_EQ(
         presentation.summary,
-        "Survival 0.7500 | Traversal 2.0000/100s | Clears 2.0000/100s | Exit yes");
+        "Survival 0.7500 | Traversal 2.6667/100s | Clears 2.6667/100s | Exit yes");
     ASSERT_EQ(presentation.sections.size(), 4u);
 
     const Api::FitnessPresentationSection* clockCourse =
         fitnessSectionFind(presentation, "clock_course");
     ASSERT_NE(clockCourse, nullptr);
     ASSERT_TRUE(clockCourse->score.has_value());
-    EXPECT_NEAR(clockCourse->score.value(), 1200.0 + (100.0 * obstacleCompetenceScore), 1e-9);
+    EXPECT_NEAR(clockCourse->score.value(), 1600.0 + (100.0 * obstacleCompetenceScore), 1e-9);
 
     const Api::FitnessPresentationMetric* fullTraversals =
         fitnessMetricFind(*clockCourse, "full_traversals");
@@ -193,7 +202,7 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBrea
     const Api::FitnessPresentationMetric* obstacleRatePoints =
         fitnessMetricFind(*clockCourse, "obstacle_clear_rate_points");
     ASSERT_NE(obstacleRatePoints, nullptr);
-    EXPECT_DOUBLE_EQ(obstacleRatePoints->value, 200.0);
+    EXPECT_DOUBLE_EQ(obstacleRatePoints->value, 800.0 / 3.0);
 
     const Api::FitnessPresentationSection* clockExit =
         fitnessSectionFind(presentation, "clock_exit");

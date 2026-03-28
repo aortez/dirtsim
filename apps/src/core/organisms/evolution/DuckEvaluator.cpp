@@ -17,6 +17,7 @@ struct DuckClockScoringConfig {
     double obstacleCompetenceOpportunityReference = 3.0;
     double obstacleCompetencePoints = 100.0;
     double referenceDurationSeconds = 100.0;
+    double survivalPoints = 100.0;
     double traversalPoints = 500.0;
 };
 
@@ -104,22 +105,24 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.wingDownSeconds = artifacts->wingDownSeconds;
 
     breakdown.fullTraversals = static_cast<double>(clock->fullTraversals);
-    breakdown.hurdleClears = static_cast<double>(clock->hurdleClears);
+    breakdown.hurdleClears = std::min(
+        static_cast<double>(clock->hurdleClears), static_cast<double>(clock->hurdleOpportunities));
     breakdown.hurdleOpportunities = static_cast<double>(clock->hurdleOpportunities);
     breakdown.leftWallTouches = static_cast<double>(clock->leftWallTouches);
-    breakdown.pitClears = static_cast<double>(clock->pitClears);
+    breakdown.pitClears = std::min(
+        static_cast<double>(clock->pitClears), static_cast<double>(clock->pitOpportunities));
     breakdown.pitOpportunities = static_cast<double>(clock->pitOpportunities);
     breakdown.rightWallTouches = static_cast<double>(clock->rightWallTouches);
     breakdown.traversalProgress = std::max(breakdown.fullTraversals, clock->traversalProgress);
     breakdown.traversalRatePer100Seconds =
-        computePer100Seconds(breakdown.traversalProgress, breakdown.survivalReference);
+        computePer100Seconds(breakdown.traversalProgress, breakdown.survivalRaw);
     breakdown.traversalPoints =
         kDuckClockScoringConfig.traversalPoints * breakdown.traversalRatePer100Seconds;
 
     breakdown.obstacleClears = breakdown.pitClears + breakdown.hurdleClears;
     breakdown.obstacleOpportunities = breakdown.pitOpportunities + breakdown.hurdleOpportunities;
     breakdown.obstacleClearRatePer100Seconds =
-        computePer100Seconds(breakdown.obstacleClears, breakdown.survivalReference);
+        computePer100Seconds(breakdown.obstacleClears, breakdown.survivalRaw);
     breakdown.obstacleClearRatePoints =
         kDuckClockScoringConfig.obstacleClearRatePoints * breakdown.obstacleClearRatePer100Seconds;
     breakdown.obstacleCompetenceScore =
@@ -144,10 +147,10 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
         kDuckClockScoringConfig.exitDoorProximityPoints * breakdown.exitDoorProximityScore;
     breakdown.exitDoorCompletionPoints =
         breakdown.exitedThroughDoor ? kDuckClockScoringConfig.exitDoorCompletionPoints : 0.0;
+    breakdown.survivalPoints = kDuckClockScoringConfig.survivalPoints * breakdown.survivalScore;
 
-    breakdown.survivalAdjustedPoints =
-        breakdown.survivalScore * (breakdown.coursePoints + breakdown.exitDoorProximityPoints);
-    breakdown.totalFitness = breakdown.survivalAdjustedPoints + breakdown.exitDoorCompletionPoints;
+    breakdown.totalFitness = breakdown.survivalPoints + breakdown.coursePoints
+        + breakdown.exitDoorProximityPoints + breakdown.exitDoorCompletionPoints;
     return breakdown;
 }
 
