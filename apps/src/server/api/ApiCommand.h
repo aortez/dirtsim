@@ -6,6 +6,7 @@
 #include "ClockEventTrigger.h"
 #include "DiagramGet.h"
 #include "EventSubscribe.h"
+#include "EvolutionMutationControlsSet.h"
 #include "EvolutionPauseSet.h"
 #include "EvolutionStart.h"
 #include "EvolutionStop.h"
@@ -83,6 +84,7 @@ using ApiCommand = std::variant<
     Api::ClockEventTrigger::Command,
     Api::DiagramGet::Command,
     Api::EventSubscribe::Command,
+    Api::EvolutionMutationControlsSet::Command,
     Api::EvolutionPauseSet::Command,
     Api::EvolutionStart::Command,
     Api::EvolutionStop::Command,

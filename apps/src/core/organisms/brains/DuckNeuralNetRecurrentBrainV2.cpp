@@ -457,18 +457,16 @@ bool DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(const Genome& genome)
 
 GenomeLayout DuckNeuralNetRecurrentBrainV2::getGenomeLayout()
 {
+    // Group small recurrent-control parameters with adjacent matrices so the
+    // budgeted floor-of-one mutation rule does not force every tiny segment
+    // to move on every offspring.
     return GenomeLayout{
         .segments = {
-            { "w_xh1", W_XH1_SIZE },
-            { "w_h1h1", W_H1H1_SIZE },
-            { "b_h1", B_H1_SIZE },
-            { "alpha1", ALPHA1_LOGIT_SIZE },
-            { "w_h1h2", W_H1H2_SIZE },
-            { "w_h2h2", W_H2H2_SIZE },
-            { "b_h2", B_H2_SIZE },
-            { "alpha2", ALPHA2_LOGIT_SIZE },
-            { "w_h2o", W_H2O_SIZE },
-            { "b_o", B_O_SIZE },
+            { "input_h1", W_XH1_SIZE },
+            { "h1_recurrent", W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE },
+            { "h1_to_h2", W_H1H2_SIZE },
+            { "h2_recurrent", W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE },
+            { "output", W_H2O_SIZE + B_O_SIZE },
         },
     };
 }

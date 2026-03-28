@@ -327,17 +327,6 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                               .callback(onGenerationsChanged, this)
                               .buildOrLog();
 
-    mutationBudgetToggle_ = LVGLBuilder::actionButton(parent)
-                                .text("Budgeted Mutation")
-                                .mode(LVGLBuilder::ActionMode::Toggle)
-                                .checked(mutationConfig_.useBudget)
-                                .width(LV_PCT(95))
-                                .height(LVGLBuilder::Style::ACTION_SIZE)
-                                .layoutRow()
-                                .alignLeft()
-                                .callback(onMutationBudgetToggled, this)
-                                .buildOrLog();
-
     mutationPerturbationsStepper_ = LVGLBuilder::actionStepper(parent)
                                         .label("Perturbations/Offspring")
                                         .range(0, 5000)
@@ -371,27 +360,27 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                         .callback(onSigmaChanged, this)
                         .buildOrLog();
 
-    mutationRateStepper_ = LVGLBuilder::actionStepper(parent)
-                               .label("Mutation Rate (legacy)")
-                               .range(0, 200)
-                               .step(1)
-                               .value(static_cast<int32_t>(mutationConfig_.rate * 1000.0))
-                               .valueFormat("%.1f%%")
-                               .valueScale(0.1)
-                               .width(LV_PCT(95))
-                               .callback(onMutationRateChanged, this)
-                               .buildOrLog();
+    mutationStagnationWindowStepper_ = LVGLBuilder::actionStepper(parent)
+                                           .label("Stagnation Window")
+                                           .range(1, 100)
+                                           .step(1)
+                                           .value(evolutionConfig_.stagnationWindowGenerations)
+                                           .valueFormat("%.0f")
+                                           .valueScale(1.0)
+                                           .width(LV_PCT(95))
+                                           .callback(onMutationStagnationWindowChanged, this)
+                                           .buildOrLog();
 
-    resetRateStepper_ = LVGLBuilder::actionStepper(parent)
-                            .label("Reset Rate (legacy)")
-                            .range(0, 10000)
-                            .step(1)
-                            .value(static_cast<int32_t>(mutationConfig_.resetRate * 1'000'000.0))
-                            .valueFormat("%.4f%%")
-                            .valueScale(0.0001)
-                            .width(LV_PCT(95))
-                            .callback(onResetRateChanged, this)
-                            .buildOrLog();
+    mutationRecoveryWindowStepper_ = LVGLBuilder::actionStepper(parent)
+                                         .label("Recovery Window")
+                                         .range(0, 100)
+                                         .step(1)
+                                         .value(evolutionConfig_.recoveryWindowGenerations)
+                                         .valueFormat("%.0f")
+                                         .valueScale(1.0)
+                                         .width(LV_PCT(95))
+                                         .callback(onMutationRecoveryWindowChanged, this)
+                                         .buildOrLog();
 
     tournamentSizeStepper_ = LVGLBuilder::actionStepper(parent)
                                  .label("Tournament Size")
@@ -529,28 +518,19 @@ void TrainingConfigPanel::updateControlsEnabled()
     setEnabled(bestPlaybackToggle_, true);
     setEnabled(bestPlaybackIntervalStepper_, bestPlaybackEnabled_);
 
-    setEnabled(mutationBudgetToggle_, enabled);
     if (enabled) {
+        setEnabled(mutationPerturbationsStepper_, true);
+        setEnabled(mutationResetsStepper_, true);
         setEnabled(sigmaStepper_, true);
-        if (mutationConfig_.useBudget) {
-            setEnabled(mutationPerturbationsStepper_, true);
-            setEnabled(mutationResetsStepper_, true);
-            setEnabled(mutationRateStepper_, false);
-            setEnabled(resetRateStepper_, false);
-        }
-        else {
-            setEnabled(mutationPerturbationsStepper_, false);
-            setEnabled(mutationResetsStepper_, false);
-            setEnabled(mutationRateStepper_, true);
-            setEnabled(resetRateStepper_, true);
-        }
+        setEnabled(mutationStagnationWindowStepper_, true);
+        setEnabled(mutationRecoveryWindowStepper_, true);
     }
     else {
         setEnabled(mutationPerturbationsStepper_, false);
         setEnabled(mutationResetsStepper_, false);
         setEnabled(sigmaStepper_, false);
-        setEnabled(mutationRateStepper_, false);
-        setEnabled(resetRateStepper_, false);
+        setEnabled(mutationStagnationWindowStepper_, false);
+        setEnabled(mutationRecoveryWindowStepper_, false);
     }
 
     if (startButton_) {
@@ -677,17 +657,6 @@ void TrainingConfigPanel::onGenerationsChanged(lv_event_t* e)
     self->queueTrainingConfigUpdatedEvent();
 }
 
-void TrainingConfigPanel::onMutationBudgetToggled(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
-    if (!self || !self->mutationBudgetToggle_) return;
-
-    self->mutationConfig_.useBudget =
-        LVGLBuilder::ActionButtonBuilder::isChecked(self->mutationBudgetToggle_);
-    self->updateControlsEnabled();
-    self->queueTrainingConfigUpdatedEvent();
-}
-
 void TrainingConfigPanel::onMutationPerturbationsChanged(lv_event_t* e)
 {
     auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
@@ -696,6 +665,17 @@ void TrainingConfigPanel::onMutationPerturbationsChanged(lv_event_t* e)
     const int32_t value =
         LVGLBuilder::ActionStepperBuilder::getValue(self->mutationPerturbationsStepper_);
     self->mutationConfig_.perturbationsPerOffspring = value;
+    self->queueTrainingConfigUpdatedEvent();
+}
+
+void TrainingConfigPanel::onMutationRecoveryWindowChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationRecoveryWindowStepper_) return;
+
+    const int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRecoveryWindowStepper_);
+    self->evolutionConfig_.recoveryWindowGenerations = value;
     self->queueTrainingConfigUpdatedEvent();
 }
 
@@ -709,26 +689,6 @@ void TrainingConfigPanel::onMutationResetsChanged(lv_event_t* e)
     self->queueTrainingConfigUpdatedEvent();
 }
 
-void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
-    if (!self || !self->mutationRateStepper_) return;
-
-    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRateStepper_);
-    self->mutationConfig_.rate = value / 1000.0;
-    self->queueTrainingConfigUpdatedEvent();
-}
-
-void TrainingConfigPanel::onResetRateChanged(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
-    if (!self || !self->resetRateStepper_) return;
-
-    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->resetRateStepper_);
-    self->mutationConfig_.resetRate = value / 1'000'000.0;
-    self->queueTrainingConfigUpdatedEvent();
-}
-
 void TrainingConfigPanel::onSigmaChanged(lv_event_t* e)
 {
     auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
@@ -736,6 +696,17 @@ void TrainingConfigPanel::onSigmaChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->sigmaStepper_);
     self->mutationConfig_.sigma = value / 1000.0;
+    self->queueTrainingConfigUpdatedEvent();
+}
+
+void TrainingConfigPanel::onMutationStagnationWindowChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationStagnationWindowStepper_) return;
+
+    const int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationStagnationWindowStepper_);
+    self->evolutionConfig_.stagnationWindowGenerations = value;
     self->queueTrainingConfigUpdatedEvent();
 }
 

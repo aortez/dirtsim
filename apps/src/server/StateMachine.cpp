@@ -305,6 +305,50 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.diversityEliteFitnessEpsilon = 0.0;
         recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
     }
+    if (settings.evolutionConfig.stagnationWindowGenerations < 1) {
+        settings.evolutionConfig.stagnationWindowGenerations = 1;
+        recordUpdate("stagnationWindowGenerations clamped to 1");
+    }
+    else if (settings.evolutionConfig.stagnationWindowGenerations > 100) {
+        settings.evolutionConfig.stagnationWindowGenerations = 100;
+        recordUpdate("stagnationWindowGenerations clamped to 100");
+    }
+    if (settings.evolutionConfig.recoveryWindowGenerations < 0) {
+        settings.evolutionConfig.recoveryWindowGenerations = 0;
+        recordUpdate("recoveryWindowGenerations clamped to 0");
+    }
+    else if (settings.evolutionConfig.recoveryWindowGenerations > 100) {
+        settings.evolutionConfig.recoveryWindowGenerations = 100;
+        recordUpdate("recoveryWindowGenerations clamped to 100");
+    }
+    if (settings.mutationConfig.perturbationsPerOffspring < 0) {
+        settings.mutationConfig.perturbationsPerOffspring = 0;
+        recordUpdate("perturbationsPerOffspring clamped to 0");
+    }
+    else if (settings.mutationConfig.perturbationsPerOffspring > 5000) {
+        settings.mutationConfig.perturbationsPerOffspring = 5000;
+        recordUpdate("perturbationsPerOffspring clamped to 5000");
+    }
+    if (settings.mutationConfig.resetsPerOffspring < 0) {
+        settings.mutationConfig.resetsPerOffspring = 0;
+        recordUpdate("resetsPerOffspring clamped to 0");
+    }
+    else if (settings.mutationConfig.resetsPerOffspring > 200) {
+        settings.mutationConfig.resetsPerOffspring = 200;
+        recordUpdate("resetsPerOffspring clamped to 200");
+    }
+    if (!std::isfinite(settings.mutationConfig.sigma)) {
+        settings.mutationConfig.sigma = MutationConfig{}.sigma;
+        recordUpdate("mutationConfig.sigma reset to default");
+    }
+    else if (settings.mutationConfig.sigma < 0.0) {
+        settings.mutationConfig.sigma = 0.0;
+        recordUpdate("mutationConfig.sigma clamped to 0");
+    }
+    else if (settings.mutationConfig.sigma > 0.3) {
+        settings.mutationConfig.sigma = 0.3;
+        recordUpdate("mutationConfig.sigma clamped to 0.3");
+    }
 
     const bool isNesTrainingTarget = settings.trainingSpec.organismType == OrganismType::NES_DUCK
         || registry.isNesScenario(settings.trainingSpec.scenarioId);
@@ -882,6 +926,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_EMPTY(Api::CellSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::DiagramGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::EvolutionMutationControlsSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::EvolutionPauseSet);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
@@ -1110,6 +1155,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::ClockEventTrigger::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::DiagramGet::Cwc>(
         [this](Api::DiagramGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::EvolutionMutationControlsSet::Cwc>(
+        [this](Api::EvolutionMutationControlsSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::EvolutionPauseSet::Cwc>(
         [this](Api::EvolutionPauseSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::EvolutionStart::Cwc>(

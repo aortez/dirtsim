@@ -133,7 +133,9 @@ TrainResults TrainRunner::run(
     SLOG_INFO("  Generations: {}", config.evolution.maxGenerations);
     SLOG_INFO("  Population: {}", config.evolution.populationSize);
     SLOG_INFO("  Tournament size: {}", config.evolution.tournamentSize);
-    SLOG_INFO("  Mutation rate: {}", config.mutation.rate);
+    SLOG_INFO("  Perturbations/offspring: {}", config.mutation.perturbationsPerOffspring);
+    SLOG_INFO("  Resets/offspring: {}", config.mutation.resetsPerOffspring);
+    SLOG_INFO("  Mutation sigma: {}", config.mutation.sigma);
 
     auto startResult = client_.sendCommandAndGetResponse<Api::EvolutionStart::Okay>(config, 10000);
     if (startResult.isError()) {

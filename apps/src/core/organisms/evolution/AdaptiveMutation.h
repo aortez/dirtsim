@@ -14,6 +14,13 @@ enum class AdaptiveMutationMode : uint8_t {
     Recover,
 };
 
+enum class AdaptiveMutationControlMode : uint8_t {
+    Auto = 0,
+    Baseline,
+    Explore,
+    Rescue,
+};
+
 struct EffectiveAdaptiveMutation {
     AdaptiveMutationMode mode = AdaptiveMutationMode::Baseline;
     MutationConfig mutationConfig{};
@@ -23,6 +30,7 @@ EffectiveAdaptiveMutation adaptiveMutationResolve(
     const MutationConfig& baselineConfig,
     const TrainingPhaseStatus& trainingPhaseStatus,
     const EffectiveAdaptiveMutation& previousEffective,
-    const EvolutionConfig& evolutionConfig);
+    const EvolutionConfig& evolutionConfig,
+    AdaptiveMutationControlMode controlMode = AdaptiveMutationControlMode::Auto);
 
 } // namespace DirtSim

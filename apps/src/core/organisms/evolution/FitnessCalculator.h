@@ -25,6 +25,7 @@ struct DuckClockEvaluationArtifacts {
     int pitClears = 0;
     int pitOpportunities = 0;
     int rightWallTouches = 0;
+    double traversalProgress = 0.0;
     bool exitDoorDistanceObserved = false;
     bool exitedThroughDoor = false;
     double bestExitDoorDistanceCells = 0.0;

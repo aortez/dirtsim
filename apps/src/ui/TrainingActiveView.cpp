@@ -98,6 +98,67 @@ lv_color_t adaptiveMutationModeTextColor(AdaptiveMutationMode mode)
     return lv_color_hex(0x888888);
 }
 
+const char* adaptiveMutationControlModeLabel(AdaptiveMutationControlMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationControlMode::Auto:
+            return "Auto";
+        case AdaptiveMutationControlMode::Baseline:
+            return "Baseline";
+        case AdaptiveMutationControlMode::Explore:
+            return "Explore";
+        case AdaptiveMutationControlMode::Rescue:
+            return "Rescue";
+    }
+    return "Unknown";
+}
+
+uint16_t adaptiveMutationControlModeDropdownIndex(AdaptiveMutationControlMode mode)
+{
+    switch (mode) {
+        case AdaptiveMutationControlMode::Auto:
+            return 0;
+        case AdaptiveMutationControlMode::Baseline:
+            return 1;
+        case AdaptiveMutationControlMode::Explore:
+            return 2;
+        case AdaptiveMutationControlMode::Rescue:
+            return 3;
+    }
+    return 0;
+}
+
+AdaptiveMutationControlMode adaptiveMutationControlModeFromDropdownIndex(uint16_t index)
+{
+    switch (index) {
+        case 0:
+            return AdaptiveMutationControlMode::Auto;
+        case 1:
+            return AdaptiveMutationControlMode::Baseline;
+        case 2:
+            return AdaptiveMutationControlMode::Explore;
+        case 3:
+            return AdaptiveMutationControlMode::Rescue;
+    }
+    return AdaptiveMutationControlMode::Auto;
+}
+
+void setControlEnabled(lv_obj_t* control, bool enabled)
+{
+    if (!control) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_state(control, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(control, LV_OPA_COVER, 0);
+        return;
+    }
+
+    lv_obj_add_state(control, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(control, LV_OPA_50, 0);
+}
+
 void setCompactStatsLabelStyle(lv_obj_t* label, lv_color_t color)
 {
     lv_obj_set_style_text_color(label, color, 0);
@@ -1202,6 +1263,21 @@ void TrainingActiveView::destroyUI()
     streamIntervalStepper_ = nullptr;
     bestPlaybackToggle_ = nullptr;
     bestPlaybackIntervalStepper_ = nullptr;
+    mutationControlsButton_ = nullptr;
+    mutationControlsOverlay_ = nullptr;
+    mutationControlsOverlayContent_ = nullptr;
+    mutationControlsOverlayTitle_ = nullptr;
+    mutationControlModeDropdown_ = nullptr;
+    mutationControlPathLabel_ = nullptr;
+    mutationControlPhaseLabel_ = nullptr;
+    mutationControlResolvedLabel_ = nullptr;
+    mutationControlPendingLabel_ = nullptr;
+    mutationControlLegacyNoteLabel_ = nullptr;
+    mutationPerturbationsStepper_ = nullptr;
+    mutationRecoveryWindowStepper_ = nullptr;
+    mutationResetsStepper_ = nullptr;
+    mutationSigmaStepper_ = nullptr;
+    mutationStagnationWindowStepper_ = nullptr;
     nesControllerOverlayToggle_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
@@ -1219,11 +1295,17 @@ void TrainingActiveView::destroyUI()
     bestNesOverlayWidgets_ = {};
     liveNesControllerTelemetry_.reset();
     bestNesControllerTelemetry_.reset();
+    mutationControlMode_ = AdaptiveMutationControlMode::Auto;
     currentScenarioConfig_ = Config::Empty{};
     currentScenarioId_ = Scenario::EnumType::Empty;
     scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
     hasScenarioState_ = false;
+    mutationControlsOverlayVisible_ = false;
     scenarioControlsOverlayVisible_ = false;
+    mutationControlLatestPhase_ = TrainingPhase::Normal;
+    mutationControlLatestBreeding_ = {};
+    mutationControlLatestCompletedGeneration_ = -1;
+    mutationControlLatestGeneration_ = 0;
 }
 
 void TrainingActiveView::renderWorld(
@@ -1509,6 +1591,50 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
     }
 }
 
+void TrainingActiveView::setMutationControls(
+    const MutationConfig& mutationConfig,
+    const EvolutionConfig& evolutionConfig,
+    AdaptiveMutationControlMode controlMode)
+{
+    userSettings_.mutationConfig = mutationConfig;
+    userSettings_.evolutionConfig.stagnationWindowGenerations =
+        evolutionConfig.stagnationWindowGenerations;
+    userSettings_.evolutionConfig.recoveryWindowGenerations =
+        evolutionConfig.recoveryWindowGenerations;
+    mutationControlMode_ = controlMode;
+
+    if (mutationControlModeDropdown_) {
+        LVGLBuilder::ActionDropdownBuilder::setSelected(
+            mutationControlModeDropdown_, adaptiveMutationControlModeDropdownIndex(controlMode));
+    }
+    if (mutationPerturbationsStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            mutationPerturbationsStepper_, userSettings_.mutationConfig.perturbationsPerOffspring);
+    }
+    if (mutationResetsStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            mutationResetsStepper_, userSettings_.mutationConfig.resetsPerOffspring);
+    }
+    if (mutationSigmaStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            mutationSigmaStepper_,
+            static_cast<int32_t>(std::lround(userSettings_.mutationConfig.sigma * 1000.0)));
+    }
+    if (mutationStagnationWindowStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            mutationStagnationWindowStepper_,
+            userSettings_.evolutionConfig.stagnationWindowGenerations);
+    }
+    if (mutationRecoveryWindowStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            mutationRecoveryWindowStepper_,
+            userSettings_.evolutionConfig.recoveryWindowGenerations);
+    }
+
+    updateMutationControlsEnabled();
+    updateMutationControlsSummary();
+}
+
 void TrainingActiveView::setNesControllerOverlayEnabled(bool enabled)
 {
     userSettings_.uiTraining.nesControllerOverlayEnabled = enabled;
@@ -1520,6 +1646,347 @@ void TrainingActiveView::setNesControllerOverlayEnabled(bool enabled)
         liveNesOverlayWidgets_, liveNesControllerTelemetry_, videoSurface_ != nullptr);
     updateNesVideoOverlay(
         bestNesOverlayWidgets_, bestNesControllerTelemetry_, bestVideoFrame_.has_value());
+}
+
+void TrainingActiveView::queueMutationControlsUpdatedEvent()
+{
+    eventSink_.queueEvent(
+        TrainingMutationControlsUpdatedEvent{
+            .evolution = userSettings_.evolutionConfig,
+            .mutation = userSettings_.mutationConfig,
+            .controlMode = mutationControlMode_,
+        });
+}
+
+void TrainingActiveView::createMutationControlsOverlay()
+{
+    if (!contentRow_ || mutationControlsOverlay_) {
+        return;
+    }
+
+    mutationControlsOverlay_ = lv_obj_create(contentRow_);
+    lv_obj_add_flag(mutationControlsOverlay_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(mutationControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(mutationControlsOverlay_, 340, 460);
+    lv_obj_set_style_bg_color(mutationControlsOverlay_, lv_color_hex(0x111728), 0);
+    lv_obj_set_style_bg_opa(mutationControlsOverlay_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(mutationControlsOverlay_, 8, 0);
+    lv_obj_set_style_border_width(mutationControlsOverlay_, 1, 0);
+    lv_obj_set_style_border_color(mutationControlsOverlay_, lv_color_hex(0x4A5A80), 0);
+    lv_obj_set_style_pad_all(mutationControlsOverlay_, 10, 0);
+    lv_obj_set_style_pad_row(mutationControlsOverlay_, 8, 0);
+    lv_obj_set_flex_flow(mutationControlsOverlay_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        mutationControlsOverlay_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_scrollbar_mode(mutationControlsOverlay_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(mutationControlsOverlay_, LV_OBJ_FLAG_SCROLLABLE);
+
+    mutationControlsOverlayTitle_ = lv_label_create(mutationControlsOverlay_);
+    lv_label_set_text(mutationControlsOverlayTitle_, "Mutation Controls");
+    lv_obj_set_style_text_color(mutationControlsOverlayTitle_, lv_color_hex(0xDCE6FF), 0);
+    lv_obj_set_style_text_font(mutationControlsOverlayTitle_, &lv_font_montserrat_14, 0);
+
+    mutationControlsOverlayContent_ = lv_obj_create(mutationControlsOverlay_);
+    lv_obj_set_size(mutationControlsOverlayContent_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(mutationControlsOverlayContent_, 1);
+    lv_obj_set_style_bg_opa(mutationControlsOverlayContent_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mutationControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_all(mutationControlsOverlayContent_, 0, 0);
+    lv_obj_set_style_pad_row(mutationControlsOverlayContent_, 8, 0);
+    lv_obj_set_flex_flow(mutationControlsOverlayContent_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        mutationControlsOverlayContent_,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START,
+        LV_FLEX_ALIGN_START);
+    lv_obj_set_scroll_dir(mutationControlsOverlayContent_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(mutationControlsOverlayContent_, LV_SCROLLBAR_MODE_AUTO);
+
+    lv_obj_t* summaryCard = lv_obj_create(mutationControlsOverlayContent_);
+    lv_obj_set_size(summaryCard, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(summaryCard, lv_color_hex(0x0D1421), 0);
+    lv_obj_set_style_bg_opa(summaryCard, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(summaryCard, 1, 0);
+    lv_obj_set_style_border_color(summaryCard, lv_color_hex(0x22324A), 0);
+    lv_obj_set_style_radius(summaryCard, 6, 0);
+    lv_obj_set_style_pad_all(summaryCard, 8, 0);
+    lv_obj_set_style_pad_row(summaryCard, 4, 0);
+    lv_obj_set_flex_flow(summaryCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        summaryCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(summaryCard, LV_OBJ_FLAG_SCROLLABLE);
+
+    mutationControlPathLabel_ = lv_label_create(summaryCard);
+    lv_obj_set_style_text_color(mutationControlPathLabel_, lv_color_hex(0xAFC6E8), 0);
+    lv_obj_set_style_text_font(mutationControlPathLabel_, &lv_font_montserrat_12, 0);
+
+    mutationControlPhaseLabel_ = lv_label_create(summaryCard);
+    lv_obj_set_style_text_color(mutationControlPhaseLabel_, lv_color_hex(0xE8F0FF), 0);
+    lv_obj_set_style_text_font(mutationControlPhaseLabel_, &lv_font_montserrat_12, 0);
+
+    mutationControlResolvedLabel_ = lv_label_create(summaryCard);
+    lv_obj_set_style_text_color(mutationControlResolvedLabel_, lv_color_hex(0xE8F0FF), 0);
+    lv_obj_set_style_text_font(mutationControlResolvedLabel_, &lv_font_montserrat_12, 0);
+
+    mutationControlPendingLabel_ = lv_label_create(summaryCard);
+    lv_obj_set_width(mutationControlPendingLabel_, LV_PCT(100));
+    lv_label_set_long_mode(mutationControlPendingLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(mutationControlPendingLabel_, lv_color_hex(0x90A4BF), 0);
+    lv_obj_set_style_text_font(mutationControlPendingLabel_, &lv_font_montserrat_12, 0);
+
+    mutationControlLegacyNoteLabel_ = lv_label_create(mutationControlsOverlayContent_);
+    lv_obj_set_width(mutationControlLegacyNoteLabel_, LV_PCT(100));
+    lv_label_set_long_mode(mutationControlLegacyNoteLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(mutationControlLegacyNoteLabel_, lv_color_hex(0xFFAA66), 0);
+    lv_obj_set_style_text_font(mutationControlLegacyNoteLabel_, &lv_font_montserrat_12, 0);
+
+    mutationControlModeDropdown_ =
+        LVGLBuilder::actionDropdown(mutationControlsOverlayContent_)
+            .label("Mode")
+            .options("Auto\nBaseline\nExplore\nRescue")
+            .selected(adaptiveMutationControlModeDropdownIndex(mutationControlMode_))
+            .width(LV_PCT(100))
+            .callback(onMutationControlModeChanged, this)
+            .buildOrLog();
+
+    mutationPerturbationsStepper_ =
+        LVGLBuilder::actionStepper(mutationControlsOverlayContent_)
+            .label("Perturbations/Offspring")
+            .range(0, 5000)
+            .step(10)
+            .value(userSettings_.mutationConfig.perturbationsPerOffspring)
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(100))
+            .callback(onMutationPerturbationsChanged, this)
+            .buildOrLog();
+
+    mutationResetsStepper_ = LVGLBuilder::actionStepper(mutationControlsOverlayContent_)
+                                 .label("Resets/Offspring")
+                                 .range(0, 200)
+                                 .step(1)
+                                 .value(userSettings_.mutationConfig.resetsPerOffspring)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(100))
+                                 .callback(onMutationResetsChanged, this)
+                                 .buildOrLog();
+
+    mutationSigmaStepper_ =
+        LVGLBuilder::actionStepper(mutationControlsOverlayContent_)
+            .label("Mutation Sigma")
+            .range(0, 300)
+            .step(1)
+            .value(static_cast<int32_t>(std::lround(userSettings_.mutationConfig.sigma * 1000.0)))
+            .valueFormat("%.3f")
+            .valueScale(0.001)
+            .width(LV_PCT(100))
+            .callback(onMutationSigmaChanged, this)
+            .buildOrLog();
+
+    mutationStagnationWindowStepper_ =
+        LVGLBuilder::actionStepper(mutationControlsOverlayContent_)
+            .label("Stagnation Window")
+            .range(1, 100)
+            .step(1)
+            .value(userSettings_.evolutionConfig.stagnationWindowGenerations)
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(100))
+            .callback(onMutationStagnationWindowChanged, this)
+            .buildOrLog();
+
+    mutationRecoveryWindowStepper_ =
+        LVGLBuilder::actionStepper(mutationControlsOverlayContent_)
+            .label("Recovery Window")
+            .range(0, 100)
+            .step(1)
+            .value(userSettings_.evolutionConfig.recoveryWindowGenerations)
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(100))
+            .callback(onMutationRecoveryWindowChanged, this)
+            .buildOrLog();
+
+    updateMutationControlsEnabled();
+    updateMutationControlsSummary();
+}
+
+void TrainingActiveView::hideMutationControlsOverlay()
+{
+    mutationControlsOverlayVisible_ = false;
+    if (mutationControlsOverlay_) {
+        lv_obj_add_flag(mutationControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    }
+    updateMutationButtonState();
+}
+
+void TrainingActiveView::updateMutationControlsEnabled()
+{
+    setControlEnabled(mutationControlModeDropdown_, true);
+    setControlEnabled(mutationPerturbationsStepper_, true);
+    setControlEnabled(mutationResetsStepper_, true);
+    setControlEnabled(mutationSigmaStepper_, true);
+    setControlEnabled(mutationStagnationWindowStepper_, true);
+    setControlEnabled(mutationRecoveryWindowStepper_, true);
+
+    if (!mutationControlLegacyNoteLabel_) {
+        return;
+    }
+
+    lv_label_set_text(
+        mutationControlLegacyNoteLabel_,
+        "Live edits apply on the next breeding generation. The same baseline settings are also "
+        "available from Training Idle > Evolution Config before a run starts.");
+}
+
+void TrainingActiveView::updateMutationControlsSummary()
+{
+    if (mutationControlPathLabel_) {
+        char buf[128];
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Baseline: %d/%d/%.3f | Win: %d/%d",
+            userSettings_.mutationConfig.perturbationsPerOffspring,
+            userSettings_.mutationConfig.resetsPerOffspring,
+            userSettings_.mutationConfig.sigma,
+            userSettings_.evolutionConfig.stagnationWindowGenerations,
+            userSettings_.evolutionConfig.recoveryWindowGenerations);
+        lv_label_set_text(mutationControlPathLabel_, buf);
+    }
+
+    if (mutationControlPhaseLabel_) {
+        char buf[96];
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Phase: %s | Resolved: %s",
+            trainingPhaseLabel(mutationControlLatestPhase_),
+            adaptiveMutationModeLabel(mutationControlLatestBreeding_.mutationMode));
+        lv_label_set_text(mutationControlPhaseLabel_, buf);
+    }
+
+    if (mutationControlResolvedLabel_) {
+        if (mutationControlLatestCompletedGeneration_ < 0
+            && mutationControlLatestGeneration_ == 0) {
+            lv_label_set_text(mutationControlResolvedLabel_, "Resolved: --");
+        }
+        else {
+            char buf[96];
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Resolved: %d/%d/%.3f",
+                mutationControlLatestBreeding_.resolvedPerturbationsPerOffspring,
+                mutationControlLatestBreeding_.resolvedResetsPerOffspring,
+                mutationControlLatestBreeding_.resolvedSigma);
+            lv_label_set_text(mutationControlResolvedLabel_, buf);
+        }
+    }
+
+    if (!mutationControlPendingLabel_) {
+        return;
+    }
+
+    std::string pending = "Pending: ";
+    pending += adaptiveMutationControlModeLabel(mutationControlMode_);
+    pending += " on next breeding";
+    if (mutationControlMode_ == AdaptiveMutationControlMode::Auto) {
+        pending += " using phase-driven staging.";
+    }
+    else {
+        pending += " manual override.";
+    }
+    lv_label_set_text(mutationControlPendingLabel_, pending.c_str());
+}
+
+void TrainingActiveView::refreshMutationControlsOverlay()
+{
+    if (!mutationControlsOverlay_ || !contentRow_) {
+        return;
+    }
+
+    if (!mutationControlsOverlayVisible_) {
+        updateMutationButtonState();
+        return;
+    }
+
+    constexpr int panelGapPx = 8;
+    constexpr int panelDesiredWidthPx = 340;
+    constexpr int panelMinWidthPx = 180;
+
+    const int contentWidth = lv_obj_get_width(contentRow_);
+    const int contentHeight = lv_obj_get_height(contentRow_);
+    if (contentWidth <= (2 * panelGapPx) || contentHeight <= (2 * panelGapPx)) {
+        return;
+    }
+
+    int anchorX = panelGapPx;
+    int anchorRightX = panelGapPx;
+    if (streamPanel_ && mutationControlsButton_) {
+        anchorX = lv_obj_get_x(streamPanel_) + lv_obj_get_x(mutationControlsButton_);
+        anchorRightX = anchorX + lv_obj_get_width(mutationControlsButton_);
+    }
+    else {
+        anchorRightX = anchorX;
+    }
+
+    const int maxPanelWidth = std::max(1, contentWidth - (2 * panelGapPx));
+    int panelWidth = std::min(panelDesiredWidthPx, maxPanelWidth);
+    if (maxPanelWidth >= panelMinWidthPx) {
+        panelWidth = std::max(panelWidth, panelMinWidthPx);
+    }
+
+    const int maxPanelHeight = std::max(1, contentHeight - (2 * panelGapPx));
+    const int panelHeight = maxPanelHeight;
+
+    const int rightX = anchorRightX + panelGapPx;
+    const int leftX = anchorX - panelGapPx - panelWidth;
+    const bool fitsRight = rightX + panelWidth + panelGapPx <= contentWidth;
+    const bool fitsLeft = leftX >= panelGapPx;
+
+    int panelX = panelGapPx;
+    if (fitsRight) {
+        panelX = rightX;
+    }
+    else if (fitsLeft) {
+        panelX = leftX;
+    }
+    else {
+        panelX = std::clamp(
+            rightX, panelGapPx, std::max(panelGapPx, contentWidth - panelWidth - panelGapPx));
+    }
+    const int panelY = panelGapPx;
+
+    lv_obj_set_size(mutationControlsOverlay_, panelWidth, panelHeight);
+    lv_obj_set_pos(mutationControlsOverlay_, panelX, panelY);
+
+    updateMutationControlsEnabled();
+    updateMutationControlsSummary();
+    lv_obj_remove_flag(mutationControlsOverlay_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(mutationControlsOverlay_);
+    updateMutationButtonState();
+}
+
+void TrainingActiveView::showMutationControlsOverlay()
+{
+    hideScenarioControlsOverlay();
+    mutationControlsOverlayVisible_ = true;
+    refreshMutationControlsOverlay();
+}
+
+void TrainingActiveView::updateMutationButtonState()
+{
+    if (!mutationControlsButton_) {
+        return;
+    }
+
+    lv_obj_clear_state(mutationControlsButton_, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(mutationControlsButton_, LV_OPA_COVER, 0);
+    LVGLBuilder::ActionButtonBuilder::setIcon(
+        mutationControlsButton_,
+        mutationControlsOverlayVisible_ ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
 }
 
 void TrainingActiveView::updateScenarioConfig(
@@ -1544,6 +2011,7 @@ void TrainingActiveView::showScenarioControlsOverlay()
         return;
     }
 
+    hideMutationControlsOverlay();
     scenarioControlsOverlayVisible_ = true;
     refreshScenarioControlsOverlay();
 }
@@ -1620,9 +2088,7 @@ void TrainingActiveView::refreshScenarioControlsOverlay()
 
     constexpr int panelGapPx = 8;
     constexpr int panelDesiredWidthPx = 340;
-    constexpr int panelDesiredHeightPx = 420;
     constexpr int panelMinWidthPx = 180;
-    constexpr int panelMinHeightPx = 140;
 
     const int contentWidth = lv_obj_get_width(contentRow_);
     const int contentHeight = lv_obj_get_height(contentRow_);
@@ -1647,10 +2113,7 @@ void TrainingActiveView::refreshScenarioControlsOverlay()
     }
 
     const int maxPanelHeight = std::max(1, contentHeight - (2 * panelGapPx));
-    int panelHeight = std::min(panelDesiredHeightPx, maxPanelHeight);
-    if (maxPanelHeight >= panelMinHeightPx) {
-        panelHeight = std::max(panelHeight, panelMinHeightPx);
-    }
+    const int panelHeight = maxPanelHeight;
 
     const int rightX = anchorRightX + panelGapPx;
     const int leftX = anchorX - panelGapPx - panelWidth;
@@ -1781,6 +2244,11 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
 
     setTrainingPaused(progress.isPaused);
+    mutationControlLatestPhase_ = progress.trainingPhase;
+    mutationControlLatestBreeding_ = progress.lastBreeding;
+    mutationControlLatestCompletedGeneration_ = progress.lastCompletedGeneration;
+    mutationControlLatestGeneration_ = progress.generation;
+    updateMutationControlsSummary();
 
     const auto now = std::chrono::steady_clock::now();
     if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {
@@ -2187,6 +2655,12 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         currentScenarioId_ = Scenario::EnumType::Empty;
         scenarioControlsScenarioId_ = Scenario::EnumType::Empty;
         hasScenarioState_ = false;
+        mutationControlLatestPhase_ = TrainingPhase::Normal;
+        mutationControlLatestBreeding_ = {};
+        mutationControlLatestCompletedGeneration_ = -1;
+        mutationControlLatestGeneration_ = 0;
+        mutationControlMode_ = AdaptiveMutationControlMode::Auto;
+        hideMutationControlsOverlay();
         hideScenarioControlsOverlay();
     }
 
@@ -2214,6 +2688,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setMutationControls(
+        userSettings_.mutationConfig, userSettings_.evolutionConfig, mutationControlMode_);
     setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
@@ -2397,6 +2873,17 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                                   .callback(onScenarioControlsClicked, this)
                                   .buildOrLog();
 
+    mutationControlsButton_ = LVGLBuilder::actionButton(streamPanel_)
+                                  .text("Mutation Controls")
+                                  .icon(LV_SYMBOL_RIGHT)
+                                  .mode(LVGLBuilder::ActionMode::Push)
+                                  .width(LV_PCT(100))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .callback(onMutationControlsClicked, this)
+                                  .buildOrLog();
+
     LVGLBuilder::ActionButtonBuilder stopBuilder(streamPanel_);
     stopBuilder.text("Stop Training")
         .icon(LV_SYMBOL_STOP)
@@ -2458,10 +2945,14 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
         cpuCorePlot_->clear();
     }
 
+    createMutationControlsOverlay();
     createScenarioControlsOverlay();
+    updateMutationButtonState();
     updateScenarioButtonState();
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setMutationControls(
+        userSettings_.mutationConfig, userSettings_.evolutionConfig, mutationControlMode_);
     setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
 }
 
@@ -2521,6 +3012,99 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
             .nesControllerOverlayEnabled =
                 self->userSettings_.uiTraining.nesControllerOverlayEnabled,
         });
+}
+
+void TrainingActiveView::onMutationControlModeChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationControlModeDropdown_) {
+        return;
+    }
+
+    self->mutationControlMode_ = adaptiveMutationControlModeFromDropdownIndex(
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->mutationControlModeDropdown_));
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
+}
+
+void TrainingActiveView::onMutationControlsClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    if (self->mutationControlsOverlayVisible_) {
+        self->hideMutationControlsOverlay();
+        return;
+    }
+
+    self->showMutationControlsOverlay();
+}
+
+void TrainingActiveView::onMutationPerturbationsChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationPerturbationsStepper_) {
+        return;
+    }
+
+    self->userSettings_.mutationConfig.perturbationsPerOffspring =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationPerturbationsStepper_);
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
+}
+
+void TrainingActiveView::onMutationRecoveryWindowChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationRecoveryWindowStepper_) {
+        return;
+    }
+
+    self->userSettings_.evolutionConfig.recoveryWindowGenerations =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRecoveryWindowStepper_);
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
+}
+
+void TrainingActiveView::onMutationResetsChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationResetsStepper_) {
+        return;
+    }
+
+    self->userSettings_.mutationConfig.resetsPerOffspring =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationResetsStepper_);
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
+}
+
+void TrainingActiveView::onMutationSigmaChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationSigmaStepper_) {
+        return;
+    }
+
+    self->userSettings_.mutationConfig.sigma =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationSigmaStepper_) / 1000.0;
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
+}
+
+void TrainingActiveView::onMutationStagnationWindowChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationStagnationWindowStepper_) {
+        return;
+    }
+
+    self->userSettings_.evolutionConfig.stagnationWindowGenerations =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationStagnationWindowStepper_);
+    self->updateMutationControlsSummary();
+    self->queueMutationControlsUpdatedEvent();
 }
 
 void TrainingActiveView::onNesControllerOverlayToggled(lv_event_t* e)
