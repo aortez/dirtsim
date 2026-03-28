@@ -67,6 +67,15 @@ bool WaterSimSystem::tryGetWaterActivityView(WaterActivityView& out) const
     return sim_->tryGetWaterActivityView(out);
 }
 
+bool WaterSimSystem::tryGetWaterAdvanceDiagnostics(WaterAdvanceDiagnostics& out) const
+{
+    if (!sim_) {
+        return false;
+    }
+
+    return sim_->tryGetWaterAdvanceDiagnostics(out);
+}
+
 bool WaterSimSystem::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
 {
     if (!sim_) {
@@ -94,6 +103,26 @@ bool WaterSimSystem::tryGetMutableWaterVolumeView(WaterVolumeMutableView& out)
     return sim_->tryGetMutableWaterVolumeView(out);
 }
 
+void WaterSimSystem::setWaterAdvanceDiagnosticsEnabled(bool enabled)
+{
+    waterAdvanceDiagnosticsEnabled_ = enabled;
+    if (!sim_) {
+        return;
+    }
+
+    sim_->setWaterAdvanceDiagnosticsEnabled(enabled);
+}
+
+void WaterSimSystem::setWaterAdvanceDebugOptions(const WaterAdvanceDebugOptions& options)
+{
+    waterAdvanceDebugOptions_ = options;
+    if (!sim_) {
+        return;
+    }
+
+    sim_->setWaterAdvanceDebugOptions(options);
+}
+
 void WaterSimSystem::setMode(WaterSimMode mode, int worldWidth, int worldHeight)
 {
     mode_ = mode;
@@ -102,6 +131,10 @@ void WaterSimSystem::setMode(WaterSimMode mode, int worldWidth, int worldHeight)
     width_ = 0;
     height_ = 0;
     resizeIfNeeded(worldWidth, worldHeight);
+    if (sim_) {
+        sim_->setWaterAdvanceDiagnosticsEnabled(waterAdvanceDiagnosticsEnabled_);
+        sim_->setWaterAdvanceDebugOptions(waterAdvanceDebugOptions_);
+    }
 
     SLOG_INFO("Water sim mode set to {}.", std::string(reflect::enum_name(mode_)));
 }

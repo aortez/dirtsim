@@ -4224,6 +4224,431 @@ void initializeSandboxQuadrantWorld(World& world)
     scenario.setup(world);
 }
 
+void initializeSandboxQuadrantWaterColumnWorld(World& world, SandboxScenario& scenario)
+{
+    const Config::Sandbox config{
+        .quadrantEnabled = true,
+        .waterColumnEnabled = true,
+        .rightThrowEnabled = false,
+        .rainRate = 0.0,
+    };
+
+    scenario.setConfig(ScenarioConfig{ config }, world);
+    scenario.setup(world);
+    world.setScenario(&scenario);
+}
+
+void initializeSandboxWaterColumnWorld(World& world, SandboxScenario& scenario)
+{
+    const Config::Sandbox config{
+        .quadrantEnabled = false,
+        .waterColumnEnabled = true,
+        .rightThrowEnabled = false,
+        .rainRate = 0.0,
+    };
+
+    scenario.setConfig(ScenarioConfig{ config }, world);
+    scenario.setup(world);
+    world.setScenario(&scenario);
+}
+
+struct SandboxWaterColumnOutcome {
+    int totalFrames = 0;
+    bool sawWaterAfterShutdown = false;
+    int maxQuietWaterRegionsAfterShutdown = 0;
+    int maxSkippableWaterRegionsAfterShutdown = 0;
+    WaterRegionBuckets finalWaterBuckets;
+    WaterSleepShadowStats finalShadowStats{};
+    int finalAwakeWaterRegions = 0;
+};
+
+struct MacWaterActivityStats {
+    float maxFaceSpeed = 0.0f;
+    float maxFaceSpeedSignificant = 0.0f;
+    float maxVolumeDelta = 0.0f;
+    float maxVolumeDeltaSignificant = 0.0f;
+    float maxInterfaceFaceSpeed = 0.0f;
+    float maxSurfaceHeightDelta = 0.0f;
+    float totalVolume = 0.0f;
+    float maxFaceSpeedCellVolume = 0.0f;
+    int maxFaceSpeedCellX = -1;
+    int maxFaceSpeedCellY = -1;
+    bool maxFaceSpeedCellIsInterface = false;
+    int significantWaterCells = 0;
+    int waterCells = 0;
+    int interfaceCells = 0;
+    int partialCells = 0;
+};
+
+const char* waterAdvancePhaseShortName(WaterAdvancePhase phase)
+{
+    switch (phase) {
+        case WaterAdvancePhase::BeforeGravityPreStep:
+            return "preGrav";
+        case WaterAdvancePhase::AfterGravityPreStep:
+            return "gravity";
+        case WaterAdvancePhase::AfterHydroPressureGradient:
+            return "hydroGrad";
+        case WaterAdvancePhase::AfterPressureProjection:
+            return "project";
+        case WaterAdvancePhase::AfterDamping:
+            return "damp";
+        case WaterAdvancePhase::AfterAdvection:
+            return "advect";
+        case WaterAdvancePhase::AfterResidualSettle:
+            return "settle";
+        case WaterAdvancePhase::Final:
+            return "final";
+    }
+
+    return "unknown";
+}
+
+std::string dumpWaterAdvanceDiagnostics(const WaterAdvanceDiagnostics& diagnostics)
+{
+    const auto avg = [](float total, uint32_t count) {
+        return count > 0 ? (total / static_cast<float>(count)) : 0.0f;
+    };
+
+    std::ostringstream out;
+    bool first = true;
+    for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+        if (!first) {
+            out << " ";
+        }
+        first = false;
+
+        out << waterAdvancePhaseShortName(sample.phase) << "(kin=" << sample.kineticProxy
+            << ",kinSig=" << sample.kineticProxySignificant
+            << ",faFaces=" << sample.activeFluidAirBoundaryFaces
+            << ",faAdj=" << sample.adjustedFluidAirBoundaryFaces
+            << ",faAvg=" << sample.avgFluidAirBoundaryScale
+            << ",faMin=" << sample.minFluidAirBoundaryScale
+            << ",faMax=" << sample.maxFluidAirBoundaryScale
+            << ",div=" << sample.absProjectedDivergence
+            << ",divSig=" << sample.absProjectedDivergenceSignificant
+            << ",divIface=" << sample.absProjectedDivergenceInterface << ",divPartAvg="
+            << avg(sample.absProjectedDivergencePartial, sample.projectedPartialCells)
+            << ",divFullAvg="
+            << avg(sample.absProjectedDivergenceNearFull, sample.projectedNearFullCells)
+            << ",divBelowAvg="
+            << avg(sample.absProjectedDivergenceBelowPartial, sample.projectedBelowPartialCells)
+            << ",max=" << sample.maxFaceSpeed << ",maxSig=" << sample.maxFaceSpeedSignificant
+            << ",maxDiv=" << sample.maxAbsProjectedDivergence
+            << ",maxDivSig=" << sample.maxAbsProjectedDivergenceSignificant
+            << ",maxDivIface=" << sample.maxAbsProjectedDivergenceInterface
+            << ",maxDivPart=" << sample.maxAbsProjectedDivergencePartial
+            << ",maxDivFull=" << sample.maxAbsProjectedDivergenceNearFull
+            << ",maxDivBelow=" << sample.maxAbsProjectedDivergenceBelowPartial
+            << ",surf=" << sample.surfaceHeightRange << ",cells=" << sample.waterCells
+            << ",sig=" << sample.significantWaterCells << ",proj=" << sample.projectedCells
+            << ",projIface=" << sample.projectedInterfaceCells
+            << ",projPart=" << sample.projectedPartialCells
+            << ",projFull=" << sample.projectedNearFullCells
+            << ",projBelow=" << sample.projectedBelowPartialCells;
+        if (!sample.fluidAirBoundarySamples.empty()) {
+            out << ",faSamples=";
+            bool firstFace = true;
+            for (const auto& face : sample.fluidAirBoundarySamples) {
+                if (!firstFace) {
+                    out << ";";
+                }
+                firstFace = false;
+                out << (face.isUFace ? "u" : "v") << "(" << face.faceX << "," << face.faceY << ")"
+                    << "fc(" << face.fluidCellX << "," << face.fluidCellY << ")"
+                    << " vol=" << face.fluidVolume << " w=" << face.faceWeight
+                    << " s=" << face.boundaryScale
+                    << " rec=" << (face.fluidCellReconstructed ? 1 : 0) << " n=(" << face.normalX
+                    << "," << face.normalY << ") a=" << face.alpha;
+            }
+        }
+        if (!sample.topVelocityFaceSamples.empty()) {
+            out << ",topFaces=";
+            bool firstTopFace = true;
+            for (const auto& face : sample.topVelocityFaceSamples) {
+                if (!firstTopFace) {
+                    out << ";";
+                }
+                firstTopFace = false;
+                out << (face.isUFace ? "u" : "v") << "(" << face.faceX << "," << face.faceY << ")"
+                    << " vel=" << face.velocity << " abs=" << face.absVelocity
+                    << " hd=" << face.hydroPressureDelta << " w=" << face.faceWeight
+                    << " s=" << face.boundaryScale << " fa=" << (face.fluidAirBoundary ? 1 : 0)
+                    << " iface=" << (face.touchesInterfaceCell ? 1 : 0)
+                    << " part=" << (face.touchesPartialCell ? 1 : 0) << " a=(" << face.cellAX << ","
+                    << face.cellAY << "," << face.volumeA << ") b=(" << face.cellBX << ","
+                    << face.cellBY << "," << face.volumeB << ")";
+            }
+        }
+        out << ")";
+    }
+
+    return out.str();
+}
+
+MacWaterActivityStats computeMacWaterActivityStats(const World& world)
+{
+    MacWaterActivityStats stats{};
+
+    WaterActivityView activityView{};
+    WaterVolumeView waterVolumeView{};
+    const bool hasActivity = world.tryGetWaterActivityView(activityView);
+    const bool hasWaterVolume = world.tryGetWaterVolumeView(waterVolumeView);
+
+    const int width = hasWaterVolume ? waterVolumeView.width : -1;
+
+    constexpr float kSignificantWaterVolume = 0.05f;
+
+    if (hasWaterVolume) {
+        constexpr float kMinWaterVolume = 0.0001f;
+        constexpr float kMaxWaterVolume = 1.0f - kMinWaterVolume;
+        for (float volume : waterVolumeView.volume) {
+            if (volume <= kMinWaterVolume) {
+                continue;
+            }
+
+            stats.waterCells++;
+            stats.totalVolume += volume;
+            if (volume < kMaxWaterVolume) {
+                stats.partialCells++;
+            }
+            if (volume >= kSignificantWaterVolume) {
+                stats.significantWaterCells++;
+            }
+        }
+    }
+
+    if (hasActivity) {
+        const size_t cellCount = activityView.flags.size();
+        for (size_t idx = 0; idx < cellCount; ++idx) {
+            const uint8_t flags = activityView.flags[idx];
+            if (!hasWaterActivityFlag(flags, WaterActivityFlag::HasFluid)) {
+                continue;
+            }
+
+            if (idx < activityView.max_face_speed.size()) {
+                const float faceSpeed = activityView.max_face_speed[idx];
+                if (faceSpeed > stats.maxFaceSpeed) {
+                    stats.maxFaceSpeed = faceSpeed;
+                    if (width > 0) {
+                        stats.maxFaceSpeedCellX =
+                            static_cast<int>(idx % static_cast<size_t>(width));
+                        stats.maxFaceSpeedCellY =
+                            static_cast<int>(idx / static_cast<size_t>(width));
+                    }
+                    stats.maxFaceSpeedCellIsInterface =
+                        hasWaterActivityFlag(flags, WaterActivityFlag::Interface);
+                    if (hasWaterVolume && idx < waterVolumeView.volume.size()) {
+                        stats.maxFaceSpeedCellVolume =
+                            std::clamp(waterVolumeView.volume[idx], 0.0f, 1.0f);
+                    }
+                }
+
+                if (hasWaterVolume && idx < waterVolumeView.volume.size()
+                    && waterVolumeView.volume[idx] >= kSignificantWaterVolume) {
+                    stats.maxFaceSpeedSignificant =
+                        std::max(stats.maxFaceSpeedSignificant, faceSpeed);
+                }
+            }
+            if (idx < activityView.volume_delta.size()) {
+                const float volumeDelta = activityView.volume_delta[idx];
+                stats.maxVolumeDelta = std::max(stats.maxVolumeDelta, volumeDelta);
+                if (hasWaterVolume && idx < waterVolumeView.volume.size()
+                    && waterVolumeView.volume[idx] >= kSignificantWaterVolume) {
+                    stats.maxVolumeDeltaSignificant =
+                        std::max(stats.maxVolumeDeltaSignificant, volumeDelta);
+                }
+            }
+            if (hasWaterActivityFlag(flags, WaterActivityFlag::Interface)) {
+                stats.interfaceCells++;
+            }
+        }
+    }
+
+    const WorldData& data = world.getData();
+    const WorldRegionActivityTracker& tracker = world.getRegionActivityTracker();
+    for (int blockY = 0; blockY < data.region_debug_blocks_y; ++blockY) {
+        for (int blockX = 0; blockX < data.region_debug_blocks_x; ++blockX) {
+            const RegionSummary& summary = tracker.getRegionSummary(blockX, blockY);
+            stats.maxInterfaceFaceSpeed =
+                std::max(stats.maxInterfaceFaceSpeed, summary.max_mac_water_interface_face_speed);
+            stats.maxSurfaceHeightDelta =
+                std::max(stats.maxSurfaceHeightDelta, summary.max_mac_water_surface_height_delta);
+        }
+    }
+
+    return stats;
+}
+
+std::string dumpRegion(const WaterAdvanceRegionDump& dump, const char* phaseName)
+{
+    if (dump.cells.empty()) {
+        return "";
+    }
+
+    std::ostringstream out;
+    out << "  " << phaseName << " region [" << dump.minX << "," << dump.minY << "]-[" << dump.maxX
+        << "," << dump.maxY << "]:\n";
+
+    out << "    cells:\n";
+    for (const WaterAdvanceRegionCell& cell : dump.cells) {
+        if (cell.solidMask != 0 && cell.volume <= 0.0001f) {
+            continue;
+        }
+        out << "      (" << cell.x << "," << cell.y << ")"
+            << " vol=" << cell.volume << " hydro=" << cell.hydroPressure
+            << " pres=" << cell.pressure << " div=" << cell.divergence
+            << " fl=" << static_cast<int>(cell.fluidMask)
+            << " proj=" << static_cast<int>(cell.projectionMask)
+            << " sol=" << static_cast<int>(cell.solidMask) << "\n";
+    }
+
+    out << "    faces:\n";
+    for (const WaterAdvanceRegionFace& face : dump.faces) {
+        if (std::abs(face.velocity) < 0.0001f && face.weight < 0.0001f) {
+            continue;
+        }
+        out << "      " << (face.isUFace ? "u" : "v") << "(" << face.faceX << "," << face.faceY
+            << ")"
+            << " vel=" << face.velocity << " w=" << face.weight
+            << " faScale=" << face.fluidAirBoundaryScale << "\n";
+    }
+
+    return out.str();
+}
+
+std::string dumpRegionPhases(const WaterAdvanceDiagnostics& diagnostics)
+{
+    std::ostringstream out;
+    for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+        out << dumpRegion(sample.regionDump, waterAdvancePhaseShortName(sample.phase));
+    }
+    return out.str();
+}
+
+void runSandboxWaterColumnActivityDecayCase(
+    const char* name,
+    const WaterAdvanceDebugOptions& options,
+    int sampleStride = 1200,
+    int samples = 4)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(options);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kWaterColumnShutdownFrames = 160;
+    const int totalFrames = kWaterColumnShutdownFrames + (sampleStride * samples);
+
+    for (int frame = 1; frame <= totalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % sampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "case=" << name << " frame=" << frame
+                  << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant
+                  << " maxVolDeltaSig=" << stats.maxVolumeDeltaSignificant
+                  << " maxSurfDelta=" << stats.maxSurfaceHeightDelta
+                  << " sigCells=" << stats.significantWaterCells
+                  << " phases=" << dumpWaterAdvanceDiagnostics(diagnostics) << std::endl;
+    }
+}
+
+void initializeFractionalSurfacePoolWorld(World& world)
+{
+    initializeStillWaterPoolWorld(world);
+
+    // Give the pool a fractional "cap" layer. If this can't reach hydrostatic equilibrium under
+    // our MAC hydro-pressure approximation, it will keep moving indefinitely.
+    for (int x = 9; x <= 54; ++x) {
+        world.setBulkWaterAmountAtCell(x, 11, 0.50f);
+    }
+}
+
+void runFractionalSurfacePoolActivityCase(
+    const char* name,
+    const WaterAdvanceDebugOptions& options,
+    int totalFrames = 6000,
+    int sampleStride = 1200)
+{
+    World world(kWorldWidth, kWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(options);
+    initializeFractionalSurfacePoolWorld(world);
+
+    for (int frame = 1; frame <= totalFrames; ++frame) {
+        world.advanceTime(kDt);
+        if ((frame % sampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+        std::cout << "case=" << name << " frame=" << frame
+                  << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFace=" << stats.maxFaceSpeed << " maxVolDelta=" << stats.maxVolumeDelta
+                  << " maxSurfDelta=" << stats.maxSurfaceHeightDelta
+                  << " maxIfaceFace=" << stats.maxInterfaceFaceSpeed
+                  << " waterCells=" << stats.waterCells << " partialCells=" << stats.partialCells
+                  << " phases=" << dumpWaterAdvanceDiagnostics(diagnostics) << std::endl;
+    }
+}
+
+SandboxWaterColumnOutcome runSandboxWaterColumn(World& world)
+{
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kPostShutdownFrames = 1200;
+    constexpr int kSampleStride = 16;
+
+    SandboxWaterColumnOutcome outcome{};
+    outcome.totalFrames = kWaterColumnShutdownFrames + kPostShutdownFrames;
+
+    for (int frame = 1; frame <= outcome.totalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const GridOfCells grid = makeGrid(world);
+        const WaterRegionBuckets waterBuckets = classifyWaterRegions(world, grid);
+        const WaterSleepShadowStats shadowStats = requireWaterSleepShadowStats(world);
+
+        outcome.sawWaterAfterShutdown =
+            outcome.sawWaterAfterShutdown || !waterBuckets.water_regions.empty();
+        outcome.maxQuietWaterRegionsAfterShutdown = std::max(
+            outcome.maxQuietWaterRegionsAfterShutdown,
+            countQuietRegions(world, waterBuckets.water_regions));
+        outcome.maxSkippableWaterRegionsAfterShutdown = std::max(
+            outcome.maxSkippableWaterRegionsAfterShutdown,
+            static_cast<int>(shadowStats.shadowSkippableWaterRegions));
+    }
+
+    const GridOfCells finalGrid = makeGrid(world);
+    outcome.finalWaterBuckets = classifyWaterRegions(world, finalGrid);
+    outcome.finalShadowStats = requireWaterSleepShadowStats(world);
+
+    for (const RegionCoord& region : outcome.finalWaterBuckets.water_regions) {
+        const RegionFrameSample sample = sampleRegionFrame(world, region, outcome.totalFrames);
+        if (sample.state == RegionState::Awake) {
+            outcome.finalAwakeWaterRegions++;
+        }
+    }
+
+    return outcome;
+}
+
 void initializeStillWaterPoolWorld(World& world)
 {
     world.getPhysicsSettings().water_sim_mode = WaterSimMode::MacProjection;
@@ -4622,6 +5047,454 @@ TEST(WorldRegionSleepingBehaviorTest, SandboxInteriorDirtSleepEnforcementSkipsDr
         << "Expected at least one sleeping interior dirt region to skip force processing.";
     EXPECT_GT(skipped_move_interior_regions, 0)
         << "Expected at least one sleeping interior dirt region to skip move generation.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, SandboxWaterColumnOnlySettlesToMixedWaterActivityWithoutSkips)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    const SandboxWaterColumnOutcome outcome = runSandboxWaterColumn(world);
+    const Config::Sandbox finalConfig = std::get<Config::Sandbox>(scenario.getConfig());
+    EXPECT_FALSE(finalConfig.waterColumnEnabled)
+        << "Expected the sandbox water column to auto-disable after its refill window.";
+
+    SCOPED_TRACE(dumpWaterRegionDetails(world, outcome.finalWaterBuckets, outcome.totalFrames));
+
+    ASSERT_TRUE(outcome.sawWaterAfterShutdown)
+        << "Expected sandbox water to remain present after the refill window ends.";
+    EXPECT_FALSE(outcome.finalWaterBuckets.water_regions.empty())
+        << "Expected sandbox water regions to still exist at the late observation point.";
+    EXPECT_GT(outcome.maxQuietWaterRegionsAfterShutdown, 0)
+        << "Expected the sandbox water-column scenario to eventually produce at least some quiet "
+           "water regions after the refill window ends.";
+    EXPECT_GT(outcome.finalAwakeWaterRegions, 0)
+        << "Expected the sandbox water-column scenario to keep some exposed shell regions awake "
+           "even after quieter water regions appear.";
+    EXPECT_EQ(outcome.maxSkippableWaterRegionsAfterShutdown, 0)
+        << "Expected the sandbox water-column scenario to expose no shadow-skippable water "
+           "regions during the late observation window.";
+    EXPECT_EQ(outcome.finalShadowStats.shadowSkippableWaterRegions, 0u)
+        << "Expected the final sandbox water state to remain fully solver-active.";
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    SandboxQuadrantWaterColumnSettlesToMixedWaterActivityWithoutSkips)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    SandboxScenario scenario;
+    initializeSandboxQuadrantWaterColumnWorld(world, scenario);
+
+    const SandboxWaterColumnOutcome outcome = runSandboxWaterColumn(world);
+    const Config::Sandbox finalConfig = std::get<Config::Sandbox>(scenario.getConfig());
+    EXPECT_FALSE(finalConfig.waterColumnEnabled)
+        << "Expected the sandbox water column to auto-disable after its refill window.";
+
+    const GridOfCells finalGrid = makeGrid(world);
+    const SandboxRegionBuckets finalDirtBuckets = classifySandboxDirtRegions(world, finalGrid);
+
+    int sleepingInteriorDirtRegions = 0;
+    for (const RegionCoord& region : finalDirtBuckets.interior_dirt_regions) {
+        const RegionFrameSample sample = sampleRegionFrame(world, region, outcome.totalFrames);
+        if (sample.state == RegionState::Sleeping) {
+            sleepingInteriorDirtRegions++;
+        }
+    }
+
+    SCOPED_TRACE(dumpWaterRegionDetails(world, outcome.finalWaterBuckets, outcome.totalFrames));
+    SCOPED_TRACE(dumpSandboxDirtRoleMap(world, finalDirtBuckets));
+    SCOPED_TRACE(dumpSandboxDirtRegionDetails(world, finalDirtBuckets));
+
+    ASSERT_TRUE(outcome.sawWaterAfterShutdown)
+        << "Expected sandbox water to remain present after the refill window ends.";
+    EXPECT_FALSE(outcome.finalWaterBuckets.water_regions.empty())
+        << "Expected sandbox water regions to still exist at the late observation point.";
+    EXPECT_GT(outcome.maxQuietWaterRegionsAfterShutdown, 0)
+        << "Expected the sandbox water-column scenario to eventually produce at least some quiet "
+           "water regions after the refill window ends.";
+    EXPECT_GT(outcome.finalAwakeWaterRegions, 0)
+        << "Expected the sandbox water-column scenario to keep some exposed shell regions awake "
+           "even after quieter water regions appear.";
+    EXPECT_EQ(outcome.maxSkippableWaterRegionsAfterShutdown, 0)
+        << "Expected the sandbox water-column scenario to expose no shadow-skippable water "
+           "regions during the late observation window.";
+    EXPECT_EQ(outcome.finalShadowStats.shadowSkippableWaterRegions, 0u)
+        << "Expected the final sandbox water state to remain fully solver-active.";
+    EXPECT_GT(sleepingInteriorDirtRegions, 0)
+        << "Expected lower-right dirt interior regions to keep sleeping even while the sandbox "
+           "water remains active.";
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnOnlyActivityDecay)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kTotalFrames = 12000;
+    constexpr int kSampleStride = 240;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+        const WaterSleepShadowStats shadowStats = requireWaterSleepShadowStats(world);
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFace=" << stats.maxFaceSpeed
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant
+                  << " maxVolDelta=" << stats.maxVolumeDelta
+                  << " maxVolDeltaSig=" << stats.maxVolumeDeltaSignificant
+                  << " maxSurfDelta=" << stats.maxSurfaceHeightDelta
+                  << " maxIfaceFace=" << stats.maxInterfaceFaceSpeed
+                  << " waterCells=" << stats.waterCells << " partialCells=" << stats.partialCells
+                  << " sigCells=" << stats.significantWaterCells << " maxFaceCell=("
+                  << stats.maxFaceSpeedCellX << "," << stats.maxFaceSpeedCellY
+                  << ") vol=" << stats.maxFaceSpeedCellVolume
+                  << " iface=" << (stats.maxFaceSpeedCellIsInterface ? 1 : 0)
+                  << " shadowSkippable=" << shadowStats.shadowSkippableWaterRegions
+                  << " phases=" << dumpWaterAdvanceDiagnostics(diagnostics) << "\n";
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnHydroAblationScan)
+{
+    runSandboxWaterColumnActivityDecayCase("baseline", WaterAdvanceDebugOptions{});
+    runSandboxWaterColumnActivityDecayCase(
+        "no_gravity_prestep", WaterAdvanceDebugOptions{ .disableGravityPreStep = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_hydro_gradient", WaterAdvanceDebugOptions{ .disableHydroPressureGradient = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_hydro",
+        WaterAdvanceDebugOptions{
+            .disableGravityPreStep = true,
+            .disableHydroPressureGradient = true,
+        });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnGravityFaceClassScan)
+{
+    runSandboxWaterColumnActivityDecayCase("baseline", WaterAdvanceDebugOptions{});
+    runSandboxWaterColumnActivityDecayCase(
+        "no_top_interface_gravity",
+        WaterAdvanceDebugOptions{ .disableGravityPreStepOnTopInterfaceFaces = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_bottom_interface_gravity",
+        WaterAdvanceDebugOptions{ .disableGravityPreStepOnBottomInterfaceFaces = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_interface_gravity",
+        WaterAdvanceDebugOptions{
+            .disableGravityPreStepOnBottomInterfaceFaces = true,
+            .disableGravityPreStepOnTopInterfaceFaces = true,
+        });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_gravity_prestep", WaterAdvanceDebugOptions{ .disableGravityPreStep = true });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnProjectionBoundaryScan)
+{
+    runSandboxWaterColumnActivityDecayCase("baseline", WaterAdvanceDebugOptions{});
+    runSandboxWaterColumnActivityDecayCase(
+        "air_boundary_at_face",
+        WaterAdvanceDebugOptions{ .treatFluidAirPressureBoundaryAtFace = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "reconstructed_geometry",
+        WaterAdvanceDebugOptions{ .useReconstructedFreeSurfaceGeometry = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "no_air_denom",
+        WaterAdvanceDebugOptions{ .excludeAirNeighborsFromPressureDenominator = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "fill_rhs", WaterAdvanceDebugOptions{ .scaleProjectionDivergenceByCellFill = true });
+    runSandboxWaterColumnActivityDecayCase(
+        "fill_face", WaterAdvanceDebugOptions{ .scaleFluidAirPressureCorrectionByCellFill = true });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_FractionalSurfacePoolProjectionBoundaryScan)
+{
+    runFractionalSurfacePoolActivityCase("baseline", WaterAdvanceDebugOptions{});
+    runFractionalSurfacePoolActivityCase(
+        "air_boundary_at_face",
+        WaterAdvanceDebugOptions{ .treatFluidAirPressureBoundaryAtFace = true });
+    runFractionalSurfacePoolActivityCase(
+        "reconstructed_geometry",
+        WaterAdvanceDebugOptions{ .useReconstructedFreeSurfaceGeometry = true });
+    runFractionalSurfacePoolActivityCase(
+        "no_air_denom",
+        WaterAdvanceDebugOptions{ .excludeAirNeighborsFromPressureDenominator = true });
+    runFractionalSurfacePoolActivityCase(
+        "fill_rhs", WaterAdvanceDebugOptions{ .scaleProjectionDivergenceByCellFill = true });
+    runFractionalSurfacePoolActivityCase(
+        "fill_face", WaterAdvanceDebugOptions{ .scaleFluidAirPressureCorrectionByCellFill = true });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_FractionalSurfacePoolReconstructedGeometry)
+{
+    runFractionalSurfacePoolActivityCase(
+        "reconstructed_geometry",
+        WaterAdvanceDebugOptions{ .useReconstructedFreeSurfaceGeometry = true },
+        480,
+        240);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnReconstructedGeometry)
+{
+    runSandboxWaterColumnActivityDecayCase(
+        "reconstructed_geometry",
+        WaterAdvanceDebugOptions{ .useReconstructedFreeSurfaceGeometry = true },
+        480,
+        4);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnPocketDump)
+{
+    // Zoom into the oscillating pocket at x=3..7, y=0..5 and the hydro-driven
+    // side faces at x=3..7, y=6..12. Captures per-cell volume, hydro pressure,
+    // pressure, divergence, and per-face velocity/weight at each solver phase.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .useReconstructedFreeSurfaceGeometry = true,
+            .regionDumpMinX = 3,
+            .regionDumpMinY = 0,
+            .regionDumpMaxX = 7,
+            .regionDumpMaxY = 12,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    // Run past the water column shutdown, then sample the late spike window.
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kTotalFrames = 2080;
+    constexpr int kSampleStride = 480;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "--- frame=" << frame << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant << " ---\n"
+                  << dumpRegionPhases(diagnostics) << std::endl;
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnBaselinePocketDump)
+{
+    // Same pocket dump as above but with the baseline solver (no reconstructed geometry).
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .regionDumpMinX = 3,
+            .regionDumpMinY = 0,
+            .regionDumpMaxX = 7,
+            .regionDumpMaxY = 12,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kTotalFrames = 2080;
+    constexpr int kSampleStride = 480;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "--- frame=" << frame << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant << " ---\n"
+                  << dumpRegionPhases(diagnostics) << std::endl;
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnLateFrameEnergy)
+{
+    // Sample every frame in a short late window to measure the true per-frame
+    // energy budget: preGrav → gravity → hydro → project → damp → final.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt);
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* name = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                      << "P=" << sample.kineticProxyPartialFaces << " " << name
+                      << "F=" << sample.kineticProxyNearFullFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+void runVFaceFillAblationEnergyBudget(const char* name, const WaterAdvanceDebugOptions& options)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(options);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        if (!world.tryGetWaterAdvanceDiagnostics(diagnostics)) {
+            continue;
+        }
+
+        std::cout << "case=" << name << " frame=" << frame;
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* phaseName = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << phaseName << "=" << sample.kineticProxySignificant << " "
+                      << phaseName << "P=" << sample.kineticProxyPartialFaces << " " << phaseName
+                      << "F=" << sample.kineticProxyNearFullFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+void runVFaceFillAblationLongDecay(const char* name, const WaterAdvanceDebugOptions& options)
+{
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(options);
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kTotalFrames = 12000;
+    constexpr int kSampleStride = 240;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        if (!world.tryGetWaterAdvanceDiagnostics(diagnostics)) {
+            continue;
+        }
+
+        // Emit the final phase kinSig and the max significant face speed.
+        const WaterAdvancePhaseSample& finalSample = diagnostics.phaseSamples.back();
+        std::cout << "case=" << name << " frame=" << frame
+                  << " t=" << (static_cast<double>(frame) * kDt)
+                  << " kinSig=" << finalSample.kineticProxySignificant
+                  << " kinSigP=" << finalSample.kineticProxyPartialFaces
+                  << " kinSigF=" << finalSample.kineticProxyNearFullFaces
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant
+                  << " maxSurfDelta=" << stats.maxSurfaceHeightDelta
+                  << " sigCells=" << stats.significantWaterCells << "\n";
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_VFaceFillAblationEnergyBudget)
+{
+    runVFaceFillAblationEnergyBudget("baseline", WaterAdvanceDebugOptions{});
+    runVFaceFillAblationEnergyBudget(
+        "gravity_fill", WaterAdvanceDebugOptions{ .scaleGravityByVFaceFill = true });
+    runVFaceFillAblationEnergyBudget(
+        "hydro_fill", WaterAdvanceDebugOptions{ .scaleHydroGradientByVFaceFill = true });
+    runVFaceFillAblationEnergyBudget(
+        "both_fill",
+        WaterAdvanceDebugOptions{
+            .scaleGravityByVFaceFill = true,
+            .scaleHydroGradientByVFaceFill = true,
+        });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_VFaceFillAblationLongDecay)
+{
+    runVFaceFillAblationLongDecay("baseline", WaterAdvanceDebugOptions{});
+    runVFaceFillAblationLongDecay(
+        "gravity_fill", WaterAdvanceDebugOptions{ .scaleGravityByVFaceFill = true });
+    runVFaceFillAblationLongDecay(
+        "hydro_fill", WaterAdvanceDebugOptions{ .scaleHydroGradientByVFaceFill = true });
+    runVFaceFillAblationLongDecay(
+        "both_fill",
+        WaterAdvanceDebugOptions{
+            .scaleGravityByVFaceFill = true,
+            .scaleHydroGradientByVFaceFill = true,
+        });
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_FractionalSurfacePoolActivity)
+{
+    World world(kWorldWidth, kWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    initializeFractionalSurfacePoolWorld(world);
+
+    constexpr int kTotalFrames = 6000;
+    constexpr int kSampleStride = 240;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+        if (frame % kSampleStride != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFace=" << stats.maxFaceSpeed << " maxVolDelta=" << stats.maxVolumeDelta
+                  << " maxSurfDelta=" << stats.maxSurfaceHeightDelta
+                  << " maxIfaceFace=" << stats.maxInterfaceFaceSpeed
+                  << " waterCells=" << stats.waterCells << " partialCells=" << stats.partialCells
+                  << " phases=" << dumpWaterAdvanceDiagnostics(diagnostics) << "\n";
+    }
 }
 
 TEST(WorldRegionSleepingBehaviorTest, StillWaterPoolTrackerAllowsInteriorRegionsToSleepTrackedOnly)

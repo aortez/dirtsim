@@ -1099,6 +1099,11 @@ bool World::tryGetWaterActivityView(WaterActivityView& out) const
     return pImpl->water_sim_system_.tryGetWaterActivityView(out);
 }
 
+bool World::tryGetWaterAdvanceDiagnostics(WaterAdvanceDiagnostics& out) const
+{
+    return pImpl->water_sim_system_.tryGetWaterAdvanceDiagnostics(out);
+}
+
 bool World::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
 {
     return pImpl->water_sim_system_.tryGetWaterSleepShadowStats(out);
@@ -1107,6 +1112,16 @@ bool World::tryGetWaterSleepShadowStats(WaterSleepShadowStats& out) const
 bool World::tryGetMutableWaterVolumeView(WaterVolumeMutableView& out)
 {
     return pImpl->water_sim_system_.tryGetMutableWaterVolumeView(out);
+}
+
+void World::setWaterAdvanceDiagnosticsEnabled(bool enabled)
+{
+    pImpl->water_sim_system_.setWaterAdvanceDiagnosticsEnabled(enabled);
+}
+
+void World::setWaterAdvanceDebugOptions(const WaterAdvanceDebugOptions& options)
+{
+    pImpl->water_sim_system_.setWaterAdvanceDebugOptions(options);
 }
 
 void World::setDirtFragmentationFactor(double /* factor */)
