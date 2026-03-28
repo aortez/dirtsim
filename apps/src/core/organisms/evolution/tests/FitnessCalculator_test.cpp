@@ -554,8 +554,8 @@ TEST(FitnessCalculatorTest, DuckClockRewardsFasterCourseRates)
     EXPECT_DOUBLE_EQ(halfBreakdown.traversalRatePer100Seconds, 4.0);
     EXPECT_DOUBLE_EQ(fullBreakdown.obstacleClearRatePer100Seconds, 2.0);
     EXPECT_DOUBLE_EQ(halfBreakdown.obstacleClearRatePer100Seconds, 4.0);
-    EXPECT_DOUBLE_EQ(fullBreakdown.survivalPoints, 100.0);
-    EXPECT_DOUBLE_EQ(halfBreakdown.survivalPoints, 50.0);
+    EXPECT_DOUBLE_EQ(fullBreakdown.survivalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.survivalPoints, 250.0);
     EXPECT_GT(halfBreakdown.totalFitness, fullBreakdown.totalFitness);
 }
 
@@ -670,8 +670,8 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards
         DuckEvaluator::evaluateWithBreakdown(boostedContext);
     const double obstacleCompetence = obstacleCompetenceExpected(2.0, 2.0);
 
-    EXPECT_DOUBLE_EQ(baseBreakdown.survivalPoints, 100.0);
-    EXPECT_DOUBLE_EQ(baseBreakdown.totalFitness, 100.0);
+    EXPECT_DOUBLE_EQ(baseBreakdown.survivalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(baseBreakdown.totalFitness, 500.0);
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalRatePer100Seconds, 2.5);
     EXPECT_DOUBLE_EQ(boostedBreakdown.traversalPoints, 1250.0);
     EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleClearRatePer100Seconds, 2.0);
@@ -681,7 +681,7 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityScore, 0.5);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityPoints, 50.0);
     EXPECT_NEAR(boostedBreakdown.coursePoints, 1250.0 + 200.0 + (100.0 * obstacleCompetence), 1e-9);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.survivalPoints, 100.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.survivalPoints, 500.0);
     EXPECT_NEAR(
         boostedBreakdown.totalFitness,
         boostedBreakdown.survivalPoints + boostedBreakdown.coursePoints
@@ -810,9 +810,9 @@ TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesCompletionPoints)
     EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityScore, 1.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityPoints, 100.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorCompletionPoints, 150.0);
-    EXPECT_DOUBLE_EQ(breakdown.survivalPoints, 100.0);
+    EXPECT_DOUBLE_EQ(breakdown.survivalPoints, 500.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorTime, 8.0);
-    EXPECT_DOUBLE_EQ(breakdown.totalFitness, 350.0);
+    EXPECT_DOUBLE_EQ(breakdown.totalFitness, 750.0);
 }
 
 } // namespace DirtSim

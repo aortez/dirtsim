@@ -17,7 +17,7 @@ struct DuckClockScoringConfig {
     double obstacleCompetenceOpportunityReference = 3.0;
     double obstacleCompetencePoints = 100.0;
     double referenceDurationSeconds = 100.0;
-    double survivalPoints = 100.0;
+    double survivalPoints = 500.0;
     double traversalPoints = 500.0;
 };
 

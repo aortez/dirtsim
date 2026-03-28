@@ -35,8 +35,8 @@ const Api::FitnessPresentationSection* fitnessSectionFind(
 TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown)
 {
     const double obstacleCompetenceScore = 1.0 - std::exp(-1.0);
-    const double survivalPoints = 50.0;
-    const double totalFitness = 3263.2120558828557;
+    const double survivalPoints = 250.0;
+    const double totalFitness = 3463.2120558828556;
     const FitnessEvaluation evaluation{
         .totalFitness = totalFitness,
         .details =
@@ -133,8 +133,8 @@ TEST(FitnessPresentationGeneratorTest, BuildsDuckPresentationFromNativeBreakdown
 TEST(FitnessPresentationGeneratorTest, BuildsDuckClockPresentationFromNativeBreakdown)
 {
     const double obstacleCompetenceScore = 1.0 - std::exp(-2.0 / 3.0);
-    const double survivalPoints = 75.0;
-    const double totalFitness = 1973.658288096741;
+    const double survivalPoints = 375.0;
+    const double totalFitness = 2273.6582880967408;
     const FitnessEvaluation evaluation{
         .totalFitness = totalFitness,
         .details =
