@@ -81,6 +81,21 @@ TEST(ScannerTypesTest, ObservationKindIsDirectInsideTuningSpan)
     EXPECT_TRUE(scannerTuningIncludesPrimaryChannel(tuningResult.value(), 48));
 }
 
+TEST(ScannerTypesTest, ObservationKindTreats80MHzCenterAsDirectObservation)
+{
+    const auto tuningResult = scannerManualTargetToTuning(
+        ScannerManualConfig{
+            .band = ScannerBand::Band5Ghz,
+            .widthMhz = 80,
+            .targetChannel = 42,
+        });
+
+    ASSERT_TRUE(tuningResult.isValue());
+    EXPECT_EQ(
+        scannerObservationKindForObservedChannel(tuningResult.value(), 42),
+        ScannerObservationKind::Direct);
+}
+
 TEST(ScannerTypesTest, ObservationKindIsIncidentalOutsideTuningSpan)
 {
     const ScannerTuning tuning{
@@ -103,4 +118,27 @@ TEST(ScannerTypesTest, BandPrimaryChannelsIncludeDfsRange)
     EXPECT_NE(std::find(channels.begin(), channels.end(), 104), channels.end());
     EXPECT_NE(std::find(channels.begin(), channels.end(), 144), channels.end());
     EXPECT_EQ(std::find(channels.begin(), channels.end(), 171), channels.end());
+}
+
+TEST(ScannerTypesTest, ManualTargetForPrimaryChannelMaps20MHzDirectly)
+{
+    const auto target = scannerManualTargetForPrimaryChannel(ScannerBand::Band5Ghz, 20, 132);
+
+    ASSERT_TRUE(target.has_value());
+    EXPECT_EQ(target.value(), 132);
+}
+
+TEST(ScannerTypesTest, ManualTargetForPrimaryChannelMaps80MHzIntoCoveredBlock)
+{
+    const auto target = scannerManualTargetForPrimaryChannel(ScannerBand::Band5Ghz, 80, 44);
+
+    ASSERT_TRUE(target.has_value());
+    EXPECT_EQ(target.value(), 42);
+}
+
+TEST(ScannerTypesTest, ManualTargetForPrimaryChannelRejectsUnsupported80MHzEdgeChannel)
+{
+    const auto target = scannerManualTargetForPrimaryChannel(ScannerBand::Band5Ghz, 80, 165);
+
+    EXPECT_FALSE(target.has_value());
 }

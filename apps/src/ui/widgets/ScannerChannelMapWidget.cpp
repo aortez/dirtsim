@@ -24,17 +24,24 @@ constexpr int kBubbleRadiusLargePx = 8;
 constexpr int kBubbleRadiusMediumPx = 6;
 constexpr int kBubbleRadiusSmallPx = 4;
 constexpr int kChannelLabelBottomPaddingPx = 2;
+constexpr int kCurrentLabelUnderlineHeightPx = 4;
 constexpr int kLabelTopPaddingPx = 4;
+constexpr int kManualLabelSpanHeightPx = 7;
 constexpr int kOuterPaddingPx = 2;
 constexpr int kPlotBottomPaddingPx = 4;
 constexpr int kPlotTopPaddingPx = 2;
-constexpr int kRailHeightPx = 10;
-constexpr int kRailMarkerHeightPx = 6;
-constexpr int kRailTopPaddingPx = 4;
 constexpr int kRssiAxisLabelWidthPx = 24;
 constexpr int kRssiGuideLabelGapPx = 6;
 constexpr int kRssiBucketMaxDbm = -30;
 constexpr int kRssiBucketMinDbm = -90;
+
+struct MapLayout {
+    std::vector<int> channels;
+    lv_area_t contentArea;
+    lv_area_t plotArea;
+    int labelTop = 0;
+    int labelBottom = 0;
+};
 
 const lv_font_t* channelMapLabelFont()
 {
@@ -76,9 +83,9 @@ lv_opa_t bubbleOpacity(const std::optional<uint64_t> freshestAgeMs)
     return LV_OPA_40;
 }
 
-int bubbleY(const lv_area_t& plotArea, const int rssiBucketDbm)
+int bubbleY(const lv_area_t& plotArea, const int signalDbm)
 {
-    const int clampedDbm = std::clamp(rssiBucketDbm, kRssiBucketMinDbm, kRssiBucketMaxDbm);
+    const int clampedDbm = std::clamp(signalDbm, kRssiBucketMinDbm, kRssiBucketMaxDbm);
     const float normalized = static_cast<float>(clampedDbm - kRssiBucketMinDbm)
         / static_cast<float>(kRssiBucketMaxDbm - kRssiBucketMinDbm);
     const int plotHeight = std::max(1, lv_area_get_height(&plotArea) - 1);
@@ -157,6 +164,56 @@ bool channelSlotBounds(
     return true;
 }
 
+std::optional<int> channelAtPoint(
+    const std::vector<int>& channels, const lv_area_t& plotArea, const lv_point_t& point)
+{
+    for (const int channel : channels) {
+        int slotLeft = 0;
+        int slotRight = 0;
+        if (!channelSlotBounds(channels, plotArea, channel, slotLeft, slotRight)) {
+            continue;
+        }
+
+        if (point.x < slotLeft || point.x > slotRight) {
+            continue;
+        }
+
+        return channel;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<MapLayout> buildMapLayout(
+    const OsManager::ScannerBand band, const lv_area_t& contentArea)
+{
+    const std::vector<int> channels = OsManager::scannerBandPrimaryChannels(band);
+    if (channels.empty()) {
+        return std::nullopt;
+    }
+
+    const int channelLabelHeight = lv_font_get_line_height(channelMapLabelFont());
+    const int labelBottom = contentArea.y2 - kChannelLabelBottomPaddingPx;
+    const int labelTop = labelBottom - channelLabelHeight + 1;
+    const lv_area_t plotArea{
+        .x1 = contentArea.x1 + kOuterPaddingPx + kRssiAxisLabelWidthPx + kRssiGuideLabelGapPx,
+        .y1 = contentArea.y1 + kPlotTopPaddingPx,
+        .x2 = contentArea.x2 - kOuterPaddingPx,
+        .y2 = labelTop - kLabelTopPaddingPx - kPlotBottomPaddingPx,
+    };
+    if (plotArea.x2 <= plotArea.x1 || plotArea.y2 <= plotArea.y1) {
+        return std::nullopt;
+    }
+
+    return MapLayout{
+        .channels = channels,
+        .contentArea = contentArea,
+        .plotArea = plotArea,
+        .labelTop = labelTop,
+        .labelBottom = labelBottom,
+    };
+}
+
 void drawGuideLine(lv_layer_t* layer, const lv_area_t& plotArea, const int y)
 {
     lv_draw_line_dsc_t lineDsc;
@@ -232,8 +289,9 @@ ScannerChannelMapWidget::ScannerChannelMapWidget(lv_obj_t* parent)
     lv_obj_set_style_pad_all(map_, 0, 0);
     lv_obj_set_style_radius(map_, 0, 0);
     lv_obj_clear_flag(map_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(map_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(map_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(map_, onMapDraw, LV_EVENT_DRAW_MAIN, this);
+    lv_obj_add_event_cb(map_, onMapClicked, LV_EVENT_CLICKED, this);
 }
 
 void ScannerChannelMapWidget::clear()
@@ -254,6 +312,11 @@ void ScannerChannelMapWidget::setModel(Model model)
     lv_obj_invalidate(map_);
 }
 
+void ScannerChannelMapWidget::setChannelSelectedCallback(ChannelSelectedCallback callback)
+{
+    channelSelectedCallback_ = std::move(callback);
+}
+
 void ScannerChannelMapWidget::onMapDraw(lv_event_t* e)
 {
     auto* self = static_cast<ScannerChannelMapWidget*>(lv_event_get_user_data(e));
@@ -262,6 +325,41 @@ void ScannerChannelMapWidget::onMapDraw(lv_event_t* e)
     }
 
     self->drawMap(e);
+}
+
+void ScannerChannelMapWidget::onMapClicked(lv_event_t* e)
+{
+    auto* self = static_cast<ScannerChannelMapWidget*>(lv_event_get_user_data(e));
+    if (!self || !self->map_ || !self->channelSelectedCallback_) {
+        return;
+    }
+
+    lv_indev_t* indev = lv_event_get_indev(e);
+    if (!indev) {
+        return;
+    }
+
+    lv_point_t screenPoint;
+    lv_indev_get_point(indev, &screenPoint);
+
+    lv_area_t contentArea;
+    lv_obj_get_content_coords(self->map_, &contentArea);
+    const auto layout = buildMapLayout(self->model_.band, contentArea);
+    if (!layout.has_value()) {
+        return;
+    }
+
+    if (screenPoint.x < layout->plotArea.x1 || screenPoint.x > layout->plotArea.x2
+        || screenPoint.y < layout->plotArea.y1 || screenPoint.y > layout->labelBottom) {
+        return;
+    }
+
+    const auto tappedChannel = channelAtPoint(layout->channels, layout->plotArea, screenPoint);
+    if (!tappedChannel.has_value()) {
+        return;
+    }
+
+    self->channelSelectedCallback_(tappedChannel.value());
 }
 
 void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
@@ -275,26 +373,16 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
         return;
     }
 
-    const std::vector<int> channels = OsManager::scannerBandPrimaryChannels(model_.band);
-    if (channels.empty()) {
-        return;
-    }
-
     lv_area_t contentArea;
     lv_obj_get_content_coords(map_, &contentArea);
-
-    const int channelLabelHeight = lv_font_get_line_height(channelMapLabelFont());
-    const int railReservedHeight = kRailTopPaddingPx + kRailHeightPx;
-    lv_area_t plotArea{
-        .x1 = contentArea.x1 + kOuterPaddingPx + kRssiAxisLabelWidthPx + kRssiGuideLabelGapPx,
-        .y1 = contentArea.y1 + kPlotTopPaddingPx,
-        .x2 = contentArea.x2 - kOuterPaddingPx,
-        .y2 = contentArea.y2 - channelLabelHeight - kLabelTopPaddingPx
-            - kChannelLabelBottomPaddingPx - railReservedHeight - kPlotBottomPaddingPx,
-    };
-    if (plotArea.x2 <= plotArea.x1 || plotArea.y2 <= plotArea.y1) {
+    const auto layout = buildMapLayout(model_.band, contentArea);
+    if (!layout.has_value()) {
         return;
     }
+    const auto& channels = layout->channels;
+    const lv_area_t& plotArea = layout->plotArea;
+    const int labelTop = layout->labelTop;
+    const int labelBottom = layout->labelBottom;
 
     lv_draw_rect_dsc_t backgroundDsc;
     lv_draw_rect_dsc_init(&backgroundDsc);
@@ -315,98 +403,29 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
             rssiAxisLabelFont());
     }
 
-    lv_area_t railArea{
-        .x1 = plotArea.x1,
-        .y1 = plotArea.y2 + kLabelTopPaddingPx + channelLabelHeight + kChannelLabelBottomPaddingPx
-            + kRailTopPaddingPx,
-        .x2 = plotArea.x2,
-        .y2 = plotArea.y2 + kLabelTopPaddingPx + channelLabelHeight + kChannelLabelBottomPaddingPx
-            + kRailTopPaddingPx + kRailHeightPx - 1,
-    };
-
-    lv_draw_rect_dsc_t railDsc;
-    lv_draw_rect_dsc_init(&railDsc);
-    railDsc.bg_color = kGuideColor;
-    railDsc.bg_opa = LV_OPA_50;
-    railDsc.radius = LV_RADIUS_CIRCLE;
-    lv_draw_rect(layer, &railDsc, &railArea);
-
+    std::vector<int> currentCoveredChannels;
+    bool hasTuningBounds = false;
+    int tuningSlotLeft = 0;
+    int tuningSlotRight = 0;
     if (model_.currentTuning.has_value() && model_.currentTuning->band == model_.band) {
-        const auto coveredChannels =
+        currentCoveredChannels =
             OsManager::scannerTuningCoveredPrimaryChannels(model_.currentTuning.value());
-        int slotLeft = 0;
-        int slotRight = 0;
-        bool hasBounds = false;
-        for (const int channel : coveredChannels) {
+        for (const int channel : currentCoveredChannels) {
             int candidateLeft = 0;
             int candidateRight = 0;
             if (!channelSlotBounds(channels, plotArea, channel, candidateLeft, candidateRight)) {
                 continue;
             }
 
-            if (!hasBounds) {
-                slotLeft = candidateLeft;
-                slotRight = candidateRight;
-                hasBounds = true;
+            if (!hasTuningBounds) {
+                tuningSlotLeft = candidateLeft;
+                tuningSlotRight = candidateRight;
+                hasTuningBounds = true;
                 continue;
             }
 
-            slotLeft = std::min(slotLeft, candidateLeft);
-            slotRight = std::max(slotRight, candidateRight);
-        }
-
-        if (hasBounds) {
-            if (model_.mode == OsManager::ScannerConfigMode::Manual) {
-                lv_draw_rect_dsc_t tuningDsc;
-                lv_draw_rect_dsc_init(&tuningDsc);
-                tuningDsc.bg_color = kManualRailFillColor;
-                tuningDsc.bg_opa = LV_OPA_90;
-                tuningDsc.border_color = kManualRailBorderColor;
-                tuningDsc.border_opa = LV_OPA_COVER;
-                tuningDsc.border_width = 1;
-                tuningDsc.radius = LV_RADIUS_CIRCLE;
-
-                lv_area_t tuningArea{
-                    .x1 = slotLeft + 1,
-                    .y1 = railArea.y1 + (kRailHeightPx - kRailMarkerHeightPx) / 2,
-                    .x2 = slotRight - 1,
-                    .y2 = railArea.y1 + (kRailHeightPx - kRailMarkerHeightPx) / 2
-                        + kRailMarkerHeightPx - 1,
-                };
-                lv_draw_rect(layer, &tuningDsc, &tuningArea);
-
-                lv_draw_line_dsc_t centerTickDsc;
-                lv_draw_line_dsc_init(&centerTickDsc);
-                centerTickDsc.color = kManualRailBorderColor;
-                centerTickDsc.opa = LV_OPA_COVER;
-                centerTickDsc.width = 1;
-                const int centerX = (slotLeft + slotRight) / 2;
-                centerTickDsc.p1.x = centerX;
-                centerTickDsc.p1.y = railArea.y1 - 3;
-                centerTickDsc.p2.x = centerX;
-                centerTickDsc.p2.y = railArea.y2 + 1;
-                lv_draw_line(layer, &centerTickDsc);
-            }
-            else {
-                int primaryCenterX = 0;
-                if (channelXCenter(
-                        channels, plotArea, model_.currentTuning->primaryChannel, primaryCenterX)) {
-                    lv_draw_rect_dsc_t markerDsc;
-                    lv_draw_rect_dsc_init(&markerDsc);
-                    markerDsc.bg_color = accentColor(model_.band);
-                    markerDsc.bg_opa = LV_OPA_COVER;
-                    markerDsc.radius = LV_RADIUS_CIRCLE;
-
-                    lv_area_t markerArea{
-                        .x1 = primaryCenterX - 8,
-                        .y1 = railArea.y1 + (kRailHeightPx - kRailMarkerHeightPx) / 2,
-                        .x2 = primaryCenterX + 8,
-                        .y2 = railArea.y1 + (kRailHeightPx - kRailMarkerHeightPx) / 2
-                            + kRailMarkerHeightPx - 1,
-                    };
-                    lv_draw_rect(layer, &markerDsc, &markerArea);
-                }
-            }
+            tuningSlotLeft = std::min(tuningSlotLeft, candidateLeft);
+            tuningSlotRight = std::max(tuningSlotRight, candidateRight);
         }
     }
 
@@ -431,7 +450,7 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
             continue;
         }
 
-        const int centerY = bubbleY(plotArea, bubble.rssiBucketDbm);
+        const int centerY = bubbleY(plotArea, bubble.rssiDbm);
         const int radius = bubbleRadius(bubble.count);
         const lv_opa_t opacity = bubbleOpacity(bubble.freshestAgeMs);
 
@@ -467,7 +486,57 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
         lv_draw_rect(layer, &bubbleDsc, &bubbleArea);
     }
 
-    const int labelTop = plotArea.y2 + kLabelTopPaddingPx;
+    if (hasTuningBounds && model_.mode == OsManager::ScannerConfigMode::Manual) {
+        lv_draw_rect_dsc_t tuningDsc;
+        lv_draw_rect_dsc_init(&tuningDsc);
+        tuningDsc.bg_color = kManualRailFillColor;
+        tuningDsc.bg_opa = LV_OPA_70;
+        tuningDsc.border_color = kManualRailBorderColor;
+        tuningDsc.border_opa = LV_OPA_COVER;
+        tuningDsc.border_width = 1;
+        tuningDsc.radius = LV_RADIUS_CIRCLE;
+
+        const int spanTop = labelBottom - kManualLabelSpanHeightPx + 1;
+        lv_area_t tuningArea{
+            .x1 = tuningSlotLeft + 1,
+            .y1 = spanTop,
+            .x2 = tuningSlotRight - 1,
+            .y2 = labelBottom,
+        };
+        lv_draw_rect(layer, &tuningDsc, &tuningArea);
+
+        lv_draw_line_dsc_t centerTickDsc;
+        lv_draw_line_dsc_init(&centerTickDsc);
+        centerTickDsc.color = kManualRailBorderColor;
+        centerTickDsc.opa = LV_OPA_COVER;
+        centerTickDsc.width = 1;
+        const int centerX = (tuningSlotLeft + tuningSlotRight) / 2;
+        centerTickDsc.p1.x = centerX;
+        centerTickDsc.p1.y = labelTop + 1;
+        centerTickDsc.p2.x = centerX;
+        centerTickDsc.p2.y = labelBottom - kManualLabelSpanHeightPx;
+        lv_draw_line(layer, &centerTickDsc);
+    }
+    else if (hasTuningBounds && model_.currentTuning.has_value()) {
+        int primaryCenterX = 0;
+        if (channelXCenter(
+                channels, plotArea, model_.currentTuning->primaryChannel, primaryCenterX)) {
+            lv_draw_rect_dsc_t markerDsc;
+            lv_draw_rect_dsc_init(&markerDsc);
+            markerDsc.bg_color = accentColor(model_.band);
+            markerDsc.bg_opa = LV_OPA_COVER;
+            markerDsc.radius = LV_RADIUS_CIRCLE;
+
+            lv_area_t markerArea{
+                .x1 = primaryCenterX - 8,
+                .y1 = labelBottom - kCurrentLabelUnderlineHeightPx + 1,
+                .x2 = primaryCenterX + 8,
+                .y2 = labelBottom,
+            };
+            lv_draw_rect(layer, &markerDsc, &markerArea);
+        }
+    }
+
     int lastLabelRight = std::numeric_limits<int>::min();
     for (const int channel : channels) {
         int centerX = 0;
@@ -486,7 +555,21 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
         }
 
         lastLabelRight = labelRight;
-        drawLabel(layer, std::to_string(channel), centerX, labelTop, kLabelColor);
+        lv_color_t labelColor = kLabelColor;
+        if (model_.currentTuning.has_value() && model_.currentTuning->band == model_.band) {
+            if (model_.mode == OsManager::ScannerConfigMode::Manual
+                && std::find(currentCoveredChannels.begin(), currentCoveredChannels.end(), channel)
+                    != currentCoveredChannels.end()) {
+                labelColor = kManualRailBorderColor;
+            }
+            else if (
+                model_.mode != OsManager::ScannerConfigMode::Manual
+                && channel == model_.currentTuning->primaryChannel) {
+                labelColor = accentColor(model_.band);
+            }
+        }
+
+        drawLabel(layer, std::to_string(channel), centerX, labelTop, labelColor);
     }
 }
 

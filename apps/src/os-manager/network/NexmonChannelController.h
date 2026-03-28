@@ -12,6 +12,7 @@ public:
     NexmonChannelController() = default;
     ~NexmonChannelController() override;
 
+    Result<uint32_t, std::string> readbackChanspec() override;
     Result<std::monostate, std::string> start() override;
     void stop() override;
     Result<std::monostate, std::string> setTuning(const ScannerTuning& tuning) override;

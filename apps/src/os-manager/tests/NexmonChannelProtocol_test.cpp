@@ -141,4 +141,34 @@ TEST(NexmonChannelProtocolTest, ParseGetChanspecPayloadExtractsValue)
     EXPECT_EQ(result.value(), 0xd0a1u);
 }
 
+TEST(NexmonChannelProtocolTest, DecodeChanspecParses5GHz20MHzReadback)
+{
+    const auto result = NexmonChannelProtocol::decodeChanspec(0xd084u);
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value().band, ScannerBand::Band5Ghz);
+    EXPECT_EQ(result.value().primaryChannel, 132);
+    EXPECT_EQ(result.value().widthMhz, 20);
+    EXPECT_FALSE(result.value().centerChannel.has_value());
+}
+
+TEST(NexmonChannelProtocolTest, DecodeChanspecParses5GHz80MHzReadback)
+{
+    const auto result = NexmonChannelProtocol::decodeChanspec(0xe02au);
+
+    ASSERT_TRUE(result.isValue());
+    EXPECT_EQ(result.value().band, ScannerBand::Band5Ghz);
+    EXPECT_EQ(result.value().primaryChannel, 36);
+    EXPECT_EQ(result.value().widthMhz, 80);
+    ASSERT_TRUE(result.value().centerChannel.has_value());
+    EXPECT_EQ(result.value().centerChannel.value(), 42);
+}
+
+TEST(NexmonChannelProtocolTest, DescribeChanspecFormatsReadback)
+{
+    EXPECT_EQ(
+        NexmonChannelProtocol::describeChanspec(0xe02au),
+        "0xe02a (5 GHz center 42 @ 80 MHz span 36-48)");
+}
+
 } // namespace

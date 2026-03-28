@@ -82,6 +82,11 @@ public:
         : errorMessage_(std::move(errorMessage))
     {}
 
+    Result<uint32_t, std::string> readbackChanspec() override
+    {
+        return Result<uint32_t, std::string>::error(errorMessage_);
+    }
+
     Result<std::monostate, std::string> start() override
     {
         return Result<std::monostate, std::string>::error(errorMessage_);

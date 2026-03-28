@@ -31,6 +31,20 @@ NexmonChannelController::~NexmonChannelController()
     stop();
 }
 
+Result<uint32_t, std::string> NexmonChannelController::readbackChanspec()
+{
+#ifndef __linux__
+    return Result<uint32_t, std::string>::error("Nexmon channel control requires Linux");
+#else
+    const auto replyResult = transact(NexmonChannelProtocol::buildGetChanspecPayload());
+    if (replyResult.isError()) {
+        return Result<uint32_t, std::string>::error(replyResult.errorValue());
+    }
+
+    return NexmonChannelProtocol::parseGetChanspecPayload(replyResult.value());
+#endif
+}
+
 Result<std::monostate, std::string> NexmonChannelController::start()
 {
 #ifndef __linux__

@@ -254,6 +254,23 @@ inline ScannerObservationKind scannerObservationKindForPrimaryChannel(
         : ScannerObservationKind::Incidental;
 }
 
+inline bool scannerTuningIncludesObservedChannel(const ScannerTuning& tuning, const int channel)
+{
+    if (scannerTuningIncludesPrimaryChannel(tuning, channel)) {
+        return true;
+    }
+
+    return tuning.centerChannel.has_value() && tuning.centerChannel.value() == channel;
+}
+
+inline ScannerObservationKind scannerObservationKindForObservedChannel(
+    const ScannerTuning& tuning, const int channel)
+{
+    return scannerTuningIncludesObservedChannel(tuning, channel)
+        ? ScannerObservationKind::Direct
+        : ScannerObservationKind::Incidental;
+}
+
 struct ScannerAutoConfig {
     ScannerBand band = ScannerBand::Band5Ghz;
     int widthMhz = 20;
@@ -341,6 +358,9 @@ inline std::string scannerBandLabel(ScannerBand band)
     return "Unknown";
 }
 
+inline Result<ScannerTuning, std::string> scannerManualTargetToTuning(
+    const ScannerManualConfig& config);
+
 inline std::vector<int> scannerManualTargetChannels(const ScannerBand band, const int widthMhz)
 {
     switch (band) {
@@ -363,6 +383,42 @@ inline std::vector<int> scannerManualTargetChannels(const ScannerBand band, cons
     }
 
     return {};
+}
+
+inline std::optional<int> scannerManualTargetForPrimaryChannel(
+    const ScannerBand band, const int widthMhz, const int primaryChannel)
+{
+    const auto supportedTargets = scannerManualTargetChannels(band, widthMhz);
+    if (supportedTargets.empty()) {
+        return std::nullopt;
+    }
+
+    if (widthMhz == 20) {
+        const auto it = std::find(supportedTargets.begin(), supportedTargets.end(), primaryChannel);
+        if (it == supportedTargets.end()) {
+            return std::nullopt;
+        }
+
+        return primaryChannel;
+    }
+
+    for (const int targetChannel : supportedTargets) {
+        const auto tuningResult = scannerManualTargetToTuning(
+            ScannerManualConfig{
+                .band = band,
+                .widthMhz = widthMhz,
+                .targetChannel = targetChannel,
+            });
+        if (!tuningResult.isValue()) {
+            continue;
+        }
+
+        if (scannerTuningIncludesPrimaryChannel(tuningResult.value(), primaryChannel)) {
+            return targetChannel;
+        }
+    }
+
+    return std::nullopt;
 }
 
 inline std::string scannerManualTargetShortLabel(

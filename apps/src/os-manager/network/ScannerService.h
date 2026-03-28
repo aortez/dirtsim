@@ -90,6 +90,8 @@ private:
         std::string ssid;
         std::optional<int> signalDbm;
         std::optional<int> channel;
+        std::optional<int> lastIncidentalLoggedChannel;
+        std::optional<std::chrono::steady_clock::time_point> lastIncidentalLoggedAt;
         std::chrono::steady_clock::time_point lastSeenAt;
         ScannerObservationKind observationKind = ScannerObservationKind::Direct;
     };
@@ -114,6 +116,14 @@ private:
     void completeProbe(
         const std::shared_ptr<PendingProbe>& probe, Result<ProbeResult, std::string> result);
     std::shared_ptr<PendingProbe> currentProbe() const;
+    void maybeLogProbeRequest(
+        const uint8_t* data,
+        size_t length,
+        const ScannerTuning& tuning,
+        std::chrono::steady_clock::time_point now);
+    void maybeSampleManualReadback(
+        const ScannerTuning& tuning, std::chrono::steady_clock::time_point now);
+    void resetManualReadbackSampler();
     std::optional<PacketObservation> handlePacket(
         const uint8_t* data,
         size_t length,
@@ -124,6 +134,8 @@ private:
     std::shared_ptr<ScannerChannelController> channelController_;
 
     mutable std::mutex mutex_;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+        probeRequestLoggedAtByKey_;
     std::unordered_map<std::string, RadioState> radiosByBssid_;
     std::optional<ScannerTuning> currentTuning_;
     std::string lastError_;
@@ -133,6 +145,10 @@ private:
     std::shared_ptr<PendingProbe> pendingProbe_;
     SnapshotChangedCallback snapshotChangedCallback_;
     std::unique_ptr<ScanPlanner> planner_;
+    std::optional<std::string> localInterfaceMac_;
+    std::optional<uint32_t> manualReadbackExpectedChanspec_;
+    std::optional<std::chrono::steady_clock::time_point> manualReadbackLastSampleAt_;
+    std::optional<uint32_t> manualReadbackLastUnexpectedChanspec_;
 
     std::atomic<bool> stopRequested_{ false };
     std::atomic<bool> running_{ false };

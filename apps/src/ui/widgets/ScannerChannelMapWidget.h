@@ -3,6 +3,7 @@
 #include "lvgl/lvgl.h"
 #include "os-manager/ScannerTypes.h"
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -12,10 +13,11 @@ namespace Ui {
 class ScannerChannelMapWidget {
 public:
     enum class BubbleKind { Direct = 0, Incidental, Mixed };
+    using ChannelSelectedCallback = std::function<void(int channel)>;
 
     struct Bubble {
         int channel = 0;
-        int rssiBucketDbm = -90;
+        int rssiDbm = -90;
         uint32_t count = 1;
         std::optional<uint64_t> freshestAgeMs;
         BubbleKind kind = BubbleKind::Direct;
@@ -34,13 +36,16 @@ public:
     void clear();
     lv_obj_t* getContainer() const;
     void setModel(Model model);
+    void setChannelSelectedCallback(ChannelSelectedCallback callback);
 
 private:
     static void onMapDraw(lv_event_t* e);
+    static void onMapClicked(lv_event_t* e);
     void drawMap(lv_event_t* e) const;
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* map_ = nullptr;
+    ChannelSelectedCallback channelSelectedCallback_;
     Model model_;
 };
 

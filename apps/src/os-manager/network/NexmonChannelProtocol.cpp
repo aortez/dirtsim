@@ -1,6 +1,7 @@
 #include "NexmonChannelProtocol.h"
 #include <algorithm>
 #include <array>
+#include <cstdio>
 
 namespace DirtSim {
 namespace OsManager {
@@ -182,6 +183,136 @@ Result<uint32_t, std::string> encode5GHz80MHzChanspec(const ScannerTuning& tunin
 }
 
 } // namespace
+
+Result<ScannerTuning, std::string> decodeChanspec(const uint32_t chanspec)
+{
+    const uint32_t band = chanspec & 0xc000u;
+    const uint32_t width = chanspec & 0x3800u;
+    const int channel = static_cast<int>(chanspec & 0x00ffu);
+    const uint32_t controlSideband = chanspec & 0x0300u;
+
+    ScannerTuning tuning{
+        .band = band == kBand5Ghz ? ScannerBand::Band5Ghz : ScannerBand::Band24Ghz,
+        .primaryChannel = channel,
+        .widthMhz = 20,
+        .centerChannel = std::nullopt,
+    };
+
+    switch (width) {
+        case kWidth20Mhz:
+            if (!scannerChannelListContains(scannerBandPrimaryChannels(tuning.band), channel)) {
+                return Result<ScannerTuning, std::string>::error(
+                    "Unsupported 20 MHz chanspec primary channel " + std::to_string(channel));
+            }
+            return Result<ScannerTuning, std::string>::okay(tuning);
+        case kWidth40Mhz:
+            if (tuning.band != ScannerBand::Band5Ghz) {
+                break;
+            }
+            tuning.widthMhz = 40;
+            tuning.centerChannel = channel;
+            switch (controlSideband) {
+                case kControlSidebandLower:
+                    tuning.primaryChannel = channel - 2;
+                    break;
+                case kControlSidebandLowerUpper:
+                    tuning.primaryChannel = channel + 2;
+                    break;
+                default:
+                    return Result<ScannerTuning, std::string>::error(
+                        "Unsupported 40 MHz control sideband 0x" + [](const uint32_t value) {
+                            char buffer[9];
+                            std::snprintf(buffer, sizeof(buffer), "%04x", value);
+                            return std::string(buffer);
+                        }(controlSideband));
+            }
+            break;
+        case kWidth80Mhz:
+            if (tuning.band != ScannerBand::Band5Ghz) {
+                break;
+            }
+            tuning.widthMhz = 80;
+            tuning.centerChannel = channel;
+            switch (controlSideband) {
+                case kControlSidebandLower:
+                    tuning.primaryChannel = channel - 6;
+                    break;
+                case kControlSidebandLowerUpper:
+                    tuning.primaryChannel = channel - 2;
+                    break;
+                case kControlSidebandUpperLower:
+                    tuning.primaryChannel = channel + 2;
+                    break;
+                case kControlSidebandUpperUpper:
+                    tuning.primaryChannel = channel + 6;
+                    break;
+                default:
+                    return Result<ScannerTuning, std::string>::error(
+                        "Unsupported 80 MHz control sideband 0x" + [](const uint32_t value) {
+                            char buffer[9];
+                            std::snprintf(buffer, sizeof(buffer), "%04x", value);
+                            return std::string(buffer);
+                        }(controlSideband));
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (!scannerWidthSupported(tuning.band, tuning.widthMhz)) {
+        return Result<ScannerTuning, std::string>::error(
+            "Unsupported chanspec width 0x" + [](const uint32_t value) {
+                char buffer[9];
+                std::snprintf(buffer, sizeof(buffer), "%04x", value);
+                return std::string(buffer);
+            }(width));
+    }
+
+    if (!scannerChannelListContains(
+            scannerTuningCoveredPrimaryChannels(tuning), tuning.primaryChannel)) {
+        return Result<ScannerTuning, std::string>::error(
+            "Decoded primary channel is outside chanspec span");
+    }
+
+    if (!scannerChannelListContains(
+            scannerBandPrimaryChannels(tuning.band), tuning.primaryChannel)) {
+        return Result<ScannerTuning, std::string>::error(
+            "Unsupported decoded primary channel " + std::to_string(tuning.primaryChannel));
+    }
+
+    if (tuning.centerChannel.has_value()
+        && !scannerChannelListContains(
+            scannerManualTargetChannels(tuning.band, tuning.widthMhz),
+            tuning.centerChannel.value())) {
+        return Result<ScannerTuning, std::string>::error(
+            "Unsupported decoded center channel " + std::to_string(tuning.centerChannel.value()));
+    }
+
+    return Result<ScannerTuning, std::string>::okay(tuning);
+}
+
+std::string describeChanspec(const uint32_t chanspec)
+{
+    char rawBuffer[11];
+    std::snprintf(rawBuffer, sizeof(rawBuffer), "0x%04x", chanspec & 0xffffu);
+    const std::string rawLabel(rawBuffer);
+
+    const auto tuningResult = decodeChanspec(chanspec);
+    if (tuningResult.isError()) {
+        return rawLabel + " (" + tuningResult.errorValue() + ")";
+    }
+
+    const auto& tuning = tuningResult.value();
+    if (tuning.widthMhz == 20) {
+        return rawLabel + " (" + scannerBandLabel(tuning.band) + " ch "
+            + std::to_string(tuning.primaryChannel) + " @ 20 MHz)";
+    }
+
+    const auto coveredChannels = scannerTuningCoveredPrimaryChannels(tuning);
+    return rawLabel + " (" + scannerBandLabel(tuning.band) + " center "
+        + std::to_string(tuning.centerChannel.value()) + " @ " + std::to_string(tuning.widthMhz)
+        + " MHz span " + scannerChannelSpanLabel(coveredChannels, tuning.widthMhz) + ")";
+}
 
 Result<uint32_t, std::string> encodeChanspec(const ScannerTuning& tuning)
 {

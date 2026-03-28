@@ -82,6 +82,31 @@ wait_for_network_manager_device_ready() {
     return 1
 }
 
+wait_for_wlan_device() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if nmcli -t -f GENERAL.DEVICE device show wlan0 >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+wait_for_network_manager_unmanaged() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        managed=$(nmcli -t -f GENERAL.NM-MANAGED device show wlan0 2>/dev/null | sed -n 's/^GENERAL.NM-MANAGED://p' || true)
+        if [ "$managed" = "no" ]; then
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
 bring_wlan_down() {
     ip link set wlan0 down >/dev/null 2>&1 || true
 }
@@ -152,6 +177,14 @@ unload_wifi_modules() {
     modprobe -r brcmfmac >/dev/null 2>&1 || true
 }
 
+release_network_manager_after_reload() {
+    wait_for_wlan_device || true
+    release_network_manager
+    wait_for_network_manager_unmanaged || true
+    stop_wpa_supplicant || true
+    wait_for_no_p2p_device || true
+}
+
 print_status() {
     version=$(loaded_version)
     if [ -n "$version" ]; then
@@ -216,7 +249,9 @@ enter_mode() {
     disconnect_wifi
     release_network_manager
     enable_stack >/dev/null
+    release_network_manager_after_reload
     bring_wlan_up
+    release_network_manager_after_reload
     enable_monitor_mode
     enable_promiscuous_mode
     print_status
