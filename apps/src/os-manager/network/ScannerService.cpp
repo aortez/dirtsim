@@ -1171,7 +1171,7 @@ void ScannerService::threadMain()
         }
 
         const bool tuningChanged =
-            !previousTuning.has_value() || !(previousTuning.value() == step.tuning);
+            !previousTuning.has_value() || previousTuning.value() != step.tuning;
         if (tuningChanged) {
             const auto setChannelResult = setChannel(step.tuning);
             if (setChannelResult.isError()) {

@@ -2713,11 +2713,11 @@ bool NetworkDiagnosticsPanel::isScannerManualRetunePending() const
     }
 
     if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
-        return !(appliedTuning.value() == requestedTuning.value());
+        return appliedTuning.value() != requestedTuning.value();
     }
 
     if (scannerCurrentTuning_.has_value()) {
-        return !(scannerCurrentTuning_.value() == requestedTuning.value());
+        return scannerCurrentTuning_.value() != requestedTuning.value();
     }
 
     return false;
@@ -4567,7 +4567,7 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     scannerSnapshotStale_ = false;
     scannerAppliedConfig_ = snapshot.appliedConfig;
     if (!scannerConfigSetInProgress_) {
-        const bool configChanged = !(scannerConfig_ == snapshot.requestedConfig);
+        const bool configChanged = scannerConfig_ != snapshot.requestedConfig;
         scannerConfig_ = snapshot.requestedConfig;
         if (configChanged) {
             ++scannerConfigRefreshToken_;
@@ -5029,6 +5029,7 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
             text += "\nWaiting for scanner data.";
         }
         else {
+            // These conditions are not mutually exclusive.
             if (isScannerManualRetunePending()) {
                 text += "\nRetuning to "
                     + scannerManualTargetShortLabel(
