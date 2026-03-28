@@ -94,7 +94,7 @@ private:
         std::optional<int> lastIncidentalLoggedChannel;
         std::optional<std::chrono::steady_clock::time_point> lastIncidentalLoggedAt;
         std::chrono::steady_clock::time_point lastSeenAt;
-        ScannerObservationKind observationKind = ScannerObservationKind::Direct;
+        ScannerObservationKind observationKind = ScannerObservationKind::Incidental;
     };
 
     void threadMain();

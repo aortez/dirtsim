@@ -1042,10 +1042,19 @@ std::optional<ScannerService::PacketObservation> ScannerService::handlePacket(
         state.signalDbm = parsed->signalDbm;
     }
     if (parsed->channel.has_value()) {
+        // If the radio moved to a different channel, reset the latch so it
+        // must be directly confirmed again on the new channel.
+        if (state.channel.has_value() && state.channel.value() != parsed->channel.value()) {
+            state.observationKind = ScannerObservationKind::Incidental;
+        }
         state.channel = parsed->channel;
-        state.observationKind =
-            scannerObservationKindForPrimaryChannel(tuning, parsed->channel.value());
-        if (state.observationKind == ScannerObservationKind::Incidental) {
+        // Once directly confirmed, keep it. Incidental re-observations on other dwells
+        // should not downgrade the classification.
+        const auto kind = scannerObservationKindForPrimaryChannel(tuning, parsed->channel.value());
+        if (state.observationKind != ScannerObservationKind::Direct) {
+            state.observationKind = kind;
+        }
+        if (kind == ScannerObservationKind::Incidental) {
             const bool shouldLog = !state.lastIncidentalLoggedAt.has_value()
                 || now - state.lastIncidentalLoggedAt.value() >= kIncidentalObservationLogCooldown
                 || state.lastIncidentalLoggedChannel != parsed->channel;
@@ -1192,6 +1201,19 @@ void ScannerService::threadMain()
                 continue;
             }
 
+            // Drain stale packets from the previous dwell so they are not
+            // attributed to the new tuning.
+            {
+                int fd = -1;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    fd = socketFd_;
+                }
+                if (fd >= 0) {
+                    drainPendingPackets(fd, buffer);
+                }
+            }
+
             if (manualMode) {
                 const auto settleResult =
                     waitForManualReadbackMatch(*channelController_, step.tuning);
@@ -1207,15 +1229,6 @@ void ScannerService::threadMain()
                 }
 
                 resetManualReadbackSampler();
-
-                int fd = -1;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    fd = socketFd_;
-                }
-                if (fd >= 0) {
-                    drainPendingPackets(fd, buffer);
-                }
             }
         }
 
