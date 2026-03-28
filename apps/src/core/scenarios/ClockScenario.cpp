@@ -502,15 +502,16 @@ void ClockScenario::setup(World& world)
 
     // Static corner torches (fire-and-forget, LightManager owns them).
     world.getLightManager().addLight(
-        PointLight{ .position =
-                        Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
+        PointLight{ .position = Vector2d{ static_cast<double>(data.width - 2) + 0.5,
+                                          static_cast<double>(2) + 0.5 },
                     .color = ColorNames::torchOrange(),
                     .intensity = 0.1f,
                     .radius = 15.0f,
                     .attenuation = 0.05f });
 
     world.getLightManager().addLight(
-        PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
+        PointLight{ .position =
+                        Vector2d{ static_cast<double>(2) + 0.5, static_cast<double>(2) + 0.5 },
                     .color = ColorNames::torchOrange(),
                     .intensity = 0.1f,
                     .radius = 15.0f,

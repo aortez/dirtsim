@@ -289,9 +289,9 @@ Vector2f DoorManager::computeLightPosition(const Door& def, const WorldData& wor
     // Light is centered on the door cell.
     // When the door is closed, the light sits inside the wall cell.
     const float door_x =
-        (def.side == DoorSide::LEFT) ? 0.0f : static_cast<float>(world_data.width - 1);
+        (def.side == DoorSide::LEFT) ? 0.5f : (static_cast<float>(world_data.width) - 0.5f);
     const float door_y =
-        static_cast<float>(world_data.height - 1 - static_cast<int>(def.cells_above_floor));
+        static_cast<float>(world_data.height - 1 - static_cast<int>(def.cells_above_floor)) + 0.5f;
     return Vector2f{ door_x, door_y };
 }
 
