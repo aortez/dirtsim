@@ -44,6 +44,12 @@ const ALL_TESTS = [
   'verifyTraining',
 ];
 
+const TEST_REQUIREMENTS = {
+  canRecoverScannerUiAfterOutOfBandExit: {
+    requiresScanner: true,
+  },
+};
+
 function showHelp() {
   log('Usage: npm run remote-functional-tests -- [options]');
   log('');
@@ -249,6 +255,34 @@ function extractJson(output) {
   return null;
 }
 
+function parseSystemStatusOutput(output) {
+  const parsed = extractJson(output);
+  if (!parsed) {
+    return null;
+  }
+
+  const value = parsed.value || parsed;
+  if (typeof value?.scanner_mode_available !== 'boolean') {
+    return null;
+  }
+
+  return {
+    scannerModeAvailable: value.scanner_mode_available,
+    scannerModeDetail: value.scanner_mode_detail || '',
+  };
+}
+
+function readRemoteSystemStatus(remoteTarget, timeoutSec, identityPath, osManagerAddress) {
+  const remoteCommand =
+    `dirtsim-cli os-manager SystemStatus --address ${osManagerAddress} 2>&1`;
+  const result = runSsh(remoteTarget, remoteCommand, timeoutSec, identityPath);
+  if (result.status !== 0) {
+    return null;
+  }
+
+  return parseSystemStatusOutput(result.output);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('-h') || args.includes('--help')) {
@@ -331,6 +365,7 @@ async function main() {
   }
 
   const selectedTests = resolveTests({ tests, useAll });
+  const explicitlyRequestedTests = new Set(tests);
   const remoteTarget = `${remoteUser}@${remoteHost}`;
 
   log(`${colors.bold}${colors.cyan}DirtSim Remote Functional Tests${colors.reset}`);
@@ -351,8 +386,41 @@ async function main() {
 
   let testResults = '';
   let failed = false;
+  let skipped = 0;
+  let scannerStatus = undefined;
 
   for (const testName of selectedTests) {
+    const requirements = TEST_REQUIREMENTS[testName] || {};
+    if (requirements.requiresScanner) {
+      if (scannerStatus === undefined) {
+        scannerStatus = readRemoteSystemStatus(
+          remoteTarget,
+          sshTimeoutSec,
+          sshIdentityPath,
+          osManagerAddress
+        );
+        if (!scannerStatus) {
+          warn('Could not determine scanner availability from SystemStatus. Running scanner tests normally.');
+        }
+      }
+
+      if (scannerStatus && !scannerStatus.scannerModeAvailable) {
+        const detail = scannerStatus.scannerModeDetail || 'scanner mode is unavailable on target';
+        const explicitlyRequested = explicitlyRequestedTests.has(testName);
+        if (explicitlyRequested) {
+          failed = true;
+          error(`${testName}: FAILED (0.0s)`);
+          warn(`Error: ${detail}`);
+          testResults += `| ${testName} | ❌ Fail | 0.0s |\n`;
+        } else {
+          skipped += 1;
+          warn(`Skipping ${testName}: ${detail}`);
+          testResults += `| ${testName} | ⚪ Skip | 0.0s |\n`;
+        }
+        continue;
+      }
+    }
+
     const currentTimeout =
       testName === 'verifyTraining' ? verifyTimeoutMs : timeoutMs;
     info(`Running functional test: ${testName}`);
@@ -395,6 +463,11 @@ async function main() {
   if (failed) {
     log('remote functional tests FAILED');
     process.exit(1);
+  }
+
+  if (skipped > 0) {
+    log(`remote functional tests PASSED (${skipped} skipped)`);
+    return;
   }
 
   log('remote functional tests PASSED');
