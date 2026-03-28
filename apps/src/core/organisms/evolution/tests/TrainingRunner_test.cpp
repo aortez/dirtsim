@@ -1185,6 +1185,7 @@ TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
     EXPECT_EQ(runner.getOrganism(), nullptr) << "Duck should be removed after exiting";
 
     const TrainingRunner::Status finalStatus = runner.getStatus();
+    EXPECT_EQ(finalStatus.state, TrainingRunner::State::ScenarioCompleted);
     EXPECT_TRUE(finalStatus.exitedThroughDoor);
     EXPECT_GT(finalStatus.exitDoorTime, 0.0);
 

@@ -10,6 +10,7 @@ namespace DirtSim {
 
 namespace {
 struct DuckClockScoringConfig {
+    double deathPenaltyExponent = 2.0;
     double exitDoorCompletionPoints = 150.0;
     double exitDoorProximityRadiusCells = 10.0;
     double exitDoorProximityPoints = 100.0;
@@ -148,6 +149,18 @@ DuckFitnessBreakdown DuckEvaluator::evaluateWithBreakdown(const FitnessContext& 
     breakdown.exitDoorCompletionPoints =
         breakdown.exitedThroughDoor ? kDuckClockScoringConfig.exitDoorCompletionPoints : 0.0;
     breakdown.survivalPoints = kDuckClockScoringConfig.survivalPoints * breakdown.survivalScore;
+
+    if (context.result.organismDied && !breakdown.exitedThroughDoor) {
+        const double deathPenaltyMultiplier =
+            std::pow(breakdown.survivalScore, kDuckClockScoringConfig.deathPenaltyExponent);
+        breakdown.coursePoints *= deathPenaltyMultiplier;
+        breakdown.exitDoorProximityPoints *= deathPenaltyMultiplier;
+        breakdown.exitDoorCompletionPoints *= deathPenaltyMultiplier;
+        breakdown.obstacleClearRatePoints *= deathPenaltyMultiplier;
+        breakdown.obstacleCompetencePoints *= deathPenaltyMultiplier;
+        breakdown.survivalPoints *= deathPenaltyMultiplier;
+        breakdown.traversalPoints *= deathPenaltyMultiplier;
+    }
 
     breakdown.totalFitness = breakdown.survivalPoints + breakdown.coursePoints
         + breakdown.exitDoorProximityPoints + breakdown.exitDoorCompletionPoints;

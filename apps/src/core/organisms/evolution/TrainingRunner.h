@@ -57,6 +57,7 @@ class TrainingRunner {
 public:
     enum class State {
         Running,
+        ScenarioCompleted,
         OrganismDied,
         TimeExpired,
     };
