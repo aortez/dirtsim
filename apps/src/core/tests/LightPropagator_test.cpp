@@ -232,6 +232,156 @@ TEST_F(LightPropagatorTest, SpotLightDirectional)
                                   << " West=" << west;
 }
 
+TEST_F(LightPropagatorTest, SpotLightLightsOffAxisCellsWithinCone)
+{
+    World world(30, 12);
+    WorldData& data = world.getData();
+
+    // Block sun.
+    for (int x = 0; x < 30; ++x) {
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+    world.advanceTime(0.0001);
+
+    SpotLight sl;
+    sl.position = { 5.0f, 6.0f };
+    sl.color = ColorNames::white();
+    sl.intensity = 2.0f;
+    sl.radius = 12.0f;
+    sl.attenuation = 0.05f;
+    sl.direction = 0.0f;
+    sl.arc_width = static_cast<float>(M_PI / 3.0);
+    sl.focus = 0.5f;
+    world.getLightManager().addLight(sl);
+
+    config.sun_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.steps_per_frame = 10;
+
+    prop.calculate(world, world.getGrid(), config, timers);
+
+    const float centerline = ColorNames::brightness(data.colors.at(10, 6));
+    const float inside_cone = ColorNames::brightness(data.colors.at(10, 4));
+    const float outside_cone = ColorNames::brightness(data.colors.at(10, 1));
+
+    EXPECT_GT(inside_cone, 0.03f) << "Off-axis cell inside the spotlight cone should be lit, got "
+                                  << inside_cone;
+    EXPECT_GT(inside_cone, outside_cone + 0.02f)
+        << "Cell inside the spotlight cone should be brighter than a cell outside it. Inside="
+        << inside_cone << " Outside=" << outside_cone;
+    EXPECT_GT(centerline, inside_cone)
+        << "Centerline should remain brighter than off-axis cells. Center=" << centerline
+        << " OffAxis=" << inside_cone;
+}
+
+TEST_F(LightPropagatorTest, SpotLightIndirectSpillCanBeTunedPerLight)
+{
+    auto makeWorld = []() {
+        auto world = std::make_unique<World>(20, 12);
+        WorldData& data = world->getData();
+        for (int x = 0; x < 20; ++x) {
+            data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+        }
+        data.at(10, 6).replaceMaterial(Material::EnumType::Metal, 1.0);
+        world->advanceTime(0.0001);
+        return world;
+    };
+
+    auto world_with_spill = makeWorld();
+    auto world_without_spill = makeWorld();
+
+    SpotLight with_spill;
+    with_spill.position = { 5.5f, 6.5f };
+    with_spill.color = ColorNames::white();
+    with_spill.intensity = 2.0f;
+    with_spill.radius = 10.0f;
+    with_spill.attenuation = 0.05f;
+    with_spill.indirect_strength = 0.25f;
+    with_spill.direction = 0.0f;
+    with_spill.arc_width = 0.12f;
+    with_spill.focus = 0.5f;
+    world_with_spill->getLightManager().addLight(with_spill);
+
+    SpotLight without_spill = with_spill;
+    without_spill.indirect_strength = 0.0f;
+    world_without_spill->getLightManager().addLight(without_spill);
+
+    config.sun_intensity = 0.0f;
+    config.sky_intensity = 0.0f;
+    config.steps_per_frame = 10;
+
+    LightPropagator prop_with_spill;
+    LightPropagator prop_without_spill;
+    prop_with_spill.calculate(*world_with_spill, world_with_spill->getGrid(), config, timers);
+    prop_without_spill.calculate(
+        *world_without_spill, world_without_spill->getGrid(), config, timers);
+
+    const float hit_with_spill =
+        ColorNames::brightness(world_with_spill->getData().colors.at(10, 6));
+    const float neighbor_with_spill =
+        ColorNames::brightness(world_with_spill->getData().colors.at(10, 5));
+    const float neighbor_without_spill =
+        ColorNames::brightness(world_without_spill->getData().colors.at(10, 5));
+
+    EXPECT_GT(hit_with_spill, 0.05f) << "Impact cell should receive direct spotlight illumination";
+    EXPECT_GT(neighbor_with_spill, neighbor_without_spill + 0.01f)
+        << "Indirect spill should brighten neighboring cells near the impact point. With="
+        << neighbor_with_spill << " Without=" << neighbor_without_spill;
+}
+
+TEST_F(LightPropagatorTest, SpotLightIndirectSpillRespectsGlobalScale)
+{
+    auto makeWorld = []() {
+        auto world = std::make_unique<World>(20, 12);
+        WorldData& data = world->getData();
+        for (int x = 0; x < 20; ++x) {
+            data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+        }
+        data.at(10, 6).replaceMaterial(Material::EnumType::Metal, 1.0);
+        world->advanceTime(0.0001);
+        return world;
+    };
+
+    auto world_scaled_on = makeWorld();
+    auto world_scaled_off = makeWorld();
+
+    SpotLight light;
+    light.position = { 5.5f, 6.5f };
+    light.color = ColorNames::white();
+    light.intensity = 2.0f;
+    light.radius = 10.0f;
+    light.attenuation = 0.05f;
+    light.indirect_strength = 0.25f;
+    light.direction = 0.0f;
+    light.arc_width = 0.12f;
+    light.focus = 0.5f;
+    world_scaled_on->getLightManager().addLight(light);
+    world_scaled_off->getLightManager().addLight(light);
+
+    LightConfig scaled_on = config;
+    scaled_on.sun_intensity = 0.0f;
+    scaled_on.sky_intensity = 0.0f;
+    scaled_on.steps_per_frame = 10;
+    scaled_on.local_light_indirect_scale = 1.0f;
+
+    LightConfig scaled_off = scaled_on;
+    scaled_off.local_light_indirect_scale = 0.0f;
+
+    LightPropagator prop_scaled_on;
+    LightPropagator prop_scaled_off;
+    prop_scaled_on.calculate(*world_scaled_on, world_scaled_on->getGrid(), scaled_on, timers);
+    prop_scaled_off.calculate(*world_scaled_off, world_scaled_off->getGrid(), scaled_off, timers);
+
+    const float neighbor_scaled_on =
+        ColorNames::brightness(world_scaled_on->getData().colors.at(10, 5));
+    const float neighbor_scaled_off =
+        ColorNames::brightness(world_scaled_off->getData().colors.at(10, 5));
+
+    EXPECT_GT(neighbor_scaled_on, neighbor_scaled_off + 0.01f)
+        << "Global indirect scale should gate local-light spill. On=" << neighbor_scaled_on
+        << " Off=" << neighbor_scaled_off;
+}
+
 TEST_F(LightPropagatorTest, LightMapStringWorks)
 {
     World world(5, 5);

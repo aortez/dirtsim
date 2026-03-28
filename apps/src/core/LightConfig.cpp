@@ -49,6 +49,7 @@ LightConfig getDefaultLightConfig()
         .ambient_intensity = 0.7f,
         .sky_color = ColorNames::skyBlue(),
         .sky_intensity = 0.4f,
+        .local_light_indirect_scale = 1.0f,
         .steps_per_frame = 15,
         .sun_color = ColorNames::warmSunlight(),
         .sun_intensity = 0.8f,

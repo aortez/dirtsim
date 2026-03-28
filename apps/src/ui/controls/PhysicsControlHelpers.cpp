@@ -392,6 +392,22 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.sky_intensity);
                             } },
+                      { .label = "Indirect",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 300,
+                        .defaultValue = 100,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.local_light_indirect_scale = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.local_light_indirect_scale);
+                            } },
                       { .label = "SkyC",
                         .type = ControlType::DROPDOWN,
                         .dropdownOptions = "Sky Blue\nCool Moonlight\nWhite",

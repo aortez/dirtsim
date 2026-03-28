@@ -19,6 +19,7 @@ struct PointLight {
     float intensity = 1.0f;
     float radius = 20.0f;
     float attenuation = 0.1f;
+    float indirect_strength = 0.08f;
 };
 
 /**
@@ -33,6 +34,7 @@ struct SpotLight {
     float intensity = 1.0f;
     float radius = 20.0f;
     float attenuation = 0.1f;
+    float indirect_strength = 0.08f;
     float direction = 0.0f;
     float arc_width = 1.0f;
     float focus = 0.0f;
@@ -50,6 +52,7 @@ struct RotatingLight {
     float intensity = 1.0f;
     float radius = 20.0f;
     float attenuation = 0.1f;
+    float indirect_strength = 0.08f;
     float direction = 0.0f;
     float arc_width = 1.0f;
     float focus = 0.0f;
