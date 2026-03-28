@@ -2662,6 +2662,7 @@ bool NetworkDiagnosticsPanel::isScannerSnapshotStale() const
 
 void NetworkDiagnosticsPanel::resetScannerSnapshotState()
 {
+    scannerAppliedConfig_.reset();
     scannerSnapshotActivityAt_.reset();
     scannerCurrentTuning_.reset();
     scannerObservedRadioCount_ = 0;
@@ -2695,6 +2696,21 @@ bool NetworkDiagnosticsPanel::isScannerConfigRequestInFlight() const
     return asyncState_->scannerConfigSetInProgress;
 }
 
+std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerAppliedManualTuning() const
+{
+    if (!scannerAppliedConfig_.has_value()
+        || scannerAppliedConfig_->mode != OsManager::ScannerConfigMode::Manual) {
+        return std::nullopt;
+    }
+
+    const auto tuningResult = scannerManualTargetToTuning(scannerAppliedConfig_->manualConfig);
+    if (tuningResult.isError()) {
+        return std::nullopt;
+    }
+
+    return tuningResult.value();
+}
+
 std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerRequestedManualTuning()
     const
 {
@@ -2712,8 +2728,7 @@ std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerRequeste
 
 bool NetworkDiagnosticsPanel::isScannerManualRetunePending() const
 {
-    if (!scannerModeActive_ || scannerConfig_.mode != OsManager::ScannerConfigMode::Manual
-        || !scannerCurrentTuning_.has_value()) {
+    if (!scannerModeActive_ || scannerConfig_.mode != OsManager::ScannerConfigMode::Manual) {
         return false;
     }
 
@@ -2722,21 +2737,35 @@ bool NetworkDiagnosticsPanel::isScannerManualRetunePending() const
         return false;
     }
 
-    return !scannerTuningsEqual(scannerCurrentTuning_.value(), requestedTuning.value());
+    if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
+        return !scannerTuningsEqual(appliedTuning.value(), requestedTuning.value());
+    }
+
+    if (scannerCurrentTuning_.has_value()) {
+        return !scannerTuningsEqual(scannerCurrentTuning_.value(), requestedTuning.value());
+    }
+
+    return false;
 }
 
 std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerDisplayedManualTuning()
     const
 {
-    if (const auto requestedTuning = scannerRequestedManualTuning(); requestedTuning.has_value()) {
-        if (isScannerManualRetunePending() && scannerCurrentTuning_.has_value()) {
+    if (scannerConfig_.mode != OsManager::ScannerConfigMode::Manual) {
+        return std::nullopt;
+    }
+
+    if (scannerModeActive_) {
+        if (scannerCurrentTuning_.has_value()) {
             return scannerCurrentTuning_;
         }
 
-        return requestedTuning;
+        if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
+            return appliedTuning;
+        }
     }
 
-    return std::nullopt;
+    return scannerRequestedManualTuning();
 }
 
 NetworkDiagnosticsPanel::ScannerBand NetworkDiagnosticsPanel::scannerDisplayedBand() const
@@ -2814,6 +2843,7 @@ void NetworkDiagnosticsPanel::applyScannerConfigChange(OsManager::ScannerConfig 
         return;
     }
 
+    ++scannerConfigRefreshToken_;
     scannerConfig_ = nextConfig;
     updateScannerConfigControls();
     updateScannerStatusLabel();
@@ -3376,8 +3406,10 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
     }
 
     auto state = asyncState_;
-    std::thread([state, forceRefresh]() {
+    const uint64_t scannerConfigRefreshToken = scannerConfigRefreshToken_;
+    std::thread([state, forceRefresh, scannerConfigRefreshToken]() {
         PendingRefreshData data;
+        data.scannerConfigRefreshToken = scannerConfigRefreshToken;
         try {
             Network::WebSocketService client;
             const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
@@ -4558,10 +4590,12 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     scannerSnapshotActivityAt_ = std::chrono::steady_clock::now();
     scannerSnapshotErrorMessage_.clear();
     scannerSnapshotStale_ = false;
+    scannerAppliedConfig_ = snapshot.appliedConfig;
     if (!scannerConfigSetInProgress_) {
         const bool configChanged = !scannerConfigsEqual(scannerConfig_, snapshot.requestedConfig);
         scannerConfig_ = snapshot.requestedConfig;
         if (configChanged) {
+            ++scannerConfigRefreshToken_;
             updateScannerConfigControls();
         }
     }
@@ -5019,13 +5053,19 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
         else if (!scannerSnapshotReceived_) {
             text += "\nWaiting for scanner data.";
         }
-        else if (isScannerManualRetunePending()) {
-            text += "\nRetuning to "
-                + scannerManualTargetShortLabel(
-                        scannerConfig_.manualConfig.band,
-                        scannerConfig_.manualConfig.widthMhz,
-                        scannerConfig_.manualConfig.targetChannel)
-                + ".";
+        else {
+            if (isScannerManualRetunePending()) {
+                text += "\nRetuning to "
+                    + scannerManualTargetShortLabel(
+                            scannerConfig_.manualConfig.band,
+                            scannerConfig_.manualConfig.widthMhz,
+                            scannerConfig_.manualConfig.targetChannel)
+                    + ".";
+            }
+
+            if (!scannerCurrentTuning_.has_value() && !scannerModeDetail_.empty()) {
+                text += "\n" + scannerModeDetail_;
+            }
         }
     }
     else if (scannerStatusUnavailable_) {
@@ -5689,7 +5729,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     if (refreshData.has_value()) {
         scanInProgress_ = refreshData->scanInProgress;
         updateScannerStatus(refreshData->accessStatusResult);
-        if (!scannerConfigSetInProgress_ && refreshData->scannerConfigResult.has_value()
+        if (!scannerConfigSetInProgress_
+            && refreshData->scannerConfigRefreshToken == scannerConfigRefreshToken_
+            && refreshData->scannerConfigResult.has_value()
             && !refreshData->scannerConfigResult->isError()) {
             scannerConfig_ = refreshData->scannerConfigResult->value();
             updateScannerConfigControls();
