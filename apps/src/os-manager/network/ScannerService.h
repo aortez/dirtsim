@@ -137,6 +137,7 @@ private:
     std::unordered_map<std::string, std::chrono::steady_clock::time_point>
         probeRequestLoggedAtByKey_;
     std::unordered_map<std::string, RadioState> radiosByBssid_;
+    ScannerConfig activeConfig_ = scannerDefaultConfig();
     std::optional<ScannerTuning> currentTuning_;
     std::string lastError_;
     ScannerConfig requestedConfig_ = scannerDefaultConfig();

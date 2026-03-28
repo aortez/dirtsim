@@ -30,6 +30,9 @@ constexpr int kMinDwellMs = 100;
 constexpr int kManualDwellMs = 250;
 constexpr int kProbeTimeoutPaddingMs = 5000;
 constexpr auto kIncidentalObservationLogCooldown = std::chrono::seconds(5);
+constexpr auto kManualRetuneDrainWindow = std::chrono::milliseconds(25);
+constexpr auto kManualRetuneReadbackPollInterval = std::chrono::milliseconds(10);
+constexpr auto kManualRetuneReadbackTimeout = std::chrono::milliseconds(150);
 constexpr auto kManualReadbackSampleInterval = std::chrono::milliseconds(100);
 
 enum class ParsedChannelSource { DsParameterSet = 0, HtOperation, Radiotap, Hint };
@@ -160,6 +163,12 @@ std::optional<int> frequencyToChannel(int freqMhz)
     return std::nullopt;
 }
 
+bool scannerTuningsEqual(const ScannerTuning& lhs, const ScannerTuning& rhs)
+{
+    return lhs.band == rhs.band && lhs.primaryChannel == rhs.primaryChannel
+        && lhs.widthMhz == rhs.widthMhz && lhs.centerChannel == rhs.centerChannel;
+}
+
 struct RadiotapInfo {
     uint16_t headerLength = 0;
     std::optional<int> signalDbm;
@@ -175,6 +184,73 @@ ScannerService::ProbeDwell probeDwellFromObservation(const StepObservation& obse
         .strongestSignalDbm = observation.strongestSignalDbm,
         .observedChannels = observation.observedChannels,
     };
+}
+
+Result<std::monostate, std::string> waitForManualReadbackMatch(
+    ScannerChannelController& channelController, const ScannerTuning& tuning)
+{
+    const auto expectedChanspecResult = NexmonChannelProtocol::encodeChanspec(tuning);
+    if (expectedChanspecResult.isError()) {
+        return Result<std::monostate, std::string>::error(expectedChanspecResult.errorValue());
+    }
+
+    const uint32_t expectedChanspec = expectedChanspecResult.value();
+    const auto deadline = std::chrono::steady_clock::now() + kManualRetuneReadbackTimeout;
+    std::optional<uint32_t> lastActualChanspec;
+    std::optional<std::string> lastReadbackError;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto readbackResult = channelController.readbackChanspec();
+        if (readbackResult.isValue()) {
+            if (readbackResult.value() == expectedChanspec) {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+
+            lastActualChanspec = readbackResult.value();
+            lastReadbackError.reset();
+        }
+        else {
+            lastReadbackError = readbackResult.errorValue();
+        }
+
+        std::this_thread::sleep_for(kManualRetuneReadbackPollInterval);
+    }
+
+    std::string error = "Manual tuning readback did not settle to "
+        + NexmonChannelProtocol::describeChanspec(expectedChanspec);
+    if (lastActualChanspec.has_value()) {
+        error +=
+            "; last actual=" + NexmonChannelProtocol::describeChanspec(lastActualChanspec.value());
+    }
+    else if (lastReadbackError.has_value()) {
+        error += "; last readback error=" + lastReadbackError.value();
+    }
+
+    return Result<std::monostate, std::string>::error(error);
+}
+
+void drainPendingPackets(int fd, std::array<uint8_t, 8192>& buffer)
+{
+    const auto deadline = std::chrono::steady_clock::now() + kManualRetuneDrainWindow;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        const int timeoutMs = std::max(0, static_cast<int>(remaining.count()));
+
+        pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+
+        const int pollResult = ::poll(&pfd, 1, timeoutMs);
+        if (pollResult <= 0 || (pfd.revents & POLLIN) == 0) {
+            return;
+        }
+
+        const ssize_t received = ::recvfrom(fd, buffer.data(), buffer.size(), 0, nullptr, nullptr);
+        if (received <= 0) {
+            return;
+        }
+    }
 }
 
 RadiotapInfo parseRadiotap(const uint8_t* data, size_t length)
@@ -545,6 +621,7 @@ Result<std::monostate, std::string> ScannerService::start()
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        activeConfig_ = requestedConfig_;
         currentTuning_.reset();
         lastError_.clear();
         manualReadbackExpectedChanspec_.reset();
@@ -583,6 +660,7 @@ void ScannerService::stop()
     int fd = -1;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        activeConfig_ = requestedConfig_;
         fd = socketFd_;
         socketFd_ = -1;
         currentTuning_.reset();
@@ -617,7 +695,7 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        snapshot.config = requestedConfig_;
+        snapshot.config = activeConfig_;
         snapshot.currentTuning = currentTuning_;
         snapshot.radios.reserve(radiosByBssid_.size());
         for (const auto& [bssid, state] : radiosByBssid_) {
@@ -733,6 +811,9 @@ Result<std::monostate, std::string> ScannerService::setConfig(const ScannerConfi
     {
         std::lock_guard<std::mutex> lock(mutex_);
         requestedConfig_ = config;
+        if (!running_ || !currentTuning_.has_value()) {
+            activeConfig_ = config;
+        }
     }
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
@@ -1035,6 +1116,7 @@ void ScannerService::threadMain()
         }
 
         ScanStep step;
+        std::optional<ScannerConfig> stepConfig;
         bool manualMode = false;
         if (probe) {
             resetManualReadbackSampler();
@@ -1049,6 +1131,7 @@ void ScannerService::threadMain()
                 std::lock_guard<std::mutex> lock(mutex_);
                 configCopy = requestedConfig_;
             }
+            stepConfig = configCopy;
 
             if (configCopy.mode == ScannerConfigMode::Manual) {
                 manualMode = true;
@@ -1077,30 +1160,74 @@ void ScannerService::threadMain()
             }
         }
 
-        const auto setChannelResult = setChannel(step.tuning);
-        if (setChannelResult.isError()) {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                currentTuning_.reset();
-                lastError_ = "Failed to set channel " + std::to_string(step.tuning.primaryChannel)
-                    + ": " + setChannelResult.errorValue();
+        std::optional<ScannerTuning> previousTuning;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            previousTuning = currentTuning_;
+        }
+
+        const bool tuningChanged = !previousTuning.has_value()
+            || !scannerTuningsEqual(previousTuning.value(), step.tuning);
+        if (tuningChanged) {
+            const auto setChannelResult = setChannel(step.tuning);
+            if (setChannelResult.isError()) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    currentTuning_.reset();
+                    lastError_ = "Failed to set channel "
+                        + std::to_string(step.tuning.primaryChannel) + ": "
+                        + setChannelResult.errorValue();
+                }
+                if (probe) {
+                    completeProbe(
+                        probe,
+                        Result<ProbeResult, std::string>::error(
+                            "Failed to set probe tuning "
+                            + std::to_string(step.tuning.primaryChannel) + ": "
+                            + setChannelResult.errorValue()));
+                }
+                notifySnapshotChanged();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
             }
-            if (probe) {
-                completeProbe(
-                    probe,
-                    Result<ProbeResult, std::string>::error(
-                        "Failed to set probe tuning " + std::to_string(step.tuning.primaryChannel)
-                        + ": " + setChannelResult.errorValue()));
+
+            if (manualMode) {
+                const auto settleResult =
+                    waitForManualReadbackMatch(*channelController_, step.tuning);
+                if (settleResult.isError()) {
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        currentTuning_.reset();
+                        lastError_ = settleResult.errorValue();
+                    }
+                    notifySnapshotChanged();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                resetManualReadbackSampler();
+
+                int fd = -1;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    fd = socketFd_;
+                }
+                if (fd >= 0) {
+                    drainPendingPackets(fd, buffer);
+                }
             }
-            notifySnapshotChanged();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
         }
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            if (stepConfig.has_value()) {
+                activeConfig_ = stepConfig.value();
+            }
             currentTuning_ = step.tuning;
             lastError_.clear();
+        }
+        if (manualMode && tuningChanged) {
+            notifySnapshotChanged();
         }
 
         StepObservation observation{
