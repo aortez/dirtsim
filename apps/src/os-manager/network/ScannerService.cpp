@@ -163,12 +163,6 @@ std::optional<int> frequencyToChannel(int freqMhz)
     return std::nullopt;
 }
 
-bool scannerTuningsEqual(const ScannerTuning& lhs, const ScannerTuning& rhs)
-{
-    return lhs.band == rhs.band && lhs.primaryChannel == rhs.primaryChannel
-        && lhs.widthMhz == rhs.widthMhz && lhs.centerChannel == rhs.centerChannel;
-}
-
 struct RadiotapInfo {
     uint16_t headerLength = 0;
     std::optional<int> signalDbm;
@@ -1176,8 +1170,8 @@ void ScannerService::threadMain()
             previousTuning = currentTuning_;
         }
 
-        const bool tuningChanged = !previousTuning.has_value()
-            || !scannerTuningsEqual(previousTuning.value(), step.tuning);
+        const bool tuningChanged =
+            !previousTuning.has_value() || !(previousTuning.value() == step.tuning);
         if (tuningChanged) {
             const auto setChannelResult = setChannel(step.tuning);
             if (setChannelResult.isError()) {
@@ -1203,15 +1197,13 @@ void ScannerService::threadMain()
 
             // Drain stale packets from the previous dwell so they are not
             // attributed to the new tuning.
+            int fd = -1;
             {
-                int fd = -1;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    fd = socketFd_;
-                }
-                if (fd >= 0) {
-                    drainPendingPackets(fd, buffer);
-                }
+                std::lock_guard<std::mutex> lock(mutex_);
+                fd = socketFd_;
+            }
+            if (fd >= 0) {
+                drainPendingPackets(fd, buffer);
             }
 
             if (manualMode) {

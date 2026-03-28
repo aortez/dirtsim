@@ -165,7 +165,7 @@ lv_obj_t* getActionDropdownWidget(lv_obj_t* container)
 
 void setActionDropdownOptions(lv_obj_t* container, const std::string& options)
 {
-    auto* dropdown = getActionDropdownWidget(container);
+    lv_obj_t* dropdown = getActionDropdownWidget(container);
     if (!dropdown) {
         return;
     }
@@ -178,12 +178,12 @@ void styleScannerDropdownPopup(lv_obj_t* container)
     constexpr int popupLineSpace = 28;
     constexpr int popupPadVertical = 28;
 
-    auto* dropdown = getActionDropdownWidget(container);
+    lv_obj_t* dropdown = getActionDropdownWidget(container);
     if (!dropdown) {
         return;
     }
 
-    auto* list = lv_dropdown_get_list(dropdown);
+    lv_obj_t* list = lv_dropdown_get_list(dropdown);
     if (!list) {
         return;
     }
@@ -193,7 +193,7 @@ void styleScannerDropdownPopup(lv_obj_t* container)
     lv_obj_set_style_text_line_space(list, popupLineSpace, LV_PART_MAIN);
     lv_obj_set_style_text_line_space(list, popupLineSpace, LV_PART_SELECTED);
 
-    auto* label = lv_obj_get_child(list, 0);
+    lv_obj_t* label = lv_obj_get_child(list, 0);
     if (label) {
         lv_obj_set_style_text_line_space(label, popupLineSpace, LV_PART_MAIN);
     }
@@ -245,21 +245,6 @@ void normalizeScannerConfig(OsManager::ScannerConfig& config)
     }
 
     config.manualConfig.targetChannel = targetChannels.front();
-}
-
-bool scannerConfigsEqual(const OsManager::ScannerConfig& lhs, const OsManager::ScannerConfig& rhs)
-{
-    return lhs.mode == rhs.mode && lhs.autoConfig.band == rhs.autoConfig.band
-        && lhs.autoConfig.widthMhz == rhs.autoConfig.widthMhz
-        && lhs.manualConfig.band == rhs.manualConfig.band
-        && lhs.manualConfig.widthMhz == rhs.manualConfig.widthMhz
-        && lhs.manualConfig.targetChannel == rhs.manualConfig.targetChannel;
-}
-
-bool scannerTuningsEqual(const OsManager::ScannerTuning& lhs, const OsManager::ScannerTuning& rhs)
-{
-    return lhs.band == rhs.band && lhs.primaryChannel == rhs.primaryChannel
-        && lhs.widthMhz == rhs.widthMhz && lhs.centerChannel == rhs.centerChannel;
 }
 
 std::optional<int> scannerManualPrimaryChannel(const OsManager::ScannerConfig& config)
@@ -2686,16 +2671,6 @@ void NetworkDiagnosticsPanel::clearScannerRadioRows()
     }
 }
 
-bool NetworkDiagnosticsPanel::isScannerConfigRequestInFlight() const
-{
-    if (!asyncState_) {
-        return false;
-    }
-
-    std::lock_guard<std::mutex> lock(asyncState_->mutex);
-    return asyncState_->scannerConfigSetInProgress;
-}
-
 std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerAppliedManualTuning() const
 {
     if (!scannerAppliedConfig_.has_value()
@@ -2738,11 +2713,11 @@ bool NetworkDiagnosticsPanel::isScannerManualRetunePending() const
     }
 
     if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
-        return !scannerTuningsEqual(appliedTuning.value(), requestedTuning.value());
+        return !(appliedTuning.value() == requestedTuning.value());
     }
 
     if (scannerCurrentTuning_.has_value()) {
-        return !scannerTuningsEqual(scannerCurrentTuning_.value(), requestedTuning.value());
+        return !(scannerCurrentTuning_.value() == requestedTuning.value());
     }
 
     return false;
@@ -2831,7 +2806,7 @@ int NetworkDiagnosticsPanel::scannerSelectedWidthMhz() const
 void NetworkDiagnosticsPanel::applyScannerConfigChange(OsManager::ScannerConfig nextConfig)
 {
     normalizeScannerConfig(nextConfig);
-    if (scannerConfigsEqual(nextConfig, scannerConfig_)) {
+    if (nextConfig == scannerConfig_) {
         updateScannerConfigControls();
         updateScannerControls();
         return;
@@ -4592,7 +4567,7 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     scannerSnapshotStale_ = false;
     scannerAppliedConfig_ = snapshot.appliedConfig;
     if (!scannerConfigSetInProgress_) {
-        const bool configChanged = !scannerConfigsEqual(scannerConfig_, snapshot.requestedConfig);
+        const bool configChanged = !(scannerConfig_ == snapshot.requestedConfig);
         scannerConfig_ = snapshot.requestedConfig;
         if (configChanged) {
             ++scannerConfigRefreshToken_;
@@ -4639,7 +4614,7 @@ void NetworkDiagnosticsPanel::updateScannerConfigControls()
     const ScannerBand selectedBand = scannerConfigBand(scannerConfig_);
     const int selectedWidthMhz = scannerConfigWidthMhz(scannerConfig_);
     const bool controlsEnabled = scannerModeAvailable_ && !scannerActionInProgress_
-        && !scannerStatusUnavailable_ && !scannerConfigSetInProgress_;
+        && !scannerConfigSetInProgress_ && !scannerStatusUnavailable_;
 
     if (scannerBandDropdown_) {
         LVGLBuilder::ActionDropdownBuilder::setSelected(

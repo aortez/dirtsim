@@ -397,7 +397,6 @@ private:
     bool isScannerSnapshotStale() const;
     void resetScannerSnapshotState();
     void clearScannerRadioRows();
-    bool isScannerConfigRequestInFlight() const;
     std::optional<OsManager::ScannerTuning> scannerAppliedManualTuning() const;
     std::optional<OsManager::ScannerTuning> scannerDisplayedManualTuning() const;
     ScannerBand scannerDisplayedBand() const;

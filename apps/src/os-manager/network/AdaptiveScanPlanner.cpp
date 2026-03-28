@@ -17,12 +17,6 @@ bool scannerTuningMatchesConfig(const ScannerTuning& tuning, const ScannerAutoCo
     return tuning.band == config.band && tuning.widthMhz == config.widthMhz;
 }
 
-bool scannerTuningsEqual(const ScannerTuning& a, const ScannerTuning& b)
-{
-    return a.band == b.band && a.primaryChannel == b.primaryChannel && a.widthMhz == b.widthMhz
-        && a.centerChannel == b.centerChannel;
-}
-
 ScannerTuning makeScannerTuning(
     const ScannerBand band,
     const int primaryChannel,
@@ -39,23 +33,29 @@ ScannerTuning makeScannerTuning(
 
 std::vector<ScannerTuning> supportedScannerTunings()
 {
-    std::vector<ScannerTuning> tunings;
-    tunings.reserve(48);
+    const auto band24Channels = scannerBandPrimaryChannels(ScannerBand::Band24Ghz);
+    const auto band5Channels = scannerBandPrimaryChannels(ScannerBand::Band5Ghz);
+    const auto band5Centers40 = scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth40Mhz);
+    const auto band5Centers80 = scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth80Mhz);
 
-    for (const int channel : scannerBandPrimaryChannels(ScannerBand::Band24Ghz)) {
+    std::vector<ScannerTuning> tunings;
+    tunings.reserve(
+        band24Channels.size() + band5Channels.size() + band5Centers40.size()
+        + band5Centers80.size());
+
+    for (const int channel : band24Channels) {
         tunings.push_back(
             makeScannerTuning(ScannerBand::Band24Ghz, channel, kWidth20Mhz, std::nullopt));
     }
 
-    for (const int channel : scannerBandPrimaryChannels(ScannerBand::Band5Ghz)) {
+    for (const int channel : band5Channels) {
         tunings.push_back(
             makeScannerTuning(ScannerBand::Band5Ghz, channel, kWidth20Mhz, std::nullopt));
     }
 
     // For 40/80 MHz, one tuning per center channel. All primary channels within a center
     // cover the same band, so stepping through them individually is redundant.
-    for (const int centerChannel :
-         scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth40Mhz)) {
+    for (const int centerChannel : band5Centers40) {
         const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
             ScannerTuning{
                 .band = ScannerBand::Band5Ghz,
@@ -69,8 +69,7 @@ std::vector<ScannerTuning> supportedScannerTunings()
         }
     }
 
-    for (const int centerChannel :
-         scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth80Mhz)) {
+    for (const int centerChannel : band5Centers80) {
         const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
             ScannerTuning{
                 .band = ScannerBand::Band5Ghz,
@@ -129,7 +128,7 @@ struct AdaptiveScanPlanner::Impl {
     {
         const auto it = std::find_if(
             tuningStates.begin(), tuningStates.end(), [&tuning](const TuningState& state) {
-                return scannerTuningsEqual(state.tuning, tuning);
+                return state.tuning == tuning;
             });
         return *it;
     }
@@ -138,7 +137,7 @@ struct AdaptiveScanPlanner::Impl {
     {
         const auto it = std::find_if(
             tuningStates.begin(), tuningStates.end(), [&tuning](const TuningState& state) {
-                return scannerTuningsEqual(state.tuning, tuning);
+                return state.tuning == tuning;
             });
         return *it;
     }
@@ -251,7 +250,7 @@ struct AdaptiveScanPlanner::Impl {
         const auto candidates = focusCandidates();
         const auto it =
             std::find_if(candidates.begin(), candidates.end(), [&tuning](const TuningState* state) {
-                return scannerTuningsEqual(state->tuning, tuning);
+                return state->tuning == tuning;
             });
         if (it == candidates.end()) {
             nextTrackingIndex = 0;

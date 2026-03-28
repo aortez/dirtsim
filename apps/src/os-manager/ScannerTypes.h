@@ -202,6 +202,12 @@ struct ScannerTuning {
     using serialize = zpp::bits::members<4>;
 };
 
+inline bool operator==(const ScannerTuning& lhs, const ScannerTuning& rhs)
+{
+    return lhs.band == rhs.band && lhs.primaryChannel == rhs.primaryChannel
+        && lhs.widthMhz == rhs.widthMhz && lhs.centerChannel == rhs.centerChannel;
+}
+
 inline std::vector<int> scannerBandPrimaryChannels(const ScannerBand band)
 {
     switch (band) {
@@ -278,6 +284,11 @@ struct ScannerAutoConfig {
     using serialize = zpp::bits::members<2>;
 };
 
+inline bool operator==(const ScannerAutoConfig& lhs, const ScannerAutoConfig& rhs)
+{
+    return lhs.band == rhs.band && lhs.widthMhz == rhs.widthMhz;
+}
+
 struct ScannerManualConfig {
     ScannerBand band = ScannerBand::Band5Ghz;
     int widthMhz = 20;
@@ -286,6 +297,12 @@ struct ScannerManualConfig {
     using serialize = zpp::bits::members<3>;
 };
 
+inline bool operator==(const ScannerManualConfig& lhs, const ScannerManualConfig& rhs)
+{
+    return lhs.band == rhs.band && lhs.widthMhz == rhs.widthMhz
+        && lhs.targetChannel == rhs.targetChannel;
+}
+
 struct ScannerConfig {
     ScannerConfigMode mode = ScannerConfigMode::Auto;
     ScannerAutoConfig autoConfig;
@@ -293,6 +310,12 @@ struct ScannerConfig {
 
     using serialize = zpp::bits::members<3>;
 };
+
+inline bool operator==(const ScannerConfig& lhs, const ScannerConfig& rhs)
+{
+    return lhs.mode == rhs.mode && lhs.autoConfig == rhs.autoConfig
+        && lhs.manualConfig == rhs.manualConfig;
+}
 
 inline void to_json(nlohmann::json& j, const ScannerTuning& tuning)
 {
