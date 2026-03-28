@@ -33,6 +33,76 @@ constexpr double kBenchmarkDeltaTime = 0.016;
 constexpr const char* kBenchmarkIterationsEnv = "DIRTSIM_DUCK_RNN_BENCH_ITERATIONS";
 constexpr const char* kBenchmarkRepeatsEnv = "DIRTSIM_DUCK_RNN_BENCH_REPEATS";
 constexpr const char* kBenchmarkWarmupIterationsEnv = "DIRTSIM_DUCK_RNN_BENCH_WARMUP_ITERATIONS";
+constexpr int kInputHistogramSize =
+    DuckSensoryData::GRID_SIZE * DuckSensoryData::GRID_SIZE * DuckSensoryData::NUM_MATERIALS;
+constexpr int kInputSize = kInputHistogramSize + 4 + DuckSensoryData::SPECIAL_SENSE_COUNT + 2;
+constexpr int kH1Size = 64;
+constexpr int kH2Size = 32;
+constexpr int kOutputSize = 4;
+constexpr int kWXH1Size = kInputSize * kH1Size;
+constexpr int kWH1H1Size = kH1Size * kH1Size;
+constexpr int kBH1Size = kH1Size;
+constexpr int kAlpha1LogitSize = kH1Size;
+constexpr int kWH1H2Size = kH1Size * kH2Size;
+constexpr int kWH2H2Size = kH2Size * kH2Size;
+constexpr int kBH2Size = kH2Size;
+constexpr int kAlpha2LogitSize = kH2Size;
+constexpr int kWH2OSize = kH2Size * kOutputSize;
+constexpr int kBOSize = kOutputSize;
+constexpr float kMaxAlphaLogit = 4.0f;
+
+size_t energyInputIndex()
+{
+    return static_cast<size_t>(kInputHistogramSize + 4 + DuckSensoryData::SPECIAL_SENSE_COUNT);
+}
+
+size_t wXh1Index(size_t inputIndex, size_t hiddenIndex)
+{
+    return inputIndex * static_cast<size_t>(kH1Size) + hiddenIndex;
+}
+
+size_t alpha1LogitIndex(size_t hiddenIndex)
+{
+    return static_cast<size_t>(kWXH1Size + kWH1H1Size + kBH1Size) + hiddenIndex;
+}
+
+size_t wH1H2Index(size_t h1Index, size_t h2Index)
+{
+    return static_cast<size_t>(kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize)
+        + (h1Index * static_cast<size_t>(kH2Size)) + h2Index;
+}
+
+size_t alpha2LogitIndex(size_t hiddenIndex)
+{
+    return static_cast<size_t>(
+               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
+               + kBH2Size)
+        + hiddenIndex;
+}
+
+size_t wH2OIndex(size_t h2Index, size_t outputIndex)
+{
+    return static_cast<size_t>(
+               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
+               + kBH2Size + kAlpha2LogitSize)
+        + (h2Index * static_cast<size_t>(kOutputSize)) + outputIndex;
+}
+
+Genome makeNegativePropagationGenome()
+{
+    Genome genome(
+        static_cast<size_t>(
+            kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
+            + kBH2Size + kAlpha2LogitSize + kWH2OSize + kBOSize),
+        0.0f);
+
+    genome.weights[wXh1Index(energyInputIndex(), 0)] = -2.0f;
+    genome.weights[alpha1LogitIndex(0)] = kMaxAlphaLogit;
+    genome.weights[wH1H2Index(0, 0)] = 2.0f;
+    genome.weights[alpha2LogitIndex(0)] = kMaxAlphaLogit;
+    genome.weights[wH2OIndex(0, 0)] = 10.0f;
+    return genome;
+}
 
 struct DuckBrainBenchmarkSetup {
     std::unique_ptr<World> world;
@@ -314,6 +384,27 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
     EXPECT_EQ(layout.segments[3].size, 1088);
     EXPECT_EQ(layout.segments[4].name, "output");
     EXPECT_EQ(layout.segments[4].size, 132);
+}
+
+TEST(DuckNeuralNetRecurrentBrainV2Test, NegativeSignalPropagatesThroughBothHiddenLayers)
+{
+    const Genome genome = makeNegativePropagationGenome();
+    ASSERT_TRUE(DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome));
+
+    DuckNeuralNetRecurrentBrainV2 brain(genome);
+    DuckSensoryData sensory{};
+    sensory.energy = 1.0f;
+    sensory.health = 0.0f;
+    sensory.facing_x = 0.0f;
+    sensory.on_ground = false;
+    sensory.velocity = Vector2d{ 0.0, 0.0 };
+
+    const auto output = brain.inferControllerOutput(sensory);
+
+    EXPECT_LT(output.xRaw, -0.2f);
+    EXPECT_LT(output.x, -0.2f);
+    EXPECT_FALSE(output.a);
+    EXPECT_FALSE(output.b);
 }
 
 TEST(DuckNeuralNetRecurrentBrainV2Test, RandomGenomesProduceCommandDiversity)

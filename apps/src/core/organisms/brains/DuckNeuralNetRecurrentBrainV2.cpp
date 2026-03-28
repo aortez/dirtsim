@@ -41,10 +41,11 @@ constexpr WeightType HIDDEN_STATE_CLAMP_ABS = 3.0f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_MIN = 0.02f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_MAX = 0.98f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_LOGIT_INIT = -1.3862944f; // logit(0.2).
+constexpr WeightType LEAKY_RELU_NEGATIVE_SLOPE = 0.1f;
 
-WeightType relu(WeightType x)
+WeightType leakyRelu(WeightType x)
 {
-    return std::max(static_cast<WeightType>(0.0f), x);
+    return x >= 0.0f ? x : (LEAKY_RELU_NEGATIVE_SLOPE * x);
 }
 
 WeightType sigmoid(WeightType x)
@@ -243,7 +244,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
 
         for (int h = 0; h < H1_SIZE; ++h) {
-            h1_buffer[h] = relu(h1_buffer[h]);
+            h1_buffer[h] = leakyRelu(h1_buffer[h]);
         }
 
         for (int h = 0; h < H1_SIZE; ++h) {
@@ -279,7 +280,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
 
         for (int h = 0; h < H2_SIZE; ++h) {
-            h2_buffer[h] = relu(h2_buffer[h]);
+            h2_buffer[h] = leakyRelu(h2_buffer[h]);
         }
 
         for (int h = 0; h < H2_SIZE; ++h) {
