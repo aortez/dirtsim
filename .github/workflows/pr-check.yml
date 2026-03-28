@@ -247,12 +247,98 @@ jobs:
         sed -n '/^### Remote Functional Tests/,/^remote functional tests/p' remote-functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
         exit $TEST_EXIT
 
-  docker-cleanup:
-    uses: ./.github/workflows/docker-cleanup.yml
-    needs: build-and-test
-    if: always()
+    - name: Cleanup Docker artifacts
+      if: ${{ always() }}
+      run: |
+        echo "### Disk Usage (before Docker cleanup)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        docker system df >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
 
-  yocto-cleanup:
-    uses: ./.github/workflows/yocto-cleanup.yml
-    needs: build-and-test
-    if: always()
+        echo "Removing dangling images..."
+        docker image prune -f
+
+        echo "Removing old dirtsim-builder images..."
+        for id in $(docker images dirtsim-builder --format "{{.ID}}"); do
+          created=$(docker inspect --format='{{.Created}}' "$id")
+          if [ $(date -d "$created" +%s) -lt $(date -d '2 days ago' +%s) ]; then
+            echo "Removing old image $id (created $created)"
+            docker rmi -f "$id" || true
+          fi
+        done
+
+        echo "Pruning Docker build cache..."
+        docker builder prune -f --keep-storage 5gb
+
+        if docker ps -q -f name=dirtsim-registry | grep -q .; then
+          echo "Running registry garbage collection..."
+          docker exec dirtsim-registry bin/registry garbage-collect \
+            /etc/docker/registry/config.yml --delete-untagged 2>&1 || true
+        else
+          echo "Registry container not running, skipping."
+        fi
+
+        echo "### Disk Usage (after Docker cleanup)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        docker system df >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Cleanup Yocto cache
+      if: ${{ always() }}
+      env:
+        YOCTO_CACHE_ROOT: /home/data/linux1/yocto-cache
+        YOCTO_CACHE_RETENTION_DAYS: 7
+        YOCTO_LOG_RETENTION_DAYS: 3
+        YOCTO_BUILD_RETENTION_DAYS: 7
+      run: |
+        echo "### Disk Usage (before Yocto cleanup)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Yocto Cache Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        du -sh "${YOCTO_CACHE_ROOT}"/* 2>/dev/null | sort -h >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        echo "Pruning Yocto cache files older than ${YOCTO_CACHE_RETENTION_DAYS} days..."
+        if [ -d "${YOCTO_CACHE_ROOT}/sstate-cache" ]; then
+          find "${YOCTO_CACHE_ROOT}/sstate-cache" -type f -mtime +"${YOCTO_CACHE_RETENTION_DAYS}" -delete || true
+        fi
+        if [ -d "${YOCTO_CACHE_ROOT}/downloads" ]; then
+          find "${YOCTO_CACHE_ROOT}/downloads" -type f -mtime +"${YOCTO_CACHE_RETENTION_DAYS}" -delete || true
+        fi
+        if [ -d "${YOCTO_CACHE_ROOT}/.ccache/dirtsim-yocto" ]; then
+          find "${YOCTO_CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +"${YOCTO_CACHE_RETENTION_DAYS}" -delete || true
+        fi
+
+        echo "Pruning Yocto build logs older than ${YOCTO_LOG_RETENTION_DAYS} days..."
+        for dir in "${YOCTO_CACHE_ROOT}"/kas-build-*/tmp/log; do
+          if [ -d "${dir}" ]; then
+            find "${dir}" -type f -mtime +"${YOCTO_LOG_RETENTION_DAYS}" -delete || true
+          fi
+        done
+
+        echo "Removing Yocto build dirs older than ${YOCTO_BUILD_RETENTION_DAYS} days..."
+        for dir in "${YOCTO_CACHE_ROOT}"/kas-build-*; do
+          if [ -d "${dir}" ] && [ "$(find "${dir}" -maxdepth 0 -mtime +"${YOCTO_BUILD_RETENTION_DAYS}" -print)" ]; then
+            echo "Removing ${dir}"
+            rm -rf "${dir}"
+          fi
+        done
+
+        echo "### Disk Usage (after Yocto cleanup)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Yocto Cache Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        du -sh "${YOCTO_CACHE_ROOT}"/* 2>/dev/null | sort -h >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
