@@ -98,16 +98,14 @@ const char* duckExitText(bool exitedThroughDoor)
     return exitedThroughDoor ? "yes" : "no";
 }
 
-std::string duckSummaryBuild(const DuckFitnessBreakdown& breakdown, bool includeClockExit)
+std::string duckSummaryBuild(const DuckFitnessBreakdown& breakdown)
 {
     std::ostringstream summary;
     summary << std::fixed << std::setprecision(4);
     summary << "Survival " << breakdown.survivalScore;
-    summary << " | Movement " << breakdown.movementScore;
-    summary << " | Coverage " << breakdown.coverageScore;
-    if (includeClockExit) {
-        summary << " | Exit " << duckExitText(breakdown.exitedThroughDoor);
-    }
+    summary << " | Traversal " << breakdown.traversalRatePer100Seconds << "/100s";
+    summary << " | Clears " << breakdown.obstacleClearRatePer100Seconds << "/100s";
+    summary << " | Exit " << duckExitText(breakdown.exitedThroughDoor);
     return summary.str();
 }
 
@@ -139,116 +137,196 @@ Api::FitnessPresentation genericPresentationBuild(
 }
 
 Api::FitnessPresentation duckPresentationBuild(
-    const FitnessEvaluation& evaluation, const DuckFitnessBreakdown& duck, bool includeClockExit)
+    const FitnessEvaluation& evaluation, const DuckFitnessBreakdown& duck)
 {
     Api::FitnessPresentation presentation{
         .organismType = OrganismType::DUCK,
         .modelId = "duck",
         .totalFitness = evaluation.totalFitness,
-        .summary = duckSummaryBuild(duck, includeClockExit),
+        .summary = duckSummaryBuild(duck),
         .sections = {},
     };
 
-    presentation.sections.reserve(includeClockExit ? 7u : 5u);
+    presentation.sections.reserve(4u);
     presentation.sections.push_back(makeSection(
         "survival",
         "Survival",
         duck.survivalScore,
-        { makeMetric(
-            "lifespan",
-            "Lifespan",
-            duck.survivalRaw,
-            optionalPositive(duck.survivalReference),
-            duck.survivalScore,
-            "seconds") }));
-    presentation.sections.push_back(makeSection(
-        "movement",
-        "Movement",
-        duck.movementScore,
         {
             makeMetric(
-                "movement_raw",
-                "Movement Raw",
-                duck.movementRaw,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "coverage_score",
-                "Coverage Score",
-                duck.coverageScore,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "effort_penalty_score",
-                "Effort Penalty",
-                duck.effortPenaltyScore,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-        }));
-    presentation.sections.push_back(makeSection(
-        "coverage",
-        "Coverage",
-        duck.coverageScore,
-        {
-            makeMetric(
-                "coverage_columns",
-                "Columns",
-                duck.coverageColumnRaw,
-                optionalPositive(duck.coverageColumnReference),
-                duck.coverageColumnScore,
-                "columns"),
-            makeMetric(
-                "coverage_rows",
-                "Rows",
-                duck.coverageRowRaw,
-                optionalPositive(duck.coverageRowReference),
-                duck.coverageRowScore,
-                "rows"),
-            makeMetric(
-                "coverage_cells",
-                "Cells",
-                duck.coverageCellRaw,
-                optionalPositive(duck.coverageCellReference),
-                duck.coverageCellScore,
-                "cells"),
-        }));
-    presentation.sections.push_back(makeSection(
-        "effort",
-        "Effort",
-        std::nullopt,
-        {
-            makeMetric(
-                "effort",
-                "Effort",
-                duck.effortRaw,
-                optionalPositive(duck.effortReference),
-                duck.effortScore,
-                "effort"),
-            makeMetric(
-                "effort_penalty_raw",
-                "Effort Penalty Raw",
-                duck.effortPenaltyRaw,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "wing_up_seconds",
-                "Wing Up",
-                duck.wingUpSeconds,
-                std::nullopt,
-                std::nullopt,
+                "lifespan",
+                "Lifespan",
+                duck.survivalRaw,
+                optionalPositive(duck.survivalReference),
+                duck.survivalScore,
                 "seconds"),
             makeMetric(
-                "wing_down_seconds",
-                "Wing Down",
-                duck.wingDownSeconds,
+                "survival_adjusted_points",
+                "Survival-Adjusted Points",
+                duck.survivalAdjustedPoints,
                 std::nullopt,
                 std::nullopt,
-                "seconds"),
+                "score"),
         }));
+    presentation.sections.push_back(makeSection(
+        "clock_course",
+        "Clock Course",
+        duck.coursePoints,
+        {
+            makeMetric(
+                "left_wall_touches",
+                "Left Wall Touches",
+                duck.leftWallTouches,
+                std::nullopt,
+                std::nullopt,
+                "touches"),
+            makeMetric(
+                "right_wall_touches",
+                "Right Wall Touches",
+                duck.rightWallTouches,
+                std::nullopt,
+                std::nullopt,
+                "touches"),
+            makeMetric(
+                "full_traversals",
+                "Full Traversals",
+                duck.fullTraversals,
+                std::nullopt,
+                std::nullopt,
+                "traversals"),
+            makeMetric(
+                "traversal_progress",
+                "Traversal Progress",
+                duck.traversalProgress,
+                std::nullopt,
+                std::nullopt,
+                "traversals"),
+            makeMetric(
+                "traversal_rate_per_100_seconds",
+                "Traversal Rate",
+                duck.traversalRatePer100Seconds,
+                std::nullopt,
+                std::nullopt,
+                "traversals/100s"),
+            makeMetric(
+                "traversal_points",
+                "Traversal Points",
+                duck.traversalPoints,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "pit_clears", "Pit Clears", duck.pitClears, std::nullopt, std::nullopt, "clears"),
+            makeMetric(
+                "pit_opportunities",
+                "Pit Opportunities",
+                duck.pitOpportunities,
+                std::nullopt,
+                std::nullopt,
+                "opportunities"),
+            makeMetric(
+                "hurdle_clears",
+                "Hurdle Clears",
+                duck.hurdleClears,
+                std::nullopt,
+                std::nullopt,
+                "clears"),
+            makeMetric(
+                "hurdle_opportunities",
+                "Hurdle Opportunities",
+                duck.hurdleOpportunities,
+                std::nullopt,
+                std::nullopt,
+                "opportunities"),
+            makeMetric(
+                "obstacle_clears",
+                "Obstacle Clears",
+                duck.obstacleClears,
+                std::nullopt,
+                std::nullopt,
+                "clears"),
+            makeMetric(
+                "obstacle_opportunities",
+                "Obstacle Opportunities",
+                duck.obstacleOpportunities,
+                std::nullopt,
+                std::nullopt,
+                "opportunities"),
+            makeMetric(
+                "obstacle_clear_rate_per_100_seconds",
+                "Clear Rate",
+                duck.obstacleClearRatePer100Seconds,
+                std::nullopt,
+                std::nullopt,
+                "clears/100s"),
+            makeMetric(
+                "obstacle_clear_rate_points",
+                "Clear Rate Points",
+                duck.obstacleClearRatePoints,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+            makeMetric(
+                "obstacle_competence_score",
+                "Clear Competence",
+                duck.obstacleCompetenceScore,
+                1.0,
+                duck.obstacleCompetenceScore,
+                "score"),
+            makeMetric(
+                "obstacle_competence_points",
+                "Competence Points",
+                duck.obstacleCompetencePoints,
+                std::nullopt,
+                std::nullopt,
+                "score"),
+        }));
+
+    std::vector<Api::FitnessPresentationMetric> clockExitMetrics{
+        makeMetric(
+            "exit_door_proximity_score",
+            "Exit Door Proximity",
+            duck.exitDoorProximityScore,
+            1.0,
+            duck.exitDoorProximityScore,
+            "score"),
+        makeMetric(
+            "exit_door_proximity_points",
+            "Exit Door Proximity Points",
+            duck.exitDoorProximityPoints,
+            std::nullopt,
+            std::nullopt,
+            "score"),
+        makeMetric(
+            "exit_door_completion_points",
+            "Exit Door Completion Points",
+            duck.exitDoorCompletionPoints,
+            std::nullopt,
+            std::nullopt,
+            "score"),
+        makeMetric(
+            "exit_door_time",
+            "Exit Door Time",
+            duck.exitDoorTime,
+            std::nullopt,
+            std::nullopt,
+            "seconds"),
+    };
+    if (duck.exitDoorDistanceObserved) {
+        clockExitMetrics.push_back(makeMetric(
+            "best_exit_door_distance_cells",
+            "Best Exit Distance",
+            duck.bestExitDoorDistanceCells,
+            10.0,
+            std::nullopt,
+            "cells"));
+    }
+
+    presentation.sections.push_back(makeSection(
+        "clock_exit",
+        "Clock Exit",
+        duck.exitDoorProximityPoints + duck.exitDoorCompletionPoints,
+        std::move(clockExitMetrics)));
     presentation.sections.push_back(makeSection(
         "condition",
         "Condition",
@@ -297,172 +375,6 @@ Api::FitnessPresentation duckPresentationBuild(
                 std::nullopt,
                 "damage"),
         }));
-    if (includeClockExit) {
-        presentation.sections.push_back(makeSection(
-            "clock_course",
-            "Clock Course",
-            duck.traversalBonus + duck.obstacleBonus,
-            {
-                makeMetric(
-                    "left_wall_touches",
-                    "Left Wall Touches",
-                    duck.leftWallTouches,
-                    std::nullopt,
-                    std::nullopt,
-                    "touches"),
-                makeMetric(
-                    "right_wall_touches",
-                    "Right Wall Touches",
-                    duck.rightWallTouches,
-                    std::nullopt,
-                    std::nullopt,
-                    "touches"),
-                makeMetric(
-                    "full_traversals",
-                    "Full Traversals",
-                    duck.fullTraversals,
-                    std::nullopt,
-                    std::nullopt,
-                    "traversals"),
-                makeMetric(
-                    "traversal_bonus",
-                    "Traversal Bonus",
-                    duck.traversalBonus,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "traversal_score",
-                    "Traversal Score",
-                    duck.traversalScore,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "pit_clears",
-                    "Pit Clears",
-                    duck.pitClears,
-                    std::nullopt,
-                    std::nullopt,
-                    "clears"),
-                makeMetric(
-                    "pit_clear_bonus",
-                    "Pit Clear Bonus",
-                    duck.pitClearBonus,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "pit_opportunities",
-                    "Pit Opportunities",
-                    duck.pitOpportunities,
-                    std::nullopt,
-                    std::nullopt,
-                    "opportunities"),
-                makeMetric(
-                    "pit_clear_score",
-                    "Pit Clear Score",
-                    duck.pitClearScore,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "hurdle_clears",
-                    "Hurdle Clears",
-                    duck.hurdleClears,
-                    std::nullopt,
-                    std::nullopt,
-                    "clears"),
-                makeMetric(
-                    "hurdle_clear_bonus",
-                    "Hurdle Clear Bonus",
-                    duck.hurdleClearBonus,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "hurdle_opportunities",
-                    "Hurdle Opportunities",
-                    duck.hurdleOpportunities,
-                    std::nullopt,
-                    std::nullopt,
-                    "opportunities"),
-                makeMetric(
-                    "hurdle_clear_score",
-                    "Hurdle Clear Score",
-                    duck.hurdleClearScore,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "obstacle_score",
-                    "Obstacle Score",
-                    duck.obstacleScore,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-                makeMetric(
-                    "obstacle_bonus",
-                    "Obstacle Bonus",
-                    duck.obstacleBonus,
-                    std::nullopt,
-                    std::nullopt,
-                    "score"),
-            }));
-
-        std::vector<Api::FitnessPresentationMetric> clockExitMetrics{
-            makeMetric(
-                "exit_door_raw",
-                "Exit Door Raw",
-                duck.exitDoorRaw,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "exit_door_proximity_score",
-                "Exit Door Proximity",
-                duck.exitDoorProximityScore,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "exit_door_proximity_bonus",
-                "Exit Door Proximity Bonus",
-                duck.exitDoorProximityBonus,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "exit_door_bonus",
-                "Exit Door Completion Bonus",
-                duck.exitDoorBonus,
-                std::nullopt,
-                std::nullopt,
-                "score"),
-            makeMetric(
-                "exit_door_time",
-                "Exit Door Time",
-                duck.exitDoorTime,
-                std::nullopt,
-                std::nullopt,
-                "seconds"),
-        };
-        if (duck.exitDoorDistanceObserved) {
-            clockExitMetrics.push_back(makeMetric(
-                "best_exit_door_distance_cells",
-                "Best Exit Distance",
-                duck.bestExitDoorDistanceCells,
-                10.0,
-                std::nullopt,
-                "cells"));
-        }
-
-        presentation.sections.push_back(makeSection(
-            "clock_exit",
-            "Clock Exit",
-            duck.exitDoorBonus + duck.exitDoorProximityBonus,
-            std::move(clockExitMetrics)));
-    }
 
     return presentation;
 }
@@ -472,18 +384,14 @@ Api::FitnessPresentation duckPresentationBuild(
 Api::FitnessPresentation fitnessEvaluationDuckPresentationGenerate(
     const FitnessEvaluation& evaluation)
 {
-    if (const auto* duck = fitnessEvaluationDuckBreakdownGet(evaluation)) {
-        return duckPresentationBuild(evaluation, *duck, false);
-    }
-    return genericPresentationBuild(
-        OrganismType::DUCK, "duck", evaluation, "Detailed duck presentation is not available yet.");
+    return fitnessEvaluationDuckClockPresentationGenerate(evaluation);
 }
 
 Api::FitnessPresentation fitnessEvaluationDuckClockPresentationGenerate(
     const FitnessEvaluation& evaluation)
 {
     if (const auto* duck = fitnessEvaluationDuckBreakdownGet(evaluation)) {
-        return duckPresentationBuild(evaluation, *duck, true);
+        return duckPresentationBuild(evaluation, *duck);
     }
     return genericPresentationBuild(
         OrganismType::DUCK,

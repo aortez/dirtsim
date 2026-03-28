@@ -24,9 +24,12 @@ TEST(TrainingBestSnapshotGeneratorTest, BuildsSnapshotFromDomainEvaluation)
         .details =
             DuckFitnessBreakdown{
                 .wingUpSeconds = 2.0,
+                .traversalRatePer100Seconds = 1.0,
+                .obstacleClearRatePer100Seconds = 0.5,
                 .exitedThroughDoor = true,
-                .exitDoorRaw = 1.0,
-                .exitDoorBonus = 0.5,
+                .exitDoorProximityScore = 1.0,
+                .exitDoorProximityPoints = 100.0,
+                .exitDoorCompletionPoints = 150.0,
                 .totalFitness = 3.5,
             },
     };

@@ -375,6 +375,10 @@ std::optional<ApiError> validateTrainingConfig(
         return ApiError(
             std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
     }
+    if (outSpec.organismType == OrganismType::DUCK
+        && outSpec.scenarioId != Scenario::EnumType::Clock) {
+        return ApiError("Duck evolution is only supported for the Clock scenario");
+    }
 
     TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
     std::vector<WarmSeedCandidate> warmSeedCandidates;

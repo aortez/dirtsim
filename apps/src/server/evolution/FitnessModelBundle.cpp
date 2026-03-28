@@ -179,60 +179,46 @@ DuckFitnessBreakdown duckFitnessBreakdownAverage(
         averageDouble(first.energyLimitedSeconds, second.energyLimitedSeconds);
     merged.wingUpSeconds = averageDouble(first.wingUpSeconds, second.wingUpSeconds);
     merged.wingDownSeconds = averageDouble(first.wingDownSeconds, second.wingDownSeconds);
-    merged.movementRaw = averageDouble(first.movementRaw, second.movementRaw);
-    merged.movementScore = averageDouble(first.movementScore, second.movementScore);
-    merged.displacementScore = averageDouble(first.displacementScore, second.displacementScore);
-    merged.efficiencyScore = averageDouble(first.efficiencyScore, second.efficiencyScore);
-    merged.effortRaw = averageDouble(first.effortRaw, second.effortRaw);
-    merged.effortReference = averageDouble(first.effortReference, second.effortReference);
-    merged.effortScore = averageDouble(first.effortScore, second.effortScore);
-    merged.effortPenaltyRaw = averageDouble(first.effortPenaltyRaw, second.effortPenaltyRaw);
-    merged.effortPenaltyScore = averageDouble(first.effortPenaltyScore, second.effortPenaltyScore);
-    merged.coverageColumnRaw = averageDouble(first.coverageColumnRaw, second.coverageColumnRaw);
-    merged.coverageColumnReference =
-        averageDouble(first.coverageColumnReference, second.coverageColumnReference);
-    merged.coverageScore = averageDouble(first.coverageScore, second.coverageScore);
-    merged.coverageColumnScore =
-        averageDouble(first.coverageColumnScore, second.coverageColumnScore);
-    merged.coverageRowRaw = averageDouble(first.coverageRowRaw, second.coverageRowRaw);
-    merged.coverageRowReference =
-        averageDouble(first.coverageRowReference, second.coverageRowReference);
-    merged.coverageRowScore = averageDouble(first.coverageRowScore, second.coverageRowScore);
-    merged.coverageCellRaw = averageDouble(first.coverageCellRaw, second.coverageCellRaw);
-    merged.coverageCellReference =
-        averageDouble(first.coverageCellReference, second.coverageCellReference);
-    merged.coverageCellScore = averageDouble(first.coverageCellScore, second.coverageCellScore);
     merged.collisionDamageTotal =
         averageDouble(first.collisionDamageTotal, second.collisionDamageTotal);
     merged.damageTotal = averageDouble(first.damageTotal, second.damageTotal);
     merged.fullTraversals = averageDouble(first.fullTraversals, second.fullTraversals);
-    merged.hurdleClearScore = averageDouble(first.hurdleClearScore, second.hurdleClearScore);
+    merged.traversalProgress = averageDouble(first.traversalProgress, second.traversalProgress);
+    merged.traversalRatePer100Seconds =
+        averageDouble(first.traversalRatePer100Seconds, second.traversalRatePer100Seconds);
+    merged.traversalPoints = averageDouble(first.traversalPoints, second.traversalPoints);
     merged.hurdleClears = averageDouble(first.hurdleClears, second.hurdleClears);
-    merged.hurdleClearBonus = averageDouble(first.hurdleClearBonus, second.hurdleClearBonus);
     merged.hurdleOpportunities =
         averageDouble(first.hurdleOpportunities, second.hurdleOpportunities);
     merged.leftWallTouches = averageDouble(first.leftWallTouches, second.leftWallTouches);
-    merged.obstacleBonus = averageDouble(first.obstacleBonus, second.obstacleBonus);
-    merged.obstacleScore = averageDouble(first.obstacleScore, second.obstacleScore);
-    merged.pitClearScore = averageDouble(first.pitClearScore, second.pitClearScore);
     merged.pitClears = averageDouble(first.pitClears, second.pitClears);
-    merged.pitClearBonus = averageDouble(first.pitClearBonus, second.pitClearBonus);
     merged.pitOpportunities = averageDouble(first.pitOpportunities, second.pitOpportunities);
+    merged.obstacleClears = averageDouble(first.obstacleClears, second.obstacleClears);
+    merged.obstacleOpportunities =
+        averageDouble(first.obstacleOpportunities, second.obstacleOpportunities);
+    merged.obstacleClearRatePer100Seconds =
+        averageDouble(first.obstacleClearRatePer100Seconds, second.obstacleClearRatePer100Seconds);
+    merged.obstacleClearRatePoints =
+        averageDouble(first.obstacleClearRatePoints, second.obstacleClearRatePoints);
+    merged.obstacleCompetenceScore =
+        averageDouble(first.obstacleCompetenceScore, second.obstacleCompetenceScore);
+    merged.obstacleCompetencePoints =
+        averageDouble(first.obstacleCompetencePoints, second.obstacleCompetencePoints);
     merged.rightWallTouches = averageDouble(first.rightWallTouches, second.rightWallTouches);
-    merged.traversalScore = averageDouble(first.traversalScore, second.traversalScore);
-    merged.traversalBonus = averageDouble(first.traversalBonus, second.traversalBonus);
+    merged.coursePoints = averageDouble(first.coursePoints, second.coursePoints);
     merged.exitDoorDistanceObserved = exitDoorDistance.observed;
     merged.bestExitDoorDistanceCells = exitDoorDistance.value;
-    merged.exitDoorProximityBonus =
-        averageDouble(first.exitDoorProximityBonus, second.exitDoorProximityBonus);
     merged.exitDoorProximityScore =
         averageDouble(first.exitDoorProximityScore, second.exitDoorProximityScore);
-    merged.exitDoorRaw = averageDouble(first.exitDoorRaw, second.exitDoorRaw);
+    merged.exitDoorProximityPoints =
+        averageDouble(first.exitDoorProximityPoints, second.exitDoorProximityPoints);
     merged.exitedThroughDoor = first.exitedThroughDoor || second.exitedThroughDoor;
     merged.exitDoorTime = exitDoorTime.value;
     merged.healthAverage = averageDouble(first.healthAverage, second.healthAverage);
-    merged.exitDoorBonus = averageDouble(first.exitDoorBonus, second.exitDoorBonus);
-    merged.clockBonus = averageDouble(first.clockBonus, second.clockBonus);
+    merged.exitDoorCompletionPoints =
+        averageDouble(first.exitDoorCompletionPoints, second.exitDoorCompletionPoints);
+    merged.survivalAdjustedPoints =
+        averageDouble(first.survivalAdjustedPoints, second.survivalAdjustedPoints);
     merged.totalFitness = totalFitness;
     return merged;
 }
@@ -283,14 +269,13 @@ FitnessModelBundle fitnessModelResolve(OrganismType organismType, Scenario::Enum
             bundle.mergePasses = fitnessEvaluationIdentityMerge;
             return bundle;
         case OrganismType::DUCK:
+            DIRTSIM_ASSERT(
+                scenarioId == Scenario::EnumType::Clock,
+                "FitnessModelBundle: duck fitness only supports the Clock scenario");
             bundle.evaluate = fitnessEvaluationDuckEvaluate;
             bundle.formatLogSummary = fitnessEvaluationNoopLogSummary;
-            bundle.generatePresentation = scenarioId == Scenario::EnumType::Clock
-                ? fitnessEvaluationDuckClockPresentationGenerate
-                : fitnessEvaluationDuckPresentationGenerate;
-            bundle.mergePasses = scenarioId == Scenario::EnumType::Clock
-                ? fitnessEvaluationDuckClockMerge
-                : fitnessEvaluationIdentityMerge;
+            bundle.generatePresentation = fitnessEvaluationDuckClockPresentationGenerate;
+            bundle.mergePasses = fitnessEvaluationDuckClockMerge;
             return bundle;
         case OrganismType::NES_DUCK:
             if (scenarioId == Scenario::EnumType::NesSuperMarioBros) {
