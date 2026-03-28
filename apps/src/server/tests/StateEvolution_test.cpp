@@ -286,6 +286,32 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForDuckClockS
     EXPECT_EQ(population.randomCount, 3);
 }
 
+TEST(StateEvolutionTest, EvolutionStartRejectsDuckTrainingOutsideClockScenario)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::Sandbox;
+    cmd.organismType = OrganismType::DUCK;
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isError());
+    EXPECT_EQ(
+        capturedResponse.errorValue().message,
+        "Duck evolution is only supported for the Clock scenario");
+}
+
 TEST(StateEvolutionTest, EvolutionStartCapsParallelEvaluationsAtPopulationSize)
 {
     TestStateMachineFixture fixture;

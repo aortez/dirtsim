@@ -9,6 +9,17 @@ namespace {
 
 constexpr int kWallTouchZoneWidth = 2;
 
+bool floorObstacleSetContains(
+    std::span<const FloorObstacle> obstacles, const FloorObstacle& candidate)
+{
+    const auto it = std::find_if(
+        obstacles.begin(), obstacles.end(), [&candidate](const FloorObstacle& obstacle) {
+            return obstacle.start_x == candidate.start_x && obstacle.width == candidate.width
+                && obstacle.type == candidate.type;
+        });
+    return it != obstacles.end();
+}
+
 } // namespace
 
 DuckClockEvaluationArtifacts DuckClockEvaluationTracker::buildArtifacts() const
@@ -48,6 +59,9 @@ void DuckClockEvaluationTracker::finalizeJumpAttempt(const Vector2i& landingCell
         if (!didJumpClearObstacle(jumpAttempt_.value(), landingCell, obstacle)) {
             continue;
         }
+        if (floorObstacleSetContains(activeClearedObstacles_, obstacle)) {
+            continue;
+        }
 
         switch (obstacle.type) {
             case FloorObstacleType::HURDLE:
@@ -57,6 +71,7 @@ void DuckClockEvaluationTracker::finalizeJumpAttempt(const Vector2i& landingCell
                 ++artifacts_.pitClears;
                 break;
         }
+        activeClearedObstacles_.push_back(obstacle);
     }
 
     jumpAttempt_.reset();
@@ -117,6 +132,7 @@ void DuckClockEvaluationTracker::recordObservedObstacles(std::span<const FloorOb
 void DuckClockEvaluationTracker::reset()
 {
     artifacts_ = DuckClockEvaluationArtifacts{};
+    activeClearedObstacles_.clear();
     activeOpportunityObstacles_.clear();
     currentTraversalProgress_ = 0.0;
     currentWallZone_ = WallZone::None;
@@ -190,12 +206,11 @@ void DuckClockEvaluationTracker::update(const DuckClockTrackerFrame& frame)
 void DuckClockEvaluationTracker::cleanupInactiveObstacleOpportunities(
     std::span<const FloorObstacle> obstacles)
 {
+    std::erase_if(activeClearedObstacles_, [&obstacles](const FloorObstacle& activeObstacle) {
+        return !floorObstacleSetContains(obstacles, activeObstacle);
+    });
     std::erase_if(activeOpportunityObstacles_, [&obstacles](const FloorObstacle& activeObstacle) {
-        const auto it = std::find_if(
-            obstacles.begin(), obstacles.end(), [&activeObstacle](const FloorObstacle& obstacle) {
-                return floorObstacleMatches(activeObstacle, obstacle);
-            });
-        return it == obstacles.end();
+        return !floorObstacleSetContains(obstacles, activeObstacle);
     });
 }
 
@@ -266,6 +281,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             ++artifacts_.leftWallTouches;
             if (lastTouchedWallZone_ == WallZone::Right) {
                 ++artifacts_.fullTraversals;
+                activeClearedObstacles_.clear();
                 activeOpportunityObstacles_.clear();
                 currentTraversalProgress_ = 0.0;
             }
@@ -275,6 +291,7 @@ void DuckClockEvaluationTracker::updateTraversalState(const DuckClockTrackerFram
             ++artifacts_.rightWallTouches;
             if (lastTouchedWallZone_ == WallZone::Left) {
                 ++artifacts_.fullTraversals;
+                activeClearedObstacles_.clear();
                 activeOpportunityObstacles_.clear();
                 currentTraversalProgress_ = 0.0;
             }

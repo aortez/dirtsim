@@ -10,6 +10,7 @@
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/OrganismTracker.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <initializer_list>
@@ -44,6 +45,24 @@ OrganismTrackingHistory makeHistory(std::initializer_list<Vector2d> positions)
         simTime += 0.016;
     }
     return history;
+}
+
+DuckEvaluationArtifacts makeClockArtifacts(const DuckClockEvaluationArtifacts& clock)
+{
+    return DuckEvaluationArtifacts{
+        .clock = clock,
+    };
+}
+
+double obstacleCompetenceExpected(double clears, double opportunities)
+{
+    if (opportunities <= 0.0) {
+        return 0.0;
+    }
+    const double creditedClears = std::min(clears, opportunities);
+    const double successRate = creditedClears / opportunities;
+    const double confidence = 1.0 - std::exp(-opportunities / 3.0);
+    return successRate * confidence;
 }
 } // namespace
 
@@ -293,18 +312,22 @@ TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)
     const EvolutionConfig config = makeConfig();
     const FitnessResult low_energy{ .lifespan = 10.0, .maxEnergy = 0.0 };
     const FitnessResult high_energy{ .lifespan = 10.0, .maxEnergy = 100.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 5.0, 0.0 },
-        });
     const FitnessContext low_context{
         .result = low_energy,
         .organismType = OrganismType::DUCK,
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .organismTrackingHistory = &history,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .energyAverage = 0.1,
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .pitClears = 1,
+                        .pitOpportunities = 1,
+                        .traversalProgress = 1.0,
+                    },
+            },
     };
     const FitnessContext high_context{
         .result = high_energy,
@@ -312,7 +335,16 @@ TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .organismTrackingHistory = &history,
+        .duckArtifacts =
+            DuckEvaluationArtifacts{
+                .energyAverage = 0.9,
+                .clock =
+                    DuckClockEvaluationArtifacts{
+                        .pitClears = 1,
+                        .pitOpportunities = 1,
+                        .traversalProgress = 1.0,
+                    },
+            },
     };
 
     const double fitness_low = computeFitnessForOrganism(low_context);
@@ -321,31 +353,45 @@ TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)
     EXPECT_DOUBLE_EQ(fitness_low, fitness_high);
 }
 
-TEST(FitnessCalculatorTest, DuckFitnessMovementIsBounded)
+TEST(FitnessCalculatorTest, DuckClockTraversalRateScalesWithProgress)
 {
     EvolutionConfig config = makeConfig();
-    config.maxSimulationTime = 10.0;
+    config.maxSimulationTime = 100.0;
 
-    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory longPathHistory = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 20.0, 0.0 },
-            Vector2d{ 40.0, 0.0 },
-            Vector2d{ 60.0, 0.0 },
-        });
-    const FitnessContext context{
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
+    const FitnessContext slowContext{
         .result = result,
         .organismType = OrganismType::DUCK,
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .organismTrackingHistory = &longPathHistory,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .fullTraversals = 1,
+                .traversalProgress = 1.0,
+            }),
+    };
+    const FitnessContext fastContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .fullTraversals = 2,
+                .traversalProgress = 2.5,
+            }),
     };
 
-    const double fitness = computeFitnessForOrganism(context);
-    EXPECT_GT(fitness, 1.0);
-    EXPECT_LT(fitness, 2.0);
+    const DuckFitnessBreakdown slowBreakdown = DuckEvaluator::evaluateWithBreakdown(slowContext);
+    const DuckFitnessBreakdown fastBreakdown = DuckEvaluator::evaluateWithBreakdown(fastContext);
+
+    EXPECT_DOUBLE_EQ(slowBreakdown.traversalRatePer100Seconds, 1.0);
+    EXPECT_DOUBLE_EQ(slowBreakdown.traversalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(fastBreakdown.traversalRatePer100Seconds, 2.5);
+    EXPECT_DOUBLE_EQ(fastBreakdown.traversalPoints, 1250.0);
+    EXPECT_GT(fastBreakdown.totalFitness, slowBreakdown.totalFitness);
 }
 
 TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
@@ -464,168 +510,141 @@ TEST(FitnessCalculatorTest, GooseFitnessPrefersHorizontalMovement)
     EXPECT_GT(horizontalFitness, verticalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsMoreThanRows)
+TEST(FitnessCalculatorTest, DuckClockRewardsFasterCourseRates)
 {
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory columnsHistory = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 2.0, 0.0 },
-            Vector2d{ 3.0, 0.0 },
-            Vector2d{ 4.0, 0.0 },
-            Vector2d{ 5.0, 0.0 },
-        });
-    const OrganismTrackingHistory singleColumnVerticalHistory = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 0.0, 1.0 },
-            Vector2d{ 0.0, 2.0 },
-            Vector2d{ 0.0, 3.0 },
-            Vector2d{ 0.0, 4.0 },
-            Vector2d{ 0.0, 5.0 },
-        });
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
 
-    const FitnessContext columnsContext{
-        .result = result,
+    const FitnessResult fullResult{ .lifespan = 100.0, .maxEnergy = 0.0 };
+    const FitnessResult halfResult{ .lifespan = 50.0, .maxEnergy = 0.0 };
+    const DuckClockEvaluationArtifacts clock{
+        .fullTraversals = 2,
+        .hurdleClears = 1,
+        .hurdleOpportunities = 1,
+        .pitClears = 1,
+        .pitOpportunities = 1,
+        .traversalProgress = 2.0,
+        .exitDoorDistanceObserved = true,
+        .bestExitDoorDistanceCells = 5.0,
+    };
+
+    const FitnessContext fullContext{
+        .result = fullResult,
         .organismType = OrganismType::DUCK,
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .organismTrackingHistory = &columnsHistory,
+        .duckArtifacts = makeClockArtifacts(clock),
     };
-    const FitnessContext verticalContext{
-        .result = result,
+    const FitnessContext halfContext{
+        .result = halfResult,
         .organismType = OrganismType::DUCK,
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .organismTrackingHistory = &singleColumnVerticalHistory,
+        .duckArtifacts = makeClockArtifacts(clock),
     };
 
-    const DuckFitnessBreakdown columnsBreakdown =
-        DuckEvaluator::evaluateWithBreakdown(columnsContext);
-    const DuckFitnessBreakdown verticalBreakdown =
-        DuckEvaluator::evaluateWithBreakdown(verticalContext);
+    const DuckFitnessBreakdown fullBreakdown = DuckEvaluator::evaluateWithBreakdown(fullContext);
+    const DuckFitnessBreakdown halfBreakdown = DuckEvaluator::evaluateWithBreakdown(halfContext);
 
-    EXPECT_GT(columnsBreakdown.coverageColumnScore, verticalBreakdown.coverageColumnScore);
-    EXPECT_GT(verticalBreakdown.coverageRowScore, columnsBreakdown.coverageRowScore);
-    EXPECT_DOUBLE_EQ(columnsBreakdown.coverageCellScore, verticalBreakdown.coverageCellScore);
-    EXPECT_GT(columnsBreakdown.coverageScore, verticalBreakdown.coverageScore);
+    EXPECT_DOUBLE_EQ(fullBreakdown.survivalScore, 1.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.survivalScore, 0.5);
+    EXPECT_DOUBLE_EQ(fullBreakdown.traversalRatePer100Seconds, 2.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.traversalRatePer100Seconds, 4.0);
+    EXPECT_DOUBLE_EQ(fullBreakdown.obstacleClearRatePer100Seconds, 2.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.obstacleClearRatePer100Seconds, 4.0);
+    EXPECT_DOUBLE_EQ(fullBreakdown.survivalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(halfBreakdown.survivalPoints, 250.0);
+    EXPECT_GT(halfBreakdown.totalFitness, fullBreakdown.totalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckCoverageIncludesSecondaryCellTerm)
+TEST(FitnessCalculatorTest, DuckClockObstacleRateRewardsMoreRepeatedClears)
 {
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory baseHistory = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 2.0, 0.0 },
-        });
-    const OrganismTrackingHistory cellRichHistory = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 1.0, 1.0 },
-            Vector2d{ 2.0, 1.0 },
-        });
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
 
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
+    const FitnessContext oneClearContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .pitClears = 1,
+                .pitOpportunities = 3,
+            }),
+    };
+    const FitnessContext repeatedClearContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .pitClears = 3,
+                .pitOpportunities = 3,
+            }),
+    };
+
+    const DuckFitnessBreakdown oneClearBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(oneClearContext);
+    const DuckFitnessBreakdown repeatedClearBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(repeatedClearContext);
+
+    EXPECT_DOUBLE_EQ(oneClearBreakdown.obstacleClearRatePer100Seconds, 1.0);
+    EXPECT_DOUBLE_EQ(oneClearBreakdown.obstacleClearRatePoints, 100.0);
+    EXPECT_DOUBLE_EQ(repeatedClearBreakdown.obstacleClearRatePer100Seconds, 3.0);
+    EXPECT_DOUBLE_EQ(repeatedClearBreakdown.obstacleClearRatePoints, 300.0);
+    EXPECT_GT(
+        repeatedClearBreakdown.obstacleCompetencePoints,
+        oneClearBreakdown.obstacleCompetencePoints);
+    EXPECT_GT(repeatedClearBreakdown.totalFitness, oneClearBreakdown.totalFitness);
+}
+
+TEST(FitnessCalculatorTest, DuckClockClampsDisplayedClearCountsToValidOpportunities)
+{
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .pitClears = 3,
+                .pitOpportunities = 1,
+            }),
+    };
+
+    const DuckFitnessBreakdown breakdown = DuckEvaluator::evaluateWithBreakdown(context);
+    EXPECT_DOUBLE_EQ(breakdown.pitClears, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClears, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleOpportunities, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClearRatePer100Seconds, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.obstacleClearRatePoints, 100.0);
+}
+
+TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndExitRewards)
+{
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
     const FitnessContext baseContext{
         .result = result,
         .organismType = OrganismType::DUCK,
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .organismTrackingHistory = &baseHistory,
-    };
-    const FitnessContext cellRichContext{
-        .result = result,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 20,
-        .worldHeight = 20,
-        .evolutionConfig = config,
-        .organismTrackingHistory = &cellRichHistory,
-    };
-
-    const DuckFitnessBreakdown baseBreakdown = DuckEvaluator::evaluateWithBreakdown(baseContext);
-    const DuckFitnessBreakdown cellRichBreakdown =
-        DuckEvaluator::evaluateWithBreakdown(cellRichContext);
-
-    EXPECT_DOUBLE_EQ(baseBreakdown.coverageColumnScore, cellRichBreakdown.coverageColumnScore);
-    EXPECT_GT(cellRichBreakdown.coverageRowScore, baseBreakdown.coverageRowScore);
-    EXPECT_GT(cellRichBreakdown.coverageCellScore, baseBreakdown.coverageCellScore);
-    EXPECT_GT(cellRichBreakdown.coverageScore, baseBreakdown.coverageScore);
-}
-
-TEST(FitnessCalculatorTest, DuckEffortPenaltyMakesJumpCostlierThanFullRunInput)
-{
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 }, Vector2d{ 1.0, 0.0 }, Vector2d{ 2.0, 0.0 }, Vector2d{ 3.0, 0.0 },
-            Vector2d{ 4.0, 0.0 }, Vector2d{ 5.0, 0.0 }, Vector2d{ 6.0, 0.0 }, Vector2d{ 7.0, 0.0 },
-            Vector2d{ 8.0, 0.0 }, Vector2d{ 9.0, 0.0 }, Vector2d{ 9.0, 1.0 }, Vector2d{ 8.0, 1.0 },
-            Vector2d{ 7.0, 1.0 }, Vector2d{ 6.0, 1.0 }, Vector2d{ 5.0, 1.0 }, Vector2d{ 4.0, 1.0 },
-            Vector2d{ 3.0, 1.0 }, Vector2d{ 2.0, 1.0 }, Vector2d{ 1.0, 1.0 }, Vector2d{ 0.0, 1.0 },
-        });
-
-    auto runDuck = std::make_unique<Duck>(OrganismId{ 101 }, std::unique_ptr<DuckBrain>{});
-    auto jumpDuck = std::make_unique<Duck>(OrganismId{ 102 }, std::unique_ptr<DuckBrain>{});
-    for (int i = 0; i < 200; ++i) {
-        runDuck->setInput({ .move = { 1.0f, 0.0f }, .jump = false });
-        jumpDuck->setInput({ .move = { 0.0f, 0.0f }, .jump = true });
-    }
-
-    const FitnessContext runContext{
-        .result = result,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 20,
-        .worldHeight = 20,
-        .evolutionConfig = config,
-        .finalOrganism = runDuck.get(),
-        .organismTrackingHistory = &history,
-    };
-    const FitnessContext jumpContext{
-        .result = result,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 20,
-        .worldHeight = 20,
-        .evolutionConfig = config,
-        .finalOrganism = jumpDuck.get(),
-        .organismTrackingHistory = &history,
-    };
-
-    const DuckFitnessBreakdown runBreakdown = DuckEvaluator::evaluateWithBreakdown(runContext);
-    const DuckFitnessBreakdown jumpBreakdown = DuckEvaluator::evaluateWithBreakdown(jumpContext);
-
-    EXPECT_DOUBLE_EQ(runBreakdown.coverageScore, jumpBreakdown.coverageScore);
-    EXPECT_GT(jumpBreakdown.effortScore, runBreakdown.effortScore);
-    EXPECT_GT(jumpBreakdown.effortPenaltyScore, runBreakdown.effortPenaltyScore);
-    EXPECT_LT(jumpBreakdown.totalFitness, runBreakdown.totalFitness);
-}
-
-TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndProximityBonuses)
-{
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 2.0, 0.0 },
-        });
-
-    const FitnessContext baseContext{
-        .result = result,
-        .organismType = OrganismType::DUCK,
-        .worldWidth = 20,
-        .worldHeight = 20,
-        .evolutionConfig = config,
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(DuckClockEvaluationArtifacts{}),
     };
     const FitnessContext boostedContext{
         .result = result,
@@ -633,56 +652,49 @@ TEST(FitnessCalculatorTest, DuckClockArtifactsAddTraversalObstacleAndProximityBo
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .fullTraversals = 2,
-                        .hurdleClears = 1,
-                        .hurdleOpportunities = 1,
-                        .pitClears = 1,
-                        .pitOpportunities = 1,
-                        .exitDoorDistanceObserved = true,
-                        .bestExitDoorDistanceCells = 5.0,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .fullTraversals = 2,
+                .hurdleClears = 1,
+                .hurdleOpportunities = 1,
+                .pitClears = 1,
+                .pitOpportunities = 1,
+                .traversalProgress = 2.5,
+                .exitDoorDistanceObserved = true,
+                .bestExitDoorDistanceCells = 5.0,
+            }),
     };
 
     const DuckFitnessBreakdown baseBreakdown = DuckEvaluator::evaluateWithBreakdown(baseContext);
     const DuckFitnessBreakdown boostedBreakdown =
         DuckEvaluator::evaluateWithBreakdown(boostedContext);
-    const double blendedClearScore = 0.7 + (0.3 * (1.0 - std::exp(-1.0 / 3.0)));
+    const double obstacleCompetence = obstacleCompetenceExpected(2.0, 2.0);
 
-    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalScore, 1.0 - std::exp(-1.0));
-    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalBonus, 0.45 * (1.0 - std::exp(-1.0)));
-    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearScore, blendedClearScore);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.hurdleClearBonus, 0.12 * blendedClearScore);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearScore, blendedClearScore);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.pitClearBonus, 0.18 * blendedClearScore);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleScore, blendedClearScore);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleBonus, 0.3 * blendedClearScore);
+    EXPECT_DOUBLE_EQ(baseBreakdown.survivalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(baseBreakdown.totalFitness, 500.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalRatePer100Seconds, 2.5);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.traversalPoints, 1250.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleClearRatePer100Seconds, 2.0);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.obstacleClearRatePoints, 200.0);
+    EXPECT_NEAR(boostedBreakdown.obstacleCompetenceScore, obstacleCompetence, 1e-9);
+    EXPECT_NEAR(boostedBreakdown.obstacleCompetencePoints, 100.0 * obstacleCompetence, 1e-9);
     EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityScore, 0.5);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityBonus, 0.125);
-    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorBonus, 0.0);
-    EXPECT_DOUBLE_EQ(
-        boostedBreakdown.clockBonus,
-        (0.3 * blendedClearScore) + 0.125 + (0.45 * (1.0 - std::exp(-1.0))));
-    EXPECT_DOUBLE_EQ(
-        boostedBreakdown.totalFitness - baseBreakdown.totalFitness,
-        (0.3 * blendedClearScore) + 0.125 + (0.45 * (1.0 - std::exp(-1.0))));
+    EXPECT_DOUBLE_EQ(boostedBreakdown.exitDoorProximityPoints, 50.0);
+    EXPECT_NEAR(boostedBreakdown.coursePoints, 1250.0 + 200.0 + (100.0 * obstacleCompetence), 1e-9);
+    EXPECT_DOUBLE_EQ(boostedBreakdown.survivalPoints, 500.0);
+    EXPECT_NEAR(
+        boostedBreakdown.totalFitness,
+        boostedBreakdown.survivalPoints + boostedBreakdown.coursePoints
+            + boostedBreakdown.exitDoorProximityPoints,
+        1e-9);
 }
 
-TEST(FitnessCalculatorTest, DuckClockTraversalScoreIncludesPartialReturnProgress)
+TEST(FitnessCalculatorTest, DuckClockTraversalPointsIncludePartialReturnProgress)
 {
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 2.0, 0.0 },
-        });
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
 
     const FitnessContext fullTraversalContext{
         .result = result,
@@ -690,15 +702,11 @@ TEST(FitnessCalculatorTest, DuckClockTraversalScoreIncludesPartialReturnProgress
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .fullTraversals = 1,
-                        .traversalProgress = 1.0,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .fullTraversals = 1,
+                .traversalProgress = 1.0,
+            }),
     };
     const FitnessContext partialReturnContext{
         .result = result,
@@ -706,15 +714,11 @@ TEST(FitnessCalculatorTest, DuckClockTraversalScoreIncludesPartialReturnProgress
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .fullTraversals = 1,
-                        .traversalProgress = 1.5,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .fullTraversals = 1,
+                .traversalProgress = 1.5,
+            }),
     };
 
     const DuckFitnessBreakdown fullTraversalBreakdown =
@@ -722,21 +726,17 @@ TEST(FitnessCalculatorTest, DuckClockTraversalScoreIncludesPartialReturnProgress
     const DuckFitnessBreakdown partialReturnBreakdown =
         DuckEvaluator::evaluateWithBreakdown(partialReturnContext);
 
-    EXPECT_GT(partialReturnBreakdown.traversalScore, fullTraversalBreakdown.traversalScore);
-    EXPECT_GT(partialReturnBreakdown.traversalBonus, fullTraversalBreakdown.traversalBonus);
+    EXPECT_DOUBLE_EQ(fullTraversalBreakdown.traversalPoints, 500.0);
+    EXPECT_DOUBLE_EQ(partialReturnBreakdown.traversalPoints, 750.0);
     EXPECT_GT(partialReturnBreakdown.totalFitness, fullTraversalBreakdown.totalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckClockObstacleScoreRewardsRepeatedSuccessfulClears)
+TEST(FitnessCalculatorTest, DuckClockObstacleCompetenceRewardsRepeatedSuccessfulClears)
 {
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-            Vector2d{ 2.0, 0.0 },
-        });
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
 
     const FitnessContext oneLapContext{
         .result = result,
@@ -744,17 +744,13 @@ TEST(FitnessCalculatorTest, DuckClockObstacleScoreRewardsRepeatedSuccessfulClear
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .hurdleClears = 1,
-                        .hurdleOpportunities = 1,
-                        .pitClears = 1,
-                        .pitOpportunities = 1,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .hurdleClears = 1,
+                .hurdleOpportunities = 1,
+                .pitClears = 1,
+                .pitOpportunities = 1,
+            }),
     };
     const FitnessContext repeatedCleanLapContext{
         .result = result,
@@ -762,17 +758,13 @@ TEST(FitnessCalculatorTest, DuckClockObstacleScoreRewardsRepeatedSuccessfulClear
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .hurdleClears = 3,
-                        .hurdleOpportunities = 3,
-                        .pitClears = 3,
-                        .pitOpportunities = 3,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .hurdleClears = 3,
+                .hurdleOpportunities = 3,
+                .pitClears = 3,
+                .pitOpportunities = 3,
+            }),
     };
 
     const DuckFitnessBreakdown oneLapBreakdown =
@@ -780,47 +772,47 @@ TEST(FitnessCalculatorTest, DuckClockObstacleScoreRewardsRepeatedSuccessfulClear
     const DuckFitnessBreakdown repeatedCleanLapBreakdown =
         DuckEvaluator::evaluateWithBreakdown(repeatedCleanLapContext);
 
-    EXPECT_GT(repeatedCleanLapBreakdown.hurdleClearScore, oneLapBreakdown.hurdleClearScore);
-    EXPECT_GT(repeatedCleanLapBreakdown.pitClearScore, oneLapBreakdown.pitClearScore);
-    EXPECT_GT(repeatedCleanLapBreakdown.obstacleScore, oneLapBreakdown.obstacleScore);
-    EXPECT_GT(repeatedCleanLapBreakdown.obstacleBonus, oneLapBreakdown.obstacleBonus);
+    EXPECT_NEAR(
+        oneLapBreakdown.obstacleCompetenceScore, obstacleCompetenceExpected(2.0, 2.0), 1e-9);
+    EXPECT_NEAR(
+        repeatedCleanLapBreakdown.obstacleCompetenceScore,
+        obstacleCompetenceExpected(6.0, 6.0),
+        1e-9);
+    EXPECT_GT(
+        repeatedCleanLapBreakdown.obstacleCompetencePoints,
+        oneLapBreakdown.obstacleCompetencePoints);
+    EXPECT_GT(repeatedCleanLapBreakdown.totalFitness, oneLapBreakdown.totalFitness);
 }
 
-TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesFullExitBonus)
+TEST(FitnessCalculatorTest, DuckClockExitThroughDoorUsesCompletionPoints)
 {
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult result{ .lifespan = config.maxSimulationTime, .maxEnergy = 0.0 };
-    const OrganismTrackingHistory history = makeHistory(
-        {
-            Vector2d{ 0.0, 0.0 },
-            Vector2d{ 1.0, 0.0 },
-        });
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult result{ .lifespan = 100.0, .maxEnergy = 0.0 };
     const FitnessContext context{
         .result = result,
         .organismType = OrganismType::DUCK,
         .worldWidth = 20,
         .worldHeight = 20,
         .evolutionConfig = config,
-        .duckArtifacts =
-            DuckEvaluationArtifacts{
-                .clock =
-                    DuckClockEvaluationArtifacts{
-                        .exitDoorDistanceObserved = true,
-                        .exitedThroughDoor = true,
-                        .bestExitDoorDistanceCells = 1.0,
-                        .exitDoorTime = 8.0,
-                    },
-            },
-        .organismTrackingHistory = &history,
+        .duckArtifacts = makeClockArtifacts(
+            DuckClockEvaluationArtifacts{
+                .exitDoorDistanceObserved = true,
+                .exitedThroughDoor = true,
+                .bestExitDoorDistanceCells = 1.0,
+                .exitDoorTime = 8.0,
+            }),
     };
 
     const DuckFitnessBreakdown breakdown = DuckEvaluator::evaluateWithBreakdown(context);
     EXPECT_TRUE(breakdown.exitedThroughDoor);
-    EXPECT_DOUBLE_EQ(breakdown.exitDoorRaw, 1.0);
-    EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityBonus, 0.25);
-    EXPECT_DOUBLE_EQ(breakdown.exitDoorBonus, 0.5);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityScore, 1.0);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorProximityPoints, 100.0);
+    EXPECT_DOUBLE_EQ(breakdown.exitDoorCompletionPoints, 150.0);
+    EXPECT_DOUBLE_EQ(breakdown.survivalPoints, 500.0);
     EXPECT_DOUBLE_EQ(breakdown.exitDoorTime, 8.0);
-    EXPECT_DOUBLE_EQ(breakdown.clockBonus, 0.25);
+    EXPECT_DOUBLE_EQ(breakdown.totalFitness, 750.0);
 }
 
 } // namespace DirtSim

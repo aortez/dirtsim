@@ -240,7 +240,7 @@ EvaluationPassResult buildEvaluationPassResult(
     return pass;
 }
 
-EvaluationPassResult runEvaluationPass(
+std::optional<EvaluationPassResult> runEvaluationPass(
     const TrainingSpec& trainingSpec,
     const EvaluationIndividual& individual,
     const EvolutionConfig& evolutionConfig,
@@ -327,6 +327,10 @@ EvaluationPassResult runEvaluationPass(
         if (visibleHandle->runner == &runner) {
             visibleHandle->runner = nullptr;
         }
+    }
+
+    if (stopRequested && stopRequested->load()) {
+        return std::nullopt;
     }
 
     return buildEvaluationPassResult(
@@ -599,7 +603,7 @@ std::optional<CompletedEvaluation> runEvaluationTask(
         impl.config.trainingSpec.organismType,
         initialQueued.request.individual.scenarioId,
         initialQueued.request.robustSampleOrdinal);
-    EvaluationPassResult primaryPass = runEvaluationPass(
+    std::optional<EvaluationPassResult> primaryPass = runEvaluationPass(
         impl.config.trainingSpec,
         initialQueued.request.individual,
         initialQueued.evolutionConfig,
@@ -614,9 +618,13 @@ std::optional<CompletedEvaluation> runEvaluationTask(
         &impl.pauseCv,
         &impl.pauseMutex,
         &impl.paused);
+    if (!primaryPass.has_value()) {
+        visibleEvaluationRelease(impl, visibleHandle);
+        return std::nullopt;
+    }
 
     CompletedEvaluation result = buildCompletedEvaluationFromPass(
-        initialQueued.request, std::move(primaryPass), includeGenerationDetails);
+        initialQueued.request, std::move(*primaryPass), includeGenerationDetails);
     if (!isDuckClockScenario(
             impl.config.trainingSpec.organismType, initialQueued.request.individual.scenarioId)) {
         return finishResult(std::move(result));
@@ -631,7 +639,7 @@ std::optional<CompletedEvaluation> runEvaluationTask(
         const QueuedEvaluation passQueued = visibleQueuedSnapshot(visibleHandle, queued);
         const std::optional<bool> spawnSide =
             resolveDuckClockSpawnSideForPass(primarySpawnSide, passOrdinal);
-        EvaluationPassResult pass = runEvaluationPass(
+        std::optional<EvaluationPassResult> pass = runEvaluationPass(
             impl.config.trainingSpec,
             passQueued.request.individual,
             passQueued.evolutionConfig,
@@ -646,8 +654,12 @@ std::optional<CompletedEvaluation> runEvaluationTask(
             &impl.pauseCv,
             &impl.pauseMutex,
             &impl.paused);
+        if (!pass.has_value()) {
+            visibleEvaluationRelease(impl, visibleHandle);
+            return std::nullopt;
+        }
         passResults.push_back(buildCompletedEvaluationFromPass(
-            passQueued.request, std::move(pass), includeGenerationDetails));
+            passQueued.request, std::move(*pass), includeGenerationDetails));
     }
 
     DIRTSIM_ASSERT(passCount == 4, "EvaluationExecutor: duck clock pass count must be 4");
