@@ -238,7 +238,8 @@ private:
 
     struct ScannerSnapshot {
         bool active = false;
-        OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
+        OsManager::ScannerConfig requestedConfig = OsManager::scannerDefaultConfig();
+        OsManager::ScannerConfig appliedConfig = OsManager::scannerDefaultConfig();
         std::optional<OsManager::ScannerTuning> currentTuning;
         std::string detail;
         std::vector<ScannerObservedRadio> radios;

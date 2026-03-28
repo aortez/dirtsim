@@ -40,7 +40,7 @@ ScannerTuning makeScannerTuning(
 std::vector<ScannerTuning> supportedScannerTunings()
 {
     std::vector<ScannerTuning> tunings;
-    tunings.reserve(84);
+    tunings.reserve(48);
 
     for (const int channel : scannerBandPrimaryChannels(ScannerBand::Band24Ghz)) {
         tunings.push_back(
@@ -52,6 +52,8 @@ std::vector<ScannerTuning> supportedScannerTunings()
             makeScannerTuning(ScannerBand::Band5Ghz, channel, kWidth20Mhz, std::nullopt));
     }
 
+    // For 40/80 MHz, one tuning per center channel. All primary channels within a center
+    // cover the same band, so stepping through them individually is redundant.
     for (const int centerChannel :
          scannerManualTargetChannels(ScannerBand::Band5Ghz, kWidth40Mhz)) {
         const auto coveredChannels = scannerTuningCoveredPrimaryChannels(
@@ -61,9 +63,9 @@ std::vector<ScannerTuning> supportedScannerTunings()
                 .widthMhz = kWidth40Mhz,
                 .centerChannel = centerChannel,
             });
-        for (const int primaryChannel : coveredChannels) {
+        if (!coveredChannels.empty()) {
             tunings.push_back(makeScannerTuning(
-                ScannerBand::Band5Ghz, primaryChannel, kWidth40Mhz, centerChannel));
+                ScannerBand::Band5Ghz, coveredChannels.front(), kWidth40Mhz, centerChannel));
         }
     }
 
@@ -76,9 +78,9 @@ std::vector<ScannerTuning> supportedScannerTunings()
                 .widthMhz = kWidth80Mhz,
                 .centerChannel = centerChannel,
             });
-        for (const int primaryChannel : coveredChannels) {
+        if (!coveredChannels.empty()) {
             tunings.push_back(makeScannerTuning(
-                ScannerBand::Band5Ghz, primaryChannel, kWidth80Mhz, centerChannel));
+                ScannerBand::Band5Ghz, coveredChannels.front(), kWidth80Mhz, centerChannel));
         }
     }
 

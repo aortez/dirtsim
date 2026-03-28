@@ -621,7 +621,7 @@ Result<std::monostate, std::string> ScannerService::start()
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        activeConfig_ = requestedConfig_;
+        appliedConfig_ = requestedConfig_;
         currentTuning_.reset();
         lastError_.clear();
         manualReadbackExpectedChanspec_.reset();
@@ -660,7 +660,7 @@ void ScannerService::stop()
     int fd = -1;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        activeConfig_ = requestedConfig_;
+        appliedConfig_ = requestedConfig_;
         fd = socketFd_;
         socketFd_ = -1;
         currentTuning_.reset();
@@ -695,7 +695,8 @@ ScannerService::Snapshot ScannerService::snapshot(uint64_t maxAgeMs, size_t maxR
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        snapshot.config = activeConfig_;
+        snapshot.requestedConfig = requestedConfig_;
+        snapshot.appliedConfig = appliedConfig_;
         snapshot.currentTuning = currentTuning_;
         snapshot.radios.reserve(radiosByBssid_.size());
         for (const auto& [bssid, state] : radiosByBssid_) {
@@ -812,7 +813,7 @@ Result<std::monostate, std::string> ScannerService::setConfig(const ScannerConfi
         std::lock_guard<std::mutex> lock(mutex_);
         requestedConfig_ = config;
         if (!running_ || !currentTuning_.has_value()) {
-            activeConfig_ = config;
+            appliedConfig_ = config;
         }
     }
     return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -1221,7 +1222,7 @@ void ScannerService::threadMain()
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stepConfig.has_value()) {
-                activeConfig_ = stepConfig.value();
+                appliedConfig_ = stepConfig.value();
             }
             currentTuning_ = step.tuning;
             lastError_.clear();

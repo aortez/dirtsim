@@ -518,23 +518,19 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
         lv_draw_line(layer, &centerTickDsc);
     }
     else if (hasTuningBounds && model_.currentTuning.has_value()) {
-        int primaryCenterX = 0;
-        if (channelXCenter(
-                channels, plotArea, model_.currentTuning->primaryChannel, primaryCenterX)) {
-            lv_draw_rect_dsc_t markerDsc;
-            lv_draw_rect_dsc_init(&markerDsc);
-            markerDsc.bg_color = accentColor(model_.band);
-            markerDsc.bg_opa = LV_OPA_COVER;
-            markerDsc.radius = LV_RADIUS_CIRCLE;
+        lv_draw_rect_dsc_t markerDsc;
+        lv_draw_rect_dsc_init(&markerDsc);
+        markerDsc.bg_color = accentColor(model_.band);
+        markerDsc.bg_opa = LV_OPA_COVER;
+        markerDsc.radius = LV_RADIUS_CIRCLE;
 
-            lv_area_t markerArea{
-                .x1 = primaryCenterX - 8,
-                .y1 = labelBottom - kCurrentLabelUnderlineHeightPx + 1,
-                .x2 = primaryCenterX + 8,
-                .y2 = labelBottom,
-            };
-            lv_draw_rect(layer, &markerDsc, &markerArea);
-        }
+        lv_area_t markerArea{
+            .x1 = tuningSlotLeft + 1,
+            .y1 = labelBottom - kCurrentLabelUnderlineHeightPx + 1,
+            .x2 = tuningSlotRight - 1,
+            .y2 = labelBottom,
+        };
+        lv_draw_rect(layer, &markerDsc, &markerArea);
     }
 
     int lastLabelRight = std::numeric_limits<int>::min();
@@ -557,15 +553,11 @@ void ScannerChannelMapWidget::drawMap(lv_event_t* e) const
         lastLabelRight = labelRight;
         lv_color_t labelColor = kLabelColor;
         if (model_.currentTuning.has_value() && model_.currentTuning->band == model_.band) {
-            if (model_.mode == OsManager::ScannerConfigMode::Manual
-                && std::find(currentCoveredChannels.begin(), currentCoveredChannels.end(), channel)
-                    != currentCoveredChannels.end()) {
-                labelColor = kManualRailBorderColor;
-            }
-            else if (
-                model_.mode != OsManager::ScannerConfigMode::Manual
-                && channel == model_.currentTuning->primaryChannel) {
-                labelColor = accentColor(model_.band);
+            if (std::find(currentCoveredChannels.begin(), currentCoveredChannels.end(), channel)
+                != currentCoveredChannels.end()) {
+                labelColor = model_.mode == OsManager::ScannerConfigMode::Manual
+                    ? kManualRailBorderColor
+                    : accentColor(model_.band);
             }
         }
 

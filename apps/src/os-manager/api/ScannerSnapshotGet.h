@@ -53,7 +53,8 @@ struct Command {
 
 struct Okay {
     bool active = false;
-    OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
+    OsManager::ScannerConfig requestedConfig = OsManager::scannerDefaultConfig();
+    OsManager::ScannerConfig appliedConfig = OsManager::scannerDefaultConfig();
     std::optional<OsManager::ScannerTuning> currentTuning;
     std::string detail;
     std::vector<ObservedRadioInfo> radios;
@@ -61,7 +62,7 @@ struct Okay {
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 API_STANDARD_TYPES();
