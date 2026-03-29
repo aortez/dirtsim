@@ -173,6 +173,32 @@ void setActionDropdownOptions(lv_obj_t* container, const std::string& options)
     lv_dropdown_set_options(dropdown, options.c_str());
 }
 
+void styleScannerDropdownPopup(lv_obj_t* container)
+{
+    constexpr int popupLineSpace = 28;
+    constexpr int popupPadVertical = 28;
+
+    lv_obj_t* dropdown = getActionDropdownWidget(container);
+    if (!dropdown) {
+        return;
+    }
+
+    lv_obj_t* list = lv_dropdown_get_list(dropdown);
+    if (!list) {
+        return;
+    }
+
+    lv_obj_set_style_pad_top(list, popupPadVertical, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(list, popupPadVertical, LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(list, popupLineSpace, LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(list, popupLineSpace, LV_PART_SELECTED);
+
+    lv_obj_t* label = lv_obj_get_child(list, 0);
+    if (label) {
+        lv_obj_set_style_text_line_space(label, popupLineSpace, LV_PART_MAIN);
+    }
+}
+
 void setControlEnabled(lv_obj_t* control, const bool enabled)
 {
     if (!control) {
@@ -219,15 +245,6 @@ void normalizeScannerConfig(OsManager::ScannerConfig& config)
     }
 
     config.manualConfig.targetChannel = targetChannels.front();
-}
-
-bool scannerConfigsEqual(const OsManager::ScannerConfig& lhs, const OsManager::ScannerConfig& rhs)
-{
-    return lhs.mode == rhs.mode && lhs.autoConfig.band == rhs.autoConfig.band
-        && lhs.autoConfig.widthMhz == rhs.autoConfig.widthMhz
-        && lhs.manualConfig.band == rhs.manualConfig.band
-        && lhs.manualConfig.widthMhz == rhs.manualConfig.widthMhz
-        && lhs.manualConfig.targetChannel == rhs.manualConfig.targetChannel;
 }
 
 std::optional<int> scannerManualPrimaryChannel(const OsManager::ScannerConfig& config)
@@ -395,6 +412,7 @@ constexpr int NETWORK_SCANNER_LIST_AGE_WIDTH = 72;
 constexpr int NETWORK_SCANNER_LIST_CHANNEL_WIDTH = 40;
 constexpr int NETWORK_SCANNER_LIST_RSSI_WIDTH = 56;
 constexpr int NETWORK_SCANNER_MAP_HEIGHT = 116;
+constexpr int NETWORK_SCANNER_SQUARE_BUTTON_SIZE = LVGLBuilder::Style::ACTION_SIZE;
 constexpr uint64_t NETWORK_SCANNER_ROW_STALE_AGE_MS = 5000;
 constexpr float NETWORK_SCANNER_RSSI_SMOOTHING_ALPHA = 0.3f;
 constexpr float NETWORK_SCANNER_RSSI_SWAP_THRESHOLD_DB = 5.0f;
@@ -1000,7 +1018,7 @@ void NetworkDiagnosticsPanel::createUI()
     scannerAutoButton_ = LVGLBuilder::actionButton(scannerControlsRow)
                              .text("Auto")
                              .mode(LVGLBuilder::ActionMode::Push)
-                             .size(NETWORK_ACTION_BUTTON_HEIGHT)
+                             .size(NETWORK_SCANNER_SQUARE_BUTTON_SIZE)
                              .callback(onScannerAutoClicked, this)
                              .buildOrLog();
 
@@ -1010,6 +1028,7 @@ void NetworkDiagnosticsPanel::createUI()
                                .width(NETWORK_SCANNER_CONFIG_DROPDOWN_WIDTH)
                                .callback(onScannerBandChanged, this)
                                .buildOrLog();
+    styleScannerDropdownPopup(scannerBandDropdown_);
 
     scannerWidthDropdown_ = LVGLBuilder::actionDropdown(scannerControlsRow)
                                 .options("20 MHz")
@@ -1017,25 +1036,26 @@ void NetworkDiagnosticsPanel::createUI()
                                 .width(NETWORK_SCANNER_CONFIG_DROPDOWN_WIDTH)
                                 .callback(onScannerWidthChanged, this)
                                 .buildOrLog();
+    styleScannerDropdownPopup(scannerWidthDropdown_);
 
     scannerEnterButton_ = LVGLBuilder::actionButton(scannerControlsRow)
                               .text("Scan")
                               .mode(LVGLBuilder::ActionMode::Push)
-                              .size(NETWORK_ACTION_BUTTON_HEIGHT)
+                              .size(NETWORK_SCANNER_SQUARE_BUTTON_SIZE)
                               .callback(onScannerEnterClicked, this)
                               .buildOrLog();
 
     scannerExitButton_ = LVGLBuilder::actionButton(scannerControlsRow)
                              .text("Wi-Fi")
                              .mode(LVGLBuilder::ActionMode::Push)
-                             .size(NETWORK_ACTION_BUTTON_HEIGHT)
+                             .size(NETWORK_SCANNER_SQUARE_BUTTON_SIZE)
                              .callback(onScannerExitClicked, this)
                              .buildOrLog();
 
     scannerRefreshButton_ = LVGLBuilder::actionButton(scannerControlsRow)
                                 .text("Retry")
                                 .mode(LVGLBuilder::ActionMode::Push)
-                                .size(NETWORK_ACTION_BUTTON_HEIGHT)
+                                .size(NETWORK_SCANNER_SQUARE_BUTTON_SIZE)
                                 .callback(onScannerRefreshClicked, this)
                                 .buildOrLog();
 
@@ -1492,7 +1512,8 @@ void NetworkDiagnosticsPanel::startEventStream()
                         Network::deserialize_payload<OsApi::ScannerSnapshotChanged>(payload);
                     ScannerSnapshot snapshot;
                     snapshot.active = changed.snapshot.active;
-                    snapshot.config = changed.snapshot.config;
+                    snapshot.requestedConfig = changed.snapshot.requestedConfig;
+                    snapshot.appliedConfig = changed.snapshot.appliedConfig;
                     snapshot.currentTuning = changed.snapshot.currentTuning;
                     snapshot.detail = changed.snapshot.detail;
                     snapshot.radios.reserve(changed.snapshot.radios.size());
@@ -2626,6 +2647,7 @@ bool NetworkDiagnosticsPanel::isScannerSnapshotStale() const
 
 void NetworkDiagnosticsPanel::resetScannerSnapshotState()
 {
+    scannerAppliedConfig_.reset();
     scannerSnapshotActivityAt_.reset();
     scannerCurrentTuning_.reset();
     scannerObservedRadioCount_ = 0;
@@ -2649,6 +2671,87 @@ void NetworkDiagnosticsPanel::clearScannerRadioRows()
     }
 }
 
+std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerAppliedManualTuning() const
+{
+    if (!scannerAppliedConfig_.has_value()
+        || scannerAppliedConfig_->mode != OsManager::ScannerConfigMode::Manual) {
+        return std::nullopt;
+    }
+
+    const auto tuningResult = scannerManualTargetToTuning(scannerAppliedConfig_->manualConfig);
+    if (tuningResult.isError()) {
+        return std::nullopt;
+    }
+
+    return tuningResult.value();
+}
+
+std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerRequestedManualTuning()
+    const
+{
+    if (scannerConfig_.mode != OsManager::ScannerConfigMode::Manual) {
+        return std::nullopt;
+    }
+
+    const auto tuningResult = scannerManualTargetToTuning(scannerConfig_.manualConfig);
+    if (tuningResult.isError()) {
+        return std::nullopt;
+    }
+
+    return tuningResult.value();
+}
+
+bool NetworkDiagnosticsPanel::isScannerManualRetunePending() const
+{
+    if (!scannerModeActive_ || scannerConfig_.mode != OsManager::ScannerConfigMode::Manual) {
+        return false;
+    }
+
+    const auto requestedTuning = scannerRequestedManualTuning();
+    if (!requestedTuning.has_value()) {
+        return false;
+    }
+
+    if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
+        return appliedTuning.value() != requestedTuning.value();
+    }
+
+    if (scannerCurrentTuning_.has_value()) {
+        return scannerCurrentTuning_.value() != requestedTuning.value();
+    }
+
+    return false;
+}
+
+std::optional<OsManager::ScannerTuning> NetworkDiagnosticsPanel::scannerDisplayedManualTuning()
+    const
+{
+    if (scannerConfig_.mode != OsManager::ScannerConfigMode::Manual) {
+        return std::nullopt;
+    }
+
+    if (scannerModeActive_) {
+        if (scannerCurrentTuning_.has_value()) {
+            return scannerCurrentTuning_;
+        }
+
+        if (const auto appliedTuning = scannerAppliedManualTuning(); appliedTuning.has_value()) {
+            return appliedTuning;
+        }
+    }
+
+    return scannerRequestedManualTuning();
+}
+
+NetworkDiagnosticsPanel::ScannerBand NetworkDiagnosticsPanel::scannerDisplayedBand() const
+{
+    if (const auto displayTuning = scannerDisplayedManualTuning(); displayTuning.has_value()) {
+        return displayTuning->band;
+    }
+
+    return scannerConfigBand(scannerConfig_);
+}
+
 std::string NetworkDiagnosticsPanel::scannerRadioIdentity(const ScannerObservedRadio& radio) const
 {
     if (!radio.bssid.empty()) {
@@ -2669,7 +2772,7 @@ bool NetworkDiagnosticsPanel::scannerRadioMatchesSelectedBand(
     }
 
     const int channel = radio.channel.value();
-    switch (scannerConfigBand(scannerConfig_)) {
+    switch (scannerDisplayedBand()) {
         case ScannerBand::Band24Ghz:
             return channel >= 1 && channel <= 14;
         case ScannerBand::Band5Ghz:
@@ -2681,7 +2784,7 @@ bool NetworkDiagnosticsPanel::scannerRadioMatchesSelectedBand(
 
 std::string NetworkDiagnosticsPanel::scannerSelectedBandLabel() const
 {
-    switch (scannerConfigBand(scannerConfig_)) {
+    switch (scannerDisplayedBand()) {
         case ScannerBand::Band24Ghz:
             return "2.4 GHz";
         case ScannerBand::Band5Ghz:
@@ -2693,13 +2796,17 @@ std::string NetworkDiagnosticsPanel::scannerSelectedBandLabel() const
 
 int NetworkDiagnosticsPanel::scannerSelectedWidthMhz() const
 {
+    if (const auto displayTuning = scannerDisplayedManualTuning(); displayTuning.has_value()) {
+        return displayTuning->widthMhz;
+    }
+
     return scannerConfigWidthMhz(scannerConfig_);
 }
 
 void NetworkDiagnosticsPanel::applyScannerConfigChange(OsManager::ScannerConfig nextConfig)
 {
     normalizeScannerConfig(nextConfig);
-    if (scannerConfigsEqual(nextConfig, scannerConfig_)) {
+    if (nextConfig == scannerConfig_) {
         updateScannerConfigControls();
         updateScannerControls();
         return;
@@ -2711,6 +2818,7 @@ void NetworkDiagnosticsPanel::applyScannerConfigChange(OsManager::ScannerConfig 
         return;
     }
 
+    ++scannerConfigRefreshToken_;
     scannerConfig_ = nextConfig;
     updateScannerConfigControls();
     updateScannerStatusLabel();
@@ -3273,8 +3381,10 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh(bool forceRefresh)
     }
 
     auto state = asyncState_;
-    std::thread([state, forceRefresh]() {
+    const uint64_t scannerConfigRefreshToken = scannerConfigRefreshToken_;
+    std::thread([state, forceRefresh, scannerConfigRefreshToken]() {
         PendingRefreshData data;
+        data.scannerConfigRefreshToken = scannerConfigRefreshToken;
         try {
             Network::WebSocketService client;
             const auto connectResult = client.connect(OS_MANAGER_ADDRESS, 2000);
@@ -3765,7 +3875,8 @@ bool NetworkDiagnosticsPanel::startAsyncScannerSnapshot()
                     const auto& okay = response.value().value();
                     ScannerSnapshot snapshot;
                     snapshot.active = okay.active;
-                    snapshot.config = okay.config;
+                    snapshot.requestedConfig = okay.requestedConfig;
+                    snapshot.appliedConfig = okay.appliedConfig;
                     snapshot.currentTuning = okay.currentTuning;
                     snapshot.detail = okay.detail;
                     snapshot.radios.reserve(okay.radios.size());
@@ -4417,6 +4528,7 @@ void NetworkDiagnosticsPanel::updateScannerStatus(
     scannerModeDetail_ = status.scannerModeDetail;
 
     if (!scannerModeActive_) {
+        scannerConfigSetInProgress_ = false;
         resetScannerSnapshotState();
         if (scannerChannelMap_) {
             scannerChannelMap_->clear();
@@ -4453,18 +4565,26 @@ void NetworkDiagnosticsPanel::updateScannerSnapshot(
     scannerSnapshotActivityAt_ = std::chrono::steady_clock::now();
     scannerSnapshotErrorMessage_.clear();
     scannerSnapshotStale_ = false;
+    scannerAppliedConfig_ = snapshot.appliedConfig;
     if (!scannerConfigSetInProgress_) {
-        scannerConfig_ = snapshot.config;
+        const bool configChanged = scannerConfig_ != snapshot.requestedConfig;
+        scannerConfig_ = snapshot.requestedConfig;
+        if (configChanged) {
+            ++scannerConfigRefreshToken_;
+            updateScannerConfigControls();
+        }
     }
     if (!snapshot.detail.empty()) {
         scannerModeDetail_ = snapshot.detail;
     }
 
     if (!scannerModeActive_) {
+        scannerConfigSetInProgress_ = false;
         resetScannerSnapshotState();
         if (scannerChannelMap_) {
             scannerChannelMap_->clear();
         }
+        updateScannerConfigControls();
         updateScannerStatusLabel();
         updateScannerChannelMap();
         updateScannerRadioList();
@@ -4564,12 +4684,12 @@ void NetworkDiagnosticsPanel::updateScannerChannelMap()
     }
 
     ScannerChannelMapWidget::Model model;
-    model.band = scannerConfigBand(scannerConfig_);
+    model.band = scannerDisplayedBand();
     model.mode = scannerConfig_.mode;
     if (scannerConfig_.mode == OsManager::ScannerConfigMode::Manual) {
-        const auto tuningResult = scannerManualTargetToTuning(scannerConfig_.manualConfig);
-        if (tuningResult.isValue() && tuningResult.value().band == model.band) {
-            model.currentTuning = tuningResult.value();
+        const auto displayTuning = scannerDisplayedManualTuning();
+        if (displayTuning.has_value() && displayTuning->band == model.band) {
+            model.currentTuning = displayTuning;
         }
     }
     else if (scannerCurrentTuning_.has_value() && scannerCurrentTuning_->band == model.band) {
@@ -4732,10 +4852,10 @@ void NetworkDiagnosticsPanel::updateScannerRadioList()
         return;
     }
 
-    if (scannerRenderedBand_ != scannerConfigBand(scannerConfig_)) {
+    if (scannerRenderedBand_ != scannerDisplayedBand()) {
         clearScannerRadioRows();
     }
-    scannerRenderedBand_ = scannerConfigBand(scannerConfig_);
+    scannerRenderedBand_ = scannerDisplayedBand();
 
     std::unordered_set<std::string> currentKeys;
     currentKeys.reserve(radios.size());
@@ -4842,6 +4962,9 @@ void NetworkDiagnosticsPanel::updateScannerRadioList()
 void NetworkDiagnosticsPanel::updateScannerStaleState()
 {
     const bool stale = isScannerSnapshotStale();
+    if (stale && scannerConfigSetInProgress_) {
+        scannerConfigSetInProgress_ = false;
+    }
     if (stale == scannerSnapshotStale_) {
         return;
     }
@@ -4863,11 +4986,21 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
                                             ? "Scanner fixed"
                                             : "Scanner active" };
         if (scannerConfig_.mode == OsManager::ScannerConfigMode::Manual) {
-            parts.push_back(scannerManualTargetShortLabel(
-                scannerConfig_.manualConfig.band,
-                scannerConfig_.manualConfig.widthMhz,
-                scannerConfig_.manualConfig.targetChannel));
-            parts.push_back(std::to_string(scannerConfig_.manualConfig.widthMhz) + " MHz");
+            if (const auto displayTuning = scannerDisplayedManualTuning();
+                displayTuning.has_value()) {
+                parts.push_back(scannerManualTargetShortLabel(
+                    displayTuning->band,
+                    displayTuning->widthMhz,
+                    displayTuning->centerChannel.value_or(displayTuning->primaryChannel)));
+                parts.push_back(std::to_string(displayTuning->widthMhz) + " MHz");
+            }
+            else {
+                parts.push_back(scannerManualTargetShortLabel(
+                    scannerConfig_.manualConfig.band,
+                    scannerConfig_.manualConfig.widthMhz,
+                    scannerConfig_.manualConfig.targetChannel));
+                parts.push_back(std::to_string(scannerConfig_.manualConfig.widthMhz) + " MHz");
+            }
         }
         else if (scannerCurrentTuning_.has_value()) {
             parts.push_back(
@@ -4894,6 +5027,21 @@ void NetworkDiagnosticsPanel::updateScannerStatusLabel()
         }
         else if (!scannerSnapshotReceived_) {
             text += "\nWaiting for scanner data.";
+        }
+        else {
+            // These conditions are not mutually exclusive.
+            if (isScannerManualRetunePending()) {
+                text += "\nRetuning to "
+                    + scannerManualTargetShortLabel(
+                            scannerConfig_.manualConfig.band,
+                            scannerConfig_.manualConfig.widthMhz,
+                            scannerConfig_.manualConfig.targetChannel)
+                    + ".";
+            }
+
+            if (!scannerCurrentTuning_.has_value() && !scannerModeDetail_.empty()) {
+                text += "\n" + scannerModeDetail_;
+            }
         }
     }
     else if (scannerStatusUnavailable_) {
@@ -5557,7 +5705,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     if (refreshData.has_value()) {
         scanInProgress_ = refreshData->scanInProgress;
         updateScannerStatus(refreshData->accessStatusResult);
-        if (!scannerConfigSetInProgress_ && refreshData->scannerConfigResult.has_value()
+        if (!scannerConfigSetInProgress_
+            && refreshData->scannerConfigRefreshToken == scannerConfigRefreshToken_
+            && refreshData->scannerConfigResult.has_value()
             && !refreshData->scannerConfigResult->isError()) {
             scannerConfig_ = refreshData->scannerConfigResult->value();
             updateScannerConfigControls();

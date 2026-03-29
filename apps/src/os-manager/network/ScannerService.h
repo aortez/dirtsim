@@ -35,7 +35,8 @@ public:
 
     struct Snapshot {
         bool running = false;
-        ScannerConfig config = scannerDefaultConfig();
+        ScannerConfig requestedConfig = scannerDefaultConfig();
+        ScannerConfig appliedConfig = scannerDefaultConfig();
         std::optional<ScannerTuning> currentTuning;
         std::vector<ObservedRadio> radios;
     };
@@ -93,7 +94,7 @@ private:
         std::optional<int> lastIncidentalLoggedChannel;
         std::optional<std::chrono::steady_clock::time_point> lastIncidentalLoggedAt;
         std::chrono::steady_clock::time_point lastSeenAt;
-        ScannerObservationKind observationKind = ScannerObservationKind::Direct;
+        ScannerObservationKind observationKind = ScannerObservationKind::Incidental;
     };
 
     void threadMain();
@@ -137,6 +138,7 @@ private:
     std::unordered_map<std::string, std::chrono::steady_clock::time_point>
         probeRequestLoggedAtByKey_;
     std::unordered_map<std::string, RadioState> radiosByBssid_;
+    ScannerConfig appliedConfig_ = scannerDefaultConfig();
     std::optional<ScannerTuning> currentTuning_;
     std::string lastError_;
     ScannerConfig requestedConfig_ = scannerDefaultConfig();

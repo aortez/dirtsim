@@ -409,7 +409,8 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
 {
     OsApi::ScannerSnapshotGet::Okay okay;
     okay.active = active;
-    okay.config = snapshot.config;
+    okay.requestedConfig = snapshot.requestedConfig;
+    okay.appliedConfig = snapshot.appliedConfig;
     okay.currentTuning = snapshot.currentTuning;
 
     const auto now = std::chrono::steady_clock::now();
@@ -435,8 +436,8 @@ OsApi::ScannerSnapshotGet::Okay toApiScannerSnapshotOkay(
     else if (!lastError.empty()) {
         okay.detail = lastError;
     }
-    else if (active && okay.config.mode == ScannerConfigMode::Manual) {
-        const auto& manualConfig = okay.config.manualConfig;
+    else if (active && okay.appliedConfig.mode == ScannerConfigMode::Manual) {
+        const auto& manualConfig = okay.appliedConfig.manualConfig;
         okay.detail = "Listening " + scannerBandLabel(manualConfig.band) + " "
             + scannerManualTargetShortLabel(
                           manualConfig.band, manualConfig.widthMhz, manualConfig.targetChannel)

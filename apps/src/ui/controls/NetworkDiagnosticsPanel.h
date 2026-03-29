@@ -207,6 +207,7 @@ private:
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
         Result<NetworkAccessStatus, std::string> accessStatusResult;
         std::optional<Result<OsManager::ScannerConfig, std::string>> scannerConfigResult;
+        uint64_t scannerConfigRefreshToken = 0;
         std::optional<std::vector<Network::WifiAccessPointInfo>> accessPoints;
         std::optional<std::string> activeBssid;
         std::optional<std::vector<NetworkInterfaceInfo>> localAddresses;
@@ -238,7 +239,8 @@ private:
 
     struct ScannerSnapshot {
         bool active = false;
-        OsManager::ScannerConfig config = OsManager::scannerDefaultConfig();
+        OsManager::ScannerConfig requestedConfig = OsManager::scannerDefaultConfig();
+        OsManager::ScannerConfig appliedConfig = OsManager::scannerDefaultConfig();
         std::optional<OsManager::ScannerTuning> currentTuning;
         std::string detail;
         std::vector<ScannerObservedRadio> radios;
@@ -327,6 +329,7 @@ private:
     bool scannerModeActive_ = false;
     bool scannerModeAvailable_ = false;
     std::string scannerModeDetail_;
+    std::optional<OsManager::ScannerConfig> scannerAppliedConfig_;
     std::optional<std::chrono::steady_clock::time_point> scannerSnapshotActivityAt_;
     std::optional<OsManager::ScannerTuning> scannerCurrentTuning_;
     size_t scannerObservedRadioCount_ = 0;
@@ -339,6 +342,7 @@ private:
     bool scannerSnapshotStale_ = false;
     bool scannerStatusUnavailable_ = false;
     OsManager::ScannerConfig scannerConfig_ = OsManager::scannerDefaultConfig();
+    uint64_t scannerConfigRefreshToken_ = 0;
     bool scannerConfigSetInProgress_ = false;
     bool scannerRadiosListScrolling_ = false;
     bool liveScanToggleLocked_ = false;
@@ -393,6 +397,11 @@ private:
     bool isScannerSnapshotStale() const;
     void resetScannerSnapshotState();
     void clearScannerRadioRows();
+    std::optional<OsManager::ScannerTuning> scannerAppliedManualTuning() const;
+    std::optional<OsManager::ScannerTuning> scannerDisplayedManualTuning() const;
+    ScannerBand scannerDisplayedBand() const;
+    bool isScannerManualRetunePending() const;
+    std::optional<OsManager::ScannerTuning> scannerRequestedManualTuning() const;
     std::string scannerRadioIdentity(const ScannerObservedRadio& radio) const;
     bool scannerRadioMatchesSelectedBand(const ScannerObservedRadio& radio) const;
     std::string scannerSelectedBandLabel() const;
