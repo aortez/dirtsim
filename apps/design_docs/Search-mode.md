@@ -59,7 +59,6 @@ We need an implementation path for Search that:
 ## Terms
 
 - `Scenario`: the world identity and config that the server can run, such as `Clock` or `NesSuperMarioBros`.
-- `Scenario setup`: a deterministic startup preset or procedure that brings a scenario to the desired starting state for a run, such as `player1_gameplay_1_1` for SMB.
 - `Training`: a learning workflow that evaluates populations and produces genomes.
 - `Search`: a search workflow that evaluates candidate trajectories or states and produces one or more plans, traces, or ranked outcomes.
 - `PlayerControlFrame`: one fixed-timestep gameplay-control state for a player. This is a quantized virtual controller layer, not raw hardware gamepad state.
@@ -79,7 +78,7 @@ We need an implementation path for Search that:
   - `SearchActive`
   - `PlanPlayback`
 - Add Search-specific results: Plans.
-- Reuse the scenario setup logic from nes training.  Later: reuse the duck spawn logic from clock scenario training... tree spawn logic from tree training, etc...
+- Reuse the same scenario initialization path that training already uses.
 - Keep shared scenario semantics below both workflows, but keep training orchestration and search orchestration separate.
 
 ## Existing stuff
@@ -199,7 +198,7 @@ PlanPlayback
 `SearchActive`
 
 - owns the active search session
-- owns search worker execution
+- owns search runner execution
 - owns progress broadcast cadence
 - owns best playback or best snapshot emission
 - owns result persistence on completion or stop
@@ -207,14 +206,13 @@ PlanPlayback
 
 `PlanPlayback`
 
-- plays back a saved plan with its attached scenario and player/organism setup
+- plays back a saved plan using the same scenario initialization path as training
 - owns playback timing, pause state, and playback frame emission
 - returns to `Idle` when stopped or when playback completes
 
 ## Execution Model
 
-- `search workers` evaluate states or action sequences using search runners.
-Visualization enabled for active search and whether the best playback are enabled are Search options.
+- `search runner` evaluates the active search policy and produces progress and a candidate plan
 - `playback runner` replays the current best candidate for the UI
 
 This mirrors an existing training pattern where the active UI shows a live best playback rather than every raw evaluation.
@@ -224,6 +222,13 @@ Phase 1 implementation:
 - one search session
 - one best-playback runner
 - one stream of search progress
+- `SearchStart` is empty for Phase 1
+- Search uses the same scenario initialization path and SMB evaluator path as training
+- the Phase 1 search policy is fixed: emit `PlayerControlFrame{ .xAxis = 127 }` for every frame
+- each advanced gameplay frame appends one frame to the candidate `Plan`
+- best playback is enabled by default
+- stop conditions match SMB training: end on life loss, or after 1800 gameplay frames without frontier improvement
+- on completion, save one `Plan` and return to `SearchIdle`
 
 ## Shared Infrastructure With Training
 
@@ -233,7 +238,7 @@ Extract reusable pieces when search would otherwise copy existing training code 
 
 Candidate shared pieces:
 
-- render stream subscription setup
+- render stream subscription plumbing
 - stream interval settings
 - best playback plumbing
 - pause/stop command patterns
@@ -267,16 +272,19 @@ API:
 struct SearchProgress {
     bool paused = false;
     double elapsedSeconds = 0.0;
-    uint64_t nodesExpanded = 0;
-    uint64_t uniqueStates = 0;
-    uint64_t transpositionHits = 0;
-    std::optional<double> bestFrontier = std::nullopt;
+    uint64_t elapsedFrames = 0;
+    double bestFrontier = 0.0;
 };
 ```
+
+- Phase 1 progress only reports truthful rollout metrics.
+- Search-specific diagnostics such as node counts are deferred until later phases.
 
 ### Plans
 
 ```cpp
+using PlanId = std::string; // UUID
+
 namespace PlayerControlLayout {
 inline constexpr uint8_t ButtonA = 1u << 0;
 inline constexpr uint8_t ButtonB = 1u << 1;
@@ -292,8 +300,14 @@ struct PlayerControlFrame {
     uint8_t buttons = 0;
 };
 
+struct PlanSummary {
+    PlanId id;
+    uint64_t elapsedFrames = 0;
+    double bestFrontier = 0.0;
+};
+
 struct Plan {
-    Scenario::EnumType scenarioId;
+    PlanSummary summary;
     std::vector<PlayerControlFrame> frames;
 };
 ```
@@ -301,7 +315,8 @@ struct Plan {
 - `Plan` stores gameplay controls for each fixed timestep.
 - This is a shared virtual-controller layer that can be adapted to NES and grid-based players.
 - NES-style direction input is derived from the signs of `xAxis` and `yAxis`.
-- Exact `Plan` attachment to scenario setup and player/organism identity is deferred until Phase 3.
+- Phase 1 plan metadata is intentionally minimal: `id`, `elapsedFrames`, and `bestFrontier`.
+- Exact `Plan` attachment to scenario and player/organism identity is deferred until Phase 3.
 
 ## Proposed API Surface
 
@@ -321,6 +336,24 @@ struct Plan {
 Rule:
 - `PlanList`, `PlanGet`, and `PlanDelete` are only valid from `SearchIdle` on the UI and `Idle` on the server.
 
+Phase 1 shapes:
+
+```cpp
+struct SearchStart {};
+
+struct PlanGet {
+    PlanId id;
+};
+
+struct PlanDelete {
+    PlanId id;
+};
+
+struct PlanPlaybackStart {
+    PlanId id;
+};
+```
+
 ### Server -> UI Broadcasts
 
 - `SearchProgress`
@@ -328,9 +361,22 @@ Rule:
 - `SearchBestPlaybackFrame`
 - `PlanSaved` (completion)
 
+Phase 1 shapes:
+
+```cpp
+using PlanSaved = PlanSummary;
+```
+
 ### Plan Repository
 
 Plans need their own repository: `PlanRepository`
+
+Phase 1 repository shape:
+
+- `PlanList` returns `std::vector<PlanSummary>`
+- `PlanGet` returns `Plan`
+- `PlanDelete` deletes by `PlanId`
+- `PlanSaved` broadcasts `PlanSummary`
 
 ## Phased Rollout
 
