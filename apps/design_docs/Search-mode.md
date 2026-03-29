@@ -73,8 +73,10 @@ We need an implementation path for Search that:
 - Introduce new UI states:
   - `SearchIdle`
   - `SearchActive`
-- Introduce new server state:
+  - `PlanPlayback`
+- Introduce new server states:
   - `SearchActive`
+  - `PlanPlayback`
 - Add Search-specific results: Plans.
 - Reuse the scenario setup logic from nes training.  Later: reuse the duck spawn logic from clock scenario training... tree spawn logic from tree training, etc...
 - Keep shared scenario semantics below both workflows, but keep training orchestration and search orchestration separate.
@@ -107,6 +109,9 @@ SearchIdle
   -> StartMenu
 
 SearchActive
+  -> SearchIdle
+
+PlanPlayback
   -> SearchIdle
 ```
 
@@ -158,6 +163,20 @@ The active search screen should visually resemble the current training active sh
 - pause/stop
 - rendering of playback
 
+#### Completion Behavior
+
+- return directly to `SearchIdle` when playback stops or reaches the end
+- restore `SearchIdle`, with `Plans` open and the last played plan selected
+
+#### Transition Rules
+
+- `SearchIdle` is the only entry point for starting a new search
+- `SearchIdle -> SearchActive` when the user starts a new Search
+- `SearchIdle -> PlanPlayback` when the user opens a saved Plan
+- `SearchActive -> SearchIdle` on completion or stop
+- `PlanPlayback -> SearchIdle` on stop, back, or playback completion
+- Phase 1 does not support direct `PlanPlayback -> SearchActive`; return to `SearchIdle` first
+
 ## Relvant Server State Machine
 
 ```text
@@ -167,6 +186,9 @@ Idle
   -> PlanPlayback
 
 SearchActive
+  -> Idle
+
+PlanPlayback
   -> Idle
 ```
 
@@ -183,7 +205,9 @@ SearchActive
 
 `PlanPlayback`
 
-- Plays back a plan with it's attached scenario/organism.
+- plays back a saved plan with its attached scenario and player/organism setup
+- owns playback timing, pause state, and playback frame emission
+- returns to `Idle` when stopped or when playback completes
 
 ## Execution Model
 
@@ -226,7 +250,7 @@ Re-use NES evaluation from training.  The evaluation state can follow the search
 
 Search must not assume an NES-specific model.
 
-Non-NES scenarios will also have an associated `OrganismType` and will use a hard coded brain type.
+Non-NES scenarios will have an associated `OrganismType`, such as duck, tree, or goose.
 
 ## Search Capability Discovery
 
@@ -248,7 +272,7 @@ struct SearchProgress {
 };
 ```
 
-### Search Result/Plans
+### Plans
 
 
 Needs planning:
@@ -274,16 +298,19 @@ struct Plan {
 - `PlanPlaybackStop`
 - `PlanPlaybackPauseSet`
 
+Rule:
+- `PlanList`, `PlanGet`, and `PlanDelete` are only valid from `SearchIdle` on the UI and `Idle` on the server.
+
 ### Server -> UI Broadcasts
 
 - `SearchProgress`
 - `SearchBestSnapshot`
 - `SearchBestPlaybackFrame`
-- `SearchResult` (completion)
+- `PlanSaved` (completion)
 
-### Search Results/Plans
+### Plan Repository
 
-Search results need their own repository: `SearchResultRepository`
+Plans need their own repository: `PlanRepository`
 
 ## Phased Rollout
 
@@ -291,7 +318,7 @@ Search results need their own repository: `SearchResultRepository`
 
 - add `SearchIdle`, `SearchActive`, `PlanPlayback`
 - add Search start/stop/pause/progress APIs
-- add dedicated Search Result types and repository
+- add dedicated Plan types and repository
 - minimal Search config panel and active screen
 - support `NesSuperMarioBros` only
 - brain dead search - hold right
@@ -300,7 +327,7 @@ Success criteria:
 
 - Search is reachable from `StartMenu`
 - Search can run, stream progress, and stop cleanly
-- Search Results are persisted and browsable
+- Plans are persisted and browsable
 - brain dead search - run right until death by first goomba
 - Playback can play back saved Plan
 
