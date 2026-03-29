@@ -176,6 +176,7 @@ The active search screen should visually resemble the current training active sh
 - `SearchIdle -> PlanPlayback` when the user opens a saved Plan
 - `SearchActive -> SearchIdle` on completion or stop
 - `PlanPlayback -> SearchIdle` on stop, back, or playback completion
+- Pause is runtime status within `SearchActive` and `PlanPlayback`, not a separate UI state
 - Phase 1 does not support direct `PlanPlayback -> SearchActive`; return to `SearchIdle` first
 
 ## Relvant Server State Machine
@@ -300,6 +301,7 @@ struct Plan {
 - `Plan` stores gameplay controls for each fixed timestep.
 - This is a shared virtual-controller layer that can be adapted to NES and grid-based players.
 - NES-style direction input is derived from the signs of `xAxis` and `yAxis`.
+- Exact `Plan` attachment to scenario setup and player/organism identity is deferred until Phase 3.
 
 ## Proposed API Surface
 
