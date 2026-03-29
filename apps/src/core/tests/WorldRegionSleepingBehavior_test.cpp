@@ -5297,6 +5297,115 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnPocketDump)
     }
 }
 
+TEST(
+    WorldRegionSleepingBehaviorTest, DISABLED_FractionalSurfacePoolReconstructedGeometryGaussSeidel)
+{
+    runFractionalSurfacePoolActivityCase(
+        "reconstructed_geometry_gs",
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        },
+        480,
+        240);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnReconstructedGeometryGaussSeidel)
+{
+    runSandboxWaterColumnActivityDecayCase(
+        "reconstructed_geometry_gs",
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        },
+        480,
+        4);
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_FractionalSurfacePoolReconstructedGeometryGaussSeidel32)
+{
+    runFractionalSurfacePoolActivityCase(
+        "reconstructed_geometry_gs_32iters",
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+            .pressureIterationsOverride = 32,
+        },
+        480,
+        240);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnReconstructedGeometryGaussSeidel32)
+{
+    runSandboxWaterColumnActivityDecayCase(
+        "reconstructed_geometry_gs_32iters",
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+            .pressureIterationsOverride = 32,
+        },
+        480,
+        4);
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_SandboxWaterColumnReconstructedGeometryGaussSeidel32Long)
+{
+    // Extended transient to confirm the 32-iter floor keeps decaying.
+    runSandboxWaterColumnActivityDecayCase(
+        "reconstructed_geometry_gs_32iters_long",
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+            .pressureIterationsOverride = 32,
+        },
+        480,
+        12);
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnPocketDumpGaussSeidel)
+{
+    // Same pocket dump as DISABLED_SandboxWaterColumnPocketDump but with Gauss-Seidel
+    // pressure solver to test whether it resolves the low-connectivity pocket oscillation.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+            .regionDumpMinX = 3,
+            .regionDumpMinY = 0,
+            .regionDumpMaxX = 7,
+            .regionDumpMaxY = 12,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kWaterColumnShutdownFrames = 160;
+    constexpr int kTotalFrames = 2080;
+    constexpr int kSampleStride = 480;
+
+    for (int frame = 1; frame <= kTotalFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kWaterColumnShutdownFrames
+            || ((frame - kWaterColumnShutdownFrames) % kSampleStride) != 0) {
+            continue;
+        }
+
+        const MacWaterActivityStats stats = computeMacWaterActivityStats(world);
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "--- frame=" << frame << " t=" << (static_cast<double>(frame) * kDt)
+                  << " maxFaceSig=" << stats.maxFaceSpeedSignificant << " ---\n"
+                  << dumpRegionPhases(diagnostics) << std::endl;
+    }
+}
+
 TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnBaselinePocketDump)
 {
     // Same pocket dump as above but with the baseline solver (no reconstructed geometry).
@@ -5362,6 +5471,334 @@ TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnLateFrameEnergy
             std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
                       << "P=" << sample.kineticProxyPartialFaces << " " << name
                       << "F=" << sample.kineticProxyNearFullFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_SandboxWaterColumnLateFrameEnergyReconstructedGaussSeidel)
+{
+    // Per-frame energy budget on GS+reconstructed path. Outputs u/v split and
+    // fluid-air boundary classification to identify where the remaining floor lives.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt);
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* name = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                      << "U=" << sample.kineticProxySignificantUFaces << " " << name
+                      << "V=" << sample.kineticProxySignificantVFaces << " " << name
+                      << "P=" << sample.kineticProxyPartialFaces << " " << name
+                      << "F=" << sample.kineticProxyNearFullFaces << " " << name
+                      << "FA=" << sample.kineticProxyFluidAirBoundaryFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnFrozenZeroedIterationSweep)
+{
+    // GS iteration sweep on the frozen-zeroed benchmark. Tests whether the 0.0085
+    // residual collapses with more iterations (solver convergence) or persists
+    // (true operator mismatch).
+    for (int iters : { 2, 4, 8, 16, 32, 64, 128 }) {
+        World world(kSandboxWorldWidth, kSandboxWorldHeight);
+        world.setWaterAdvanceDiagnosticsEnabled(true);
+        world.setWaterAdvanceDebugOptions(
+            WaterAdvanceDebugOptions{
+                .useGaussSeidelPressureSolver = true,
+                .useReconstructedFreeSurfaceGeometry = true,
+            });
+        SandboxScenario scenario;
+        initializeSandboxWaterColumnWorld(world, scenario);
+
+        constexpr int kSettleFrames = 2000;
+        for (int frame = 1; frame <= kSettleFrames; ++frame) {
+            world.advanceTime(kDt);
+        }
+
+        world.setWaterAdvanceDebugOptions(
+            WaterAdvanceDebugOptions{
+                .freezeWaterVolume = true,
+                .useGaussSeidelPressureSolver = true,
+                .useReconstructedFreeSurfaceGeometry = true,
+                .zeroVelocitiesBeforeForces = true,
+                .pressureIterationsOverride = iters,
+            });
+
+        world.advanceTime(kDt);
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            if (sample.phase != WaterAdvancePhase::Final) {
+                continue;
+            }
+            std::cout << "iters=" << iters << " kinSig=" << sample.kineticProxySignificant
+                      << " maxFace=" << sample.maxFaceSpeedSignificant
+                      << " U=" << sample.kineticProxySignificantUFaces
+                      << " V=" << sample.kineticProxySignificantVFaces
+                      << " P=" << sample.kineticProxyPartialFaces
+                      << " F=" << sample.kineticProxyNearFullFaces << "\n";
+        }
+    }
+}
+
+TEST(WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnFrozenZeroedOneStepDump)
+{
+    // Single-step frozen-geometry ROI dump from zero velocity. This is the primary
+    // root-cause benchmark: localizes exactly which faces/cells produce the 0.0085
+    // residual that the force pipeline creates on a nominally settled surface.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    // Settle to late state.
+    constexpr int kSettleFrames = 2000;
+    for (int frame = 1; frame <= kSettleFrames; ++frame) {
+        world.advanceTime(kDt);
+    }
+
+    // Enable frozen geometry + zeroed velocities + ROI dump for one step.
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .freezeWaterVolume = true,
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+            .zeroVelocitiesBeforeForces = true,
+            .regionDumpMinX = 0,
+            .regionDumpMinY = 0,
+            .regionDumpMaxX = 6,
+            .regionDumpMaxY = 15,
+        });
+
+    world.advanceTime(kDt);
+
+    WaterAdvanceDiagnostics diagnostics{};
+    ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+    std::cout << dumpRegionPhases(diagnostics) << std::endl;
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest, DISABLED_SandboxWaterColumnFrozenStateReconstructedGaussSeidel)
+{
+    // Frozen-state consistency test. Runs to late state with GS+reconstructed,
+    // then tests two variants with frozen geometry:
+    //   1. Frozen geometry + existing velocities (does the residual persist?)
+    //   2. Frozen geometry + zeroed velocities (does force balance alone create motion?)
+    auto runVariant = [](const char* label, bool zeroVelocities) {
+        World world(kSandboxWorldWidth, kSandboxWorldHeight);
+        world.setWaterAdvanceDiagnosticsEnabled(true);
+        world.setWaterAdvanceDebugOptions(
+            WaterAdvanceDebugOptions{
+                .useGaussSeidelPressureSolver = true,
+                .useReconstructedFreeSurfaceGeometry = true,
+            });
+        SandboxScenario scenario;
+        initializeSandboxWaterColumnWorld(world, scenario);
+
+        // Settle to late state.
+        constexpr int kSettleFrames = 2000;
+        for (int frame = 1; frame <= kSettleFrames; ++frame) {
+            world.advanceTime(kDt);
+        }
+
+        // Enable frozen geometry (and optionally zero velocities).
+        world.setWaterAdvanceDebugOptions(
+            WaterAdvanceDebugOptions{
+                .freezeWaterVolume = true,
+                .useGaussSeidelPressureSolver = true,
+                .useReconstructedFreeSurfaceGeometry = true,
+                .zeroVelocitiesBeforeForces = zeroVelocities, // Must follow declaration order.
+            });
+
+        constexpr int kSampleFrames = 60;
+        for (int frame = kSettleFrames + 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+            world.advanceTime(kDt);
+
+            WaterAdvanceDiagnostics diagnostics{};
+            if (!world.tryGetWaterAdvanceDiagnostics(diagnostics)) {
+                continue;
+            }
+
+            std::cout << "case=" << label << " frame=" << frame
+                      << " t=" << (static_cast<double>(frame) * kDt);
+            for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+                const char* name = waterAdvancePhaseShortName(sample.phase);
+                std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                          << "U=" << sample.kineticProxySignificantUFaces << " " << name
+                          << "V=" << sample.kineticProxySignificantVFaces << " " << name
+                          << "P=" << sample.kineticProxyPartialFaces << " " << name
+                          << "F=" << sample.kineticProxyNearFullFaces << " " << name
+                          << "FA=" << sample.kineticProxyFluidAirBoundaryFaces;
+            }
+            std::cout << "\n";
+        }
+    };
+
+    runVariant("frozen_existing_vel", false);
+    std::cout << "\n";
+    runVariant("frozen_zeroed_vel", true);
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_SandboxWaterColumnLateFrameEnergyReconstructedGaussSeidelNoUHydroNearInterface)
+{
+    // Ablates u-face hydro near partial/interface cells on GS+reconstructed.
+    // Tests whether interface-adjacent horizontal hydro drives the 0.034 floor.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .disableUFaceHydroNearInterface = true,
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt);
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* name = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                      << "U=" << sample.kineticProxySignificantUFaces << " " << name
+                      << "V=" << sample.kineticProxySignificantVFaces << " " << name
+                      << "P=" << sample.kineticProxyPartialFaces << " " << name
+                      << "F=" << sample.kineticProxyNearFullFaces << " " << name
+                      << "FA=" << sample.kineticProxyFluidAirBoundaryFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_SandboxWaterColumnLateFrameEnergyReconstructedGaussSeidelReconstructedHydro)
+{
+    // GS+reconstructed geometry+reconstructed hydro assembly. Tests whether
+    // geometry-aware u-face hydro gradients reduce the near-full v-face floor.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedHydroAssembly = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt);
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* name = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                      << "U=" << sample.kineticProxySignificantUFaces << " " << name
+                      << "V=" << sample.kineticProxySignificantVFaces << " " << name
+                      << "P=" << sample.kineticProxyPartialFaces << " " << name
+                      << "F=" << sample.kineticProxyNearFullFaces << " " << name
+                      << "FA=" << sample.kineticProxyFluidAirBoundaryFaces;
+        }
+        std::cout << "\n";
+    }
+}
+
+TEST(
+    WorldRegionSleepingBehaviorTest,
+    DISABLED_SandboxWaterColumnLateFrameEnergyReconstructedGaussSeidelNoHydro)
+{
+    // Hydro ablation on GS+reconstructed. If the near-full v-face floor drops,
+    // hydro is the driver. If it persists, something else sustains it.
+    World world(kSandboxWorldWidth, kSandboxWorldHeight);
+    world.setWaterAdvanceDiagnosticsEnabled(true);
+    world.setWaterAdvanceDebugOptions(
+        WaterAdvanceDebugOptions{
+            .disableHydroPressureGradient = true,
+            .useGaussSeidelPressureSolver = true,
+            .useReconstructedFreeSurfaceGeometry = true,
+        });
+    SandboxScenario scenario;
+    initializeSandboxWaterColumnWorld(world, scenario);
+
+    constexpr int kSettleFrames = 2000;
+    constexpr int kSampleFrames = 60;
+
+    for (int frame = 1; frame <= kSettleFrames + kSampleFrames; ++frame) {
+        world.advanceTime(kDt);
+
+        if (frame <= kSettleFrames) {
+            continue;
+        }
+
+        WaterAdvanceDiagnostics diagnostics{};
+        ASSERT_TRUE(world.tryGetWaterAdvanceDiagnostics(diagnostics));
+
+        std::cout << "frame=" << frame << " t=" << (static_cast<double>(frame) * kDt);
+        for (const WaterAdvancePhaseSample& sample : diagnostics.phaseSamples) {
+            const char* name = waterAdvancePhaseShortName(sample.phase);
+            std::cout << " " << name << "=" << sample.kineticProxySignificant << " " << name
+                      << "U=" << sample.kineticProxySignificantUFaces << " " << name
+                      << "V=" << sample.kineticProxySignificantVFaces << " " << name
+                      << "P=" << sample.kineticProxyPartialFaces << " " << name
+                      << "F=" << sample.kineticProxyNearFullFaces << " " << name
+                      << "FA=" << sample.kineticProxyFluidAirBoundaryFaces;
         }
         std::cout << "\n";
     }

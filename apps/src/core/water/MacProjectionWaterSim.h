@@ -74,6 +74,7 @@ private:
     std::vector<float> pressureScratch_;
     std::vector<float> hydroPressure_;
     std::vector<float> uFaceFluidAirBoundaryScale_;
+    std::vector<float> uFaceHydroGradient_;
     std::vector<float> uFaceLiquidWeight_;
     std::vector<float> vFaceFluidAirBoundaryScale_;
     std::vector<float> vFaceLiquidWeight_;

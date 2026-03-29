@@ -40,13 +40,24 @@ struct WaterAdvanceDebugOptions {
     bool disableGravityPreStepOnBottomInterfaceFaces = false;
     bool disableGravityPreStepOnTopInterfaceFaces = false;
     bool disableHydroPressureGradient = false;
+    bool disableUFaceHydroNearInterface = false;
     bool excludeAirNeighborsFromPressureDenominator = false;
+    bool freezeWaterVolume = false;
     bool scaleFluidAirPressureCorrectionByCellFill = false;
     bool scaleProjectionDivergenceByCellFill = false;
     bool scaleGravityByVFaceFill = false;
     bool scaleHydroGradientByVFaceFill = false;
     bool treatFluidAirPressureBoundaryAtFace = false;
+    bool useGaussSeidelPressureSolver = false;
+    bool useReconstructedHydroAssembly = false;
     bool useReconstructedFreeSurfaceGeometry = false;
+    bool zeroVelocitiesBeforeForces = false;
+
+    // Pressure iteration override. When > 0, overrides the physics settings value.
+    int pressureIterationsOverride = 0;
+
+    // SOR relaxation factor for Gauss-Seidel pressure solver. 1.0 = pure GS, >1.0 = SOR.
+    float sorOmega = 1.0f;
 
     // Region-of-interest dump. When minX <= maxX and minY <= maxY, each phase sample
     // includes per-cell and per-face state for this bounding box.
@@ -141,9 +152,12 @@ struct WaterAdvancePhaseSample {
     float absProjectedDivergencePartial = 0.0f;
     float absProjectedDivergenceSignificant = 0.0f;
     float kineticProxy = 0.0f;
+    float kineticProxyFluidAirBoundaryFaces = 0.0f;
     float kineticProxyNearFullFaces = 0.0f;
     float kineticProxyPartialFaces = 0.0f;
     float kineticProxySignificant = 0.0f;
+    float kineticProxySignificantUFaces = 0.0f;
+    float kineticProxySignificantVFaces = 0.0f;
     float maxFluidAirBoundaryScale = 0.0f;
     float maxAbsProjectedDivergence = 0.0f;
     float maxAbsProjectedDivergenceBelowPartial = 0.0f;

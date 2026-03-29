@@ -201,6 +201,7 @@ void MacProjectionWaterSim::reset()
     std::fill(pressureScratch_.begin(), pressureScratch_.end(), 0.0f);
     std::fill(hydroPressure_.begin(), hydroPressure_.end(), 0.0f);
     std::fill(uFaceFluidAirBoundaryScale_.begin(), uFaceFluidAirBoundaryScale_.end(), 1.0f);
+    std::fill(uFaceHydroGradient_.begin(), uFaceHydroGradient_.end(), 0.0f);
     std::fill(uFaceLiquidWeight_.begin(), uFaceLiquidWeight_.end(), 0.0f);
     std::fill(vFaceFluidAirBoundaryScale_.begin(), vFaceFluidAirBoundaryScale_.end(), 1.0f);
     std::fill(vFaceLiquidWeight_.begin(), vFaceLiquidWeight_.end(), 0.0f);
@@ -239,6 +240,7 @@ void MacProjectionWaterSim::resize(int worldWidth, int worldHeight)
     pressureScratch_.assign(cellCount, 0.0f);
     hydroPressure_.assign(cellCount, 0.0f);
     uFaceFluidAirBoundaryScale_.assign(uFaceCount, 1.0f);
+    uFaceHydroGradient_.assign(uFaceCount, 0.0f);
     uFaceLiquidWeight_.assign(uFaceCount, 0.0f);
     vFaceFluidAirBoundaryScale_.assign(vFaceCount, 1.0f);
     vFaceLiquidWeight_.assign(vFaceCount, 0.0f);
@@ -503,6 +505,12 @@ void MacProjectionWaterSim::captureAdvancePhaseSample(WaterAdvancePhase phase, f
             if (leftVolume >= kSignificantWaterVolume || rightVolume >= kSignificantWaterVolume) {
                 const float uu = u * u;
                 sample.kineticProxySignificant += uu;
+                sample.kineticProxySignificantUFaces += uu;
+                const bool leftProjected = projectionMask_[leftIdx] != 0;
+                const bool rightProjected = projectionMask_[rightIdx] != 0;
+                if (leftProjected != rightProjected) {
+                    sample.kineticProxyFluidAirBoundaryFaces += uu;
+                }
                 const bool leftPartial =
                     leftVolume > kMinWaterVolume && leftVolume < kNearlyFullWaterVolume;
                 const bool rightPartial =
@@ -534,6 +542,12 @@ void MacProjectionWaterSim::captureAdvancePhaseSample(WaterAdvancePhase phase, f
             if (topVolume >= kSignificantWaterVolume || bottomVolume >= kSignificantWaterVolume) {
                 const float vv = v * v;
                 sample.kineticProxySignificant += vv;
+                sample.kineticProxySignificantVFaces += vv;
+                const bool topProjected = projectionMask_[topIdx] != 0;
+                const bool bottomProjected = projectionMask_[bottomIdx] != 0;
+                if (topProjected != bottomProjected) {
+                    sample.kineticProxyFluidAirBoundaryFaces += vv;
+                }
                 const bool topPartial =
                     topVolume > kMinWaterVolume && topVolume < kNearlyFullWaterVolume;
                 const bool bottomPartial =
@@ -1238,6 +1252,41 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                 }
             }
         }
+
+        // Geometry-aware u-face hydro gradient. Computes the hydrostatic pressure
+        // at each u-face using the PLIC liquid height at the face position, instead
+        // of the column-averaged cell volume used by the default hydro assembly.
+        if (waterAdvanceDebugOptions_.useReconstructedHydroAssembly) {
+            for (int x = 1; x < width_; ++x) {
+                float cumFromLeftCol = 0.0f;
+                float cumFromRightCol = 0.0f;
+                for (int y = 0; y < height_; ++y) {
+                    const size_t leftIdx = cellIndex(width_, x - 1, y);
+                    const size_t rightIdx = cellIndex(width_, x, y);
+
+                    // Left column: fluid height at the face (right edge, local x = +0.5).
+                    if (solidMask_[leftIdx] != 0 || fluidMask_[leftIdx] == 0) {
+                        cumFromLeftCol = 0.0f;
+                    }
+                    else {
+                        const Interval1D interval = uFaceIntervalForCell(leftIdx, true, 0.5f);
+                        cumFromLeftCol += intervalLength(interval);
+                    }
+
+                    // Right column: fluid height at the face (left edge, local x = -0.5).
+                    if (solidMask_[rightIdx] != 0 || fluidMask_[rightIdx] == 0) {
+                        cumFromRightCol = 0.0f;
+                    }
+                    else {
+                        const Interval1D interval = uFaceIntervalForCell(rightIdx, true, -0.5f);
+                        cumFromRightCol += intervalLength(interval);
+                    }
+
+                    const size_t faceIdx = uFaceIndex(width_, x, y);
+                    uFaceHydroGradient_[faceIdx] = gravity * (cumFromRightCol - cumFromLeftCol);
+                }
+            }
+        }
     }
 
     if (totalWaterVolume <= 0.0f) {
@@ -1304,6 +1353,18 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             : legacyFluidAirBoundaryScale;
     };
 
+    // Frozen-state diagnostic: save volumes before forces and optionally zero velocities.
+    const bool freezeVolume = waterAdvanceDebugOptions_.freezeWaterVolume;
+    std::vector<float> frozenVolume;
+    if (freezeVolume) {
+        frozenVolume = waterVolume_;
+    }
+
+    if (waterAdvanceDebugOptions_.zeroVelocitiesBeforeForces) {
+        std::fill(uFaceVelocity_.begin(), uFaceVelocity_.end(), 0.0f);
+        std::fill(vFaceVelocity_.begin(), vFaceVelocity_.end(), 0.0f);
+    }
+
     captureAdvancePhaseSample(WaterAdvancePhase::BeforeGravityPreStep, invDt);
 
     for (int y = 0; y <= height_; ++y) {
@@ -1361,8 +1422,24 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
             }
 
             if (!waterAdvanceDebugOptions_.disableHydroPressureGradient) {
-                uFaceVelocity_[faceIdx] -=
-                    dt * (hydroPressure_[rightIdx] - hydroPressure_[leftIdx]);
+                bool skipHydro = false;
+                if (waterAdvanceDebugOptions_.disableUFaceHydroNearInterface) {
+                    constexpr float kPartialMin = 0.0001f;
+                    constexpr float kPartialMax = 0.95f;
+                    const float leftVol = std::clamp(waterVolume_[leftIdx], 0.0f, 1.0f);
+                    const float rightVol = std::clamp(waterVolume_[rightIdx], 0.0f, 1.0f);
+                    const bool leftPartial = leftVol > kPartialMin && leftVol < kPartialMax;
+                    const bool rightPartial = rightVol > kPartialMin && rightVol < kPartialMax;
+                    skipHydro = leftPartial || rightPartial;
+                }
+                if (!skipHydro) {
+                    const float gradient =
+                        (waterAdvanceDebugOptions_.useReconstructedHydroAssembly
+                         && waterAdvanceDebugOptions_.useReconstructedFreeSurfaceGeometry)
+                        ? uFaceHydroGradient_[faceIdx]
+                        : (hydroPressure_[rightIdx] - hydroPressure_[leftIdx]);
+                    uFaceVelocity_[faceIdx] -= dt * gradient;
+                }
             }
         }
     }
@@ -1459,12 +1536,20 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     std::fill(pressure_.begin(), pressure_.end(), 0.0f);
     std::fill(pressureScratch_.begin(), pressureScratch_.end(), 0.0f);
 
-    for (int iter = 0; iter < parameters.pressureIterations; ++iter) {
+    const bool useGaussSeidel = waterAdvanceDebugOptions_.useGaussSeidelPressureSolver;
+    const float sorOmega = waterAdvanceDebugOptions_.sorOmega;
+    const int pressureIterations = waterAdvanceDebugOptions_.pressureIterationsOverride > 0
+        ? waterAdvanceDebugOptions_.pressureIterationsOverride
+        : parameters.pressureIterations;
+
+    for (int iter = 0; iter < pressureIterations; ++iter) {
         for (int y = 0; y < height_; ++y) {
             for (int x = 0; x < width_; ++x) {
                 const size_t idx = cellIndex(width_, x, y);
                 if (projectionMask_[idx] == 0) {
-                    pressureScratch_[idx] = 0.0f;
+                    if (!useGaussSeidel) {
+                        pressureScratch_[idx] = 0.0f;
+                    }
                     continue;
                 }
 
@@ -1503,7 +1588,12 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                     x, y + 1, vFaceWeight(x, y + 1), vFaceFluidAirBoundaryScale(x, y + 1));
 
                 if (denom <= 0.0f) {
-                    pressureScratch_[idx] = 0.0f;
+                    if (useGaussSeidel) {
+                        pressure_[idx] = 0.0f;
+                    }
+                    else {
+                        pressureScratch_[idx] = 0.0f;
+                    }
                     continue;
                 }
 
@@ -1512,11 +1602,22 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
                     divergenceTerm *= std::clamp(waterVolume_[idx], 0.0f, 1.0f);
                 }
 
-                pressureScratch_[idx] = (sum - divergenceTerm) / denom;
+                const float update = (sum - divergenceTerm) / denom;
+
+                if (useGaussSeidel) {
+                    pressure_[idx] = (sorOmega != 1.0f)
+                        ? (1.0f - sorOmega) * pressure_[idx] + sorOmega * update
+                        : update;
+                }
+                else {
+                    pressureScratch_[idx] = update;
+                }
             }
         }
 
-        std::swap(pressure_, pressureScratch_);
+        if (!useGaussSeidel) {
+            std::swap(pressure_, pressureScratch_);
+        }
     }
 
     for (int y = 0; y < height_; ++y) {
@@ -1837,6 +1938,11 @@ void MacProjectionWaterSim::advanceTime(World& world, double deltaTimeSeconds)
     }
     pendingGuidedWaterDrains_.clear();
     captureAdvancePhaseSample(WaterAdvancePhase::Final, invDt);
+
+    // Frozen-state diagnostic: restore volumes to prevent transport/topology changes.
+    if (freezeVolume) {
+        waterVolume_ = frozenVolume;
+    }
 
     // Flush subnormal residue to zero. These values are effectively numerical noise but can
     // persist forever (and keep drain/presence logic latched).
