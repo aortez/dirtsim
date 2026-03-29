@@ -62,7 +62,8 @@ We need an implementation path for Search that:
 - `Scenario setup`: a deterministic startup preset or procedure that brings a scenario to the desired starting state for a run, such as `player1_gameplay_1_1` for SMB.
 - `Training`: a learning workflow that evaluates populations and produces genomes.
 - `Search`: a search workflow that evaluates candidate trajectories or states and produces one or more plans, traces, or ranked outcomes.
-- `Plan`: the action sequence or control trace that Search returns as its current best answer.
+- `PlayerControlFrame`: one fixed-timestep gameplay-control state for a player. This is a quantized virtual controller layer, not raw hardware gamepad state.
+- `Plan`: a fixed-timestep sequence of `PlayerControlFrame` values that Search returns as its current best answer.
 - `Player`: the controllable subject within a scenario for Search purposes, such as `player1` in SMB or `duck` in Clock.
 
 
@@ -274,14 +275,31 @@ struct SearchProgress {
 
 ### Plans
 
-
-Needs planning:
 ```cpp
+namespace PlayerControlLayout {
+inline constexpr uint8_t ButtonA = 1u << 0;
+inline constexpr uint8_t ButtonB = 1u << 1;
+inline constexpr uint8_t ButtonX = 1u << 2;
+inline constexpr uint8_t ButtonY = 1u << 3;
+inline constexpr uint8_t ButtonSelect = 1u << 4;
+inline constexpr uint8_t ButtonStart = 1u << 5;
+}
+
+struct PlayerControlFrame {
+    int8_t xAxis = 0; // -127..127
+    int8_t yAxis = 0; // -127..127
+    uint8_t buttons = 0;
+};
+
 struct Plan {
     Scenario::EnumType scenarioId;
-    std::vector<InputAction> inputs;
+    std::vector<PlayerControlFrame> frames;
 };
 ```
+
+- `Plan` stores gameplay controls for each fixed timestep.
+- This is a shared virtual-controller layer that can be adapted to NES and grid-based players.
+- NES-style direction input is derived from the signs of `xAxis` and `yAxis`.
 
 ## Proposed API Surface
 
