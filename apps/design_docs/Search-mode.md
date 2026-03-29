@@ -388,6 +388,7 @@ Phase 1 repository shape:
 - minimal Search config panel and active screen
 - support `NesSuperMarioBros` only
 - brain dead search - hold right
+- add basic functional tests for search and playback
 
 Success criteria:
 
@@ -396,6 +397,17 @@ Success criteria:
 - Plans are persisted and browsable
 - brain dead search - run right until death by first goomba
 - Playback can play back saved Plan
+- a functional test can run hold-right search and verify a saved `Plan`
+- a functional test can start playback for a saved `Plan` and return cleanly to idle
+
+Phase 1 functional tests:
+
+- `canSearchHoldRight`
+  restart services, start Search, wait for completion, verify `PlanList` grows by one, then `PlanGet` the new `Plan` and verify `elapsedFrames > 0`, `bestFrontier > 0`, and all frames match the hold-right policy
+- `canPlaybackPlan`
+  create or load a saved `Plan`, start playback, verify UI and server enter `PlanPlayback`, stop playback, and verify both return cleanly to idle
+- `canPauseSearch`
+  start Search, pause it, verify `SearchProgress.paused == true`, verify `elapsedFrames` stops advancing while paused, then resume and verify progress continues
 
 ### Phase 2: Basic Search implementation.
 
