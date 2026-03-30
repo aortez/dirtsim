@@ -128,8 +128,10 @@ void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 void smolnesRuntimeSetApuSampleCallback(
     SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
-void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
+void smolnesRuntimeSetApuEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 void smolnesRuntimeSetDetailedTimingEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetPixelOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
 
 #ifdef __cplusplus
 }

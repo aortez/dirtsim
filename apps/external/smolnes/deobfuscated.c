@@ -73,6 +73,15 @@
 #define SMOLNES_APU_CLOCK_END()
 #endif
 
+#ifndef SMOLNES_PIXEL_OUTPUT
+#define SMOLNES_PIXEL_OUTPUT(offset, color, palette) \
+    do { \
+        uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0]; \
+        frame_buffer_palette[offset] = palette_index; \
+        frame_buffer[offset] = nes_palette_rgb565[palette_index]; \
+    } while (0)
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -761,10 +770,7 @@ loop:
             }
           }
 
-          uint8_t palette_index = palette_ram[color ? palette | color : 0];
-          frame_buffer_palette[scanline_fb_offset + dot] = palette_index;
-          frame_buffer[scanline_fb_offset + dot] =
-              nes_palette_rgb565[palette_index];
+          SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + dot, color, palette);
 
           shift_hi <<= 1;
           shift_lo <<= 1;

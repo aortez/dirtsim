@@ -108,6 +108,8 @@ struct SmolnesRuntimeHandle {
     SmolnesApuSampleCallback apuSampleCallback;
     void* apuSampleCallbackUserdata;
 
+    bool apuEnabled;
+    bool pixelOutputEnabled;
     bool detailedTimingEnabled;
     uint32_t timingSampleRate;
     SmolnesRuntimePacingModeValue pacingMode;
@@ -125,6 +127,8 @@ static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 
 // these are no-ops. When enabled, only every Nth instruction is timed
 // (controlled by timingSampleRate) and results are scaled at flush time.
 // Frame-level timing (FRAME_EXEC) is always active.
+static SMOLNES_THREAD_LOCAL bool gApuEnabled = true;
+static SMOLNES_THREAD_LOCAL bool gPixelOutputEnabled = true;
 static SMOLNES_THREAD_LOCAL bool gDetailedTimingEnabled = true;
 static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleRate = 64;
 static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleCounter = 0;
@@ -366,6 +370,8 @@ static void* runtimeThreadMain(void* arg)
     }
 
     gCurrentRuntime = runtime;
+    gApuEnabled = runtime->apuEnabled;
+    gPixelOutputEnabled = runtime->pixelOutputEnabled;
     gDetailedTimingEnabled = runtime->detailedTimingEnabled;
     gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
     gApuStepActive = false;
@@ -620,6 +626,8 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
             (runtime->latchedController1SequenceId == 0) ? 0 : monotonicNowNs();
     }
     latchThreadKeyboardStateFromRuntime(runtime);
+    gApuEnabled = runtime->apuEnabled;
+    gPixelOutputEnabled = runtime->pixelOutputEnabled;
     gDetailedTimingEnabled = runtime->detailedTimingEnabled;
     gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
     pthread_mutex_unlock(&runtime->runtimeMutex);
@@ -917,9 +925,20 @@ static uint8_t smolnesRuntimeWrappedApuRead(uint16_t addr)
 
 static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 {
+    if (!gApuEnabled) {
+        return;
+    }
     smolnesApuClock(&gApuState, cycles);
 }
 
+#define SMOLNES_PIXEL_OUTPUT(offset, color, palette) \
+    do { \
+        if (gPixelOutputEnabled) { \
+            uint8_t pi_ = palette_ram[(color) ? (palette) | (color) : 0]; \
+            frame_buffer_palette[offset] = pi_; \
+            frame_buffer[offset] = nes_palette_rgb565[pi_]; \
+        } \
+    } while (0)
 #define SMOLNES_APU_CLOCK_BEGIN smolnesRuntimeWrappedApuClockBegin
 #define SMOLNES_APU_CLOCK_END smolnesRuntimeWrappedApuClockEnd
 #define SMOLNES_APU_WRITE(addr, value) smolnesRuntimeWrappedApuWrite(addr, value)
@@ -951,6 +970,7 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
 #undef SMOLNES_EVENT_POLL_END
+#undef SMOLNES_PIXEL_OUTPUT
 #undef SMOLNES_APU_CLOCK_BEGIN
 #undef SMOLNES_APU_CLOCK_END
 #undef SMOLNES_APU_WRITE
@@ -1045,6 +1065,8 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     snprintf(runtime->romPath, sizeof(runtime->romPath), "%s", romPath);
 
     runtime->stopRequested = false;
+    runtime->apuEnabled = true;
+    runtime->pixelOutputEnabled = true;
     runtime->detailedTimingEnabled = true;
     runtime->timingSampleRate = 64;
     runtime->healthy = true;
@@ -1600,6 +1622,26 @@ void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePa
     runtime->realtimePacingOriginMs = 0.0;
     runtime->realtimePacingOriginFrame = 0;
     pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeSetPixelOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->pixelOutputEnabled = enabled;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeSetApuEnabled(SmolnesRuntimeHandle* runtime, bool enabled)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->apuEnabled = enabled;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 

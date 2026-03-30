@@ -489,10 +489,24 @@ void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
     }
 }
 
+void NesSmolnesScenarioDriver::setApuEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setApuEnabled(enabled);
+    }
+}
+
 void NesSmolnesScenarioDriver::setDetailedTimingEnabled(bool enabled)
 {
     if (runtime_) {
         runtime_->setDetailedTimingEnabled(enabled);
+    }
+}
+
+void NesSmolnesScenarioDriver::setPixelOutputEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setPixelOutputEnabled(enabled);
     }
 }
 

@@ -86,7 +86,9 @@ public:
     void setController1State(uint8_t buttonMask) override;
     void setLiveController1State(uint8_t buttonMask, uint64_t observedTimestampNs);
 
+    void setApuEnabled(bool enabled);
     void setAudioPlaybackEnabled(bool enabled);
+    void setPixelOutputEnabled(bool enabled);
     void setAudioVolumePercent(int percent);
     void setDetailedTimingEnabled(bool enabled);
     void setLiveServerPacingEnabled(bool enabled);

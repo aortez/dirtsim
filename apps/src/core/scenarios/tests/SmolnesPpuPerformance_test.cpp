@@ -20,6 +20,8 @@ struct PpuPerfParam {
     std::function<std::optional<std::filesystem::path>()> resolveRom;
     const char* label;
     bool detailedTiming = true;
+    bool apuEnabled = true;
+    bool pixelOutputEnabled = true;
 };
 
 std::string nameGenerator(const testing::TestParamInfo<PpuPerfParam>& info)
@@ -64,6 +66,12 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
     ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
 
+    if (!param.apuEnabled) {
+        driver.setApuEnabled(false);
+    }
+    if (!param.pixelOutputEnabled) {
+        driver.setPixelOutputEnabled(false);
+    }
     if (!param.detailedTiming) {
         driver.setDetailedTimingEnabled(false);
     }
@@ -172,25 +180,26 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             memCopyMs);
     }
 
-    // Correctness: verify rendering produced non-trivial output.
-    ASSERT_TRUE(paletteFrame100.has_value()) << "No palette frame at frame 100.";
-    ASSERT_TRUE(paletteFrame500.has_value()) << "No palette frame at frame 500.";
-    ASSERT_FALSE(paletteFrame100->indices.empty()) << "Palette frame 100 has no data.";
-    ASSERT_FALSE(paletteFrame500->indices.empty()) << "Palette frame 500 has no data.";
+    if (param.pixelOutputEnabled) {
+        ASSERT_TRUE(paletteFrame100.has_value()) << "No palette frame at frame 100.";
+        ASSERT_TRUE(paletteFrame500.has_value()) << "No palette frame at frame 500.";
+        ASSERT_FALSE(paletteFrame100->indices.empty()) << "Palette frame 100 has no data.";
+        ASSERT_FALSE(paletteFrame500->indices.empty()) << "Palette frame 500 has no data.";
 
-    const bool frame100AllZero = std::all_of(
-        paletteFrame100->indices.begin(), paletteFrame100->indices.end(), [](uint8_t v) {
-            return v == 0;
-        });
-    const bool frame500AllZero = std::all_of(
-        paletteFrame500->indices.begin(), paletteFrame500->indices.end(), [](uint8_t v) {
-            return v == 0;
-        });
-    EXPECT_FALSE(frame100AllZero) << "Palette frame 100 is all-zero (rendering broken).";
-    EXPECT_FALSE(frame500AllZero) << "Palette frame 500 is all-zero (rendering broken).";
+        const bool frame100AllZero = std::all_of(
+            paletteFrame100->indices.begin(), paletteFrame100->indices.end(), [](uint8_t v) {
+                return v == 0;
+            });
+        const bool frame500AllZero = std::all_of(
+            paletteFrame500->indices.begin(), paletteFrame500->indices.end(), [](uint8_t v) {
+                return v == 0;
+            });
+        EXPECT_FALSE(frame100AllZero) << "Palette frame 100 is all-zero (rendering broken).";
+        EXPECT_FALSE(frame500AllZero) << "Palette frame 500 is all-zero (rendering broken).";
 
-    EXPECT_NE(paletteFrame100->indices, paletteFrame500->indices)
-        << "Palette frames 100 and 500 are identical (game not progressing).";
+        EXPECT_NE(paletteFrame100->indices, paletteFrame500->indices)
+            << "Palette frames 100 and 500 are identical (game not progressing).";
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -198,27 +207,57 @@ INSTANTIATE_TEST_SUITE_P(
     SmolnesPpuPerformance,
     testing::Values(
         PpuPerfParam{
-            Scenario::EnumType::NesFlappyParatroopa,
-            Test::resolveFlappyRomPath,
-            "FlappyParatroopa_Profiled",
-            true,
+            .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+            .resolveRom = Test::resolveFlappyRomPath,
+            .label = "FlappyParatroopa_Profiled",
+            .detailedTiming = true,
         },
         PpuPerfParam{
-            Scenario::EnumType::NesFlappyParatroopa,
-            Test::resolveFlappyRomPath,
-            "FlappyParatroopa_Throughput",
-            false,
+            .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+            .resolveRom = Test::resolveFlappyRomPath,
+            .label = "FlappyParatroopa_Throughput",
+            .detailedTiming = false,
         },
         PpuPerfParam{
-            Scenario::EnumType::NesSuperMarioBros,
-            Test::resolveSmbRomPath,
-            "SuperMarioBros_Profiled",
-            true,
+            .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+            .resolveRom = Test::resolveFlappyRomPath,
+            .label = "FlappyParatroopa_Throughput_NoApu",
+            .detailedTiming = false,
+            .apuEnabled = false,
         },
         PpuPerfParam{
-            Scenario::EnumType::NesSuperMarioBros,
-            Test::resolveSmbRomPath,
-            "SuperMarioBros_Throughput",
-            false,
+            .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+            .resolveRom = Test::resolveFlappyRomPath,
+            .label = "FlappyParatroopa_Throughput_NoApu_NoPixels",
+            .detailedTiming = false,
+            .apuEnabled = false,
+            .pixelOutputEnabled = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Profiled",
+            .detailedTiming = true,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Throughput",
+            .detailedTiming = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Throughput_NoApu",
+            .detailedTiming = false,
+            .apuEnabled = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Throughput_NoApu_NoPixels",
+            .detailedTiming = false,
+            .apuEnabled = false,
+            .pixelOutputEnabled = false,
         }),
     nameGenerator);

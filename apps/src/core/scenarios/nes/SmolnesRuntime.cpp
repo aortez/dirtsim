@@ -294,12 +294,28 @@ void SmolnesRuntime::setPacingMode(SmolnesRuntimePacingMode mode)
                                                    : SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP);
 }
 
+void SmolnesRuntime::setApuEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetApuEnabled(runtimeHandle_, enabled);
+}
+
 void SmolnesRuntime::setDetailedTimingEnabled(bool enabled)
 {
     if (runtimeHandle_ == nullptr) {
         return;
     }
     smolnesRuntimeSetDetailedTimingEnabled(runtimeHandle_, enabled);
+}
+
+void SmolnesRuntime::setPixelOutputEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetPixelOutputEnabled(runtimeHandle_, enabled);
 }
 
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
