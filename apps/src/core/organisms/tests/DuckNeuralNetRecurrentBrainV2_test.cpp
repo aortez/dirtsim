@@ -69,35 +69,35 @@ size_t alpha1LogitIndex(size_t hiddenIndex)
 
 size_t wH1H2Index(size_t h1Index, size_t h2Index)
 {
-    return static_cast<size_t>(kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize)
+    return static_cast<size_t>(kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + 1)
         + (h1Index * static_cast<size_t>(kH2Size)) + h2Index;
 }
 
 size_t alpha2LogitIndex(size_t hiddenIndex)
 {
     return static_cast<size_t>(
-               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
+               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + 1 + kWH1H2Size + kWH2H2Size
                + kBH2Size)
         + hiddenIndex;
 }
 
 size_t h1ActivationLeakLogitIndex()
 {
-    return static_cast<size_t>(
-        kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size + kBH2Size
-        + kAlpha2LogitSize);
+    return static_cast<size_t>(kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize);
 }
 
 size_t h2ActivationLeakLogitIndex()
 {
-    return h1ActivationLeakLogitIndex() + 1u;
+    return static_cast<size_t>(
+        kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + 1 + kWH1H2Size + kWH2H2Size
+        + kBH2Size + kAlpha2LogitSize);
 }
 
 size_t wH2OIndex(size_t h2Index, size_t outputIndex)
 {
     return static_cast<size_t>(
-               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
-               + kBH2Size + kAlpha2LogitSize + kActivationLeakLogitSize)
+               kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + 1 + kWH1H2Size + kWH2H2Size
+               + kBH2Size + kAlpha2LogitSize + 1)
         + (h2Index * static_cast<size_t>(kOutputSize)) + outputIndex;
 }
 
@@ -388,19 +388,17 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
 {
     const GenomeLayout layout = DuckNeuralNetRecurrentBrainV2::getGenomeLayout();
 
-    ASSERT_EQ(layout.segments.size(), 6u);
+    ASSERT_EQ(layout.segments.size(), 5u);
     EXPECT_EQ(layout.segments[0].name, "input_h1");
     EXPECT_EQ(layout.segments[0].size, 284672);
     EXPECT_EQ(layout.segments[1].name, "h1_recurrent");
-    EXPECT_EQ(layout.segments[1].size, 4224);
+    EXPECT_EQ(layout.segments[1].size, 4225);
     EXPECT_EQ(layout.segments[2].name, "h1_to_h2");
     EXPECT_EQ(layout.segments[2].size, 2048);
     EXPECT_EQ(layout.segments[3].name, "h2_recurrent");
-    EXPECT_EQ(layout.segments[3].size, 1088);
-    EXPECT_EQ(layout.segments[4].name, "activation_slopes");
-    EXPECT_EQ(layout.segments[4].size, 2);
-    EXPECT_EQ(layout.segments[5].name, "output");
-    EXPECT_EQ(layout.segments[5].size, 132);
+    EXPECT_EQ(layout.segments[3].size, 1089);
+    EXPECT_EQ(layout.segments[4].name, "output");
+    EXPECT_EQ(layout.segments[4].size, 132);
 }
 
 TEST(DuckNeuralNetRecurrentBrainV2Test, NegativeSignalPropagatesThroughBothHiddenLayers)

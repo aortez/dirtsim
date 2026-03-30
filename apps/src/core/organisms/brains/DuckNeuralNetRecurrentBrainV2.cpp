@@ -143,6 +143,9 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
             alpha1[i] =
                 std::clamp(sigmoid(alpha1_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
+        h1NegativeSlopeLogit = genome.weights[idx++];
+        h1NegativeSlope = sigmoidToRange(
+            h1NegativeSlopeLogit, LEAKY_RELU_NEGATIVE_SLOPE_MIN, LEAKY_RELU_NEGATIVE_SLOPE_MAX);
         for (int i = 0; i < W_H1H2_SIZE; ++i) {
             w_h1h2[i] = genome.weights[idx++];
         }
@@ -157,9 +160,6 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
             alpha2[i] =
                 std::clamp(sigmoid(alpha2_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
-        h1NegativeSlopeLogit = genome.weights[idx++];
-        h1NegativeSlope = sigmoidToRange(
-            h1NegativeSlopeLogit, LEAKY_RELU_NEGATIVE_SLOPE_MIN, LEAKY_RELU_NEGATIVE_SLOPE_MAX);
         h2NegativeSlopeLogit = genome.weights[idx++];
         h2NegativeSlope = sigmoidToRange(
             h2NegativeSlopeLogit, LEAKY_RELU_NEGATIVE_SLOPE_MIN, LEAKY_RELU_NEGATIVE_SLOPE_MAX);
@@ -191,6 +191,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
             genome.weights[idx++] = alpha1_logit[i];
         }
+        genome.weights[idx++] = h1NegativeSlopeLogit;
         for (int i = 0; i < W_H1H2_SIZE; ++i) {
             genome.weights[idx++] = w_h1h2[i];
         }
@@ -203,7 +204,6 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
             genome.weights[idx++] = alpha2_logit[i];
         }
-        genome.weights[idx++] = h1NegativeSlopeLogit;
         genome.weights[idx++] = h2NegativeSlopeLogit;
         for (int i = 0; i < W_H2O_SIZE; ++i) {
             genome.weights[idx++] = w_h2o[i];
@@ -452,6 +452,7 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
         genome.weights[idx++] = alphaLogitDist(rng);
     }
+    genome.weights[idx++] = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
     for (int i = 0; i < W_H1H2_SIZE; ++i) {
         genome.weights[idx++] = h1h2Dist(rng);
     }
@@ -464,7 +465,6 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
         genome.weights[idx++] = alphaLogitDist(rng);
     }
-    genome.weights[idx++] = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
     genome.weights[idx++] = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
     for (int i = 0; i < W_H2O_SIZE; ++i) {
         genome.weights[idx++] = h2oDist(rng);
@@ -485,16 +485,15 @@ bool DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(const Genome& genome)
 
 GenomeLayout DuckNeuralNetRecurrentBrainV2::getGenomeLayout()
 {
-    // Keep the learned leak controls in their own small segment so mutation
-    // can actually explore them instead of effectively freezing them inside
-    // the much larger recurrent parameter blocks.
+    // Group each layer's learned leak controls with its recurrent block so the
+    // floor-of-one mutation rule does not force tiny standalone segments to
+    // move on every offspring.
     return GenomeLayout{
         .segments = {
             { "input_h1", W_XH1_SIZE },
-            { "h1_recurrent", W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE },
+            { "h1_recurrent", W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE + 1 },
             { "h1_to_h2", W_H1H2_SIZE },
-            { "h2_recurrent", W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE },
-            { "activation_slopes", ACTIVATION_LEAK_LOGIT_SIZE },
+            { "h2_recurrent", W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE + 1 },
             { "output", W_H2O_SIZE + B_O_SIZE },
         },
     };
