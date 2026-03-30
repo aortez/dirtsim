@@ -510,6 +510,13 @@ void NesSmolnesScenarioDriver::setPixelOutputEnabled(bool enabled)
     }
 }
 
+void NesSmolnesScenarioDriver::setRgbaOutputEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setRgbaOutputEnabled(enabled);
+    }
+}
+
 void NesSmolnesScenarioDriver::setLiveServerPacingEnabled(bool enabled)
 {
     if (liveServerPacingEnabled_ == enabled) {

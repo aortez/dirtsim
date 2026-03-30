@@ -194,7 +194,8 @@ TrainingRunner::TrainingRunner(
       evolutionConfig_(evolutionConfig),
       frameTraceSink_(runnerConfig.frameTraceSink),
       nesApuEnabled_(runnerConfig.nesApuEnabled),
-      nesDetailedTimingEnabled_(runnerConfig.nesDetailedTimingEnabled)
+      nesDetailedTimingEnabled_(runnerConfig.nesDetailedTimingEnabled),
+      nesRgbaOutputEnabled_(runnerConfig.nesRgbaOutputEnabled)
 {
     resolveBrainEntry();
 
@@ -248,6 +249,7 @@ TrainingRunner::TrainingRunner(
         if (state_ == State::Running) {
             nesDriver_->setApuEnabled(nesApuEnabled_);
             nesDriver_->setDetailedTimingEnabled(nesDetailedTimingEnabled_);
+            nesDriver_->setRgbaOutputEnabled(nesRgbaOutputEnabled_);
         }
 
         nesWorldData_.width = 256;

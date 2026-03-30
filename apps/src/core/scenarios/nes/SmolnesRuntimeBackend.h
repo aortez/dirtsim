@@ -131,6 +131,7 @@ void smolnesRuntimeSetApuSampleCallback(
 void smolnesRuntimeSetApuEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 void smolnesRuntimeSetDetailedTimingEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 void smolnesRuntimeSetPixelOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetRgbaOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
 
 #ifdef __cplusplus

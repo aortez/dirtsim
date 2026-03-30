@@ -110,6 +110,7 @@ struct SmolnesRuntimeHandle {
 
     bool apuEnabled;
     bool pixelOutputEnabled;
+    bool rgbaOutputEnabled;
     bool detailedTimingEnabled;
     uint32_t timingSampleRate;
     SmolnesRuntimePacingModeValue pacingMode;
@@ -129,6 +130,7 @@ static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 
 // Frame-level timing (FRAME_EXEC) is always active.
 static SMOLNES_THREAD_LOCAL bool gApuEnabled = true;
 static SMOLNES_THREAD_LOCAL bool gPixelOutputEnabled = true;
+static SMOLNES_THREAD_LOCAL bool gRgbaOutputEnabled = true;
 static SMOLNES_THREAD_LOCAL bool gDetailedTimingEnabled = true;
 static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleRate = 64;
 static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleCounter = 0;
@@ -372,6 +374,7 @@ static void* runtimeThreadMain(void* arg)
     gCurrentRuntime = runtime;
     gApuEnabled = runtime->apuEnabled;
     gPixelOutputEnabled = runtime->pixelOutputEnabled;
+    gRgbaOutputEnabled = runtime->rgbaOutputEnabled;
     gDetailedTimingEnabled = runtime->detailedTimingEnabled;
     gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
     gApuStepActive = false;
@@ -515,10 +518,13 @@ int smolnesRuntimeWrappedUpdateTexture(
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
-    for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
-        const uint8_t* src = (const uint8_t*)pixels + ((size_t)row * (size_t)pitch);
-        uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
-        memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+    if (gRgbaOutputEnabled) {
+        for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
+            const uint8_t* src = (const uint8_t*)pixels + ((size_t)row * (size_t)pitch);
+            uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+            memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+        }
+        runtime->hasLatestFrame = true;
     }
     const uint8_t* paletteSrc = frame_buffer_palette + (SMOLNES_RUNTIME_FRAME_WIDTH * 8u);
     for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
@@ -526,7 +532,6 @@ int smolnesRuntimeWrappedUpdateTexture(
         uint8_t* dst = runtime->latestPaletteFrame + (row * SMOLNES_RUNTIME_FRAME_WIDTH);
         memcpy(dst, src, SMOLNES_RUNTIME_FRAME_WIDTH);
     }
-    runtime->hasLatestFrame = true;
     runtime->hasLatestPaletteFrame = true;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 
@@ -628,6 +633,7 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
     latchThreadKeyboardStateFromRuntime(runtime);
     gApuEnabled = runtime->apuEnabled;
     gPixelOutputEnabled = runtime->pixelOutputEnabled;
+    gRgbaOutputEnabled = runtime->rgbaOutputEnabled;
     gDetailedTimingEnabled = runtime->detailedTimingEnabled;
     gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
     pthread_mutex_unlock(&runtime->runtimeMutex);
@@ -936,7 +942,9 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
         if (gPixelOutputEnabled) { \
             uint8_t pi_ = palette_ram[(color) ? (palette) | (color) : 0]; \
             frame_buffer_palette[offset] = pi_; \
-            frame_buffer[offset] = nes_palette_rgb565[pi_]; \
+            if (gRgbaOutputEnabled) { \
+                frame_buffer[offset] = nes_palette_rgb565[pi_]; \
+            } \
         } \
     } while (0)
 #define SMOLNES_APU_CLOCK_BEGIN smolnesRuntimeWrappedApuClockBegin
@@ -1067,6 +1075,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->stopRequested = false;
     runtime->apuEnabled = true;
     runtime->pixelOutputEnabled = true;
+    runtime->rgbaOutputEnabled = true;
     runtime->detailedTimingEnabled = true;
     runtime->timingSampleRate = 64;
     runtime->healthy = true;
@@ -1632,6 +1641,16 @@ void smolnesRuntimeSetPixelOutputEnabled(SmolnesRuntimeHandle* runtime, bool ena
     }
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->pixelOutputEnabled = enabled;
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeSetRgbaOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->rgbaOutputEnabled = enabled;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 

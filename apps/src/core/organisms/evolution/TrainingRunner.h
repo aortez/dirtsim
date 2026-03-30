@@ -122,6 +122,7 @@ public:
         FrameTraceSink frameTraceSink = nullptr;
         bool nesApuEnabled = false;
         bool nesDetailedTimingEnabled = false;
+        bool nesRgbaOutputEnabled = false;
         std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
     };
 
@@ -233,6 +234,7 @@ private:
     NesScenarioRuntime* nesRuntime_ = nullptr;
     bool nesApuEnabled_ = false;
     bool nesDetailedTimingEnabled_ = false;
+    bool nesRgbaOutputEnabled_ = false;
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;

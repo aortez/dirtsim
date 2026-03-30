@@ -318,6 +318,14 @@ void SmolnesRuntime::setPixelOutputEnabled(bool enabled)
     smolnesRuntimeSetPixelOutputEnabled(runtimeHandle_, enabled);
 }
 
+void SmolnesRuntime::setRgbaOutputEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetRgbaOutputEnabled(runtimeHandle_, enabled);
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {

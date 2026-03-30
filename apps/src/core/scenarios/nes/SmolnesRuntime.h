@@ -127,6 +127,7 @@ public:
     virtual void setApuEnabled(bool enabled);
     virtual void setDetailedTimingEnabled(bool enabled);
     virtual void setPixelOutputEnabled(bool enabled);
+    virtual void setRgbaOutputEnabled(bool enabled);
     virtual void setPacingMode(SmolnesRuntimePacingMode mode);
     virtual std::string getLastError() const;
 

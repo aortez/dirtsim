@@ -89,6 +89,7 @@ public:
     void setApuEnabled(bool enabled);
     void setAudioPlaybackEnabled(bool enabled);
     void setPixelOutputEnabled(bool enabled);
+    void setRgbaOutputEnabled(bool enabled);
     void setAudioVolumePercent(int percent);
     void setDetailedTimingEnabled(bool enabled);
     void setLiveServerPacingEnabled(bool enabled);

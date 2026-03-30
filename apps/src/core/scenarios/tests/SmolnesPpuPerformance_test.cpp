@@ -22,6 +22,7 @@ struct PpuPerfParam {
     bool detailedTiming = true;
     bool apuEnabled = true;
     bool pixelOutputEnabled = true;
+    bool rgbaOutputEnabled = true;
 };
 
 std::string nameGenerator(const testing::TestParamInfo<PpuPerfParam>& info)
@@ -71,6 +72,9 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     }
     if (!param.pixelOutputEnabled) {
         driver.setPixelOutputEnabled(false);
+    }
+    if (!param.rgbaOutputEnabled) {
+        driver.setRgbaOutputEnabled(false);
     }
     if (!param.detailedTiming) {
         driver.setDetailedTimingEnabled(false);
@@ -228,6 +232,14 @@ INSTANTIATE_TEST_SUITE_P(
         PpuPerfParam{
             .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
             .resolveRom = Test::resolveFlappyRomPath,
+            .label = "FlappyParatroopa_Throughput_NoApu_PaletteOnly",
+            .detailedTiming = false,
+            .apuEnabled = false,
+            .rgbaOutputEnabled = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+            .resolveRom = Test::resolveFlappyRomPath,
             .label = "FlappyParatroopa_Throughput_NoApu_NoPixels",
             .detailedTiming = false,
             .apuEnabled = false,
@@ -251,6 +263,14 @@ INSTANTIATE_TEST_SUITE_P(
             .label = "SuperMarioBros_Throughput_NoApu",
             .detailedTiming = false,
             .apuEnabled = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Throughput_NoApu_PaletteOnly",
+            .detailedTiming = false,
+            .apuEnabled = false,
+            .rgbaOutputEnabled = false,
         },
         PpuPerfParam{
             .scenarioId = Scenario::EnumType::NesSuperMarioBros,
