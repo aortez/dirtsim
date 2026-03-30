@@ -47,9 +47,10 @@ constexpr int kWH1H2Size = kH1Size * kH2Size;
 constexpr int kWH2H2Size = kH2Size * kH2Size;
 constexpr int kBH2Size = kH2Size;
 constexpr int kAlpha2LogitSize = kH2Size;
+constexpr int kActivationLeakLogitSize = 2;
 constexpr int kWH2OSize = kH2Size * kOutputSize;
 constexpr int kBOSize = kOutputSize;
-constexpr float kMaxAlphaLogit = 4.0f;
+constexpr float kStrongPositiveLogit = 4.0f;
 
 size_t energyInputIndex()
 {
@@ -80,11 +81,23 @@ size_t alpha2LogitIndex(size_t hiddenIndex)
         + hiddenIndex;
 }
 
+size_t h1ActivationLeakLogitIndex()
+{
+    return static_cast<size_t>(
+        kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size + kBH2Size
+        + kAlpha2LogitSize);
+}
+
+size_t h2ActivationLeakLogitIndex()
+{
+    return h1ActivationLeakLogitIndex() + 1u;
+}
+
 size_t wH2OIndex(size_t h2Index, size_t outputIndex)
 {
     return static_cast<size_t>(
                kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
-               + kBH2Size + kAlpha2LogitSize)
+               + kBH2Size + kAlpha2LogitSize + kActivationLeakLogitSize)
         + (h2Index * static_cast<size_t>(kOutputSize)) + outputIndex;
 }
 
@@ -93,13 +106,15 @@ Genome makeNegativePropagationGenome()
     Genome genome(
         static_cast<size_t>(
             kWXH1Size + kWH1H1Size + kBH1Size + kAlpha1LogitSize + kWH1H2Size + kWH2H2Size
-            + kBH2Size + kAlpha2LogitSize + kWH2OSize + kBOSize),
+            + kBH2Size + kAlpha2LogitSize + kActivationLeakLogitSize + kWH2OSize + kBOSize),
         0.0f);
 
     genome.weights[wXh1Index(energyInputIndex(), 0)] = -2.0f;
-    genome.weights[alpha1LogitIndex(0)] = kMaxAlphaLogit;
+    genome.weights[alpha1LogitIndex(0)] = kStrongPositiveLogit;
     genome.weights[wH1H2Index(0, 0)] = 2.0f;
-    genome.weights[alpha2LogitIndex(0)] = kMaxAlphaLogit;
+    genome.weights[alpha2LogitIndex(0)] = kStrongPositiveLogit;
+    genome.weights[h1ActivationLeakLogitIndex()] = kStrongPositiveLogit;
+    genome.weights[h2ActivationLeakLogitIndex()] = kStrongPositiveLogit;
     genome.weights[wH2OIndex(0, 0)] = 10.0f;
     return genome;
 }
@@ -373,7 +388,7 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
 {
     const GenomeLayout layout = DuckNeuralNetRecurrentBrainV2::getGenomeLayout();
 
-    ASSERT_EQ(layout.segments.size(), 5u);
+    ASSERT_EQ(layout.segments.size(), 6u);
     EXPECT_EQ(layout.segments[0].name, "input_h1");
     EXPECT_EQ(layout.segments[0].size, 284672);
     EXPECT_EQ(layout.segments[1].name, "h1_recurrent");
@@ -382,8 +397,10 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
     EXPECT_EQ(layout.segments[2].size, 2048);
     EXPECT_EQ(layout.segments[3].name, "h2_recurrent");
     EXPECT_EQ(layout.segments[3].size, 1088);
-    EXPECT_EQ(layout.segments[4].name, "output");
-    EXPECT_EQ(layout.segments[4].size, 132);
+    EXPECT_EQ(layout.segments[4].name, "activation_slopes");
+    EXPECT_EQ(layout.segments[4].size, 2);
+    EXPECT_EQ(layout.segments[5].name, "output");
+    EXPECT_EQ(layout.segments[5].size, 132);
 }
 
 TEST(DuckNeuralNetRecurrentBrainV2Test, NegativeSignalPropagatesThroughBothHiddenLayers)
