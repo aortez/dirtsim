@@ -113,6 +113,7 @@ FitnessEvaluation computeFitnessEvaluationForRunner(
         .commandsRejected = status.commandsRejected,
         .idleCancels = status.idleCancels,
         .nesRewardTotal = status.nesRewardTotal,
+        .organismDied = status.state == TrainingRunner::State::OrganismDied,
         .exitedThroughDoor = status.exitedThroughDoor,
         .exitDoorTime = status.exitDoorTime,
     };

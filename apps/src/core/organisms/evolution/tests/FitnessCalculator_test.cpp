@@ -559,6 +559,62 @@ TEST(FitnessCalculatorTest, DuckClockRewardsFasterCourseRates)
     EXPECT_GT(halfBreakdown.totalFitness, fullBreakdown.totalFitness);
 }
 
+TEST(FitnessCalculatorTest, DuckClockDeathPenaltyScalesFitnessBySquaredSurvival)
+{
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 100.0;
+
+    const FitnessResult aliveResult{ .lifespan = 50.0, .maxEnergy = 0.0 };
+    const FitnessResult deadResult{
+        .lifespan = 50.0,
+        .maxEnergy = 0.0,
+        .organismDied = true,
+    };
+    const DuckClockEvaluationArtifacts clock{
+        .fullTraversals = 2,
+        .hurdleClears = 1,
+        .hurdleOpportunities = 1,
+        .pitClears = 1,
+        .pitOpportunities = 1,
+        .traversalProgress = 2.0,
+        .exitDoorDistanceObserved = true,
+        .bestExitDoorDistanceCells = 5.0,
+    };
+
+    const FitnessContext aliveContext{
+        .result = aliveResult,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(clock),
+    };
+    const FitnessContext deadContext{
+        .result = deadResult,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .duckArtifacts = makeClockArtifacts(clock),
+    };
+
+    const DuckFitnessBreakdown aliveBreakdown = DuckEvaluator::evaluateWithBreakdown(aliveContext);
+    const DuckFitnessBreakdown deadBreakdown = DuckEvaluator::evaluateWithBreakdown(deadContext);
+
+    EXPECT_DOUBLE_EQ(aliveBreakdown.survivalScore, 0.5);
+    EXPECT_DOUBLE_EQ(deadBreakdown.survivalScore, 0.5);
+    EXPECT_DOUBLE_EQ(deadBreakdown.survivalPoints, aliveBreakdown.survivalPoints * 0.25);
+    EXPECT_DOUBLE_EQ(deadBreakdown.traversalPoints, aliveBreakdown.traversalPoints * 0.25);
+    EXPECT_DOUBLE_EQ(
+        deadBreakdown.obstacleClearRatePoints, aliveBreakdown.obstacleClearRatePoints * 0.25);
+    EXPECT_DOUBLE_EQ(
+        deadBreakdown.obstacleCompetencePoints, aliveBreakdown.obstacleCompetencePoints * 0.25);
+    EXPECT_DOUBLE_EQ(
+        deadBreakdown.exitDoorProximityPoints, aliveBreakdown.exitDoorProximityPoints * 0.25);
+    EXPECT_DOUBLE_EQ(deadBreakdown.coursePoints, aliveBreakdown.coursePoints * 0.25);
+    EXPECT_DOUBLE_EQ(deadBreakdown.totalFitness, aliveBreakdown.totalFitness * 0.25);
+}
+
 TEST(FitnessCalculatorTest, DuckClockObstacleRateRewardsMoreRepeatedClears)
 {
     EvolutionConfig config = makeConfig();

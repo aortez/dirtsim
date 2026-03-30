@@ -347,6 +347,9 @@ TrainingRunner::Status TrainingRunner::step(int frames)
         world_->advanceTime(TIMESTEP);
         simTime_ += TIMESTEP;
         updateDuckClockDoors();
+        if (state_ != State::Running) {
+            break;
+        }
 
         Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
         if (!organism) {
@@ -837,6 +840,8 @@ void TrainingRunner::updateDuckClockDoors()
                 }
                 snapshotDuckEvaluationArtifacts();
                 world_->getOrganismManager().removeOrganismFromWorld(*world_, organismId_);
+                state_ = State::ScenarioCompleted;
+                return;
             }
         }
     }
