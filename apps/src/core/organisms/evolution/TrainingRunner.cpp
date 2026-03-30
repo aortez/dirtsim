@@ -192,7 +192,9 @@ TrainingRunner::TrainingRunner(
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
       evolutionConfig_(evolutionConfig),
-      frameTraceSink_(runnerConfig.frameTraceSink)
+      frameTraceSink_(runnerConfig.frameTraceSink),
+      nesApuEnabled_(runnerConfig.nesApuEnabled),
+      nesDetailedTimingEnabled_(runnerConfig.nesDetailedTimingEnabled)
 {
     resolveBrainEntry();
 
@@ -241,6 +243,11 @@ TrainingRunner::TrainingRunner(
                     setupResult.errorValue());
                 state_ = State::OrganismDied;
             }
+        }
+
+        if (state_ == State::Running) {
+            nesDriver_->setApuEnabled(nesApuEnabled_);
+            nesDriver_->setDetailedTimingEnabled(nesDetailedTimingEnabled_);
         }
 
         nesWorldData_.width = 256;
@@ -670,6 +677,8 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         if (setupResult.isError()) {
             return Result<std::monostate, std::string>::error(setupResult.errorValue());
         }
+        nesDriver_->setApuEnabled(nesApuEnabled_);
+        nesDriver_->setDetailedTimingEnabled(nesDetailedTimingEnabled_);
 
         if (nesGameAdapter_) {
             nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
@@ -907,38 +916,32 @@ TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
     addSignatureCount(nesCommandSignatureCounts_, commandSignature);
 
     nesControllerMask_ = controllerMask;
-    nesRuntime_->setController1State(nesControllerMask_);
 
-    const auto tickNesDriver = [&] {
-        if (!nesDriver_) {
-            return;
-        }
-
-        nesDriver_->tick(nesTimers_, nesScenarioVideoFrame_);
-        nesWorldData_.timestep += 1;
-        if (nesScenarioVideoFrame_.has_value()) {
-            nesWorldData_.width = static_cast<int16_t>(nesScenarioVideoFrame_->width);
-            nesWorldData_.height = static_cast<int16_t>(nesScenarioVideoFrame_->height);
-        }
-    };
-    tickNesDriver();
+    auto stepResult = nesDriver_->step(nesTimers_, nesControllerMask_);
+    nesWorldData_.timestep += 1;
+    if (stepResult.scenarioVideoFrame.has_value()) {
+        nesScenarioVideoFrame_ = std::move(stepResult.scenarioVideoFrame);
+        nesWorldData_.width = static_cast<int16_t>(nesScenarioVideoFrame_->width);
+        nesWorldData_.height = static_cast<int16_t>(nesScenarioVideoFrame_->height);
+    }
+    else if (!stepResult.runtimeHealthy || !stepResult.runtimeRunning) {
+        nesScenarioVideoFrame_.reset();
+    }
     simTime_ += TIMESTEP;
 
-    const uint64_t renderedFramesAfter = nesRuntime_->getRuntimeRenderedFrameCount();
-    trace.renderedFramesAfter = renderedFramesAfter;
-    if (renderedFramesAfter > renderedFramesBefore) {
+    trace.renderedFramesAfter = stepResult.renderedFramesAfter;
+    if (stepResult.advancedFrames > 0) {
         trace.frameAdvanced = true;
         commandOutcome = "FrameAdvanced";
-        const uint64_t advancedFrames = renderedFramesAfter - renderedFramesBefore;
-        trace.advancedFrames = advancedFrames;
-        nesFramesSurvived_ += advancedFrames;
+        trace.advancedFrames = stepResult.advancedFrames;
+        nesFramesSurvived_ += stepResult.advancedFrames;
 
-        nesPaletteFrame_ = nesRuntime_->copyRuntimePaletteFrame();
+        nesPaletteFrame_ = std::move(stepResult.paletteFrame);
         const NesGameAdapterFrameInput frameInput{
-            .advancedFrames = advancedFrames,
+            .advancedFrames = stepResult.advancedFrames,
             .controllerMask = nesControllerMask_,
             .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
-            .memorySnapshot = nesRuntime_->copyRuntimeMemorySnapshot(),
+            .memorySnapshot = std::move(stepResult.memorySnapshot),
         };
         const NesGameAdapterFrameOutput evaluation = nesGameAdapter_->evaluateFrame(frameInput);
         nesLastDebugState_ = evaluation.debugState;
@@ -956,8 +959,7 @@ TrainingRunner::NesFrameTrace TrainingRunner::runScenarioDrivenStep()
         }
     }
 
-    if (state_ == State::Running
-        && (!nesRuntime_->isRuntimeRunning() || !nesRuntime_->isRuntimeHealthy())) {
+    if (state_ == State::Running && (!stepResult.runtimeRunning || !stepResult.runtimeHealthy)) {
         state_ = State::OrganismDied;
         commandOutcome = "EpisodeEnd";
     }
