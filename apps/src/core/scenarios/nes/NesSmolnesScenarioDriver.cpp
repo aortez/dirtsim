@@ -489,6 +489,13 @@ void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
     }
 }
 
+void NesSmolnesScenarioDriver::setDetailedTimingEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setDetailedTimingEnabled(enabled);
+    }
+}
+
 void NesSmolnesScenarioDriver::setLiveServerPacingEnabled(bool enabled)
 {
     if (liveServerPacingEnabled_ == enabled) {
@@ -582,6 +589,12 @@ void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)
         previous.runtimeThreadIdleWaitMs,
         current.runtimeThreadIdleWaitCalls,
         previous.runtimeThreadIdleWaitCalls);
+    addDelta(
+        "nes_runtime_thread_apu_step",
+        current.runtimeThreadApuStepMs,
+        previous.runtimeThreadApuStepMs,
+        current.runtimeThreadApuStepCalls,
+        previous.runtimeThreadApuStepCalls);
     addDelta(
         "nes_runtime_thread_cpu_step",
         current.runtimeThreadCpuStepMs,

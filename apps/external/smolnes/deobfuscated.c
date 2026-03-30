@@ -65,6 +65,14 @@
 #define SMOLNES_APU_CLOCK(cycles)
 #endif
 
+#ifndef SMOLNES_APU_CLOCK_BEGIN
+#define SMOLNES_APU_CLOCK_BEGIN()
+#endif
+
+#ifndef SMOLNES_APU_CLOCK_END
+#define SMOLNES_APU_CLOCK_END()
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -714,7 +722,9 @@ loop:
   // Update PPU, which runs 3 times faster than CPU. Each CPU instruction
   // takes at least 2 cycles.
   SMOLNES_CPU_STEP_END();
+  SMOLNES_APU_CLOCK_BEGIN();
   SMOLNES_APU_CLOCK(cycles + 2);
+  SMOLNES_APU_CLOCK_END();
   SMOLNES_PPU_STEP_BEGIN();
   for (tmp = cycles * 3 + 6; tmp--;) {
     if (ppumask & 24) {

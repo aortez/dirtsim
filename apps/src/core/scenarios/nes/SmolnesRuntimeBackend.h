@@ -15,6 +15,8 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t run_frames_wait_calls;
     double runtime_thread_idle_wait_ms;
     uint64_t runtime_thread_idle_wait_calls;
+    double runtime_thread_apu_step_ms;
+    uint64_t runtime_thread_apu_step_calls;
     double runtime_thread_cpu_step_ms;
     uint64_t runtime_thread_cpu_step_calls;
     double runtime_thread_frame_execution_ms;
@@ -127,6 +129,7 @@ void smolnesRuntimeGetLastErrorCopy(
 void smolnesRuntimeSetApuSampleCallback(
     SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
 void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
+void smolnesRuntimeSetDetailedTimingEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 
 #ifdef __cplusplus
 }

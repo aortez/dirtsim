@@ -50,6 +50,8 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadCpuStepCalls;
     double runtimeThreadFrameExecutionMs;
     uint64_t runtimeThreadFrameExecutionCalls;
+    double runtimeThreadApuStepMs;
+    uint64_t runtimeThreadApuStepCalls;
     double runtimeThreadPpuStepMs;
     uint64_t runtimeThreadPpuStepCalls;
     double runtimeThreadPpuVisiblePixelsMs;
@@ -106,6 +108,8 @@ struct SmolnesRuntimeHandle {
     SmolnesApuSampleCallback apuSampleCallback;
     void* apuSampleCallbackUserdata;
 
+    bool detailedTimingEnabled;
+    uint32_t timingSampleRate;
     SmolnesRuntimePacingModeValue pacingMode;
     double realtimePacingOriginMs;
     uint64_t realtimePacingOriginFrame;
@@ -117,14 +121,32 @@ static const double kNtscFramePeriodMs = 1000.0 / 60.0988;
 static SMOLNES_THREAD_LOCAL SmolnesRuntimeHandle* gCurrentRuntime = NULL;
 static const uint8_t gEmptyKeyboardState[SDL_NUM_SCANCODES] = { 0 };
 static SMOLNES_THREAD_LOCAL uint8_t gThreadKeyboardState[SDL_NUM_SCANCODES] = { 0 };
+// Per-instruction CPU/APU/PPU timing. When detailedTimingEnabled is false,
+// these are no-ops. When enabled, only every Nth instruction is timed
+// (controlled by timingSampleRate) and results are scaled at flush time.
+// Frame-level timing (FRAME_EXEC) is always active.
+static SMOLNES_THREAD_LOCAL bool gDetailedTimingEnabled = true;
+static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleRate = 64;
+static SMOLNES_THREAD_LOCAL uint32_t gTimingSampleCounter = 0;
+static SMOLNES_THREAD_LOCAL bool gTimingThisInstruction = false;
+static SMOLNES_THREAD_LOCAL uint64_t gTotalInstructions = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gSampledInstructions = 0;
+static SMOLNES_THREAD_LOCAL bool gApuStepActive = false;
+static SMOLNES_THREAD_LOCAL double gApuStepStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL double gApuStepAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gApuStepAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL bool gCpuStepActive = false;
 static SMOLNES_THREAD_LOCAL double gCpuStepStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL double gCpuStepAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gCpuStepAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL bool gEventPollActive = false;
 static SMOLNES_THREAD_LOCAL double gEventPollStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gFrameExecutionActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameExecutionStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL bool gPpuStepActive = false;
 static SMOLNES_THREAD_LOCAL double gPpuStepStartMs = 0.0;
+static SMOLNES_THREAD_LOCAL double gPpuStepAccumMs = 0.0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuStepAccumCalls = 0;
 typedef enum SmolnesPpuPhaseBucket {
     SmolnesPpuPhaseBucketNone = 0,
     SmolnesPpuPhaseBucketVisiblePixels = 1,
@@ -251,6 +273,40 @@ static void resetPpuPhaseBreakdown(void)
     gPpuOtherAccumCalls = 0;
 }
 
+static void resetPerInstructionAccumulators(void)
+{
+    gTimingSampleCounter = 0;
+    gTimingThisInstruction = false;
+    gTotalInstructions = 0;
+    gSampledInstructions = 0;
+    gCpuStepAccumMs = 0.0;
+    gCpuStepAccumCalls = 0;
+    gApuStepAccumMs = 0.0;
+    gApuStepAccumCalls = 0;
+    gPpuStepAccumMs = 0.0;
+    gPpuStepAccumCalls = 0;
+    resetPpuPhaseBreakdown();
+}
+
+static void flushPerInstructionAccumulatorsLocked(SmolnesRuntimeHandle* runtime)
+{
+    runtime->runtimeThreadCpuStepMs += gCpuStepAccumMs;
+    runtime->runtimeThreadCpuStepCalls += gSampledInstructions;
+    runtime->runtimeThreadApuStepMs += gApuStepAccumMs;
+    runtime->runtimeThreadApuStepCalls += gSampledInstructions;
+    runtime->runtimeThreadPpuStepMs += gPpuStepAccumMs;
+    runtime->runtimeThreadPpuStepCalls += gSampledInstructions;
+    runtime->runtimeThreadPpuVisiblePixelsMs += gPpuVisiblePixelsAccumMs;
+    runtime->runtimeThreadPpuVisiblePixelsCalls += gPpuVisiblePixelsAccumCalls;
+    runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
+    runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
+    runtime->runtimeThreadPpuPrefetchMs += gPpuPrefetchAccumMs;
+    runtime->runtimeThreadPpuPrefetchCalls += gPpuPrefetchAccumCalls;
+    runtime->runtimeThreadPpuOtherMs += gPpuOtherAccumMs;
+    runtime->runtimeThreadPpuOtherCalls += gPpuOtherAccumCalls;
+    resetPerInstructionAccumulators();
+}
+
 static void accumulatePpuPhaseDuration(SmolnesPpuPhaseBucket phase, double durationMs)
 {
     if (durationMs <= 0.0) {
@@ -310,6 +366,10 @@ static void* runtimeThreadMain(void* arg)
     }
 
     gCurrentRuntime = runtime;
+    gDetailedTimingEnabled = runtime->detailedTimingEnabled;
+    gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
+    gApuStepActive = false;
+    gApuStepStartMs = 0.0;
     gCpuStepActive = false;
     gCpuStepStartMs = 0.0;
     gEventPollActive = false;
@@ -318,7 +378,7 @@ static void* runtimeThreadMain(void* arg)
     gFrameExecutionStartMs = 0.0;
     gPpuStepActive = false;
     gPpuStepStartMs = 0.0;
-    resetPpuPhaseBreakdown();
+    resetPerInstructionAccumulators();
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     smolnesApuInit(&gApuState, 48000.0);
@@ -334,6 +394,8 @@ static void* runtimeThreadMain(void* arg)
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gCurrentRuntime = NULL;
+    gApuStepActive = false;
+    gApuStepStartMs = 0.0;
     gCpuStepActive = false;
     gCpuStepStartMs = 0.0;
     gEventPollActive = false;
@@ -342,7 +404,7 @@ static void* runtimeThreadMain(void* arg)
     gFrameExecutionStartMs = 0.0;
     gPpuStepActive = false;
     gPpuStepStartMs = 0.0;
-    resetPpuPhaseBreakdown();
+    resetPerInstructionAccumulators();
     gFrameSubmitActive = false;
     gFrameSubmitStartMs = 0.0;
     return NULL;
@@ -475,12 +537,21 @@ int smolnesRuntimeWrappedRenderCopy(
     return 0;
 }
 
+// CPU_STEP_BEGIN decides whether this instruction triplet (CPU/APU/PPU) is
+// sampled. APU and PPU begin/end follow that decision via gTimingThisInstruction.
 void smolnesRuntimeWrappedCpuStepBegin(void)
 {
-    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
-    if (runtime == NULL || gCpuStepActive) {
+    gTotalInstructions++;
+    if (!gDetailedTimingEnabled) {
         return;
     }
+
+    if (++gTimingSampleCounter < gTimingSampleRate) {
+        return;
+    }
+    gTimingSampleCounter = 0;
+    gTimingThisInstruction = true;
+    gSampledInstructions++;
 
     gCpuStepStartMs = monotonicNowMs();
     gCpuStepActive = true;
@@ -488,22 +559,38 @@ void smolnesRuntimeWrappedCpuStepBegin(void)
 
 void smolnesRuntimeWrappedCpuStepEnd(void)
 {
-    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
-    if (runtime == NULL || !gCpuStepActive) {
+    if (!gCpuStepActive) {
         return;
     }
 
     const double cpuStepMs = monotonicNowMs() - gCpuStepStartMs;
     gCpuStepActive = false;
-    gCpuStepStartMs = 0.0;
-    if (cpuStepMs <= 0.0) {
+    if (cpuStepMs > 0.0) {
+        gCpuStepAccumMs += cpuStepMs;
+    }
+}
+
+void smolnesRuntimeWrappedApuClockBegin(void)
+{
+    if (!gTimingThisInstruction) {
         return;
     }
 
-    pthread_mutex_lock(&runtime->runtimeMutex);
-    runtime->runtimeThreadCpuStepMs += cpuStepMs;
-    runtime->runtimeThreadCpuStepCalls++;
-    pthread_mutex_unlock(&runtime->runtimeMutex);
+    gApuStepStartMs = monotonicNowMs();
+    gApuStepActive = true;
+}
+
+void smolnesRuntimeWrappedApuClockEnd(void)
+{
+    if (!gApuStepActive) {
+        return;
+    }
+
+    const double apuStepMs = monotonicNowMs() - gApuStepStartMs;
+    gApuStepActive = false;
+    if (apuStepMs > 0.0) {
+        gApuStepAccumMs += apuStepMs;
+    }
 }
 
 void smolnesRuntimeWrappedFrameExecutionBegin(void)
@@ -533,6 +620,8 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
             (runtime->latchedController1SequenceId == 0) ? 0 : monotonicNowNs();
     }
     latchThreadKeyboardStateFromRuntime(runtime);
+    gDetailedTimingEnabled = runtime->detailedTimingEnabled;
+    gTimingSampleRate = runtime->timingSampleRate > 0 ? runtime->timingSampleRate : 1;
     pthread_mutex_unlock(&runtime->runtimeMutex);
     gFrameExecutionStartMs = monotonicNowMs();
     gFrameExecutionActive = true;
@@ -555,49 +644,34 @@ void smolnesRuntimeWrappedFrameExecutionEnd(void)
     pthread_mutex_lock(&runtime->runtimeMutex);
     runtime->runtimeThreadFrameExecutionMs += frameExecutionMs;
     runtime->runtimeThreadFrameExecutionCalls++;
+    flushPerInstructionAccumulatorsLocked(runtime);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
 
 void smolnesRuntimeWrappedPpuStepBegin(void)
 {
-    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
-    if (runtime == NULL || gPpuStepActive) {
+    if (!gTimingThisInstruction) {
         return;
     }
 
-    resetPpuPhaseBreakdown();
     gPpuStepStartMs = monotonicNowMs();
     gPpuStepActive = true;
 }
 
 void smolnesRuntimeWrappedPpuStepEnd(void)
 {
-    SmolnesRuntimeHandle* runtime = getCurrentRuntime();
-    if (runtime == NULL || !gPpuStepActive) {
+    if (!gPpuStepActive) {
+        gTimingThisInstruction = false;
         return;
     }
 
     setPpuPhaseBucket(SmolnesPpuPhaseBucketNone);
     const double ppuStepMs = monotonicNowMs() - gPpuStepStartMs;
     gPpuStepActive = false;
-    gPpuStepStartMs = 0.0;
-    if (ppuStepMs <= 0.0) {
-        return;
+    gTimingThisInstruction = false;
+    if (ppuStepMs > 0.0) {
+        gPpuStepAccumMs += ppuStepMs;
     }
-
-    pthread_mutex_lock(&runtime->runtimeMutex);
-    runtime->runtimeThreadPpuStepMs += ppuStepMs;
-    runtime->runtimeThreadPpuStepCalls++;
-    runtime->runtimeThreadPpuVisiblePixelsMs += gPpuVisiblePixelsAccumMs;
-    runtime->runtimeThreadPpuVisiblePixelsCalls += gPpuVisiblePixelsAccumCalls;
-    runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
-    runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
-    runtime->runtimeThreadPpuPrefetchMs += gPpuPrefetchAccumMs;
-    runtime->runtimeThreadPpuPrefetchCalls += gPpuPrefetchAccumCalls;
-    runtime->runtimeThreadPpuOtherMs += gPpuOtherAccumMs;
-    runtime->runtimeThreadPpuOtherCalls += gPpuOtherAccumCalls;
-    pthread_mutex_unlock(&runtime->runtimeMutex);
-    resetPpuPhaseBreakdown();
 }
 
 void smolnesRuntimeWrappedPpuPhaseSet(uint32_t phaseId)
@@ -846,6 +920,8 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
     smolnesApuClock(&gApuState, cycles);
 }
 
+#define SMOLNES_APU_CLOCK_BEGIN smolnesRuntimeWrappedApuClockBegin
+#define SMOLNES_APU_CLOCK_END smolnesRuntimeWrappedApuClockEnd
 #define SMOLNES_APU_WRITE(addr, value) smolnesRuntimeWrappedApuWrite(addr, value)
 #define SMOLNES_APU_READ(addr) smolnesRuntimeWrappedApuRead(addr)
 #define SMOLNES_APU_CLOCK(cycles) smolnesRuntimeWrappedApuClock(cycles)
@@ -875,6 +951,8 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
 #undef SMOLNES_EVENT_POLL_END
+#undef SMOLNES_APU_CLOCK_BEGIN
+#undef SMOLNES_APU_CLOCK_END
 #undef SMOLNES_APU_WRITE
 #undef SMOLNES_APU_READ
 #undef SMOLNES_APU_CLOCK
@@ -967,6 +1045,8 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     snprintf(runtime->romPath, sizeof(runtime->romPath), "%s", romPath);
 
     runtime->stopRequested = false;
+    runtime->detailedTimingEnabled = true;
+    runtime->timingSampleRate = 64;
     runtime->healthy = true;
     runtime->renderedFrames = 0;
     runtime->targetFrames = 0;
@@ -978,6 +1058,8 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runFramesWaitCalls = 0;
     runtime->runtimeThreadIdleWaitMs = 0.0;
     runtime->runtimeThreadIdleWaitCalls = 0;
+    runtime->runtimeThreadApuStepMs = 0.0;
+    runtime->runtimeThreadApuStepCalls = 0;
     runtime->runtimeThreadCpuStepMs = 0.0;
     runtime->runtimeThreadCpuStepCalls = 0;
     runtime->runtimeThreadFrameExecutionMs = 0.0;
@@ -1321,6 +1403,8 @@ bool smolnesRuntimeCopyProfilingSnapshot(
     snapshotOut->run_frames_wait_calls = mutableRuntime->runFramesWaitCalls;
     snapshotOut->runtime_thread_idle_wait_ms = mutableRuntime->runtimeThreadIdleWaitMs;
     snapshotOut->runtime_thread_idle_wait_calls = mutableRuntime->runtimeThreadIdleWaitCalls;
+    snapshotOut->runtime_thread_apu_step_ms = mutableRuntime->runtimeThreadApuStepMs;
+    snapshotOut->runtime_thread_apu_step_calls = mutableRuntime->runtimeThreadApuStepCalls;
     snapshotOut->runtime_thread_cpu_step_ms = mutableRuntime->runtimeThreadCpuStepMs;
     snapshotOut->runtime_thread_cpu_step_calls = mutableRuntime->runtimeThreadCpuStepCalls;
     snapshotOut->runtime_thread_frame_execution_ms = mutableRuntime->runtimeThreadFrameExecutionMs;
@@ -1516,5 +1600,15 @@ void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePa
     runtime->realtimePacingOriginMs = 0.0;
     runtime->realtimePacingOriginFrame = 0;
     pthread_cond_broadcast(&runtime->runtimeCond);
+    pthread_mutex_unlock(&runtime->runtimeMutex);
+}
+
+void smolnesRuntimeSetDetailedTimingEnabled(SmolnesRuntimeHandle* runtime, bool enabled)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    runtime->detailedTimingEnabled = enabled;
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }

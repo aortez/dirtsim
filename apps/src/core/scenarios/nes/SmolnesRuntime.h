@@ -29,6 +29,8 @@ public:
         uint64_t runFramesWaitCalls = 0;
         double runtimeThreadIdleWaitMs = 0.0;
         uint64_t runtimeThreadIdleWaitCalls = 0;
+        double runtimeThreadApuStepMs = 0.0;
+        uint64_t runtimeThreadApuStepCalls = 0;
         double runtimeThreadCpuStepMs = 0.0;
         uint64_t runtimeThreadCpuStepCalls = 0;
         double runtimeThreadFrameExecutionMs = 0.0;
@@ -123,6 +125,7 @@ public:
     virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
     virtual void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
     virtual void setPacingMode(SmolnesRuntimePacingMode mode);
+    virtual void setDetailedTimingEnabled(bool enabled);
     virtual std::string getLastError() const;
 
 private:

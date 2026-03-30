@@ -88,6 +88,7 @@ public:
 
     void setAudioPlaybackEnabled(bool enabled);
     void setAudioVolumePercent(int percent);
+    void setDetailedTimingEnabled(bool enabled);
     void setLiveServerPacingEnabled(bool enabled);
     void setSmbResponseProbeEnabled(bool enabled);
 

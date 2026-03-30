@@ -294,6 +294,14 @@ void SmolnesRuntime::setPacingMode(SmolnesRuntimePacingMode mode)
                                                    : SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP);
 }
 
+void SmolnesRuntime::setDetailedTimingEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetDetailedTimingEnabled(runtimeHandle_, enabled);
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {
@@ -310,6 +318,8 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
     snapshot.runFramesWaitCalls = raw.run_frames_wait_calls;
     snapshot.runtimeThreadIdleWaitMs = raw.runtime_thread_idle_wait_ms;
     snapshot.runtimeThreadIdleWaitCalls = raw.runtime_thread_idle_wait_calls;
+    snapshot.runtimeThreadApuStepMs = raw.runtime_thread_apu_step_ms;
+    snapshot.runtimeThreadApuStepCalls = raw.runtime_thread_apu_step_calls;
     snapshot.runtimeThreadCpuStepMs = raw.runtime_thread_cpu_step_ms;
     snapshot.runtimeThreadCpuStepCalls = raw.runtime_thread_cpu_step_calls;
     snapshot.runtimeThreadFrameExecutionMs = raw.runtime_thread_frame_execution_ms;

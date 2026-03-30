@@ -1,11 +1,12 @@
+#include "NesTestRomPath.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <gtest/gtest.h>
 #include <optional>
 #include <string>
@@ -14,49 +15,58 @@ using namespace DirtSim;
 
 namespace {
 
-std::optional<std::filesystem::path> resolveFlappyRomPath()
+struct PpuPerfParam {
+    Scenario::EnumType scenarioId;
+    std::function<std::optional<std::filesystem::path>()> resolveRom;
+    const char* label;
+    bool detailedTiming = true;
+};
+
+std::string nameGenerator(const testing::TestParamInfo<PpuPerfParam>& info)
 {
-    if (const char* env = std::getenv("DIRTSIM_NES_TEST_ROM_PATH"); env != nullptr) {
-        const std::filesystem::path romPath{ env };
-        if (std::filesystem::exists(romPath)) {
-            return romPath;
-        }
-    }
-
-    const std::filesystem::path repoRelative =
-        std::filesystem::path("testdata") / "roms" / "Flappy.Paratroopa.World.Unl.nes";
-    if (std::filesystem::exists(repoRelative)) {
-        return repoRelative;
-    }
-
-    return std::nullopt;
+    return info.param.label;
 }
 
 } // namespace
 
-TEST(SmolnesPpuPerformance, FlappyParatroopa1000Frames)
+class SmolnesPpuPerformance : public testing::TestWithParam<PpuPerfParam> {};
+
+TEST_P(SmolnesPpuPerformance, Run1000Frames)
 {
-    const auto romPath = resolveFlappyRomPath();
+    const auto& param = GetParam();
+    const auto romPath = param.resolveRom();
     if (!romPath.has_value()) {
-        GTEST_SKIP() << "ROM fixture missing. Set DIRTSIM_NES_TEST_ROM_PATH or run "
-                        "'cd apps && make fetch-nes-test-rom'.";
+        GTEST_SKIP() << "ROM fixture missing for " << param.label << ".";
     }
 
     constexpr int kFrameCount = 1000;
 
-    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesFlappyParatroopa);
-    Config::NesFlappyParatroopa config = std::get<Config::NesFlappyParatroopa>(
-        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
-    config.romPath = romPath.value().string();
-    config.requireSmolnesMapper = true;
-    config.maxEpisodeFrames = kFrameCount + 100;
+    NesSmolnesScenarioDriver driver(param.scenarioId);
+    ScenarioConfig config = makeDefaultConfig(param.scenarioId);
+    std::visit(
+        [&](auto& c) {
+            if constexpr (requires {
+                              c.romPath;
+                              c.requireSmolnesMapper;
+                              c.maxEpisodeFrames;
+                          }) {
+                c.romPath = romPath.value().string();
+                c.requireSmolnesMapper = true;
+                c.maxEpisodeFrames = kFrameCount + 100;
+            }
+        },
+        config);
 
-    const auto setResult = driver.setConfig(ScenarioConfig{ config });
+    const auto setResult = driver.setConfig(config);
     ASSERT_TRUE(setResult.isValue()) << setResult.errorValue();
     const auto setupResult = driver.setup();
     ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
     ASSERT_TRUE(driver.isRuntimeRunning()) << driver.getRuntimeLastError();
     ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
+
+    if (!param.detailedTiming) {
+        driver.setDetailedTimingEnabled(false);
+    }
 
     Timers timers;
     std::optional<ScenarioVideoFrame> videoFrame;
@@ -82,70 +92,85 @@ TEST(SmolnesPpuPerformance, FlappyParatroopa1000Frames)
     // Collect profiling results from Timers (populated by driver.tick).
     const double frameExecMs = timers.getAccumulatedTime("nes_runtime_thread_frame_execution");
     const double cpuStepMs = timers.getAccumulatedTime("nes_runtime_thread_cpu_step");
+    const double apuStepMs = timers.getAccumulatedTime("nes_runtime_thread_apu_step");
     const double ppuStepMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_step");
-    const double ppuVisibleMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_visible_pixels");
-    const double ppuSpriteMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_sprite_eval");
-    const double ppuPrefetchMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_prefetch");
-    const double ppuOtherMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_other");
     const double frameSubmitMs = timers.getAccumulatedTime("nes_runtime_thread_frame_submit");
-    const double eventPollMs = timers.getAccumulatedTime("nes_runtime_thread_event_poll");
     const double presentMs = timers.getAccumulatedTime("nes_runtime_thread_present");
     const double memCopyMs = timers.getAccumulatedTime("nes_runtime_memory_snapshot_copy");
 
-    const double ppuPhaseTotalMs = ppuVisibleMs + ppuSpriteMs + ppuPrefetchMs + ppuOtherMs;
+    auto clamp0 = [](double v) -> double { return v > 0.0 ? v : 0.0; };
 
-    auto pct = [](double part, double whole) -> double {
-        return whole > 0.0 ? (part / whole) * 100.0 : 0.0;
-    };
+    if (param.detailedTiming) {
+        // Sampled times include per-sample clock_gettime overhead, so absolute
+        // values are inflated. Use the ratios between phases to estimate their
+        // share of frame execution time.
+        const double sampledTotal = clamp0(cpuStepMs) + clamp0(apuStepMs) + clamp0(ppuStepMs);
+        const double cpuPct = sampledTotal > 0.0 ? clamp0(cpuStepMs) / sampledTotal * 100.0 : 0.0;
+        const double apuPct = sampledTotal > 0.0 ? clamp0(apuStepMs) / sampledTotal * 100.0 : 0.0;
+        const double ppuPct = sampledTotal > 0.0 ? clamp0(ppuStepMs) / sampledTotal * 100.0 : 0.0;
+        const double cpuEstMs = clamp0(frameExecMs) * cpuPct / 100.0;
+        const double apuEstMs = clamp0(frameExecMs) * apuPct / 100.0;
+        const double ppuEstMs = clamp0(frameExecMs) * ppuPct / 100.0;
 
-    fprintf(
-        stderr,
-        "\n"
-        "=== SmolNES PPU Performance: %d frames ===\n"
-        "\n"
-        "Wall clock:              %8.1f ms  (%5.2f ms/frame, %.1f fps)\n"
-        "\n"
-        "Frame execution total:   %8.1f ms  (%5.2f ms/frame)\n"
-        "  CPU step:              %8.1f ms  (%5.1f%%)\n"
-        "  PPU step:              %8.1f ms  (%5.1f%%)\n"
-        "  Frame submit:          %8.1f ms  (%5.1f%%)\n"
-        "  Event poll:            %8.1f ms  (%5.1f%%)\n"
-        "\n"
-        "PPU phase breakdown:     %8.1f ms\n"
-        "  Visible pixels:        %8.1f ms  (%5.1f%%)\n"
-        "  Sprite eval:           %8.1f ms  (%5.1f%%)\n"
-        "  Prefetch:              %8.1f ms  (%5.1f%%)\n"
-        "  Other:                 %8.1f ms  (%5.1f%%)\n"
-        "\n"
-        "Other:\n"
-        "  Present (sync+copy):   %8.1f ms\n"
-        "  Memory snapshot copy:  %8.1f ms\n"
-        "\n",
-        kFrameCount,
-        wallMs,
-        wallMs / kFrameCount,
-        kFrameCount / (wallMs / 1000.0),
-        frameExecMs,
-        frameExecMs / kFrameCount,
-        cpuStepMs,
-        pct(cpuStepMs, frameExecMs),
-        ppuStepMs,
-        pct(ppuStepMs, frameExecMs),
-        frameSubmitMs,
-        pct(frameSubmitMs, frameExecMs),
-        eventPollMs,
-        pct(eventPollMs, frameExecMs),
-        ppuPhaseTotalMs,
-        ppuVisibleMs,
-        pct(ppuVisibleMs, ppuPhaseTotalMs),
-        ppuSpriteMs,
-        pct(ppuSpriteMs, ppuPhaseTotalMs),
-        ppuPrefetchMs,
-        pct(ppuPrefetchMs, ppuPhaseTotalMs),
-        ppuOtherMs,
-        pct(ppuOtherMs, ppuPhaseTotalMs),
-        presentMs,
-        memCopyMs);
+        fprintf(
+            stderr,
+            "\n"
+            "=== SmolNES Profiled [%s]: %d frames (sampled) ===\n"
+            "\n"
+            "Wall clock:              %8.1f ms  (%5.2f ms/frame, %.1f fps)\n"
+            "\n"
+            "Frame execution total:   %8.1f ms  (%5.2f ms/frame)\n"
+            "  CPU step (est):        %8.1f ms  (%5.1f%%)\n"
+            "  APU step (est):        %8.1f ms  (%5.1f%%)\n"
+            "  PPU step (est):        %8.1f ms  (%5.1f%%)\n"
+            "\n"
+            "Outside frame execution:\n"
+            "  Frame submit:          %8.1f ms\n"
+            "  Present (sync+copy):   %8.1f ms\n"
+            "  Memory snapshot copy:  %8.1f ms\n"
+            "\n",
+            param.label,
+            kFrameCount,
+            wallMs,
+            wallMs / kFrameCount,
+            kFrameCount / (wallMs / 1000.0),
+            frameExecMs,
+            frameExecMs / kFrameCount,
+            cpuEstMs,
+            cpuPct,
+            apuEstMs,
+            apuPct,
+            ppuEstMs,
+            ppuPct,
+            frameSubmitMs,
+            presentMs,
+            memCopyMs);
+    }
+    else {
+        fprintf(
+            stderr,
+            "\n"
+            "=== SmolNES Throughput [%s]: %d frames ===\n"
+            "\n"
+            "Wall clock:              %8.1f ms  (%5.2f ms/frame, %.1f fps)\n"
+            "Frame execution total:   %8.1f ms  (%5.2f ms/frame)\n"
+            "\n"
+            "Outside frame execution:\n"
+            "  Frame submit:          %8.1f ms\n"
+            "  Present (sync+copy):   %8.1f ms\n"
+            "  Memory snapshot copy:  %8.1f ms\n"
+            "\n",
+            param.label,
+            kFrameCount,
+            wallMs,
+            wallMs / kFrameCount,
+            kFrameCount / (wallMs / 1000.0),
+            frameExecMs,
+            frameExecMs / kFrameCount,
+            frameSubmitMs,
+            presentMs,
+            memCopyMs);
+    }
 
     // Correctness: verify rendering produced non-trivial output.
     ASSERT_TRUE(paletteFrame100.has_value()) << "No palette frame at frame 100.";
@@ -167,3 +192,33 @@ TEST(SmolnesPpuPerformance, FlappyParatroopa1000Frames)
     EXPECT_NE(paletteFrame100->indices, paletteFrame500->indices)
         << "Palette frames 100 and 500 are identical (game not progressing).";
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    NesRoms,
+    SmolnesPpuPerformance,
+    testing::Values(
+        PpuPerfParam{
+            Scenario::EnumType::NesFlappyParatroopa,
+            Test::resolveFlappyRomPath,
+            "FlappyParatroopa_Profiled",
+            true,
+        },
+        PpuPerfParam{
+            Scenario::EnumType::NesFlappyParatroopa,
+            Test::resolveFlappyRomPath,
+            "FlappyParatroopa_Throughput",
+            false,
+        },
+        PpuPerfParam{
+            Scenario::EnumType::NesSuperMarioBros,
+            Test::resolveSmbRomPath,
+            "SuperMarioBros_Profiled",
+            true,
+        },
+        PpuPerfParam{
+            Scenario::EnumType::NesSuperMarioBros,
+            Test::resolveSmbRomPath,
+            "SuperMarioBros_Throughput",
+            false,
+        }),
+    nameGenerator);
