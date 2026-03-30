@@ -11,6 +11,9 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/PlanPlaybackStopped.h"
+#include "server/api/PlanSaved.h"
+#include "server/api/SearchProgress.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
@@ -66,6 +69,14 @@ State::Any selectPostConnectState(StateMachine& sm)
     if (status.state == "Evolution") {
         LOG_INFO(State, "Server is already evolving, transitioning to TrainingActive");
         return TrainingActive{};
+    }
+    if (status.state == "SearchActive") {
+        LOG_INFO(State, "Server is already searching, transitioning to SearchActive");
+        return SearchActive{};
+    }
+    if (status.state == "PlanPlayback") {
+        LOG_INFO(State, "Server is already playing back a plan, transitioning to PlanPlayback");
+        return PlanPlayback{};
     }
 
     LOG_INFO(State, "Server not in evolution, transitioning to StartMenu");
@@ -319,6 +330,34 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             }
             catch (const std::exception& e) {
                 LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
+            }
+        }
+        else if (messageType == Api::SearchProgress::name()) {
+            try {
+                auto progress = DirtSim::Network::deserialize_payload<Api::SearchProgress>(payload);
+                sm.queueEvent(SearchProgressReceivedEvent{ std::move(progress) });
+            }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize SearchProgress: {}", e.what());
+            }
+        }
+        else if (messageType == Api::PlanSaved::name()) {
+            try {
+                auto saved = DirtSim::Network::deserialize_payload<Api::PlanSaved>(payload);
+                sm.queueEvent(PlanSavedReceivedEvent{ std::move(saved) });
+            }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize PlanSaved: {}", e.what());
+            }
+        }
+        else if (messageType == Api::PlanPlaybackStopped::name()) {
+            try {
+                auto stopped =
+                    DirtSim::Network::deserialize_payload<Api::PlanPlaybackStopped>(payload);
+                sm.queueEvent(PlanPlaybackStoppedReceivedEvent{ std::move(stopped) });
+            }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize PlanPlaybackStopped: {}", e.what());
             }
         }
         else if (messageType == Api::TrainingBestSnapshot::name()) {

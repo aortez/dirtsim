@@ -24,12 +24,22 @@
 #include "api/PerfStatsGet.h"
 #include "api/PhysicsSettingsGet.h"
 #include "api/PhysicsSettingsSet.h"
+#include "api/PlanDelete.h"
+#include "api/PlanGet.h"
+#include "api/PlanList.h"
+#include "api/PlanPlaybackPauseSet.h"
+#include "api/PlanPlaybackStart.h"
+#include "api/PlanPlaybackStop.h"
 #include "api/RenderFormatGet.h"
 #include "api/RenderFormatSet.h"
 #include "api/RenderStreamConfigSet.h"
 #include "api/Reset.h"
 #include "api/ScenarioListGet.h"
 #include "api/ScenarioSwitch.h"
+#include "api/SearchPauseSet.h"
+#include "api/SearchProgress.h"
+#include "api/SearchStart.h"
+#include "api/SearchStop.h"
 #include "api/SeedAdd.h"
 #include "api/SimRun.h"
 #include "api/SimStop.h"
@@ -440,6 +450,12 @@ public:
         DirtSim::Api::NesApuGet::Cwc,
         DirtSim::Api::NesFrameDelaySet::Cwc,
         DirtSim::Api::NesInputSet::Cwc,
+        DirtSim::Api::PlanDelete::Cwc,
+        DirtSim::Api::PlanGet::Cwc,
+        DirtSim::Api::PlanList::Cwc,
+        DirtSim::Api::PlanPlaybackPauseSet::Cwc,
+        DirtSim::Api::PlanPlaybackStart::Cwc,
+        DirtSim::Api::PlanPlaybackStop::Cwc,
         DirtSim::Api::PerfStatsGet::Cwc,
         DirtSim::Api::PhysicsSettingsGet::Cwc,
         DirtSim::Api::PhysicsSettingsSet::Cwc,
@@ -448,6 +464,10 @@ public:
         DirtSim::Api::RenderStreamConfigSet::Cwc,
         DirtSim::Api::Reset::Cwc,
         DirtSim::Api::ScenarioListGet::Cwc,
+        DirtSim::Api::SearchPauseSet::Cwc,
+        DirtSim::Api::SearchProgressGet::Cwc,
+        DirtSim::Api::SearchStart::Cwc,
+        DirtSim::Api::SearchStop::Cwc,
         DirtSim::Api::ScenarioSwitch::Cwc,
         DirtSim::Api::SeedAdd::Cwc,
         DirtSim::Api::SimRun::Cwc,

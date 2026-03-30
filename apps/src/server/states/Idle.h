@@ -22,6 +22,11 @@ struct Idle {
 
     Any onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::PlanDelete::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::PlanGet::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::PlanList::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm);
 
     static constexpr const char* name() { return "Idle"; }

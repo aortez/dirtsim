@@ -128,6 +128,7 @@ Do we have a map icon we can use?  needs planning.
 
 - Edit Search config and start Searches.
 - Browse prior Search results (Plans); select for playback.
+- Own the current Plans list and selected Plan.
 
 Primary panels:
 
@@ -360,11 +361,22 @@ struct PlanPlaybackStart {
 - `SearchBestSnapshot`
 - `SearchBestPlaybackFrame`
 - `PlanSaved` (completion)
+- `PlanPlaybackStopped`
 
 Phase 1 shapes:
 
 ```cpp
 using PlanSaved = PlanSummary;
+
+enum class PlanPlaybackStopReason {
+    Stopped,
+    Completed,
+};
+
+struct PlanPlaybackStopped {
+    PlanId id;
+    PlanPlaybackStopReason reason;
+};
 ```
 
 ### Plan Repository
@@ -377,6 +389,7 @@ Phase 1 repository shape:
 - `PlanGet` returns `Plan`
 - `PlanDelete` deletes by `PlanId`
 - `PlanSaved` broadcasts `PlanSummary`
+- `PlanPlaybackStopped` broadcasts the played `PlanId` and whether playback was stopped or completed
 
 ## Phased Rollout
 
@@ -396,15 +409,18 @@ Success criteria:
 - Search can run, stream progress, and stop cleanly
 - Plans are persisted and browsable
 - brain dead search - run right until death by first goomba
-- Playback can play back saved Plan
+- Playback can play back saved Plan and return cleanly to idle on completion or stop
 - a functional test can run hold-right search and verify a saved `Plan`
-- a functional test can start playback for a saved `Plan` and return cleanly to idle
+- a functional test can allow playback for a saved `Plan` to complete and return cleanly to idle
+- a functional test can stop playback for a saved `Plan` and return cleanly to idle
 
 Phase 1 functional tests:
 
 - `canSearchHoldRight`
   restart services, start Search, wait for completion, verify `PlanList` grows by one, then `PlanGet` the new `Plan` and verify `elapsedFrames > 0`, `bestFrontier > 0`, and all frames match the hold-right policy
 - `canPlaybackPlan`
+  create or load a saved `Plan`, start playback, verify UI and server enter `PlanPlayback`, allow playback to complete naturally, and verify both return cleanly to idle
+- `canStopPlaybackPlan`
   create or load a saved `Plan`, start playback, verify UI and server enter `PlanPlayback`, stop playback, and verify both return cleanly to idle
 - `canPauseSearch`
   start Search, pause it, verify `SearchProgress.paused == true`, verify `elapsedFrames` stops advancing while paused, then resume and verify progress continues

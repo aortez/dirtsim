@@ -6,7 +6,9 @@
 #include "Error.h"
 #include "Evolution.h"
 #include "Idle.h"
+#include "PlanPlayback.h"
 #include "PreStartup.h"
+#include "SearchActive.h"
 #include "Shutdown.h"
 #include "SimPaused.h"
 #include "SimRunning.h"
@@ -34,6 +36,8 @@ public:
         Error,
         Startup,
         Idle,
+        SearchActive,
+        PlanPlayback,
         SimRunning,
         SimPaused,
         Evolution,

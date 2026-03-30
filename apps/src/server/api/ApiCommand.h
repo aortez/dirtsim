@@ -25,12 +25,22 @@
 #include "PerfStatsGet.h"
 #include "PhysicsSettingsGet.h"
 #include "PhysicsSettingsSet.h"
+#include "PlanDelete.h"
+#include "PlanGet.h"
+#include "PlanList.h"
+#include "PlanPlaybackPauseSet.h"
+#include "PlanPlaybackStart.h"
+#include "PlanPlaybackStop.h"
 #include "RenderFormatGet.h"
 #include "RenderFormatSet.h"
 #include "RenderStreamConfigSet.h"
 #include "Reset.h"
 #include "ScenarioListGet.h"
 #include "ScenarioSwitch.h"
+#include "SearchPauseSet.h"
+#include "SearchProgress.h"
+#include "SearchStart.h"
+#include "SearchStop.h"
 #include "SeedAdd.h"
 #include "SimRun.h"
 #include "SimStop.h"
@@ -100,6 +110,12 @@ using ApiCommand = std::variant<
     Api::NesApuGet::Command,
     Api::NesFrameDelaySet::Command,
     Api::NesInputSet::Command,
+    Api::PlanDelete::Command,
+    Api::PlanGet::Command,
+    Api::PlanList::Command,
+    Api::PlanPlaybackPauseSet::Command,
+    Api::PlanPlaybackStart::Command,
+    Api::PlanPlaybackStop::Command,
     Api::PerfStatsGet::Command,
     Api::PhysicsSettingsGet::Command,
     Api::PhysicsSettingsSet::Command,
@@ -108,6 +124,10 @@ using ApiCommand = std::variant<
     Api::RenderStreamConfigSet::Command,
     Api::Reset::Command,
     Api::ScenarioListGet::Command,
+    Api::SearchPauseSet::Command,
+    Api::SearchProgressGet::Command,
+    Api::SearchStart::Command,
+    Api::SearchStop::Command,
     Api::ScenarioSwitch::Command,
     Api::SeedAdd::Command,
     Api::SimRun::Command,

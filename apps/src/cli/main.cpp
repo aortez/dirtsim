@@ -640,6 +640,10 @@ std::string getExamplesHelp()
     examples += "\nFunctional Tests:\n";
     examples += "  cli functional-test canExit\n";
     examples += "  cli functional-test canExit --restart\n";
+    examples += "  cli functional-test canSearchHoldRight\n";
+    examples += "  cli functional-test canPauseSearch\n";
+    examples += "  cli functional-test canPlaybackPlan\n";
+    examples += "  cli functional-test canStopPlaybackPlan\n";
     examples += "  cli functional-test canTrain\n";
     examples += "  cli functional-test canTrainNesFlappy\n";
     examples += "  cli functional-test canSetGenerationsAndTrain\n";
@@ -1189,10 +1193,13 @@ int main(int argc, char** argv)
         }
 
         const std::string testName = args::get(command);
-        if (testName != "canExit" && testName != "canTrain" && testName != "canTrainNesFlappy"
-            && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
-            && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
-            && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
+        if (testName != "canExit" && testName != "canSearchHoldRight"
+            && testName != "canPauseSearch" && testName != "canPlaybackPlan"
+            && testName != "canStopPlaybackPlan" && testName != "canTrain"
+            && testName != "canTrainNesFlappy" && testName != "canSetGenerationsAndTrain"
+            && testName != "canPlantTreeSeed" && testName != "canLoadGenomeFromBrowser"
+            && testName != "canOpenTrainingConfigPanel" && testName != "canUpdateUserSettings"
+            && testName != "canResetUserSettings"
             && testName != "canPersistUserSettingsAcrossRestart"
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
             && testName != "canControlNesScenario"
@@ -1208,7 +1215,8 @@ int main(int argc, char** argv)
             && testName != "canRecoverScannerUiAfterOutOfBandExit"
             && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
-            std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
+            std::cerr << "Valid tests: canExit, canSearchHoldRight, canPauseSearch, "
+                         "canPlaybackPlan, canStopPlaybackPlan, canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
                          "canOpenTrainingConfigPanel, canUpdateUserSettings, "
@@ -1255,6 +1263,22 @@ int main(int argc, char** argv)
         Client::FunctionalTestSummary summary{};
         if (testName == "canExit") {
             summary = runner.runCanExit(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canSearchHoldRight") {
+            summary =
+                runner.runCanSearchHoldRight(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canPauseSearch") {
+            summary =
+                runner.runCanPauseSearch(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canPlaybackPlan") {
+            summary =
+                runner.runCanPlaybackPlan(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canStopPlaybackPlan") {
+            summary = runner.runCanStopPlaybackPlan(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "canTrain") {
             summary = runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);

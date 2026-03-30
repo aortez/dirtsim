@@ -6,6 +6,15 @@
 #include "api/IconRailExpand.h"
 #include "api/IconRailShowIcons.h"
 #include "api/IconSelect.h"
+#include "api/PlanBrowserOpen.h"
+#include "api/PlanDetailOpen.h"
+#include "api/PlanDetailSelect.h"
+#include "api/PlanPlaybackPauseSet.h"
+#include "api/PlanPlaybackStart.h"
+#include "api/PlanPlaybackStop.h"
+#include "api/SearchPauseSet.h"
+#include "api/SearchStart.h"
+#include "api/SearchStop.h"
 #include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
 #include "api/SynthKeyEvent.h"
@@ -208,14 +217,32 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::NetworkScannerEnterPress::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::NetworkScannerExitPress::Cwc>(
         [this](UiApi::NetworkScannerExitPress::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanBrowserOpen::Cwc>(
+        [this](UiApi::PlanBrowserOpen::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanDetailOpen::Cwc>(
+        [this](UiApi::PlanDetailOpen::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanDetailSelect::Cwc>(
+        [this](UiApi::PlanDetailSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::PlantSeed::Cwc>(
         [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanPlaybackPauseSet::Cwc>(
+        [this](UiApi::PlanPlaybackPauseSet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanPlaybackStart::Cwc>(
+        [this](UiApi::PlanPlaybackStart::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::PlanPlaybackStop::Cwc>(
+        [this](UiApi::PlanPlaybackStop::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DebugVisualizationSelect::Cwc>(
         [this](UiApi::DebugVisualizationSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SearchPauseSet::Cwc>(
+        [this](UiApi::SearchPauseSet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SearchStart::Cwc>(
+        [this](UiApi::SearchStart::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SearchStop::Cwc>(
+        [this](UiApi::SearchStop::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<Api::TrainingResult::Cwc>(
         [this](Api::TrainingResult::Cwc cwc) { queueEvent(cwc); });
 
@@ -289,8 +316,17 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkPasswordSubmit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerEnterPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::NetworkScannerExitPress);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanBrowserOpen);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanDetailOpen);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanDetailSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::RenderModeSelect);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::ScreenGrab);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanPlaybackPauseSet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanPlaybackStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanPlaybackStop);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchPauseSet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchStop);
             DISPATCH_UI_CMD_EMPTY(UiApi::SimPause);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SimRun);
             DISPATCH_UI_CMD_EMPTY(UiApi::SimStop);
@@ -553,6 +589,7 @@ void StateMachine::handleEvent(const Event& event)
         // High-frequency events log at DEBUG to avoid spam.
         const bool isHighFrequency = std::holds_alternative<UiUpdateEvent>(event)
             || std::holds_alternative<EvolutionProgressReceivedEvent>(event)
+            || std::holds_alternative<SearchProgressReceivedEvent>(event)
             || std::holds_alternative<TrainingBestPlaybackFrameReceivedEvent>(event);
         const std::string msg = "Handling global event: " + getEventName(event);
         if (isHighFrequency) {
@@ -1156,6 +1193,12 @@ void StateMachine::handleEvent(const Event& event)
                         if constexpr (
                             std::is_same_v<std::decay_t<decltype(evt)>, UiUpdateEvent>
                             || std::is_same_v<std::decay_t<decltype(evt)>, UserSettingsUpdatedEvent>
+                            || std::
+                                is_same_v<std::decay_t<decltype(evt)>, SearchProgressReceivedEvent>
+                            || std::is_same_v<
+                                std::decay_t<decltype(evt)>,
+                                PlanPlaybackStoppedReceivedEvent>
+                            || std::is_same_v<std::decay_t<decltype(evt)>, PlanSavedReceivedEvent>
                             || std::is_same_v<
                                 std::decay_t<decltype(evt)>,
                                 TrainingBestPlaybackFrameReceivedEvent>) {

@@ -50,6 +50,26 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanSearchHoldRight(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanPlaybackPlan(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanStopPlaybackPlan(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanPauseSearch(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanTrainNesFlappy(
         const std::string& uiAddress,
         const std::string& serverAddress,
