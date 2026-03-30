@@ -524,8 +524,8 @@ int smolnesRuntimeWrappedUpdateTexture(
             uint8_t* dst = runtime->latestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
             memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
         }
-        runtime->hasLatestFrame = true;
     }
+    runtime->hasLatestFrame = true;
     const uint8_t* paletteSrc = frame_buffer_palette + (SMOLNES_RUNTIME_FRAME_WIDTH * 8u);
     for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
         const uint8_t* src = paletteSrc + (row * SMOLNES_RUNTIME_FRAME_WIDTH);

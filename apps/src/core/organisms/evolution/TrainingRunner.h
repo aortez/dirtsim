@@ -122,7 +122,7 @@ public:
         FrameTraceSink frameTraceSink = nullptr;
         bool nesApuEnabled = false;
         bool nesDetailedTimingEnabled = false;
-        bool nesRgbaOutputEnabled = false;
+        bool nesRgbaOutputEnabled = true;
         std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
     };
 

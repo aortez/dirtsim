@@ -681,6 +681,7 @@ Result<std::monostate, std::string> TrainingRunner::setScenarioConfig(const Scen
         }
         nesDriver_->setApuEnabled(nesApuEnabled_);
         nesDriver_->setDetailedTimingEnabled(nesDetailedTimingEnabled_);
+        nesDriver_->setRgbaOutputEnabled(nesRgbaOutputEnabled_);
 
         if (nesGameAdapter_) {
             nesGameAdapter_->reset(nesDriver_->getRuntimeResolvedRomId());
