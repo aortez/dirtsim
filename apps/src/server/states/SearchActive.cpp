@@ -40,7 +40,11 @@ void SearchActive::onEnter(StateMachine& dsm)
 {
     LOG_INFO(State, "SearchActive: Entered");
     dsm.updateCachedWorldData(execution.getWorldData());
-    broadcastSearchRender(dsm, execution);
+    renderBroadcasted_ = false;
+    if (execution.hasRenderableFrame()) {
+        broadcastSearchRender(dsm, execution);
+        renderBroadcasted_ = true;
+    }
     broadcastSearchProgress(dsm, execution.getProgress());
     lastProgressBroadcastTime_ = std::chrono::steady_clock::now();
 }
@@ -53,9 +57,10 @@ void SearchActive::onExit(StateMachine& /*dsm*/)
 std::optional<Any> SearchActive::tick(StateMachine& dsm)
 {
     const auto tickResult = execution.tick();
-    if (tickResult.frameAdvanced) {
+    if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
         broadcastSearchRender(dsm, execution);
+        renderBroadcasted_ = true;
     }
 
     const auto now = std::chrono::steady_clock::now();

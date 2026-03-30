@@ -25,6 +25,7 @@ struct SearchActive {
 
     SearchSupport::SmbPlanExecution execution;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
+    bool renderBroadcasted_ = false;
 };
 
 } // namespace State

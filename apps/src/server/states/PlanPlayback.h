@@ -24,6 +24,7 @@ struct PlanPlayback {
 
     UUID planId{};
     SearchSupport::SmbPlanExecution execution;
+    bool renderBroadcasted_ = false;
 };
 
 } // namespace State

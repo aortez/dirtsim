@@ -33,6 +33,7 @@ public:
 
     bool isCompleted() const;
     bool isPaused() const;
+    bool hasRenderableFrame() const;
 
     const Api::Plan& getPlan() const;
     const Api::SearchProgress& getProgress() const;

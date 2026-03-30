@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/RenderMessageFull.h"
 #include "ui/state-machine/Event.h"
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -24,6 +25,17 @@ public:
      */
     static std::optional<Event> parse(const std::string& message);
 
+    /**
+     * @brief Parse a server-pushed command broadcast into a UI event.
+     */
+    static std::optional<Event> parseServerCommand(
+        const std::string& messageType, const std::vector<std::byte>& payload);
+
+    /**
+     * @brief Parse a binary RenderMessage push into a UiUpdateEvent.
+     */
+    static UiUpdateEvent parseRenderMessage(const std::vector<std::byte>& bytes);
+
 private:
     /**
      * @brief Try to parse as a state_get response with WorldData.
@@ -34,6 +46,9 @@ private:
      * @brief Handle error responses.
      */
     static void handleError(const nlohmann::json& json);
+
+    static UiUpdateEvent parseRenderMessageFull(const RenderMessageFull& fullMsg);
+    static void validateRenderMessage(const RenderMessage& renderMsg);
 };
 
 } // namespace Ui

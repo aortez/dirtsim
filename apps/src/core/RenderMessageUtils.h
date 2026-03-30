@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Assert.h"
 #include "Cell.h"
 #include "RenderMessage.h"
 #include "WorldData.h"
@@ -119,6 +120,13 @@ inline std::vector<std::byte> packDebugCells(const WorldData& data)
     return payload;
 }
 
+inline size_t checkedRenderCellCount(int16_t width, int16_t height, const std::string& context)
+{
+    DIRTSIM_ASSERT(width >= 0, context + ": width must be non-negative");
+    DIRTSIM_ASSERT(height >= 0, context + ": height must be non-negative");
+    return static_cast<size_t>(width) * static_cast<size_t>(height);
+}
+
 /**
  * @brief Extract sparse organism data from OrganismManager grid.
  */
@@ -147,14 +155,19 @@ inline std::vector<OrganismData> extractOrganisms(const std::vector<OrganismId>&
 }
 
 /**
- * @brief Pack WorldData into RenderMessage with specified format.
+ * @brief Pack WorldData into a cell-based RenderMessage with specified format.
  */
-inline RenderMessage packRenderMessage(
+inline RenderMessage packCellRenderMessage(
     const WorldData& data,
     RenderFormat::EnumType format,
-    const std::vector<OrganismId>& organism_grid,
-    const std::optional<ScenarioVideoFrame>& scenarioVideoFrame)
+    const std::vector<OrganismId>& organism_grid)
 {
+    const size_t cellCount =
+        checkedRenderCellCount(data.width, data.height, "packCellRenderMessage");
+    DIRTSIM_ASSERT(
+        data.cells.size() == cellCount,
+        "packCellRenderMessage: WorldData cell count must match width * height");
+
     RenderMessage msg;
     msg.format = format;
     msg.width = data.width;
@@ -165,21 +178,55 @@ inline RenderMessage packRenderMessage(
     msg.region_blocks_y = data.region_debug_blocks_y;
     msg.region_debug = data.region_debug;
     msg.tree_vision = data.tree_vision;
-    msg.scenario_video_frame = scenarioVideoFrame;
+    msg.scenario_video_frame = std::nullopt;
 
-    if (!msg.scenario_video_frame.has_value()) {
-        // Pack cells based on format.
-        if (format == RenderFormat::EnumType::Basic) {
-            msg.payload = packBasicCells(data);
-        }
-        else if (format == RenderFormat::EnumType::Debug) {
-            msg.payload = packDebugCells(data);
-        }
+    if (format == RenderFormat::EnumType::Basic) {
+        DIRTSIM_ASSERT(
+            data.colors.size() == cellCount,
+            "packCellRenderMessage: WorldData colors must match width * height for Basic render");
+        msg.payload = packBasicCells(data);
+    }
+    else if (format == RenderFormat::EnumType::Debug) {
+        msg.payload = packDebugCells(data);
+    }
+    else {
+        DIRTSIM_ASSERT(false, "packCellRenderMessage: unsupported render format");
     }
 
     msg.organisms = extractOrganisms(organism_grid);
     msg.entities = data.entities;
 
+    return msg;
+}
+
+/**
+ * @brief Pack a scenario-native video frame RenderMessage.
+ */
+inline RenderMessage packVideoRenderMessage(
+    const WorldData& data,
+    RenderFormat::EnumType format,
+    const std::vector<OrganismId>& organism_grid,
+    const ScenarioVideoFrame& scenarioVideoFrame)
+{
+    const size_t pixelBytes = static_cast<size_t>(scenarioVideoFrame.width)
+        * static_cast<size_t>(scenarioVideoFrame.height) * sizeof(uint16_t);
+    DIRTSIM_ASSERT(
+        scenarioVideoFrame.pixels.size() == pixelBytes,
+        "packVideoRenderMessage: scenario video frame pixel size must match width * height * 2");
+
+    RenderMessage msg;
+    msg.format = format;
+    msg.width = static_cast<int16_t>(scenarioVideoFrame.width);
+    msg.height = static_cast<int16_t>(scenarioVideoFrame.height);
+    msg.timestep = data.timestep;
+    msg.fps_server = data.fps_server;
+    msg.region_blocks_x = data.region_debug_blocks_x;
+    msg.region_blocks_y = data.region_debug_blocks_y;
+    msg.region_debug = data.region_debug;
+    msg.tree_vision = data.tree_vision;
+    msg.scenario_video_frame = scenarioVideoFrame;
+    msg.organisms = extractOrganisms(organism_grid);
+    msg.entities = data.entities;
     return msg;
 }
 

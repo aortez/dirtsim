@@ -2547,6 +2547,65 @@ Result<std::monostate, std::string> showUiIcons(Network::WebSocketService& uiCli
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
+Result<std::monostate, std::string> runDefaultSimulationAndReturnToStartMenu(
+    Network::WebSocketService& uiClient, Network::WebSocketService& serverClient, int timeoutMs)
+{
+    const auto startMenuResult = ensureUiInStartMenu(uiClient, timeoutMs);
+    if (startMenuResult.isError()) {
+        return startMenuResult;
+    }
+
+    const auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+    if (serverIdleResult.isError()) {
+        return serverIdleResult;
+    }
+
+    const auto showIconsResult = showUiIcons(uiClient, timeoutMs);
+    if (showIconsResult.isError()) {
+        return showIconsResult;
+    }
+
+    UiApi::IconSelect::Command startScenarioIcon{
+        .id = Ui::IconId::SCENARIO,
+    };
+    const auto startScenarioResult = unwrapResponse(
+        uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(startScenarioIcon, timeoutMs));
+    if (startScenarioResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "UI IconSelect(SCENARIO) failed: " + startScenarioResult.errorValue());
+    }
+
+    const auto uiRunningResult = waitForUiState(uiClient, "SimRunning", timeoutMs);
+    if (uiRunningResult.isError()) {
+        return Result<std::monostate, std::string>::error(uiRunningResult.errorValue());
+    }
+
+    const auto serverRunningResult = waitForServerState(serverClient, "SimRunning", timeoutMs);
+    if (serverRunningResult.isError()) {
+        return Result<std::monostate, std::string>::error(serverRunningResult.errorValue());
+    }
+
+    UiApi::SimStop::Command simStopCmd{};
+    const auto simStopResult = unwrapResponse(
+        uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+    if (simStopResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "UI SimStop failed after default simulation: " + simStopResult.errorValue());
+    }
+
+    const auto uiStartMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+    if (uiStartMenuResult.isError()) {
+        return Result<std::monostate, std::string>::error(uiStartMenuResult.errorValue());
+    }
+
+    const auto serverIdleAfterStopResult = waitForServerState(serverClient, "Idle", timeoutMs);
+    if (serverIdleAfterStopResult.isError()) {
+        return Result<std::monostate, std::string>::error(serverIdleAfterStopResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 Result<std::monostate, std::string> ensureSearchIdle(
     Network::WebSocketService& uiClient, Network::WebSocketService& serverClient, int timeoutMs)
 {
@@ -3212,6 +3271,14 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
             connectSearchClients(uiClient, serverClient, uiAddress, serverAddress, timeoutMs);
         if (connectResult.isError()) {
             return Result<std::monostate, std::string>::error(connectResult.errorValue());
+        }
+
+        const auto warmPathResult =
+            runDefaultSimulationAndReturnToStartMenu(uiClient, serverClient, timeoutMs);
+        if (warmPathResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(warmPathResult.errorValue());
         }
 
         const auto searchResult = runSearchHoldRightSession(uiClient, serverClient, timeoutMs);

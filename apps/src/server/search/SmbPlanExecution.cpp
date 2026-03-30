@@ -188,6 +188,11 @@ bool SmbPlanExecution::isPaused() const
     return paused_;
 }
 
+bool SmbPlanExecution::hasRenderableFrame() const
+{
+    return scenarioVideoFrame_.has_value();
+}
+
 const Api::Plan& SmbPlanExecution::getPlan() const
 {
     return plan_;

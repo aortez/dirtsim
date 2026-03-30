@@ -42,7 +42,11 @@ void PlanPlayback::onEnter(StateMachine& dsm)
 {
     LOG_INFO(State, "PlanPlayback: Entered");
     dsm.updateCachedWorldData(execution.getWorldData());
-    broadcastPlanPlaybackRender(dsm, execution);
+    renderBroadcasted_ = false;
+    if (execution.hasRenderableFrame()) {
+        broadcastPlanPlaybackRender(dsm, execution);
+        renderBroadcasted_ = true;
+    }
 }
 
 void PlanPlayback::onExit(StateMachine& /*dsm*/)
@@ -53,9 +57,10 @@ void PlanPlayback::onExit(StateMachine& /*dsm*/)
 std::optional<Any> PlanPlayback::tick(StateMachine& dsm)
 {
     const auto tickResult = execution.tick();
-    if (tickResult.frameAdvanced) {
+    if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
         broadcastPlanPlaybackRender(dsm, execution);
+        renderBroadcasted_ = true;
     }
 
     if (tickResult.error.has_value()) {

@@ -2258,8 +2258,10 @@ void StateMachine::broadcastRenderMessage(
             continue;
         }
 
-        RenderMessage msg = RenderMessageUtils::packRenderMessage(
-            data, client.renderFormat, organism_grid, scenarioVideoFrame);
+        RenderMessage msg = scenarioVideoFrame.has_value()
+            ? RenderMessageUtils::packVideoRenderMessage(
+                  data, client.renderFormat, organism_grid, scenarioVideoFrame.value())
+            : RenderMessageUtils::packCellRenderMessage(data, client.renderFormat, organism_grid);
 
         if (waterVolumeView && !msg.scenario_video_frame.has_value()
             && waterVolumeView->width == msg.width && waterVolumeView->height == msg.height

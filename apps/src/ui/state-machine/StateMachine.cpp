@@ -30,9 +30,11 @@
 #include "core/StateLifecycle.h"
 #include "core/encoding/H264Encoder.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/ClientHello.h"
 #include "core/network/JsonProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
+#include "network/MessageParser.h"
 #include "server/api/EventSubscribe.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
@@ -117,6 +119,47 @@ void StateMachine::setupWebSocketService()
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
 
     auto& ws = getWebSocketService();
+
+    Network::ClientHello hello{
+        .protocolVersion = Network::kClientHelloProtocolVersion,
+        .wantsRender = true,
+        .wantsEvents = true,
+    };
+    ws.setClientHello(hello);
+
+    ws.onConnected([this]() {
+        LOG_INFO(Network, "Connected to server");
+        queueEvent(ServerConnectedEvent{});
+    });
+
+    ws.onDisconnected([this]() {
+        LOG_WARN(Network, "Disconnected from server");
+        queueEvent(ServerDisconnectedEvent{ "Connection closed" });
+    });
+
+    ws.onError([this](const std::string& error) {
+        LOG_ERROR(Network, "Connection error: {}", error);
+        queueEvent(ServerDisconnectedEvent{ error });
+    });
+
+    ws.onServerCommand(
+        [this](const std::string& messageType, const std::vector<std::byte>& payload) {
+            if (auto event = MessageParser::parseServerCommand(messageType, payload);
+                event.has_value()) {
+                queueEvent(event.value());
+            }
+        });
+
+    ws.onBinary([this](const std::vector<std::byte>& bytes) {
+        LOG_DEBUG(Network, "Received binary message ({} bytes)", bytes.size());
+
+        try {
+            queueEvent(Event{ MessageParser::parseRenderMessage(bytes) });
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR(Network, "Failed to process RenderMessage: {}", e.what());
+        }
+    });
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
@@ -245,9 +288,6 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::SearchStop::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<Api::TrainingResult::Cwc>(
         [this](Api::TrainingResult::Cwc cwc) { queueEvent(cwc); });
-
-    // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
-    // Don't set it here or it will overwrite that handler!
 
     // =========================================================================
     // JSON protocol support - for CLI and browser clients.
