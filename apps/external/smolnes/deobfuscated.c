@@ -185,7 +185,7 @@ static inline uint8_t *get_chr_byte(uint16_t a) {
 }
 
 // Read a byte from nametable RAM.
-uint8_t *get_nametable_byte(uint16_t a) {
+static inline uint8_t *get_nametable_byte(uint16_t a) {
   return &vram[mirror == 0   ? a % 1024                  // single bank 0
                : mirror == 1 ? a % 1024 + 1024           // single bank 1
                : mirror == 2 ? a & 2047                  // vertical mirroring
@@ -768,8 +768,13 @@ loop:
   SMOLNES_APU_CLOCK(cycles + 2);
   SMOLNES_APU_CLOCK_END();
   SMOLNES_PPU_STEP_BEGIN();
+  const uint8_t rendering_enabled = ppumask & 24;
+  const uint8_t sprites_enabled = ppumask & 16;
+  const uint16_t bg_pattern_base = ppuctrl << 8 & 4096;
+  const uint8_t fine_x_shift = 15 - fine_x;
+  const uint8_t fine_x_palette_shift = 28 - fine_x * 2;
   uint32_t smolnes_ppu_phase = SMOLNES_PPU_PHASE_OTHER;
-  if (ppumask & 24 && scany < 240) {
+  if (rendering_enabled && scany < 240) {
     if (dot < 256)
       smolnes_ppu_phase = SMOLNES_PPU_PHASE_VISIBLE_PIXELS;
     else if (dot >= 320)
@@ -777,7 +782,7 @@ loop:
   }
   SMOLNES_PPU_PHASE_SET_IF_ACTIVE(smolnes_ppu_phase);
   for (tmp = cycles * 3 + 6; tmp--;) {
-    if (ppumask & 24) {
+    if (rendering_enabled) {
       if (scany < 240) {
         if (dot < 256) {
           if (dot == 0) {
@@ -787,11 +792,11 @@ loop:
             SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
           }
 
-          uint8_t color = shift_hi >> 14 - fine_x & 2 |
-                          shift_lo >> 15 - fine_x & 1,
-                  palette = shift_at >> 28 - fine_x * 2 & 12;
+          uint8_t color = shift_hi >> (fine_x_shift - 1) & 2 |
+                          shift_lo >> fine_x_shift & 1,
+                  palette = shift_at >> fine_x_palette_shift & 12;
 
-          if (ppumask & 16) {
+          if (sprites_enabled) {
             ScanlineSpritePixel *sprite = &scanline_sprite_pixels[dot];
             if (sprite->color) {
               if (!(sprite->attr & 32 && color)) {
@@ -809,7 +814,6 @@ loop:
           shift_lo <<= 1;
           shift_at <<= 2;
 
-          int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
           switch (dot & 7) {
           case 1:
             ntb = *get_nametable_byte(V);
@@ -820,12 +824,15 @@ loop:
                    (V >> 5 & 2 | V / 2 & 1) * 2) %
                   4 * 0x5555;
             break;
-          case 5:
+          case 5: {
+            int temp = bg_pattern_base | ntb << 4 | V >> 12;
             ptb_lo = *get_chr_byte(temp);
             break;
+          }
           case 7: {
+            int temp = bg_pattern_base | ntb << 4 | V >> 12;
             uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
+            V = (V & 31) == 31 ? V & ~31 ^ 1024 : V + 1;
             shift_hi |= ptb_hi;
             shift_lo |= ptb_lo;
             shift_at |= atb;
@@ -849,7 +856,6 @@ loop:
             shift_at <<= 2;
           }
 
-          int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
           switch (dot & 7) {
           case 1:
             ntb = *get_nametable_byte(V);
@@ -860,12 +866,15 @@ loop:
                    (V >> 5 & 2 | V / 2 & 1) * 2) %
                   4 * 0x5555;
             break;
-          case 5:
+          case 5: {
+            int temp = bg_pattern_base | ntb << 4 | V >> 12;
             ptb_lo = *get_chr_byte(temp);
             break;
+          }
           case 7: {
+            int temp = bg_pattern_base | ntb << 4 | V >> 12;
             uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
+            V = (V & 31) == 31 ? V & ~31 ^ 1024 : V + 1;
             shift_hi |= ptb_hi;
             shift_lo |= ptb_lo;
             shift_at |= atb;
