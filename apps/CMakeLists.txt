@@ -617,6 +617,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/DisplayCapture.cpp
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
+    src/ui/SearchIdleView.cpp
     src/ui/UiComponentManager.cpp
     src/ui/ScenarioMetadataManager.cpp
     src/ui/UserSettingsManager.cpp
@@ -631,6 +632,10 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/FractalAnimator.cpp
     src/ui/rendering/JuliaFractal.cpp
+    src/ui/rendering/maze/MazeGeneratorSession.cpp
+    src/ui/rendering/maze/MazeModel.cpp
+    src/ui/rendering/maze/MazeSearchAnimator.cpp
+    src/ui/rendering/maze/MazeSolverSession.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
     src/ui/rendering/Starfield.cpp
@@ -646,6 +651,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/GenomeBrowserPanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/LogPanel.cpp
+    src/ui/controls/MazeSearchView.cpp
     src/ui/controls/NesSettingsPanel.cpp
     src/ui/controls/NetworkDiagnosticsPanel.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
@@ -996,6 +1002,7 @@ add_executable(dirtsim-tests
 
     # Core tests.
     src/core/tests/FontSampler_test.cpp
+    src/ui/rendering/maze/tests/MazeSearchAnimator_test.cpp
 )
 target_link_libraries(dirtsim-tests
     PRIVATE

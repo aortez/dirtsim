@@ -157,12 +157,15 @@ public:
     bool isVisible() const { return visible_; }
     void setAllowMinimize(bool allow);
     bool isMinimizeAllowed() const { return allowMinimize_; }
+    lv_obj_t* activateCustomIconContent(IconId id);
+    void clearCustomIconContent(IconId id);
 
 private:
     lv_obj_t* container_ = nullptr;
     lv_obj_t* iconsViewport_ = nullptr;
     lv_obj_t* iconsLayout_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
+    std::vector<lv_obj_t*> customIconHosts_;
     std::vector<IconConfig> iconConfigs_;
     std::unique_ptr<IconFont> iconFont_; // FontAwesome loaded at runtime.
 
@@ -194,6 +197,7 @@ private:
     void createModeButtons();
     void applyMode();
     void applyExpandButtonGeometry();
+    void clearCustomIconContent(size_t index);
     void updateButtonVisuals();
     void configureDuckIcon(lv_obj_t* button);
 

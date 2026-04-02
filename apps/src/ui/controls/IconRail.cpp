@@ -177,6 +177,7 @@ void IconRail::createIcons(lv_obj_t* parent)
         if (!btnContainer) {
             LOG_WARN(Controls, "Failed to create button for icon {}", config.tooltip);
             buttons_.push_back(nullptr);
+            customIconHosts_.push_back(nullptr);
             continue;
         }
 
@@ -192,6 +193,7 @@ void IconRail::createIcons(lv_obj_t* parent)
         }
 
         buttons_.push_back(btnContainer);
+        customIconHosts_.push_back(nullptr);
     }
 }
 
@@ -370,11 +372,96 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
     }
 }
 
+lv_obj_t* IconRail::activateCustomIconContent(IconId id)
+{
+    for (size_t i = 0;
+         i < iconConfigs_.size() && i < buttons_.size() && i < customIconHosts_.size();
+         ++i) {
+        if (iconConfigs_[i].id != id || !buttons_[i]) {
+            continue;
+        }
+
+        lv_obj_t* button = lv_obj_get_child(buttons_[i], 0);
+        if (!button) {
+            return nullptr;
+        }
+
+        if (customIconHosts_[i] && lv_obj_is_valid(customIconHosts_[i])) {
+            return customIconHosts_[i];
+        }
+
+        const uint32_t childCount = lv_obj_get_child_count(button);
+        for (uint32_t childIndex = 0; childIndex < childCount; ++childIndex) {
+            if (lv_obj_t* child = lv_obj_get_child(button, static_cast<int32_t>(childIndex))) {
+                lv_obj_add_flag(child, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+
+        lv_obj_t* host = lv_obj_create(button);
+        if (!host) {
+            return nullptr;
+        }
+
+        lv_obj_set_size(host, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_pos(host, 0, 0);
+        lv_obj_set_style_bg_opa(host, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(host, 0, 0);
+        lv_obj_set_style_pad_all(host, 0, 0);
+        lv_obj_clear_flag(host, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(host, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(host, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_move_to_index(host, 0);
+
+        customIconHosts_[i] = host;
+        return host;
+    }
+
+    return nullptr;
+}
+
 void IconRail::showIcons()
 {
     setMode(RailMode::Normal);
     if (!allowedIcons_.empty()) {
         setVisibleIcons(allowedIcons_);
+    }
+}
+
+void IconRail::clearCustomIconContent(IconId id)
+{
+    for (size_t i = 0;
+         i < iconConfigs_.size() && i < buttons_.size() && i < customIconHosts_.size();
+         ++i) {
+        if (iconConfigs_[i].id != id) {
+            continue;
+        }
+
+        clearCustomIconContent(i);
+        return;
+    }
+}
+
+void IconRail::clearCustomIconContent(size_t index)
+{
+    if (index >= buttons_.size() || index >= customIconHosts_.size() || !buttons_[index]) {
+        return;
+    }
+
+    lv_obj_t* button = lv_obj_get_child(buttons_[index], 0);
+    if (!button) {
+        return;
+    }
+
+    if (customIconHosts_[index] && lv_obj_is_valid(customIconHosts_[index])) {
+        lv_obj_del(customIconHosts_[index]);
+    }
+    customIconHosts_[index] = nullptr;
+
+    const uint32_t childCount = lv_obj_get_child_count(button);
+    for (uint32_t childIndex = 0; childIndex < childCount; ++childIndex) {
+        if (lv_obj_t* child = lv_obj_get_child(button, static_cast<int32_t>(childIndex))) {
+            lv_obj_clear_flag(child, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 

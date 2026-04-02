@@ -213,7 +213,7 @@ Result<std::string, UiScreenshotCaptureError> captureUiScreenshotPng(
     return Result<std::string, UiScreenshotCaptureError>::okay(outputPath.string());
 }
 
-void captureOptionalUiScreenshotPng(
+Result<std::monostate, std::string> captureRequiredUiScreenshotPng(
     Network::WebSocketService& uiClient,
     const std::string& testName,
     const std::string& label,
@@ -222,13 +222,14 @@ void captureOptionalUiScreenshotPng(
 {
     const auto screenshotResult = captureUiScreenshotPng(uiClient, testName, label, timeoutMs);
     if (screenshotResult.isError()) {
-        std::cerr << "Skipping screenshot capture for " << testName << " (" << label
-                  << "): " << screenshotResult.errorValue().message << std::endl;
-        return;
+        return Result<std::monostate, std::string>::error(
+            "Screenshot capture failed for " + testName + " (" + label
+            + "): " + screenshotResult.errorValue().message);
     }
 
     screenshotPath = screenshotResult.value();
     std::cerr << "Saved screenshot to " << *screenshotPath << std::endl;
+    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 struct WifiFunctionalNetworkConfig {
@@ -3282,35 +3283,50 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
         }
 
         const auto searchResult = runSearchHoldRightSession(uiClient, serverClient, timeoutMs);
-        uiClient.disconnect();
-        serverClient.disconnect();
         if (searchResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
             return Result<std::monostate, std::string>::error(searchResult.errorValue());
         }
 
         const auto& plan = searchResult.value().plan;
         if (plan.summary.elapsedFrames == 0) {
+            uiClient.disconnect();
+            serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
                 "Saved plan reported elapsedFrames == 0");
         }
         if (plan.summary.bestFrontier == 0) {
+            uiClient.disconnect();
+            serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
                 "Saved plan reported bestFrontier == 0");
         }
         if (plan.frames.empty()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
             return Result<std::monostate, std::string>::error("Saved plan had no frames");
         }
         for (size_t i = 0; i < plan.frames.size(); ++i) {
             const auto& frame = plan.frames[i];
             if (frame.xAxis != 127 || frame.yAxis != 0 || frame.buttons != 0) {
+                uiClient.disconnect();
+                serverClient.disconnect();
                 return Result<std::monostate, std::string>::error(
                     "Saved plan frame " + std::to_string(i) + " did not match hold-right");
             }
         }
 
-        captureOptionalUiScreenshotPng(
+        const auto screenshotResult = captureRequiredUiScreenshotPng(
             uiClient, "canSearchHoldRight", "search-idle", timeoutMs, successScreenshotPath);
+        if (screenshotResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return screenshotResult;
+        }
 
+        uiClient.disconnect();
+        serverClient.disconnect();
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -3398,8 +3414,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaybackPlan(
             return Result<std::monostate, std::string>::error(browseResult.errorValue());
         }
 
-        captureOptionalUiScreenshotPng(
+        const auto screenshotResult = captureRequiredUiScreenshotPng(
             uiClient, "canPlaybackPlan", "plan-browser", timeoutMs, successScreenshotPath);
+        if (screenshotResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return screenshotResult;
+        }
 
         const auto playbackStartResult =
             startPlanPlaybackAndWaitActive(uiClient, serverClient, timeoutMs);
@@ -3513,8 +3534,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanStopPlaybackPlan(
             return Result<std::monostate, std::string>::error(browseResult.errorValue());
         }
 
-        captureOptionalUiScreenshotPng(
+        const auto screenshotResult = captureRequiredUiScreenshotPng(
             uiClient, "canStopPlaybackPlan", "plan-browser", timeoutMs, successScreenshotPath);
+        if (screenshotResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return screenshotResult;
+        }
 
         const auto playbackStartResult =
             startPlanPlaybackAndWaitActive(uiClient, serverClient, timeoutMs);
@@ -3708,8 +3734,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
                 "elapsedFrames advanced while paused");
         }
 
-        captureOptionalUiScreenshotPng(
+        const auto screenshotResult = captureRequiredUiScreenshotPng(
             uiClient, "canPauseSearch", "search-paused", timeoutMs, successScreenshotPath);
+        if (screenshotResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return screenshotResult;
+        }
 
         UiApi::IconSelect::Command playIcon{
             .id = Ui::IconId::PLAY,
