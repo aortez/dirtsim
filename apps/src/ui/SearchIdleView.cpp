@@ -7,7 +7,6 @@ namespace Ui {
 namespace {
 
 constexpr int kMazeHeight = 23;
-constexpr int kMazeWarmupTicks = 16;
 constexpr int kMazeWidth = 39;
 
 lv_obj_t* createOverlayCard(
@@ -42,9 +41,6 @@ lv_obj_t* createOverlayCard(
 SearchIdleView::SearchIdleView(lv_obj_t* parent, IconRail& iconRail)
     : animator_(kMazeWidth, kMazeHeight), iconRail_(iconRail)
 {
-    for (int i = 0; i < kMazeWarmupTicks; ++i) {
-        animator_.advanceTick();
-    }
     createUi(parent);
 }
 
@@ -118,7 +114,7 @@ void SearchIdleView::createUi(lv_obj_t* parent)
         iconView_ = std::make_unique<MazeSearchView>(
             scannerIconHost,
             animator_,
-            MazeSearchView::ViewportMode::CenteredSquare,
+            MazeSearchView::ViewportMode::FocusedSquare,
             MazeSearchView::PresentationStyle::IconBadge);
     }
 

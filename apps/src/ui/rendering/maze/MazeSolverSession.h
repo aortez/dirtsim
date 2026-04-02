@@ -15,6 +15,7 @@ public:
     bool isComplete() const { return complete_; }
 
     const std::vector<int>& frontier() const { return frontier_; }
+    const std::vector<uint8_t>& frontierFlags() const { return frontierFlags_; }
     const std::vector<int>& solutionPath() const { return solutionPath_; }
     const std::vector<uint8_t>& visitedFlags() const { return visitedFlags_; }
 
@@ -26,6 +27,7 @@ private:
     bool complete_ = false;
     const MazeModel& model_;
     std::vector<int> frontier_;
+    std::vector<uint8_t> frontierFlags_;
     std::vector<uint8_t> enqueuedFlags_;
     std::vector<int> parents_;
     size_t queueHead_ = 0;

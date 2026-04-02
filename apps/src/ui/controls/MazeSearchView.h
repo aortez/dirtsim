@@ -15,7 +15,7 @@ public:
 
     enum class ViewportMode {
         FullMaze,
-        CenteredSquare,
+        FocusedSquare,
     };
 
     MazeSearchView(
@@ -43,7 +43,7 @@ private:
         const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer);
     void drawWalls(
         const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer);
-    Viewport computeViewport(const MazeModel& model) const;
+    Viewport computeViewport(const MazeSearchAnimator::Snapshot& snapshot) const;
     bool isCellVisible(const MazeCoord& coord, const Viewport& viewport) const;
     void maybeResize();
     lv_area_t rectForCell(

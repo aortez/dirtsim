@@ -93,6 +93,7 @@ void MazeSearchAnimator::rebuildSnapshot()
     snapshot_ = Snapshot{
         .activeCellIndex = -1,
         .frontier = nullptr,
+        .frontierFlags = nullptr,
         .generationVisited = nullptr,
         .model = nullptr,
         .phase = phase_,
@@ -114,6 +115,7 @@ void MazeSearchAnimator::rebuildSnapshot()
 
     if (solver_) {
         snapshot_.frontier = &solver_->frontier();
+        snapshot_.frontierFlags = &solver_->frontierFlags();
         snapshot_.solutionPath = &solver_->solutionPath();
         snapshot_.solverVisited = &solver_->visitedFlags();
     }

@@ -7,6 +7,7 @@ namespace Ui {
 
 MazeSolverSession::MazeSolverSession(const MazeModel& model)
     : model_(model),
+      frontierFlags_(static_cast<size_t>(model.cellCount()), 0),
       enqueuedFlags_(static_cast<size_t>(model.cellCount()), 0),
       parents_(static_cast<size_t>(model.cellCount()), -1),
       visitedFlags_(static_cast<size_t>(model.cellCount()), 0)
@@ -80,9 +81,12 @@ void MazeSolverSession::advanceOneStep()
 void MazeSolverSession::rebuildFrontier()
 {
     frontier_.clear();
+    std::fill(frontierFlags_.begin(), frontierFlags_.end(), 0);
     frontier_.reserve(queue_.size() - queueHead_);
     for (size_t i = queueHead_; i < queue_.size(); ++i) {
-        frontier_.push_back(queue_.at(i));
+        const int index = queue_.at(i);
+        frontier_.push_back(index);
+        frontierFlags_.at(static_cast<size_t>(index)) = 1;
     }
 }
 

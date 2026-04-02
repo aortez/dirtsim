@@ -61,6 +61,33 @@ const MazePalette& paletteForStyle(MazeSearchView::PresentationStyle style)
     return style == MazeSearchView::PresentationStyle::IconBadge ? kIconPalette : kScenePalette;
 }
 
+int resolveFocusIndex(const MazeSearchAnimator::Snapshot& snapshot, const MazeModel& model)
+{
+    if (snapshot.phase == MazeSearchAnimator::Phase::BuildingMaze
+        && snapshot.activeCellIndex >= 0) {
+        return snapshot.activeCellIndex;
+    }
+
+    if (snapshot.frontier && !snapshot.frontier->empty()) {
+        return snapshot.frontier->at(snapshot.frontier->size() / 2);
+    }
+
+    if (snapshot.solutionPath && !snapshot.solutionPath->empty()) {
+        const size_t revealedLength =
+            std::min(snapshot.revealedSolutionLength, snapshot.solutionPath->size());
+        if (revealedLength > 0) {
+            return snapshot.solutionPath->at(revealedLength - 1);
+        }
+        return snapshot.solutionPath->at(snapshot.solutionPath->size() / 2);
+    }
+
+    if (snapshot.activeCellIndex >= 0) {
+        return snapshot.activeCellIndex;
+    }
+
+    return model.goalIndex();
+}
+
 } // namespace
 
 MazeSearchView::MazeSearchView(
@@ -130,11 +157,8 @@ void MazeSearchView::drawCells(
             && snapshot.generationVisited->at(static_cast<size_t>(index)) != 0;
         const bool solverVisited =
             snapshot.solverVisited && snapshot.solverVisited->at(static_cast<size_t>(index)) != 0;
-        bool frontier = false;
-        if (snapshot.frontier) {
-            frontier = std::find(snapshot.frontier->begin(), snapshot.frontier->end(), index)
-                != snapshot.frontier->end();
-        }
+        const bool frontier =
+            snapshot.frontierFlags && snapshot.frontierFlags->at(static_cast<size_t>(index)) != 0;
 
         uint32_t fillColor = 0;
         float insetRatio = 0.10f;
@@ -241,6 +265,12 @@ void MazeSearchView::drawWalls(
         }
 
         const MazeCell& cell = model.cellAt(index);
+        const bool generationVisited = snapshot.generationVisited
+            && snapshot.generationVisited->at(static_cast<size_t>(index)) != 0;
+        if (snapshot.phase == MazeSearchAnimator::Phase::BuildingMaze && !generationVisited) {
+            continue;
+        }
+
         const lv_point_t center = pointForCellCenter(coord, viewport, cellSize);
         const int halfCell = static_cast<int>(cellSize * 0.5f);
         const int left = center.x - halfCell;
@@ -278,8 +308,12 @@ void MazeSearchView::drawWalls(
     }
 }
 
-MazeSearchView::Viewport MazeSearchView::computeViewport(const MazeModel& model) const
+MazeSearchView::Viewport MazeSearchView::computeViewport(
+    const MazeSearchAnimator::Snapshot& snapshot) const
 {
+    DIRTSIM_ASSERT(snapshot.model, "MazeSearchView snapshot model must exist");
+    const MazeModel& model = *snapshot.model;
+
     if (viewportMode_ == ViewportMode::FullMaze) {
         return Viewport{
             .cropHeight = model.height(),
@@ -290,11 +324,17 @@ MazeSearchView::Viewport MazeSearchView::computeViewport(const MazeModel& model)
     }
 
     const int cropSize = std::min(model.width(), model.height());
+    const int focusIndex = resolveFocusIndex(snapshot, model);
+    const MazeCoord focusCoord = model.coordForIndex(focusIndex);
+    const int maxCropX = std::max(0, model.width() - cropSize);
+    const int maxCropY = std::max(0, model.height() - cropSize);
+    const int cropX = std::clamp(focusCoord.x - cropSize / 2, 0, maxCropX);
+    const int cropY = std::clamp(focusCoord.y - cropSize / 2, 0, maxCropY);
     return Viewport{
         .cropHeight = cropSize,
         .cropWidth = cropSize,
-        .cropX = (model.width() - cropSize) / 2,
-        .cropY = (model.height() - cropSize) / 2,
+        .cropX = cropX,
+        .cropY = cropY,
     };
 }
 
@@ -382,7 +422,7 @@ void MazeSearchView::renderSnapshot(const MazeSearchAnimator::Snapshot& snapshot
         return;
     }
 
-    const Viewport viewport = computeViewport(*snapshot.model);
+    const Viewport viewport = computeViewport(snapshot);
     lv_layer_t layer;
     lv_canvas_init_layer(canvas_, &layer);
     if (presentationStyle_ == PresentationStyle::IconBadge) {

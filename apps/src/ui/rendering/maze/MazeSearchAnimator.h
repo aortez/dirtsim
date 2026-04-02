@@ -23,6 +23,7 @@ public:
     struct Snapshot {
         int activeCellIndex = -1;
         const std::vector<int>* frontier = nullptr;
+        const std::vector<uint8_t>* frontierFlags = nullptr;
         const std::vector<uint8_t>* generationVisited = nullptr;
         const MazeModel* model = nullptr;
         Phase phase = Phase::Empty;
