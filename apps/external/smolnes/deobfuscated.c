@@ -53,6 +53,26 @@
 #define SMOLNES_PPU_PHASE_CLEAR()
 #endif
 
+#ifndef SMOLNES_PPU_PHASE_SET_IF_ACTIVE
+#define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_VISIBLE_PIXELS
+#define SMOLNES_PPU_PHASE_VISIBLE_PIXELS 1u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_PREFETCH
+#define SMOLNES_PPU_PHASE_PREFETCH 2u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_OTHER
+#define SMOLNES_PPU_PHASE_OTHER 3u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_SPRITE_EVAL
+#define SMOLNES_PPU_PHASE_SPRITE_EVAL 4u
+#endif
+
 #ifndef SMOLNES_APU_WRITE
 #define SMOLNES_APU_WRITE(addr, value)
 #endif
@@ -735,13 +755,23 @@ loop:
   SMOLNES_APU_CLOCK(cycles + 2);
   SMOLNES_APU_CLOCK_END();
   SMOLNES_PPU_STEP_BEGIN();
+  uint32_t smolnes_ppu_phase = SMOLNES_PPU_PHASE_OTHER;
+  if (ppumask & 24 && scany < 240) {
+    if (dot < 256)
+      smolnes_ppu_phase = SMOLNES_PPU_PHASE_VISIBLE_PIXELS;
+    else if (dot >= 320)
+      smolnes_ppu_phase = SMOLNES_PPU_PHASE_PREFETCH;
+  }
+  SMOLNES_PPU_PHASE_SET_IF_ACTIVE(smolnes_ppu_phase);
   for (tmp = cycles * 3 + 6; tmp--;) {
     if (ppumask & 24) {
       if (scany < 240) {
         if (dot < 256) {
           if (dot == 0) {
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_SPRITE_EVAL);
             scanline_fb_offset = scany * 256;
             evaluate_scanline_sprites();
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
           }
 
           uint8_t color = shift_hi >> 14 - fine_x & 2 |
@@ -800,6 +830,7 @@ loop:
           }
           }
         } else if (dot == 256) {
+          SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_OTHER);
           V = ((V & 7 << 12) != 7 << 12 ? V + 4096
                : (V & 0x3e0) == 928     ? V & 0x8c1f ^ 2048
                : (V & 0x3e0) == 0x3e0   ? V & 0x8c1f
@@ -807,6 +838,8 @@ loop:
                   ~0x41f |
               T & 0x41f;
         } else if (dot >= 320) {
+          if (dot == 320)
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_PREFETCH);
           if (dot < 336) {
             shift_hi <<= 1;
             shift_lo <<= 1;

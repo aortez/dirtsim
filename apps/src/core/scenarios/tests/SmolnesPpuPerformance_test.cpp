@@ -76,9 +76,7 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     if (!param.rgbaOutputEnabled) {
         driver.setRgbaOutputEnabled(false);
     }
-    if (!param.detailedTiming) {
-        driver.setDetailedTimingEnabled(false);
-    }
+    driver.setDetailedTimingEnabled(param.detailedTiming);
 
     Timers timers;
     std::optional<ScenarioVideoFrame> videoFrame;
@@ -106,6 +104,11 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     const double cpuStepMs = timers.getAccumulatedTime("nes_runtime_thread_cpu_step");
     const double apuStepMs = timers.getAccumulatedTime("nes_runtime_thread_apu_step");
     const double ppuStepMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_step");
+    const double ppuVisiblePixelsMs =
+        timers.getAccumulatedTime("nes_runtime_thread_ppu_visible_pixels");
+    const double ppuSpriteEvalMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_sprite_eval");
+    const double ppuPrefetchMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_prefetch");
+    const double ppuOtherMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_other");
     const double frameSubmitMs = timers.getAccumulatedTime("nes_runtime_thread_frame_submit");
     const double presentMs = timers.getAccumulatedTime("nes_runtime_thread_present");
     const double memCopyMs = timers.getAccumulatedTime("nes_runtime_memory_snapshot_copy");
@@ -123,6 +126,20 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
         const double cpuEstMs = clamp0(frameExecMs) * cpuPct / 100.0;
         const double apuEstMs = clamp0(frameExecMs) * apuPct / 100.0;
         const double ppuEstMs = clamp0(frameExecMs) * ppuPct / 100.0;
+        const double sampledPpuTotal = clamp0(ppuVisiblePixelsMs) + clamp0(ppuSpriteEvalMs)
+            + clamp0(ppuPrefetchMs) + clamp0(ppuOtherMs);
+        const double ppuVisiblePixelsPct =
+            sampledPpuTotal > 0.0 ? clamp0(ppuVisiblePixelsMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuSpriteEvalPct =
+            sampledPpuTotal > 0.0 ? clamp0(ppuSpriteEvalMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuPrefetchPct =
+            sampledPpuTotal > 0.0 ? clamp0(ppuPrefetchMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuOtherPct =
+            sampledPpuTotal > 0.0 ? clamp0(ppuOtherMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuVisiblePixelsEstMs = ppuEstMs * ppuVisiblePixelsPct / 100.0;
+        const double ppuSpriteEvalEstMs = ppuEstMs * ppuSpriteEvalPct / 100.0;
+        const double ppuPrefetchEstMs = ppuEstMs * ppuPrefetchPct / 100.0;
+        const double ppuOtherEstMs = ppuEstMs * ppuOtherPct / 100.0;
 
         fprintf(
             stderr,
@@ -135,6 +152,10 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             "  CPU step (est):        %8.1f ms  (%5.1f%%)\n"
             "  APU step (est):        %8.1f ms  (%5.1f%%)\n"
             "  PPU step (est):        %8.1f ms  (%5.1f%%)\n"
+            "    Visible pixels:      %8.1f ms  (%5.1f%% of PPU)\n"
+            "    Sprite eval:         %8.1f ms  (%5.1f%% of PPU)\n"
+            "    Prefetch:            %8.1f ms  (%5.1f%% of PPU)\n"
+            "    Other:               %8.1f ms  (%5.1f%% of PPU)\n"
             "\n"
             "Outside frame execution:\n"
             "  Frame submit:          %8.1f ms\n"
@@ -154,6 +175,14 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             apuPct,
             ppuEstMs,
             ppuPct,
+            ppuVisiblePixelsEstMs,
+            ppuVisiblePixelsPct,
+            ppuSpriteEvalEstMs,
+            ppuSpriteEvalPct,
+            ppuPrefetchEstMs,
+            ppuPrefetchPct,
+            ppuOtherEstMs,
+            ppuOtherPct,
             frameSubmitMs,
             presentMs,
             memCopyMs);
@@ -250,6 +279,22 @@ INSTANTIATE_TEST_SUITE_P(
             .resolveRom = Test::resolveSmbRomPath,
             .label = "SuperMarioBros_Profiled",
             .detailedTiming = true,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Profiled_NoApu_PaletteOnly",
+            .detailedTiming = true,
+            .apuEnabled = false,
+            .rgbaOutputEnabled = false,
+        },
+        PpuPerfParam{
+            .scenarioId = Scenario::EnumType::NesSuperMarioBros,
+            .resolveRom = Test::resolveSmbRomPath,
+            .label = "SuperMarioBros_Profiled_NoApu_NoPixels",
+            .detailedTiming = true,
+            .apuEnabled = false,
+            .pixelOutputEnabled = false,
         },
         PpuPerfParam{
             .scenarioId = Scenario::EnumType::NesSuperMarioBros,

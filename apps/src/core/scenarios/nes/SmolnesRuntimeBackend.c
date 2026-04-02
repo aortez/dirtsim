@@ -583,7 +583,7 @@ void smolnesRuntimeWrappedCpuStepEnd(void)
 
 void smolnesRuntimeWrappedApuClockBegin(void)
 {
-    if (!gTimingThisInstruction) {
+    if (!gTimingThisInstruction || !gApuEnabled) {
         return;
     }
 
@@ -915,6 +915,12 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_PPU_STEP_END smolnesRuntimeWrappedPpuStepEnd
 #define SMOLNES_PPU_PHASE_SET smolnesRuntimeWrappedPpuPhaseSet
 #define SMOLNES_PPU_PHASE_CLEAR smolnesRuntimeWrappedPpuPhaseClear
+#define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)                                              \
+    do {                                                                                     \
+        if (gPpuStepActive) {                                                                \
+            smolnesRuntimeWrappedPpuPhaseSet(phase);                                         \
+        }                                                                                    \
+    } while (0)
 #define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
 #define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
@@ -974,6 +980,7 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_PPU_STEP_END
 #undef SMOLNES_PPU_PHASE_SET
 #undef SMOLNES_PPU_PHASE_CLEAR
+#undef SMOLNES_PPU_PHASE_SET_IF_ACTIVE
 #undef SMOLNES_FRAME_SUBMIT_BEGIN
 #undef SMOLNES_FRAME_SUBMIT_END
 #undef SMOLNES_EVENT_POLL_BEGIN
@@ -1076,7 +1083,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->apuEnabled = true;
     runtime->pixelOutputEnabled = true;
     runtime->rgbaOutputEnabled = true;
-    runtime->detailedTimingEnabled = true;
+    runtime->detailedTimingEnabled = false;
     runtime->timingSampleRate = 64;
     runtime->healthy = true;
     runtime->renderedFrames = 0;
