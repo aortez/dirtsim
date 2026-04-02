@@ -41,8 +41,12 @@ public:
         uint64_t runtimeThreadPpuVisiblePixelsCalls = 0;
         double runtimeThreadPpuSpriteEvalMs = 0.0;
         uint64_t runtimeThreadPpuSpriteEvalCalls = 0;
+        double runtimeThreadPpuPostVisibleMs = 0.0;
+        uint64_t runtimeThreadPpuPostVisibleCalls = 0;
         double runtimeThreadPpuPrefetchMs = 0.0;
         uint64_t runtimeThreadPpuPrefetchCalls = 0;
+        double runtimeThreadPpuNonVisibleScanlinesMs = 0.0;
+        uint64_t runtimeThreadPpuNonVisibleScanlinesCalls = 0;
         double runtimeThreadPpuOtherMs = 0.0;
         uint64_t runtimeThreadPpuOtherCalls = 0;
         double runtimeThreadFrameSubmitMs = 0.0;

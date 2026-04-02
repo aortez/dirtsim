@@ -73,6 +73,14 @@
 #define SMOLNES_PPU_PHASE_SPRITE_EVAL 4u
 #endif
 
+#ifndef SMOLNES_PPU_PHASE_POST_VISIBLE
+#define SMOLNES_PPU_PHASE_POST_VISIBLE 5u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES
+#define SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES 6u
+#endif
+
 #ifndef SMOLNES_APU_WRITE
 #define SMOLNES_APU_WRITE(addr, value)
 #endif
@@ -987,11 +995,17 @@ loop:
   const uint8_t fine_x_shift = 15 - fine_x;
   const uint8_t fine_x_palette_shift = 28 - fine_x * 2;
   uint32_t smolnes_ppu_phase = SMOLNES_PPU_PHASE_OTHER;
-  if (rendering_enabled && scany < 240) {
-    if (dot < 256)
-      smolnes_ppu_phase = SMOLNES_PPU_PHASE_VISIBLE_PIXELS;
-    else if (dot >= 320)
-      smolnes_ppu_phase = SMOLNES_PPU_PHASE_PREFETCH;
+  if (rendering_enabled) {
+    if (scany < 240) {
+      if (dot < 256)
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_VISIBLE_PIXELS;
+      else if (dot >= 320)
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_PREFETCH;
+      else
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_POST_VISIBLE;
+    } else {
+      smolnes_ppu_phase = SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES;
+    }
   }
   SMOLNES_PPU_PHASE_SET_IF_ACTIVE(smolnes_ppu_phase);
   for (tmp = cycles * 3 + 6; tmp--;) {
@@ -1013,13 +1027,27 @@ loop:
           dot += visible_span - 1;
           tmp -= visible_span - 1;
         } else if (dot == 256) {
-          SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_OTHER);
+          SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_POST_VISIBLE);
           V = ((V & 7 << 12) != 7 << 12 ? V + 4096
                : (V & 0x3e0) == 928     ? V & 0x8c1f ^ 2048
                : (V & 0x3e0) == 0x3e0   ? V & 0x8c1f
                                         : V & 0x8c1f | V + 32 & 0x3e0) &
                   ~0x41f |
               T & 0x41f;
+        } else if (dot < 320) {
+          const uint16_t post_visible_start_dot = dot;
+          uint16_t post_visible_span = tmp + 1;
+          if (post_visible_span > 320 - dot)
+            post_visible_span = 320 - dot;
+
+          if (dot <= 261 && dot + post_visible_span > 261 && mmc3_irq
+              && (scany + 1) % 262 < 241) {
+            dot = 261;
+            tmp -= 261 - post_visible_start_dot;
+          } else {
+            dot += post_visible_span - 1;
+            tmp -= post_visible_span - 1;
+          }
         } else if (dot >= 320) {
           if (dot == 320)
             SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_PREFETCH);

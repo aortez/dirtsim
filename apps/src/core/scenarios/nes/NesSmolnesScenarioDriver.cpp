@@ -647,11 +647,23 @@ void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)
         current.runtimeThreadPpuSpriteEvalCalls,
         previous.runtimeThreadPpuSpriteEvalCalls);
     addDelta(
+        "nes_runtime_thread_ppu_post_visible",
+        current.runtimeThreadPpuPostVisibleMs,
+        previous.runtimeThreadPpuPostVisibleMs,
+        current.runtimeThreadPpuPostVisibleCalls,
+        previous.runtimeThreadPpuPostVisibleCalls);
+    addDelta(
         "nes_runtime_thread_ppu_prefetch",
         current.runtimeThreadPpuPrefetchMs,
         previous.runtimeThreadPpuPrefetchMs,
         current.runtimeThreadPpuPrefetchCalls,
         previous.runtimeThreadPpuPrefetchCalls);
+    addDelta(
+        "nes_runtime_thread_ppu_non_visible_scanlines",
+        current.runtimeThreadPpuNonVisibleScanlinesMs,
+        previous.runtimeThreadPpuNonVisibleScanlinesMs,
+        current.runtimeThreadPpuNonVisibleScanlinesCalls,
+        previous.runtimeThreadPpuNonVisibleScanlinesCalls);
     addDelta(
         "nes_runtime_thread_ppu_other",
         current.runtimeThreadPpuOtherMs,

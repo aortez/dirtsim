@@ -107,7 +107,11 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     const double ppuVisiblePixelsMs =
         timers.getAccumulatedTime("nes_runtime_thread_ppu_visible_pixels");
     const double ppuSpriteEvalMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_sprite_eval");
+    const double ppuPostVisibleMs =
+        timers.getAccumulatedTime("nes_runtime_thread_ppu_post_visible");
     const double ppuPrefetchMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_prefetch");
+    const double ppuNonVisibleScanlinesMs =
+        timers.getAccumulatedTime("nes_runtime_thread_ppu_non_visible_scanlines");
     const double ppuOtherMs = timers.getAccumulatedTime("nes_runtime_thread_ppu_other");
     const double frameSubmitMs = timers.getAccumulatedTime("nes_runtime_thread_frame_submit");
     const double presentMs = timers.getAccumulatedTime("nes_runtime_thread_present");
@@ -127,18 +131,26 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
         const double apuEstMs = clamp0(frameExecMs) * apuPct / 100.0;
         const double ppuEstMs = clamp0(frameExecMs) * ppuPct / 100.0;
         const double sampledPpuTotal = clamp0(ppuVisiblePixelsMs) + clamp0(ppuSpriteEvalMs)
-            + clamp0(ppuPrefetchMs) + clamp0(ppuOtherMs);
+            + clamp0(ppuPostVisibleMs) + clamp0(ppuPrefetchMs) + clamp0(ppuNonVisibleScanlinesMs)
+            + clamp0(ppuOtherMs);
         const double ppuVisiblePixelsPct =
             sampledPpuTotal > 0.0 ? clamp0(ppuVisiblePixelsMs) / sampledPpuTotal * 100.0 : 0.0;
         const double ppuSpriteEvalPct =
             sampledPpuTotal > 0.0 ? clamp0(ppuSpriteEvalMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuPostVisiblePct =
+            sampledPpuTotal > 0.0 ? clamp0(ppuPostVisibleMs) / sampledPpuTotal * 100.0 : 0.0;
         const double ppuPrefetchPct =
             sampledPpuTotal > 0.0 ? clamp0(ppuPrefetchMs) / sampledPpuTotal * 100.0 : 0.0;
+        const double ppuNonVisibleScanlinesPct = sampledPpuTotal > 0.0
+            ? clamp0(ppuNonVisibleScanlinesMs) / sampledPpuTotal * 100.0
+            : 0.0;
         const double ppuOtherPct =
             sampledPpuTotal > 0.0 ? clamp0(ppuOtherMs) / sampledPpuTotal * 100.0 : 0.0;
         const double ppuVisiblePixelsEstMs = ppuEstMs * ppuVisiblePixelsPct / 100.0;
         const double ppuSpriteEvalEstMs = ppuEstMs * ppuSpriteEvalPct / 100.0;
+        const double ppuPostVisibleEstMs = ppuEstMs * ppuPostVisiblePct / 100.0;
         const double ppuPrefetchEstMs = ppuEstMs * ppuPrefetchPct / 100.0;
+        const double ppuNonVisibleScanlinesEstMs = ppuEstMs * ppuNonVisibleScanlinesPct / 100.0;
         const double ppuOtherEstMs = ppuEstMs * ppuOtherPct / 100.0;
 
         fprintf(
@@ -154,7 +166,9 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             "  PPU step (est):        %8.1f ms  (%5.1f%%)\n"
             "    Visible pixels:      %8.1f ms  (%5.1f%% of PPU)\n"
             "    Sprite eval:         %8.1f ms  (%5.1f%% of PPU)\n"
+            "    Post-visible 256-319:%8.1f ms  (%5.1f%% of PPU)\n"
             "    Prefetch:            %8.1f ms  (%5.1f%% of PPU)\n"
+            "    Non-visible scans:   %8.1f ms  (%5.1f%% of PPU)\n"
             "    Other:               %8.1f ms  (%5.1f%% of PPU)\n"
             "\n"
             "Outside frame execution:\n"
@@ -179,8 +193,12 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             ppuVisiblePixelsPct,
             ppuSpriteEvalEstMs,
             ppuSpriteEvalPct,
+            ppuPostVisibleEstMs,
+            ppuPostVisiblePct,
             ppuPrefetchEstMs,
             ppuPrefetchPct,
+            ppuNonVisibleScanlinesEstMs,
+            ppuNonVisibleScanlinesPct,
             ppuOtherEstMs,
             ppuOtherPct,
             frameSubmitMs,
