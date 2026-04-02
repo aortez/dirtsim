@@ -171,15 +171,13 @@ static const uint16_t nes_palette_rgb565[64] = {
     59092, 53013, 46902, 44857, 44860, 46518,     0,     0};
 
 typedef struct {
-    uint8_t x;
     uint8_t attr;
-    uint8_t pattern_lo;
-    uint8_t pattern_hi;
+    uint8_t color;
     uint8_t is_sprite0;
-} ScanlineSprite;
+    uint8_t palette;
+} ScanlineSpritePixel;
 
-SMOLNES_TLS ScanlineSprite scanline_sprites[64];
-SMOLNES_TLS uint8_t scanline_sprite_count;
+SMOLNES_TLS ScanlineSpritePixel scanline_sprite_pixels[256];
 
 // Read a byte from CHR ROM or CHR RAM.
 static inline uint8_t *get_chr_byte(uint16_t a) {
@@ -195,7 +193,7 @@ uint8_t *get_nametable_byte(uint16_t a) {
 }
 
 static void evaluate_scanline_sprites(void) {
-  scanline_sprite_count = 0;
+  memset(scanline_sprite_pixels, 0, sizeof(scanline_sprite_pixels));
   uint16_t sprite_h = ppuctrl & 32 ? 16 : 8;
   for (uint8_t *sprite = oam; sprite < oam + 256; sprite += 4) {
     uint16_t sprite_y = scany - sprite[0] - 1;
@@ -223,12 +221,27 @@ static void evaluate_scanline_sprites(void) {
       pattern_hi = (pattern_hi & 0xAA) >> 1 | (pattern_hi & 0x55) << 1;
     }
 
-    ScanlineSprite *s = &scanline_sprites[scanline_sprite_count++];
-    s->x = sprite[3];
-    s->attr = sprite[2];
-    s->pattern_lo = pattern_lo;
-    s->pattern_hi = pattern_hi;
-    s->is_sprite0 = (sprite == oam);
+    const uint8_t sprite_attr = sprite[2];
+    const uint8_t sprite_palette = 16 | ((sprite_attr * 4) & 12);
+    const uint8_t is_sprite0 = (sprite == oam);
+    for (uint16_t sprite_x = 0; sprite_x < 8; ++sprite_x) {
+      uint16_t screen_x = sprite[3] + sprite_x;
+      if (screen_x >= 256)
+        break;
+
+      uint8_t offset = 7 - sprite_x;
+      uint8_t sprite_color =
+          (pattern_hi >> offset & 1) << 1 |
+          (pattern_lo >> offset & 1);
+      if (!sprite_color || scanline_sprite_pixels[screen_x].color)
+        continue;
+
+      ScanlineSpritePixel *p = &scanline_sprite_pixels[screen_x];
+      p->attr = sprite_attr;
+      p->color = sprite_color;
+      p->is_sprite0 = is_sprite0;
+      p->palette = sprite_palette;
+    }
   }
 }
 
@@ -779,24 +792,14 @@ loop:
                   palette = shift_at >> 28 - fine_x * 2 & 12;
 
           if (ppumask & 16) {
-            for (uint8_t i = 0; i < scanline_sprite_count; ++i) {
-              ScanlineSprite *s = &scanline_sprites[i];
-              uint16_t sprite_x = dot - s->x;
-              if (sprite_x < 8) {
-                uint8_t offset = 7 - sprite_x;
-                uint8_t sprite_color =
-                    (s->pattern_hi >> offset & 1) << 1 |
-                    (s->pattern_lo >> offset & 1);
-                if (sprite_color) {
-                  if (!(s->attr & 32 && color)) {
-                    color = sprite_color;
-                    palette = 16 | s->attr * 4 & 12;
-                  }
-                  if (s->is_sprite0 && color)
-                    ppustatus |= 64;
-                  break;
-                }
+            ScanlineSpritePixel *sprite = &scanline_sprite_pixels[dot];
+            if (sprite->color) {
+              if (!(sprite->attr & 32 && color)) {
+                color = sprite->color;
+                palette = sprite->palette;
               }
+              if (sprite->is_sprite0 && color)
+                ppustatus |= 64;
             }
           }
 
