@@ -245,6 +245,219 @@ static void evaluate_scanline_sprites(void) {
   }
 }
 
+static inline void step_background_fetch_pipeline(uint16_t bg_pattern_base) {
+  switch (dot & 7) {
+  case 1:
+    ntb = *get_nametable_byte(V);
+    break;
+  case 3:
+    atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
+                               V / 4 & 7) >>
+           (V >> 5 & 2 | V / 2 & 1) * 2) %
+          4 * 0x5555;
+    break;
+  case 5: {
+    const int temp = bg_pattern_base | ntb << 4 | V >> 12;
+    ptb_lo = *get_chr_byte(temp);
+    break;
+  }
+  case 7: {
+    const int temp = bg_pattern_base | ntb << 4 | V >> 12;
+    const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+    V = (V & 31) == 31 ? V & ~31 ^ 1024 : V + 1;
+    shift_hi |= ptb_hi;
+    shift_lo |= ptb_lo;
+    shift_at |= atb;
+    break;
+  }
+  }
+}
+
+static inline void render_visible_span(uint16_t span_count,
+                                       uint8_t sprites_enabled,
+                                       uint8_t fine_x_shift,
+                                       uint8_t fine_x_palette_shift,
+                                       uint16_t bg_pattern_base) {
+  uint16_t current_dot = dot;
+  uint16_t local_V = V;
+  uint16_t local_atb = atb;
+  uint16_t local_shift_hi = shift_hi;
+  uint16_t local_shift_lo = shift_lo;
+  int local_shift_at = shift_at;
+  uint8_t local_ntb = ntb;
+  uint8_t local_ptb_lo = ptb_lo;
+  uint16_t prefix_count = (8 - (current_dot & 7)) & 7;
+  if (prefix_count > span_count)
+    prefix_count = span_count;
+
+  while (prefix_count > 0) {
+    uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                    local_shift_lo >> fine_x_shift & 1,
+            palette = local_shift_at >> fine_x_palette_shift & 12;
+
+    if (sprites_enabled) {
+      ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot];
+      if (sprite->color) {
+        if (!(sprite->attr & 32 && color)) {
+          color = sprite->color;
+          palette = sprite->palette;
+        }
+        if (sprite->is_sprite0 && color)
+          ppustatus |= 64;
+      }
+    }
+
+    SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + current_dot, color, palette);
+
+    local_shift_hi <<= 1;
+    local_shift_lo <<= 1;
+    local_shift_at <<= 2;
+
+    switch (current_dot & 7) {
+    case 1:
+      local_ntb = *get_nametable_byte(local_V);
+      break;
+    case 3:
+      local_atb = (*get_nametable_byte(local_V & 0xc00 | 0x3c0 | local_V >> 4 & 0x38 |
+                                       local_V / 4 & 7) >>
+                   (local_V >> 5 & 2 | local_V / 2 & 1) * 2) %
+                  4 * 0x5555;
+      break;
+    case 5: {
+      const int temp = bg_pattern_base | local_ntb << 4 | local_V >> 12;
+      local_ptb_lo = *get_chr_byte(temp);
+      break;
+    }
+    case 7: {
+      const int temp = bg_pattern_base | local_ntb << 4 | local_V >> 12;
+      const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+      local_V = (local_V & 31) == 31 ? local_V & ~31 ^ 1024 : local_V + 1;
+      local_shift_hi |= ptb_hi;
+      local_shift_lo |= local_ptb_lo;
+      local_shift_at |= local_atb;
+      break;
+    }
+    }
+
+    ++current_dot;
+    --prefix_count;
+    --span_count;
+  }
+
+  while (span_count >= 8) {
+    const uint16_t base_offset = scanline_fb_offset + current_dot;
+    for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+      uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                      local_shift_lo >> fine_x_shift & 1,
+              palette = local_shift_at >> fine_x_palette_shift & 12;
+
+      if (sprites_enabled) {
+        ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
+        if (sprite->color) {
+          if (!(sprite->attr & 32 && color)) {
+            color = sprite->color;
+            palette = sprite->palette;
+          }
+          if (sprite->is_sprite0 && color)
+            ppustatus |= 64;
+        }
+      }
+
+      SMOLNES_PIXEL_OUTPUT(base_offset + pixel, color, palette);
+
+      local_shift_hi <<= 1;
+      local_shift_lo <<= 1;
+      local_shift_at <<= 2;
+    }
+
+    local_ntb = *get_nametable_byte(local_V);
+    local_atb = (*get_nametable_byte(local_V & 0xc00 | 0x3c0 | local_V >> 4 & 0x38 |
+                                     local_V / 4 & 7) >>
+                 (local_V >> 5 & 2 | local_V / 2 & 1) * 2) %
+                4 * 0x5555;
+    const int temp = bg_pattern_base | local_ntb << 4 | local_V >> 12;
+    local_ptb_lo = *get_chr_byte(temp);
+    const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+    local_V = (local_V & 31) == 31 ? local_V & ~31 ^ 1024 : local_V + 1;
+    local_shift_hi |= ptb_hi;
+    local_shift_lo |= local_ptb_lo;
+    local_shift_at |= local_atb;
+
+    current_dot += 8;
+    span_count -= 8;
+  }
+
+  while (span_count > 0) {
+    uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                    local_shift_lo >> fine_x_shift & 1,
+            palette = local_shift_at >> fine_x_palette_shift & 12;
+
+    if (sprites_enabled) {
+      ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot];
+      if (sprite->color) {
+        if (!(sprite->attr & 32 && color)) {
+          color = sprite->color;
+          palette = sprite->palette;
+        }
+        if (sprite->is_sprite0 && color)
+          ppustatus |= 64;
+      }
+    }
+
+    SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + current_dot, color, palette);
+
+    local_shift_hi <<= 1;
+    local_shift_lo <<= 1;
+    local_shift_at <<= 2;
+
+    switch (current_dot & 7) {
+    case 1:
+      local_ntb = *get_nametable_byte(local_V);
+      break;
+    case 3:
+      local_atb = (*get_nametable_byte(local_V & 0xc00 | 0x3c0 | local_V >> 4 & 0x38 |
+                                       local_V / 4 & 7) >>
+                   (local_V >> 5 & 2 | local_V / 2 & 1) * 2) %
+                  4 * 0x5555;
+      break;
+    case 5: {
+      const int temp = bg_pattern_base | local_ntb << 4 | local_V >> 12;
+      local_ptb_lo = *get_chr_byte(temp);
+      break;
+    }
+    case 7: {
+      const int temp = bg_pattern_base | local_ntb << 4 | local_V >> 12;
+      const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+      local_V = (local_V & 31) == 31 ? local_V & ~31 ^ 1024 : local_V + 1;
+      local_shift_hi |= ptb_hi;
+      local_shift_lo |= local_ptb_lo;
+      local_shift_at |= local_atb;
+      break;
+    }
+    }
+
+    ++current_dot;
+    --span_count;
+  }
+
+  V = local_V;
+  atb = local_atb;
+  shift_hi = local_shift_hi;
+  shift_lo = local_shift_lo;
+  shift_at = local_shift_at;
+  ntb = local_ntb;
+  ptb_lo = local_ptb_lo;
+}
+
+static inline void run_prefetch_dot(uint16_t bg_pattern_base) {
+  if (dot < 336) {
+    shift_hi <<= 1;
+    shift_lo <<= 1;
+    shift_at <<= 2;
+  }
+  step_background_fetch_pipeline(bg_pattern_base);
+}
+
 // If `write` is non-zero, writes `val` to the address `hi:lo`, otherwise reads
 // a value from the address `hi:lo`.
 uint8_t mem(uint8_t lo, uint8_t hi, uint8_t val, uint8_t write) {
@@ -791,54 +1004,14 @@ loop:
             evaluate_scanline_sprites();
             SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
           }
-
-          uint8_t color = shift_hi >> (fine_x_shift - 1) & 2 |
-                          shift_lo >> fine_x_shift & 1,
-                  palette = shift_at >> fine_x_palette_shift & 12;
-
-          if (sprites_enabled) {
-            ScanlineSpritePixel *sprite = &scanline_sprite_pixels[dot];
-            if (sprite->color) {
-              if (!(sprite->attr & 32 && color)) {
-                color = sprite->color;
-                palette = sprite->palette;
-              }
-              if (sprite->is_sprite0 && color)
-                ppustatus |= 64;
-            }
-          }
-
-          SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + dot, color, palette);
-
-          shift_hi <<= 1;
-          shift_lo <<= 1;
-          shift_at <<= 2;
-
-          switch (dot & 7) {
-          case 1:
-            ntb = *get_nametable_byte(V);
-            break;
-          case 3:
-            atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
-                                       V / 4 & 7) >>
-                   (V >> 5 & 2 | V / 2 & 1) * 2) %
-                  4 * 0x5555;
-            break;
-          case 5: {
-            int temp = bg_pattern_base | ntb << 4 | V >> 12;
-            ptb_lo = *get_chr_byte(temp);
-            break;
-          }
-          case 7: {
-            int temp = bg_pattern_base | ntb << 4 | V >> 12;
-            uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = (V & 31) == 31 ? V & ~31 ^ 1024 : V + 1;
-            shift_hi |= ptb_hi;
-            shift_lo |= ptb_lo;
-            shift_at |= atb;
-            break;
-          }
-          }
+          uint16_t visible_span = tmp + 1;
+          if (visible_span > 256 - dot)
+            visible_span = 256 - dot;
+          render_visible_span(
+              visible_span, sprites_enabled, fine_x_shift, fine_x_palette_shift,
+              bg_pattern_base);
+          dot += visible_span - 1;
+          tmp -= visible_span - 1;
         } else if (dot == 256) {
           SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_OTHER);
           V = ((V & 7 << 12) != 7 << 12 ? V + 4096
@@ -850,37 +1023,7 @@ loop:
         } else if (dot >= 320) {
           if (dot == 320)
             SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_PREFETCH);
-          if (dot < 336) {
-            shift_hi <<= 1;
-            shift_lo <<= 1;
-            shift_at <<= 2;
-          }
-
-          switch (dot & 7) {
-          case 1:
-            ntb = *get_nametable_byte(V);
-            break;
-          case 3:
-            atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
-                                       V / 4 & 7) >>
-                   (V >> 5 & 2 | V / 2 & 1) * 2) %
-                  4 * 0x5555;
-            break;
-          case 5: {
-            int temp = bg_pattern_base | ntb << 4 | V >> 12;
-            ptb_lo = *get_chr_byte(temp);
-            break;
-          }
-          case 7: {
-            int temp = bg_pattern_base | ntb << 4 | V >> 12;
-            uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = (V & 31) == 31 ? V & ~31 ^ 1024 : V + 1;
-            shift_hi |= ptb_hi;
-            shift_lo |= ptb_lo;
-            shift_at |= atb;
-            break;
-          }
-          }
+          run_prefetch_dot(bg_pattern_base);
         }
       }
 
