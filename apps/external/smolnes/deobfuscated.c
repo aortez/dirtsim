@@ -186,14 +186,7 @@ static const uint16_t nes_palette_rgb565[64] = {
     65535, 48895, 52927, 59039, 65151, 65116, 65145, 63158,
     59092, 53013, 46902, 44857, 44860, 46518,     0,     0};
 
-typedef struct {
-    uint8_t attr;
-    uint8_t color;
-    uint8_t is_sprite0;
-    uint8_t palette;
-} ScanlineSpritePixel;
-
-SMOLNES_TLS ScanlineSpritePixel scanline_sprite_pixels[256];
+SMOLNES_TLS uint8_t scanline_sprite_pixels[256];
 SMOLNES_TLS uint8_t scanline_has_sprite_pixels;
 
 // Read a byte from CHR ROM or CHR RAM.
@@ -240,7 +233,6 @@ static void evaluate_scanline_sprites(void) {
     }
 
     const uint8_t sprite_attr = sprite[2];
-    const uint8_t sprite_palette = 16 | ((sprite_attr * 4) & 12);
     const uint8_t is_sprite0 = (sprite == oam);
     for (uint16_t sprite_x = 0; sprite_x < 8; ++sprite_x) {
       uint16_t screen_x = sprite[3] + sprite_x;
@@ -251,14 +243,12 @@ static void evaluate_scanline_sprites(void) {
       uint8_t sprite_color =
           (pattern_hi >> offset & 1) << 1 |
           (pattern_lo >> offset & 1);
-      if (!sprite_color || scanline_sprite_pixels[screen_x].color)
+      if (!sprite_color || scanline_sprite_pixels[screen_x])
         continue;
-
-      ScanlineSpritePixel *p = &scanline_sprite_pixels[screen_x];
-      p->attr = sprite_attr;
-      p->color = sprite_color;
-      p->is_sprite0 = is_sprite0;
-      p->palette = sprite_palette;
+      scanline_sprite_pixels[screen_x] =
+          sprite_color | ((sprite_attr & 3) << 2) |
+          (sprite_attr & 32 ? 16 : 0) |
+          (is_sprite0 ? 32 : 0);
       scanline_has_sprite_pixels = 1;
     }
   }
@@ -488,13 +478,13 @@ static inline void render_visible_span(uint16_t span_count,
                     local_shift_lo_aligned >> 15 & 1,
             palette = local_shift_at_aligned >> 28 & 12;
 
-    ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot];
-    if (sprite->color) {
-      if (!(sprite->attr & 32 && color)) {
-        color = sprite->color;
-        palette = sprite->palette;
+    const uint8_t sprite = scanline_sprite_pixels[current_dot];
+    if (sprite) {
+      if (!(sprite & 16 && color)) {
+        color = sprite & 3;
+        palette = 16 | (sprite & 12);
       }
-      if (sprite->is_sprite0 && color)
+      if (sprite & 32 && color)
         ppustatus |= 64;
     }
 
@@ -527,13 +517,13 @@ static inline void render_visible_span(uint16_t span_count,
                         local_shift_lo_aligned >> 15 & 1,
                 palette = local_shift_at_aligned >> 28 & 12;
 
-        ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
-        if (sprite->color) {
-          if (!(sprite->attr & 32 && color)) {
-            color = sprite->color;
-            palette = sprite->palette;
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
           }
-          if (sprite->is_sprite0 && color)
+          if (sprite & 32 && color)
             ppustatus |= 64;
         }
 
@@ -547,13 +537,13 @@ static inline void render_visible_span(uint16_t span_count,
                         local_shift_lo_aligned >> 15 & 1,
                 palette = local_shift_at_aligned >> 28 & 12;
 
-        ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
-        if (sprite->color) {
-          if (!(sprite->attr & 32 && color)) {
-            color = sprite->color;
-            palette = sprite->palette;
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
           }
-          if (sprite->is_sprite0 && color)
+          if (sprite & 32 && color)
             ppustatus |= 64;
         }
 
@@ -571,13 +561,13 @@ static inline void render_visible_span(uint16_t span_count,
                         local_shift_lo_aligned >> 15 & 1,
                 palette = local_shift_at_aligned >> 28 & 12;
 
-        ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
-        if (sprite->color) {
-          if (!(sprite->attr & 32 && color)) {
-            color = sprite->color;
-            palette = sprite->palette;
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
           }
-          if (sprite->is_sprite0 && color)
+          if (sprite & 32 && color)
             ppustatus |= 64;
         }
 
@@ -605,13 +595,13 @@ static inline void render_visible_span(uint16_t span_count,
                     local_shift_lo_aligned >> 15 & 1,
             palette = local_shift_at_aligned >> 28 & 12;
 
-    ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot];
-    if (sprite->color) {
-      if (!(sprite->attr & 32 && color)) {
-        color = sprite->color;
-        palette = sprite->palette;
+    const uint8_t sprite = scanline_sprite_pixels[current_dot];
+    if (sprite) {
+      if (!(sprite & 16 && color)) {
+        color = sprite & 3;
+        palette = 16 | (sprite & 12);
       }
-      if (sprite->is_sprite0 && color)
+      if (sprite & 32 && color)
         ppustatus |= 64;
     }
 
