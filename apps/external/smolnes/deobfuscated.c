@@ -393,6 +393,18 @@ static inline void render_visible_span_background_only(uint16_t span_count,
       }
 
       step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
           &local_ntb, &local_ptb_lo, fine_x);
@@ -420,6 +432,18 @@ static inline void render_visible_span_background_only(uint16_t span_count,
       }
 
       step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
           &local_ntb, &local_ptb_lo, fine_x);
@@ -445,6 +469,18 @@ static inline void render_visible_span_background_only(uint16_t span_count,
         local_shift_at_aligned <<= 2;
       }
 
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
       step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
@@ -571,6 +607,18 @@ static inline void render_visible_span(uint16_t span_count,
       }
 
       step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
           &local_ntb, &local_ptb_lo, fine_x);
@@ -606,6 +654,18 @@ static inline void render_visible_span(uint16_t span_count,
       }
 
       step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
           &local_ntb, &local_ptb_lo, fine_x);
@@ -639,6 +699,18 @@ static inline void render_visible_span(uint16_t span_count,
         local_shift_at_aligned <<= 2;
       }
 
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
       step_background_fetch_pipeline_for_dot_aligned(
           bg_pattern_base, current_dot + 7, &local_V, &local_atb,
           &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
