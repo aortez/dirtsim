@@ -427,7 +427,186 @@ Phase 1 functional tests:
 
 ### Phase 2: Basic Search implementation.
 
-Needs planning
+Root and checkpoint model:
+  - Search starts from the standard SMB gameplay root produced by the shared setup path.
+  - During a search, successful checkpoints are stored as exact savestate roots and may become the next committed search root.
+  - A small committed-root stack is retained for rollback if later segments fail.
+
+Node Shape:  
+  - Each search node carries an exact emulator savestate.
+  - Each search node also carries a reduced evaluator summary sufficient to preserve SMB search semantics without embedding the full evaluator object.
+  - The reduced evaluator summary includes at least:
+      - best frontier so far
+      - gameplay frames elapsed
+      - gameplay frames since frontier improvement
+      - terminal status
+  - Each node stores parent linkage and the action taken from the parent, so the final Plan can be reconstructed exactly.
+  - Each node may cache coarse derived features for scoring and pruning, such as:
+      - current frontier
+      - motion context
+      - velocity
+      - local hazard context
+      - checkpoint eligibility
+  - Beam identity, bucket policy, and ranking score are derived from node state and cached features; they are not the same thing as the node’s correctness-bearing
+    state.
+  - Vertical/platform bucketing is intentionally excluded from the initial beam policy. It may be added later as an optional diversity mechanism if route selection
+    becomes too narrow.
+
+  Action space:
+  - Search branches on one fixed-timestep action per frame.
+  - The initial SMB search action space is a curated legal-action set, not the full controller product.
+  - The initial SMB legal-action set includes forward, backward-running, jump-running, ducking, and crouch-jump-running actions.
+  - In particular, the initial set includes:
+      - neutral
+      - right
+      - right + run
+      - right + jump
+      - right + jump + run
+      - left + run
+      - left + jump + run
+      - duck
+      - duck + jump
+      - duck + right + jump + run
+      - duck + left + jump + run
+  - Start, Select, X, and Y are excluded from the initial SMB search action set.
+  - The legal SMB action set is represented explicitly and mapped to PlayerControlFrame; Search does not branch over arbitrary raw controller combinations.
+  - Successor ordering may still prefer more likely actions first, but all legal actions remain available to the search.
+
+Search algorithm:
+
+  - The first real SMB search algorithm is segment-oriented beam search.
+  - Search operates on one legal SMB action per fixed timestep.
+  - Each segment attempt starts from the current committed exact-savestate root.
+  - For each timestep in the segment budget:
+      - expand each beam node over the legal SMB action set
+      - advance the emulator one timestep
+      - update the reduced evaluator summary and cached search features
+      - discard terminal or otherwise pruned successors
+      - score the remaining successors
+      - keep the best N successors as the next beam frontier
+  - Search tracks the best checkpoint-eligible node found during the segment attempt, even if that node is not the current top beam survivor.
+  - At the end of a segment attempt:
+      - if a checkpoint-eligible node was found, promote the best such node to a new committed root
+      - otherwise the attempt fails and the caller may retry, widen the search budget, or roll back to a prior committed root
+  - The initial implementation is single-threaded.
+  - The initial implementation does not use a transposition table.
+  - Parallel expansion and exact transpositions are deferred until baseline behavior is working and measurable.
+
+Pruning/scoring policy
+  - The initial pruning policy is intentionally minimal.
+    - The initial implementation prunes:
+        - terminal states
+        - evaluator-terminal states
+        - invalid or non-gameplay states if they arise
+    - The initial implementation does not yet use:
+        - transposition pruning
+        - dominance pruning
+        - optimistic-bound pruning
+    - The initial search uses separate scoring for:
+        - beam survival
+        - checkpoint promotion
+    - Initial beam-survival scoring prefers:
+        - higher best frontier
+        - fewer gameplay frames elapsed
+        - more stable motion states as tie-breakers, with grounded and controlled states preferred over unstable airborne states
+    - Initial checkpoint-promotion scoring prefers:
+        - checkpoint-eligible states only
+        - higher best frontier
+        - more stable grounded states
+        - fewer gameplay frames elapsed
+    - Scoring is based on best frontier reached so far, not only the node’s current position.
+
+Segment success/failure policy
+   
+  - A search session is a sequence of segment attempts from committed roots.
+  - A segment attempt succeeds if it finds at least one checkpoint-eligible node with strictly better frontier than the current committed root.
+  - Search promotes the best checkpoint-eligible node found during the segment attempt, not the first one found.
+  - Promotion stores both the exact savestate root and the segment Plan needed to reach it.
+  - A segment attempt fails if the beam is exhausted or the segment budget ends without a promotable checkpoint.
+  - In the initial implementation, segment failure ends the search session at the current committed root.
+  - The initial implementation does not retry the same root with identical parameters.
+  - Backtracking to prior committed roots and trying alternative checkpoint candidates is deferred to a later iteration.
+
+Test fixture strategy.
+- Search implementation should be developed against fixed exact-savestate SMB root fixtures.
+- Early search tests are micro-benchmarks, not full-level tests.
+- Initial fixture targets should include at least:
+    - flat ground sanity
+    - first goomba
+    - first gap
+- Initial automated checks should cover:
+    - deterministic results from fixed root and parameters
+    - successful frontier gain on simple fixtures
+    - clean failure on insufficient budget
+    - exact plan replay from the root savestate
+    - checkpoint eligibility of promoted roots
+- End-to-end UI/functional tests are still useful, but they are secondary to fixed-root search-core tests for early search development.
+- Use screenshots as needed.
+
+Implementation plan:
+1. Fixed-root fixture and replay foundation.
+
+  - add exact SMB savestate fixtures for at least:
+      - flat ground sanity
+      - first goomba
+      - first gap
+  - add a small harness to load a root savestate, replay a Plan, and report evaluator summary
+  - add tests for deterministic replay from fixed roots
+
+2. Search core data model.
+
+  - add SearchNode
+  - add reduced evaluator summary
+  - add explicit SMB legal-action enum/set mapped to PlayerControlFrame
+  - include the initial action set from day one:
+      - forward
+      - backward-running
+      - jump-running
+      - ducking
+      - crouch-jump-running
+  - add tests for action mapping and plan reconstruction
+
+3. Single-threaded segment beam search.
+
+  - implement one segment attempt from one exact root
+  - fixed beam width
+  - fixed segment budget
+  - no transposition table
+  - minimal pruning only:
+      - terminal
+      - evaluator-terminal
+      - invalid/non-gameplay if needed
+  - add micro-benchmark tests for:
+      - determinism
+      - successful frontier gain on simple roots
+      - clean failure on insufficient budget
+
+4. Checkpoint promotion and committed-root flow.
+
+  - add checkpoint-eligibility filter
+  - track best promotable checkpoint during a segment attempt
+  - promote best checkpoint at segment end, not first found
+  - store promoted checkpoint as exact savestate root plus segment Plan
+  - keep a small committed-root stack
+  - initial failure policy: end the search session on segment failure
+  - add tests for checkpoint eligibility and promotion behavior
+
+5. Search runner integration.
+
+  - plug the segment-search runner into SearchActive
+  - keep the current Search UI shell
+  - expose truthful progress for the real segment search
+  - add at least one CLI/functional smoke test for a real segment search path
+
+6. Performance and search-quality follow-ups.
+
+  - exact transpositions
+  - dominance / bucket policy
+  - hazard-aware widening
+  - rollback to prior committed roots
+  - alternative checkpoint candidates
+  - parallel expansion
+
 
 ### Phase 3: Generalize to support Clock Scenario and Duck
 
