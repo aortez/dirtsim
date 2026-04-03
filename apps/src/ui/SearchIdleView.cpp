@@ -53,6 +53,7 @@ SearchIdleView::~SearchIdleView()
     if (contentRoot_) {
         lv_obj_del(contentRoot_);
         contentRoot_ = nullptr;
+        contentViewport_ = nullptr;
     }
 }
 
@@ -64,6 +65,7 @@ void SearchIdleView::setLastError(const std::optional<std::string>& error)
 
 void SearchIdleView::updateAnimations()
 {
+    layoutContentViewport();
     animator_.advanceTick();
 
     if (mazeView_) {
@@ -87,13 +89,21 @@ void SearchIdleView::createUi(lv_obj_t* parent)
     lv_obj_set_style_pad_all(contentRoot_, 0, 0);
     lv_obj_clear_flag(contentRoot_, LV_OBJ_FLAG_SCROLLABLE);
 
+    contentViewport_ = lv_obj_create(contentRoot_);
+    DIRTSIM_ASSERT(contentViewport_, "SearchIdleView failed to create content viewport");
+    lv_obj_set_style_bg_opa(contentViewport_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(contentViewport_, 0, 0);
+    lv_obj_set_style_pad_all(contentViewport_, 0, 0);
+    lv_obj_clear_flag(contentViewport_, LV_OBJ_FLAG_SCROLLABLE);
+    layoutContentViewport();
+
     mazeView_ = std::make_unique<MazeSearchView>(
-        contentRoot_,
+        contentViewport_,
         animator_,
         MazeSearchView::ViewportMode::FullMaze,
         MazeSearchView::PresentationStyle::Scene);
 
-    titleCard_ = createOverlayCard(contentRoot_, 18, 8, LV_ALIGN_TOP_MID, 0, 18);
+    titleCard_ = createOverlayCard(contentViewport_, 18, 8, LV_ALIGN_TOP_MID, 0, 18);
     lv_obj_t* titleLabel = lv_label_create(titleCard_);
     DIRTSIM_ASSERT(titleLabel, "SearchIdleView failed to create title label");
     lv_label_set_text(titleLabel, "Search");
@@ -101,7 +111,7 @@ void SearchIdleView::createUi(lv_obj_t* parent)
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_letter_space(titleLabel, 1, 0);
 
-    errorCard_ = createOverlayCard(contentRoot_, 18, 12, LV_ALIGN_BOTTOM_MID, 0, -20);
+    errorCard_ = createOverlayCard(contentViewport_, 18, 12, LV_ALIGN_BOTTOM_MID, 0, -20);
     errorLabel_ = lv_label_create(errorCard_);
     DIRTSIM_ASSERT(errorLabel_, "SearchIdleView failed to create error label");
     lv_obj_set_width(errorLabel_, 580);
@@ -114,11 +124,42 @@ void SearchIdleView::createUi(lv_obj_t* parent)
         iconView_ = std::make_unique<MazeSearchView>(
             scannerIconHost,
             animator_,
-            MazeSearchView::ViewportMode::FocusedSquare,
+            MazeSearchView::ViewportMode::CenteredSquare,
             MazeSearchView::PresentationStyle::IconBadge);
     }
 
     updateErrorVisibility();
+}
+
+void SearchIdleView::layoutContentViewport()
+{
+    if (!contentRoot_ || !contentViewport_) {
+        return;
+    }
+
+    int rootWidth = lv_obj_get_width(contentRoot_);
+    int rootHeight = lv_obj_get_height(contentRoot_);
+    if (rootWidth <= 0 || rootHeight <= 0) {
+        if (lv_disp_t* display = lv_disp_get_default()) {
+            rootWidth = lv_disp_get_hor_res(display);
+            rootHeight = lv_disp_get_ver_res(display);
+        }
+    }
+    if (rootWidth <= 0 || rootHeight <= 0) {
+        return;
+    }
+
+    int railWidth = IconRail::RAIL_WIDTH;
+    if (lv_obj_t* railContainer = iconRail_.getContainer()) {
+        const int measuredRailWidth = lv_obj_get_width(railContainer);
+        if (measuredRailWidth > 0) {
+            railWidth = measuredRailWidth;
+        }
+    }
+
+    const int viewportWidth = std::max(0, rootWidth - railWidth);
+    lv_obj_set_pos(contentViewport_, railWidth, 0);
+    lv_obj_set_size(contentViewport_, viewportWidth, rootHeight);
 }
 
 void SearchIdleView::updateErrorVisibility()

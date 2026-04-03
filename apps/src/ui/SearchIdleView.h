@@ -22,10 +22,12 @@ public:
 
 private:
     void createUi(lv_obj_t* parent);
+    void layoutContentViewport();
     void updateErrorVisibility();
 
     MazeSearchAnimator animator_;
     lv_obj_t* contentRoot_ = nullptr;
+    lv_obj_t* contentViewport_ = nullptr;
     lv_obj_t* errorCard_ = nullptr;
     lv_obj_t* errorLabel_ = nullptr;
     std::unique_ptr<MazeSearchView> iconView_;

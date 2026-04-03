@@ -15,7 +15,7 @@ public:
 
     enum class ViewportMode {
         FullMaze,
-        FocusedSquare,
+        CenteredSquare,
     };
 
     MazeSearchView(
