@@ -110,6 +110,14 @@
     } while (0)
 #endif
 
+#ifndef SMOLNES_PIXEL_OUTPUT_ENABLED
+#define SMOLNES_PIXEL_OUTPUT_ENABLED 1
+#endif
+
+#ifndef SMOLNES_RGBA_OUTPUT_ENABLED
+#define SMOLNES_RGBA_OUTPUT_ENABLED 1
+#endif
+
 #define PULL mem(++S, 1, 0, 0)
 #define PUSH(x) mem(S--, 1, x, 1)
 
@@ -315,7 +323,13 @@ static inline void render_visible_span(uint16_t span_count,
       }
     }
 
-    SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + current_dot, color, palette);
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
 
     local_shift_hi <<= 1;
     local_shift_lo <<= 1;
@@ -354,28 +368,79 @@ static inline void render_visible_span(uint16_t span_count,
 
   while (span_count >= 8) {
     const uint16_t base_offset = scanline_fb_offset + current_dot;
-    for (uint16_t pixel = 0; pixel < 8; ++pixel) {
-      uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
-                      local_shift_lo >> fine_x_shift & 1,
-              palette = local_shift_at >> fine_x_palette_shift & 12;
+    if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                        local_shift_lo >> fine_x_shift & 1,
+                palette = local_shift_at >> fine_x_palette_shift & 12;
 
-      if (sprites_enabled) {
-        ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
-        if (sprite->color) {
-          if (!(sprite->attr & 32 && color)) {
-            color = sprite->color;
-            palette = sprite->palette;
+        if (sprites_enabled) {
+          ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
+          if (sprite->color) {
+            if (!(sprite->attr & 32 && color)) {
+              color = sprite->color;
+              palette = sprite->palette;
+            }
+            if (sprite->is_sprite0 && color)
+              ppustatus |= 64;
           }
-          if (sprite->is_sprite0 && color)
-            ppustatus |= 64;
         }
+
+        local_shift_hi <<= 1;
+        local_shift_lo <<= 1;
+        local_shift_at <<= 2;
       }
+    } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                        local_shift_lo >> fine_x_shift & 1,
+                palette = local_shift_at >> fine_x_palette_shift & 12;
 
-      SMOLNES_PIXEL_OUTPUT(base_offset + pixel, color, palette);
+        if (sprites_enabled) {
+          ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
+          if (sprite->color) {
+            if (!(sprite->attr & 32 && color)) {
+              color = sprite->color;
+              palette = sprite->palette;
+            }
+            if (sprite->is_sprite0 && color)
+              ppustatus |= 64;
+          }
+        }
 
-      local_shift_hi <<= 1;
-      local_shift_lo <<= 1;
-      local_shift_at <<= 2;
+        const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+        frame_buffer_palette[base_offset + pixel] = palette_index;
+        frame_buffer[base_offset + pixel] = nes_palette_rgb565[palette_index];
+
+        local_shift_hi <<= 1;
+        local_shift_lo <<= 1;
+        local_shift_at <<= 2;
+      }
+    } else {
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi >> (fine_x_shift - 1) & 2 |
+                        local_shift_lo >> fine_x_shift & 1,
+                palette = local_shift_at >> fine_x_palette_shift & 12;
+
+        if (sprites_enabled) {
+          ScanlineSpritePixel *sprite = &scanline_sprite_pixels[current_dot + pixel];
+          if (sprite->color) {
+            if (!(sprite->attr & 32 && color)) {
+              color = sprite->color;
+              palette = sprite->palette;
+            }
+            if (sprite->is_sprite0 && color)
+              ppustatus |= 64;
+          }
+        }
+
+        frame_buffer_palette[base_offset + pixel] =
+            palette_ram[(color) ? (palette) | (color) : 0];
+
+        local_shift_hi <<= 1;
+        local_shift_lo <<= 1;
+        local_shift_at <<= 2;
+      }
     }
 
     local_ntb = *get_nametable_byte(local_V);
@@ -412,7 +477,13 @@ static inline void render_visible_span(uint16_t span_count,
       }
     }
 
-    SMOLNES_PIXEL_OUTPUT(scanline_fb_offset + current_dot, color, palette);
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
 
     local_shift_hi <<= 1;
     local_shift_lo <<= 1;

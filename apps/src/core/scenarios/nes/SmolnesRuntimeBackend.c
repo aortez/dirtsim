@@ -990,6 +990,8 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #define SMOLNES_APU_WRITE(addr, value) smolnesRuntimeWrappedApuWrite(addr, value)
 #define SMOLNES_APU_READ(addr) smolnesRuntimeWrappedApuRead(addr)
 #define SMOLNES_APU_CLOCK(cycles) smolnesRuntimeWrappedApuClock(cycles)
+#define SMOLNES_PIXEL_OUTPUT_ENABLED gPixelOutputEnabled
+#define SMOLNES_RGBA_OUTPUT_ENABLED gRgbaOutputEnabled
 #define SMOLNES_TLS SMOLNES_THREAD_LOCAL
 #define main smolnesRuntimeEntryPoint
 
@@ -1023,6 +1025,8 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_APU_WRITE
 #undef SMOLNES_APU_READ
 #undef SMOLNES_APU_CLOCK
+#undef SMOLNES_PIXEL_OUTPUT_ENABLED
+#undef SMOLNES_RGBA_OUTPUT_ENABLED
 #undef SMOLNES_TLS
 #undef main
 
