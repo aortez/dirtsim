@@ -369,9 +369,8 @@ static inline void render_visible_span_background_only(uint16_t span_count,
     --span_count;
   }
 
-  while (span_count >= 8) {
-    const uint16_t base_offset = scanline_fb_offset + current_dot;
-    if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+  if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -381,7 +380,18 @@ static inline void render_visible_span_background_only(uint16_t span_count,
         local_shift_lo_aligned <<= 1;
         local_shift_at_aligned <<= 2;
       }
-    } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -395,7 +405,18 @@ static inline void render_visible_span_background_only(uint16_t span_count,
         local_shift_lo_aligned <<= 1;
         local_shift_at_aligned <<= 2;
       }
-    } else {
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -408,15 +429,15 @@ static inline void render_visible_span_background_only(uint16_t span_count,
         local_shift_lo_aligned <<= 1;
         local_shift_at_aligned <<= 2;
       }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
     }
-
-    step_background_fetch_pipeline_for_dot_aligned(
-        bg_pattern_base, current_dot + 7, &local_V, &local_atb,
-        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
-        &local_ntb, &local_ptb_lo, fine_x);
-
-    current_dot += 8;
-    span_count -= 8;
   }
 
   while (span_count > 0) {
@@ -509,9 +530,8 @@ static inline void render_visible_span(uint16_t span_count,
     --span_count;
   }
 
-  while (span_count >= 8) {
-    const uint16_t base_offset = scanline_fb_offset + current_dot;
-    if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+  if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -531,7 +551,18 @@ static inline void render_visible_span(uint16_t span_count,
         local_shift_lo_aligned <<= 1;
         local_shift_at_aligned <<= 2;
       }
-    } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -555,7 +586,18 @@ static inline void render_visible_span(uint16_t span_count,
         local_shift_lo_aligned <<= 1;
         local_shift_at_aligned <<= 2;
       }
-    } else {
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -579,15 +621,14 @@ static inline void render_visible_span(uint16_t span_count,
         local_shift_at_aligned <<= 2;
       }
 
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
     }
-
-    step_background_fetch_pipeline_for_dot_aligned(
-        bg_pattern_base, current_dot + 7, &local_V, &local_atb,
-        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
-        &local_ntb, &local_ptb_lo, fine_x);
-
-    current_dot += 8;
-    span_count -= 8;
   }
 
   while (span_count > 0) {
