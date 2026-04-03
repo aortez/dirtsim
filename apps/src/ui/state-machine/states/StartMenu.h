@@ -2,6 +2,7 @@
 
 #include "StateForward.h"
 #include "core/ScenarioId.h"
+#include "ui/SearchModeVisuals.h"
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/controls/StartMenuCorePanel.h"
 #include "ui/controls/StartMenuSettingsPanel.h"
@@ -47,6 +48,7 @@ private:
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     std::unique_ptr<SparklingDuckButton> startButton_; // Animated start button.
     std::unique_ptr<StartMenuCorePanel> corePanel_;    // Core controls panel (quit, etc.).
+    std::unique_ptr<SearchModeVisuals> searchModeVisuals_;
     std::unique_ptr<StartMenuSettingsPanel> settingsPanel_; // Settings controls panel.
     lv_obj_t* touchDebugLabel_ = nullptr;                   // Touch coordinate debug display.
     lv_obj_t* infoPanel_ = nullptr;                         // Bottom-left info panel container.

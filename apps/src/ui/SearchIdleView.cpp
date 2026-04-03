@@ -39,16 +39,14 @@ lv_obj_t* createOverlayCard(
 } // namespace
 
 SearchIdleView::SearchIdleView(lv_obj_t* parent, IconRail& iconRail)
-    : animator_(kMazeWidth, kMazeHeight), iconRail_(iconRail)
+    : iconRail_(iconRail), searchModeVisuals_(iconRail, kMazeWidth, kMazeHeight)
 {
     createUi(parent);
 }
 
 SearchIdleView::~SearchIdleView()
 {
-    iconView_.reset();
     mazeView_.reset();
-    iconRail_.clearCustomIconContent(IconId::SCANNER);
 
     if (contentRoot_) {
         lv_obj_del(contentRoot_);
@@ -66,13 +64,10 @@ void SearchIdleView::setLastError(const std::optional<std::string>& error)
 void SearchIdleView::updateAnimations()
 {
     layoutContentViewport();
-    animator_.advanceTick();
+    searchModeVisuals_.updateAnimations();
 
     if (mazeView_) {
         mazeView_->render();
-    }
-    if (iconView_) {
-        iconView_->render();
     }
 }
 
@@ -99,7 +94,7 @@ void SearchIdleView::createUi(lv_obj_t* parent)
 
     mazeView_ = std::make_unique<MazeSearchView>(
         contentViewport_,
-        animator_,
+        searchModeVisuals_.animator(),
         MazeSearchView::ViewportMode::FullMaze,
         MazeSearchView::PresentationStyle::Scene);
 
@@ -119,15 +114,6 @@ void SearchIdleView::createUi(lv_obj_t* parent)
     lv_obj_set_style_text_color(errorLabel_, lv_color_hex(0xFFB3B3), 0);
     lv_obj_set_style_text_align(errorLabel_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(errorLabel_, &lv_font_montserrat_16, 0);
-
-    if (lv_obj_t* scannerIconHost = iconRail_.activateCustomIconContent(IconId::SCANNER)) {
-        iconView_ = std::make_unique<MazeSearchView>(
-            scannerIconHost,
-            animator_,
-            MazeSearchView::ViewportMode::CenteredSquare,
-            MazeSearchView::PresentationStyle::IconBadge);
-    }
-
     updateErrorVisibility();
 }
 

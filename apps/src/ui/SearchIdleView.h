@@ -1,7 +1,7 @@
 #pragma once
 
+#include "ui/SearchModeVisuals.h"
 #include "ui/controls/IconRail.h"
-#include "ui/rendering/maze/MazeSearchAnimator.h"
 #include <lvgl/lvgl.h>
 #include <memory>
 #include <optional>
@@ -25,15 +25,14 @@ private:
     void layoutContentViewport();
     void updateErrorVisibility();
 
-    MazeSearchAnimator animator_;
     lv_obj_t* contentRoot_ = nullptr;
     lv_obj_t* contentViewport_ = nullptr;
     lv_obj_t* errorCard_ = nullptr;
     lv_obj_t* errorLabel_ = nullptr;
-    std::unique_ptr<MazeSearchView> iconView_;
     IconRail& iconRail_;
     std::optional<std::string> lastError_ = std::nullopt;
     std::unique_ptr<MazeSearchView> mazeView_;
+    SearchModeVisuals searchModeVisuals_;
     lv_obj_t* titleCard_ = nullptr;
 };
 

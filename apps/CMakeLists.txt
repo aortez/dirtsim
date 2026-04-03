@@ -618,6 +618,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/SearchIdleView.cpp
+    src/ui/SearchModeVisuals.cpp
     src/ui/UiComponentManager.cpp
     src/ui/ScenarioMetadataManager.cpp
     src/ui/UserSettingsManager.cpp
