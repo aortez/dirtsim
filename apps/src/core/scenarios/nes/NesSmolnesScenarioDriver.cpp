@@ -395,6 +395,15 @@ std::optional<SmolnesRuntime::MemorySnapshot> NesSmolnesScenarioDriver::copyRunt
     return runtime_->copyMemorySnapshot();
 }
 
+std::optional<SmolnesRuntime::ProfilingSnapshot> NesSmolnesScenarioDriver::
+    copyRuntimeProfilingSnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyProfilingSnapshot();
+}
+
 std::optional<SmolnesRuntime::ApuSnapshot> NesSmolnesScenarioDriver::copyRuntimeApuSnapshot() const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {

@@ -39,6 +39,11 @@ public:
         uint64_t runtimeThreadPpuStepCalls = 0;
         double runtimeThreadPpuVisiblePixelsMs = 0.0;
         uint64_t runtimeThreadPpuVisiblePixelsCalls = 0;
+        uint64_t runtimeThreadPpuVisibleBgOnlySpanCalls = 0;
+        uint64_t runtimeThreadPpuVisibleBgOnlySpanPixels = 0;
+        uint64_t runtimeThreadPpuVisibleBgOnlyScalarPixels = 0;
+        uint64_t runtimeThreadPpuVisibleBgOnlyBatchedPixels = 0;
+        uint64_t runtimeThreadPpuVisibleBgOnlyBatchedCalls = 0;
         double runtimeThreadPpuSpriteEvalMs = 0.0;
         uint64_t runtimeThreadPpuSpriteEvalCalls = 0;
         double runtimeThreadPpuPostVisibleMs = 0.0;

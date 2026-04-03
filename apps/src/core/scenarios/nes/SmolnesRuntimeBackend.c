@@ -56,6 +56,11 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadPpuStepCalls;
     double runtimeThreadPpuVisiblePixelsMs;
     uint64_t runtimeThreadPpuVisiblePixelsCalls;
+    uint64_t runtimeThreadPpuVisibleBgOnlySpanCalls;
+    uint64_t runtimeThreadPpuVisibleBgOnlySpanPixels;
+    uint64_t runtimeThreadPpuVisibleBgOnlyScalarPixels;
+    uint64_t runtimeThreadPpuVisibleBgOnlyBatchedPixels;
+    uint64_t runtimeThreadPpuVisibleBgOnlyBatchedCalls;
     double runtimeThreadPpuSpriteEvalMs;
     uint64_t runtimeThreadPpuSpriteEvalCalls;
     double runtimeThreadPpuPostVisibleMs;
@@ -157,6 +162,11 @@ static SMOLNES_THREAD_LOCAL bool gPpuStepActive = false;
 static SMOLNES_THREAD_LOCAL double gPpuStepStartMs = 0.0;
 static SMOLNES_THREAD_LOCAL double gPpuStepAccumMs = 0.0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuStepAccumCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlySpanCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlySpanPixels = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyScalarPixels = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyBatchedPixels = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyBatchedCalls = 0;
 typedef enum SmolnesPpuPhaseBucket {
     SmolnesPpuPhaseBucketNone = 0,
     SmolnesPpuPhaseBucketVisiblePixels = 1,
@@ -305,6 +315,11 @@ static void resetPerInstructionAccumulators(void)
     gApuStepAccumCalls = 0;
     gPpuStepAccumMs = 0.0;
     gPpuStepAccumCalls = 0;
+    gPpuVisibleBgOnlySpanCalls = 0;
+    gPpuVisibleBgOnlySpanPixels = 0;
+    gPpuVisibleBgOnlyScalarPixels = 0;
+    gPpuVisibleBgOnlyBatchedPixels = 0;
+    gPpuVisibleBgOnlyBatchedCalls = 0;
     resetPpuPhaseBreakdown();
 }
 
@@ -318,6 +333,11 @@ static void flushPerInstructionAccumulatorsLocked(SmolnesRuntimeHandle* runtime)
     runtime->runtimeThreadPpuStepCalls += gSampledInstructions;
     runtime->runtimeThreadPpuVisiblePixelsMs += gPpuVisiblePixelsAccumMs;
     runtime->runtimeThreadPpuVisiblePixelsCalls += gPpuVisiblePixelsAccumCalls;
+    runtime->runtimeThreadPpuVisibleBgOnlySpanCalls += gPpuVisibleBgOnlySpanCalls;
+    runtime->runtimeThreadPpuVisibleBgOnlySpanPixels += gPpuVisibleBgOnlySpanPixels;
+    runtime->runtimeThreadPpuVisibleBgOnlyScalarPixels += gPpuVisibleBgOnlyScalarPixels;
+    runtime->runtimeThreadPpuVisibleBgOnlyBatchedPixels += gPpuVisibleBgOnlyBatchedPixels;
+    runtime->runtimeThreadPpuVisibleBgOnlyBatchedCalls += gPpuVisibleBgOnlyBatchedCalls;
     runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
     runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
     runtime->runtimeThreadPpuPostVisibleMs += gPpuPostVisibleAccumMs;
@@ -758,6 +778,23 @@ void smolnesRuntimeWrappedPpuPhaseClear(void)
     setPpuPhaseBucket(SmolnesPpuPhaseBucketNone);
 }
 
+void smolnesRuntimeWrappedPpuVisibleBgOnlyStats(
+    uint16_t spanPixels,
+    uint16_t scalarPixels,
+    uint16_t batchedPixels,
+    uint16_t batchedCalls)
+{
+    if (!gDetailedTimingEnabled) {
+        return;
+    }
+
+    gPpuVisibleBgOnlySpanCalls++;
+    gPpuVisibleBgOnlySpanPixels += spanPixels;
+    gPpuVisibleBgOnlyScalarPixels += scalarPixels;
+    gPpuVisibleBgOnlyBatchedPixels += batchedPixels;
+    gPpuVisibleBgOnlyBatchedCalls += batchedCalls;
+}
+
 void smolnesRuntimeWrappedFrameSubmitBegin(void)
 {
     SmolnesRuntimeHandle* runtime = getCurrentRuntime();
@@ -953,6 +990,9 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
             smolnesRuntimeWrappedPpuPhaseSet(phase);                                         \
         }                                                                                    \
     } while (0)
+#define SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(span_pixels, scalar_pixels, batched_pixels, batch_count) \
+    smolnesRuntimeWrappedPpuVisibleBgOnlyStats(                                                  \
+        (span_pixels), (scalar_pixels), (batched_pixels), (batch_count))
 #define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
 #define SMOLNES_EVENT_POLL_BEGIN smolnesRuntimeWrappedEventPollBegin
@@ -1142,6 +1182,11 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runtimeThreadPpuStepCalls = 0;
     runtime->runtimeThreadPpuVisiblePixelsMs = 0.0;
     runtime->runtimeThreadPpuVisiblePixelsCalls = 0;
+    runtime->runtimeThreadPpuVisibleBgOnlySpanCalls = 0;
+    runtime->runtimeThreadPpuVisibleBgOnlySpanPixels = 0;
+    runtime->runtimeThreadPpuVisibleBgOnlyScalarPixels = 0;
+    runtime->runtimeThreadPpuVisibleBgOnlyBatchedPixels = 0;
+    runtime->runtimeThreadPpuVisibleBgOnlyBatchedCalls = 0;
     runtime->runtimeThreadPpuSpriteEvalMs = 0.0;
     runtime->runtimeThreadPpuSpriteEvalCalls = 0;
     runtime->runtimeThreadPpuPostVisibleMs = 0.0;
@@ -1494,6 +1539,16 @@ bool smolnesRuntimeCopyProfilingSnapshot(
         mutableRuntime->runtimeThreadPpuVisiblePixelsMs;
     snapshotOut->runtime_thread_ppu_visible_pixels_calls =
         mutableRuntime->runtimeThreadPpuVisiblePixelsCalls;
+    snapshotOut->runtime_thread_ppu_visible_bg_only_span_calls =
+        mutableRuntime->runtimeThreadPpuVisibleBgOnlySpanCalls;
+    snapshotOut->runtime_thread_ppu_visible_bg_only_span_pixels =
+        mutableRuntime->runtimeThreadPpuVisibleBgOnlySpanPixels;
+    snapshotOut->runtime_thread_ppu_visible_bg_only_scalar_pixels =
+        mutableRuntime->runtimeThreadPpuVisibleBgOnlyScalarPixels;
+    snapshotOut->runtime_thread_ppu_visible_bg_only_batched_pixels =
+        mutableRuntime->runtimeThreadPpuVisibleBgOnlyBatchedPixels;
+    snapshotOut->runtime_thread_ppu_visible_bg_only_batched_calls =
+        mutableRuntime->runtimeThreadPpuVisibleBgOnlyBatchedCalls;
     snapshotOut->runtime_thread_ppu_sprite_eval_ms = mutableRuntime->runtimeThreadPpuSpriteEvalMs;
     snapshotOut->runtime_thread_ppu_sprite_eval_calls =
         mutableRuntime->runtimeThreadPpuSpriteEvalCalls;

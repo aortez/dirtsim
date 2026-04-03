@@ -95,6 +95,7 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
     }
     const auto wallEnd = std::chrono::steady_clock::now();
     const double wallMs = std::chrono::duration<double, std::milli>(wallEnd - wallStart).count();
+    const auto profilingSnapshot = driver.copyRuntimeProfilingSnapshot();
 
     ASSERT_TRUE(driver.isRuntimeHealthy()) << driver.getRuntimeLastError();
     EXPECT_EQ(driver.getRuntimeRenderedFrameCount(), static_cast<uint64_t>(kFrameCount));
@@ -152,6 +153,35 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
         const double ppuPrefetchEstMs = ppuEstMs * ppuPrefetchPct / 100.0;
         const double ppuNonVisibleScanlinesEstMs = ppuEstMs * ppuNonVisibleScanlinesPct / 100.0;
         const double ppuOtherEstMs = ppuEstMs * ppuOtherPct / 100.0;
+        const uint64_t bgOnlySpanCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlySpanCalls
+            : 0;
+        const uint64_t bgOnlySpanPixels = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlySpanPixels
+            : 0;
+        const uint64_t bgOnlyScalarPixels = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlyScalarPixels
+            : 0;
+        const uint64_t bgOnlyBatchedPixels = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlyBatchedPixels
+            : 0;
+        const uint64_t bgOnlyBatchedCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlyBatchedCalls
+            : 0;
+        const double bgOnlyAvgSpanPixels = bgOnlySpanCalls > 0
+            ? static_cast<double>(bgOnlySpanPixels) / static_cast<double>(bgOnlySpanCalls)
+            : 0.0;
+        const double bgOnlyScalarPixelsPct = bgOnlySpanPixels > 0
+            ? static_cast<double>(bgOnlyScalarPixels) / static_cast<double>(bgOnlySpanPixels)
+                * 100.0
+            : 0.0;
+        const double bgOnlyBatchedPixelsPct = bgOnlySpanPixels > 0
+            ? static_cast<double>(bgOnlyBatchedPixels) / static_cast<double>(bgOnlySpanPixels)
+                * 100.0
+            : 0.0;
+        const double bgOnlyAvgBatchesPerCall = bgOnlySpanCalls > 0
+            ? static_cast<double>(bgOnlyBatchedCalls) / static_cast<double>(bgOnlySpanCalls)
+            : 0.0;
 
         fprintf(
             stderr,
@@ -170,6 +200,13 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             "    Prefetch:            %8.1f ms  (%5.1f%% of PPU)\n"
             "    Non-visible scans:   %8.1f ms  (%5.1f%% of PPU)\n"
             "    Other:               %8.1f ms  (%5.1f%% of PPU)\n"
+            "\n"
+            "Background-only visible spans:\n"
+            "  Span calls:            %8llu\n"
+            "  Avg span length:       %8.2f pixels\n"
+            "  Scalar pixels:         %8llu  (%5.1f%%)\n"
+            "  Batched pixels:        %8llu  (%5.1f%%)\n"
+            "  Avg 8px batches/call: %8.2f\n"
             "\n"
             "Outside frame execution:\n"
             "  Frame submit:          %8.1f ms\n"
@@ -201,6 +238,13 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             ppuNonVisibleScanlinesPct,
             ppuOtherEstMs,
             ppuOtherPct,
+            static_cast<unsigned long long>(bgOnlySpanCalls),
+            bgOnlyAvgSpanPixels,
+            static_cast<unsigned long long>(bgOnlyScalarPixels),
+            bgOnlyScalarPixelsPct,
+            static_cast<unsigned long long>(bgOnlyBatchedPixels),
+            bgOnlyBatchedPixelsPct,
+            bgOnlyAvgBatchesPerCall,
             frameSubmitMs,
             presentMs,
             memCopyMs);

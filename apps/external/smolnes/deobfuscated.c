@@ -81,6 +81,10 @@
 #define SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES 6u
 #endif
 
+#ifndef SMOLNES_PPU_VISIBLE_BG_ONLY_STATS
+#define SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(span_pixels, scalar_pixels, batched_pixels, batch_count)
+#endif
+
 #ifndef SMOLNES_APU_WRITE
 #define SMOLNES_APU_WRITE(addr, value)
 #endif
@@ -331,6 +335,7 @@ static inline void step_background_fetch_pipeline_for_dot_aligned(
 static inline void render_visible_span_background_only(uint16_t span_count,
                                                        uint8_t fine_x,
                                                        uint16_t bg_pattern_base) {
+  const uint16_t total_span_count = span_count;
   uint16_t current_dot = dot;
   uint16_t local_V = V;
   uint16_t local_atb = atb;
@@ -340,8 +345,12 @@ static inline void render_visible_span_background_only(uint16_t span_count,
   uint8_t local_ntb = ntb;
   uint8_t local_ptb_lo = ptb_lo;
   uint16_t prefix_count = (8 - (current_dot & 7)) & 7;
+  uint16_t scalar_pixels = 0;
+  uint16_t batched_pixels = 0;
+  uint16_t batched_calls = 0;
   if (prefix_count > span_count)
     prefix_count = span_count;
+  scalar_pixels += prefix_count;
 
   while (prefix_count > 0) {
     uint8_t color = local_shift_hi_aligned >> 14 & 2 |
@@ -371,6 +380,8 @@ static inline void render_visible_span_background_only(uint16_t span_count,
 
   if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
     while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                         local_shift_lo_aligned >> 15 & 1,
@@ -391,6 +402,8 @@ static inline void render_visible_span_background_only(uint16_t span_count,
     }
   } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
     while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
       const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
@@ -416,6 +429,8 @@ static inline void render_visible_span_background_only(uint16_t span_count,
     }
   } else {
     while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
       const uint16_t base_offset = scanline_fb_offset + current_dot;
       for (uint16_t pixel = 0; pixel < 8; ++pixel) {
         uint8_t color = local_shift_hi_aligned >> 14 & 2 |
@@ -440,6 +455,7 @@ static inline void render_visible_span_background_only(uint16_t span_count,
     }
   }
 
+  scalar_pixels += span_count;
   while (span_count > 0) {
     uint8_t color = local_shift_hi_aligned >> 14 & 2 |
                     local_shift_lo_aligned >> 15 & 1,
@@ -472,6 +488,8 @@ static inline void render_visible_span_background_only(uint16_t span_count,
   shift_at = local_shift_at_aligned >> (fine_x * 2);
   ntb = local_ntb;
   ptb_lo = local_ptb_lo;
+  SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(
+      total_span_count, scalar_pixels, batched_pixels, batched_calls);
 }
 
 static inline void render_visible_span(uint16_t span_count,
