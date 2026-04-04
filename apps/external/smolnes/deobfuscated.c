@@ -57,6 +57,30 @@
 #define SMOLNES_DEFERRED_PPU_STEP_END()
 #endif
 
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON(reason, dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS
+#define SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(reg, is_write, dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS 1u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA 2u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE 3u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY 4u
+#endif
+
 #ifndef SMOLNES_PPU_PHASE_SET
 #define SMOLNES_PPU_PHASE_SET(phase)
 #endif
@@ -816,9 +840,10 @@ static inline void runDeferredVisiblePpuDots(uint16_t ppu_dot_count) {
   SMOLNES_DEFERRED_PPU_STEP_END();
 }
 
-static inline void flushDeferredPpuDots(void) {
+static inline void flushDeferredPpuDots(uint32_t flush_reason) {
   if (!deferred_ppu_dots)
     return;
+  SMOLNES_DEFERRED_PPU_FLUSH_REASON(flush_reason, deferred_ppu_dots);
   runDeferredVisiblePpuDots(deferred_ppu_dots);
   deferred_ppu_dots = 0;
 }
@@ -831,8 +856,13 @@ uint8_t mem(uint8_t lo, uint8_t hi, uint8_t val, uint8_t write) {
     const uint8_t is_ppu_register_access = addr >= 0x2000 && addr < 0x4000;
     const uint8_t is_oam_dma = write && addr == 0x4014;
     const uint8_t is_mapper_write = write && addr >= 0x8000;
-    if (is_mapper_write || is_oam_dma || is_ppu_register_access)
-      flushDeferredPpuDots();
+    if (is_ppu_register_access) {
+      SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(addr & 7, write, deferred_ppu_dots);
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS);
+    } else if (is_oam_dma)
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA);
+    else if (is_mapper_write)
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE);
   }
 
   switch (hi >>= 4) {
@@ -1358,7 +1388,7 @@ loop:
     deferred_ppu_dots += ppu_dot_count;
     goto loop;
   }
-  flushDeferredPpuDots();
+  flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY);
   SMOLNES_PPU_STEP_BEGIN();
   const uint8_t rendering_enabled = ppumask & 24;
   const uint16_t bg_pattern_base = ppuctrl << 8 & 4096;
@@ -1419,6 +1449,12 @@ loop:
             SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_PREFETCH);
           run_prefetch_dot(bg_pattern_base);
         }
+      } else if (scany > 241 && scany < 261) {
+        uint16_t non_visible_span = tmp + 1;
+        if (non_visible_span > 341 - dot)
+          non_visible_span = 341 - dot;
+        dot += non_visible_span - 1;
+        tmp -= non_visible_span - 1;
       }
 
       // Check for MMC3 IRQ.

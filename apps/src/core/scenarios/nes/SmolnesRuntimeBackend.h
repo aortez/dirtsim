@@ -30,6 +30,18 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t runtime_thread_ppu_visible_bg_only_scalar_pixels;
     uint64_t runtime_thread_ppu_visible_bg_only_batched_pixels;
     uint64_t runtime_thread_ppu_visible_bg_only_batched_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_read_calls[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_read_dots[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_write_calls[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_write_dots[8];
+    uint64_t runtime_thread_deferred_ppu_flush_oam_dma_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_oam_dma_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_mapper_write_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_mapper_write_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_dot_256_boundary_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_dot_256_boundary_dots;
     double runtime_thread_ppu_sprite_eval_ms;
     uint64_t runtime_thread_ppu_sprite_eval_calls;
     double runtime_thread_ppu_post_visible_ms;

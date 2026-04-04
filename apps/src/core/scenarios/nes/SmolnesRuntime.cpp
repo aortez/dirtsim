@@ -362,6 +362,34 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
         raw.runtime_thread_ppu_visible_bg_only_batched_pixels;
     snapshot.runtimeThreadPpuVisibleBgOnlyBatchedCalls =
         raw.runtime_thread_ppu_visible_bg_only_batched_calls;
+    snapshot.runtimeThreadDeferredPpuFlushPpuRegisterCalls =
+        raw.runtime_thread_deferred_ppu_flush_ppu_register_calls;
+    snapshot.runtimeThreadDeferredPpuFlushPpuRegisterDots =
+        raw.runtime_thread_deferred_ppu_flush_ppu_register_dots;
+    for (size_t registerIndex = 0;
+         registerIndex < snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadCalls.size();
+         ++registerIndex) {
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadCalls[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_read_calls[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadDots[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_read_dots[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_write_calls[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterWriteDots[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_write_dots[registerIndex];
+    }
+    snapshot.runtimeThreadDeferredPpuFlushOamDmaCalls =
+        raw.runtime_thread_deferred_ppu_flush_oam_dma_calls;
+    snapshot.runtimeThreadDeferredPpuFlushOamDmaDots =
+        raw.runtime_thread_deferred_ppu_flush_oam_dma_dots;
+    snapshot.runtimeThreadDeferredPpuFlushMapperWriteCalls =
+        raw.runtime_thread_deferred_ppu_flush_mapper_write_calls;
+    snapshot.runtimeThreadDeferredPpuFlushMapperWriteDots =
+        raw.runtime_thread_deferred_ppu_flush_mapper_write_dots;
+    snapshot.runtimeThreadDeferredPpuFlushDot256BoundaryCalls =
+        raw.runtime_thread_deferred_ppu_flush_dot_256_boundary_calls;
+    snapshot.runtimeThreadDeferredPpuFlushDot256BoundaryDots =
+        raw.runtime_thread_deferred_ppu_flush_dot_256_boundary_dots;
     snapshot.runtimeThreadPpuSpriteEvalMs = raw.runtime_thread_ppu_sprite_eval_ms;
     snapshot.runtimeThreadPpuSpriteEvalCalls = raw.runtime_thread_ppu_sprite_eval_calls;
     snapshot.runtimeThreadPpuPostVisibleMs = raw.runtime_thread_ppu_post_visible_ms;

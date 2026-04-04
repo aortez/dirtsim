@@ -44,6 +44,18 @@ public:
         uint64_t runtimeThreadPpuVisibleBgOnlyScalarPixels = 0;
         uint64_t runtimeThreadPpuVisibleBgOnlyBatchedPixels = 0;
         uint64_t runtimeThreadPpuVisibleBgOnlyBatchedCalls = 0;
+        uint64_t runtimeThreadDeferredPpuFlushPpuRegisterCalls = 0;
+        uint64_t runtimeThreadDeferredPpuFlushPpuRegisterDots = 0;
+        std::array<uint64_t, 8> runtimeThreadDeferredPpuFlushPpuRegisterReadCalls{};
+        std::array<uint64_t, 8> runtimeThreadDeferredPpuFlushPpuRegisterReadDots{};
+        std::array<uint64_t, 8> runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls{};
+        std::array<uint64_t, 8> runtimeThreadDeferredPpuFlushPpuRegisterWriteDots{};
+        uint64_t runtimeThreadDeferredPpuFlushOamDmaCalls = 0;
+        uint64_t runtimeThreadDeferredPpuFlushOamDmaDots = 0;
+        uint64_t runtimeThreadDeferredPpuFlushMapperWriteCalls = 0;
+        uint64_t runtimeThreadDeferredPpuFlushMapperWriteDots = 0;
+        uint64_t runtimeThreadDeferredPpuFlushDot256BoundaryCalls = 0;
+        uint64_t runtimeThreadDeferredPpuFlushDot256BoundaryDots = 0;
         double runtimeThreadPpuSpriteEvalMs = 0.0;
         uint64_t runtimeThreadPpuSpriteEvalCalls = 0;
         double runtimeThreadPpuPostVisibleMs = 0.0;

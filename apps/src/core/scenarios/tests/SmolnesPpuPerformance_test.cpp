@@ -4,6 +4,7 @@
 #include "core/scenarios/nes/NesPaletteFrame.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -168,6 +169,46 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
         const uint64_t bgOnlyBatchedCalls = profilingSnapshot.has_value()
             ? profilingSnapshot->runtimeThreadPpuVisibleBgOnlyBatchedCalls
             : 0;
+        const uint64_t deferredFlushPpuRegisterCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterCalls
+            : 0;
+        const uint64_t deferredFlushPpuRegisterDots = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterDots
+            : 0;
+        const std::array<uint64_t, 8> deferredFlushPpuRegisterReadCalls =
+            profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls
+            : std::array<uint64_t, 8>{};
+        const std::array<uint64_t, 8> deferredFlushPpuRegisterReadDots =
+            profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterReadDots
+            : std::array<uint64_t, 8>{};
+        const std::array<uint64_t, 8> deferredFlushPpuRegisterWriteCalls =
+            profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls
+            : std::array<uint64_t, 8>{};
+        const std::array<uint64_t, 8> deferredFlushPpuRegisterWriteDots =
+            profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushPpuRegisterWriteDots
+            : std::array<uint64_t, 8>{};
+        const uint64_t deferredFlushOamDmaCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushOamDmaCalls
+            : 0;
+        const uint64_t deferredFlushOamDmaDots = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushOamDmaDots
+            : 0;
+        const uint64_t deferredFlushMapperWriteCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushMapperWriteCalls
+            : 0;
+        const uint64_t deferredFlushMapperWriteDots = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushMapperWriteDots
+            : 0;
+        const uint64_t deferredFlushDot256BoundaryCalls = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushDot256BoundaryCalls
+            : 0;
+        const uint64_t deferredFlushDot256BoundaryDots = profilingSnapshot.has_value()
+            ? profilingSnapshot->runtimeThreadDeferredPpuFlushDot256BoundaryDots
+            : 0;
         const double bgOnlyAvgSpanPixels = bgOnlySpanCalls > 0
             ? static_cast<double>(bgOnlySpanPixels) / static_cast<double>(bgOnlySpanCalls)
             : 0.0;
@@ -181,6 +222,22 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             : 0.0;
         const double bgOnlyAvgBatchesPerCall = bgOnlySpanCalls > 0
             ? static_cast<double>(bgOnlyBatchedCalls) / static_cast<double>(bgOnlySpanCalls)
+            : 0.0;
+        const double deferredFlushPpuRegisterAvgDots = deferredFlushPpuRegisterCalls > 0
+            ? static_cast<double>(deferredFlushPpuRegisterDots)
+                / static_cast<double>(deferredFlushPpuRegisterCalls)
+            : 0.0;
+        const double deferredFlushOamDmaAvgDots = deferredFlushOamDmaCalls > 0
+            ? static_cast<double>(deferredFlushOamDmaDots)
+                / static_cast<double>(deferredFlushOamDmaCalls)
+            : 0.0;
+        const double deferredFlushMapperWriteAvgDots = deferredFlushMapperWriteCalls > 0
+            ? static_cast<double>(deferredFlushMapperWriteDots)
+                / static_cast<double>(deferredFlushMapperWriteCalls)
+            : 0.0;
+        const double deferredFlushDot256BoundaryAvgDots = deferredFlushDot256BoundaryCalls > 0
+            ? static_cast<double>(deferredFlushDot256BoundaryDots)
+                / static_cast<double>(deferredFlushDot256BoundaryCalls)
             : 0.0;
 
         fprintf(
@@ -207,6 +264,12 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             "  Scalar pixels:         %8llu  (%5.1f%%)\n"
             "  Batched pixels:        %8llu  (%5.1f%%)\n"
             "  Avg 8px batches/call: %8.2f\n"
+            "\n"
+            "Deferred visible flushes:\n"
+            "  Dot 256 boundary:      %8llu  (%8llu dots, avg %5.2f)\n"
+            "  PPU register access:   %8llu  (%8llu dots, avg %5.2f)\n"
+            "  OAM DMA:               %8llu  (%8llu dots, avg %5.2f)\n"
+            "  Mapper write:          %8llu  (%8llu dots, avg %5.2f)\n"
             "\n"
             "Outside frame execution:\n"
             "  Frame submit:          %8.1f ms\n"
@@ -245,9 +308,57 @@ TEST_P(SmolnesPpuPerformance, Run1000Frames)
             static_cast<unsigned long long>(bgOnlyBatchedPixels),
             bgOnlyBatchedPixelsPct,
             bgOnlyAvgBatchesPerCall,
+            static_cast<unsigned long long>(deferredFlushDot256BoundaryCalls),
+            static_cast<unsigned long long>(deferredFlushDot256BoundaryDots),
+            deferredFlushDot256BoundaryAvgDots,
+            static_cast<unsigned long long>(deferredFlushPpuRegisterCalls),
+            static_cast<unsigned long long>(deferredFlushPpuRegisterDots),
+            deferredFlushPpuRegisterAvgDots,
+            static_cast<unsigned long long>(deferredFlushOamDmaCalls),
+            static_cast<unsigned long long>(deferredFlushOamDmaDots),
+            deferredFlushOamDmaAvgDots,
+            static_cast<unsigned long long>(deferredFlushMapperWriteCalls),
+            static_cast<unsigned long long>(deferredFlushMapperWriteDots),
+            deferredFlushMapperWriteAvgDots,
             frameSubmitMs,
             presentMs,
             memCopyMs);
+
+        if (deferredFlushPpuRegisterCalls > 0) {
+            constexpr std::array<const char*, 8> kPpuRegisterNames = { "$2000", "$2001", "$2002",
+                                                                       "$2003", "$2004", "$2005",
+                                                                       "$2006", "$2007" };
+            fprintf(stderr, "PPU register access detail:\n");
+            for (size_t registerIndex = 0; registerIndex < kPpuRegisterNames.size();
+                 ++registerIndex) {
+                const uint64_t readCalls = deferredFlushPpuRegisterReadCalls[registerIndex];
+                const uint64_t readDots = deferredFlushPpuRegisterReadDots[registerIndex];
+                const uint64_t writeCalls = deferredFlushPpuRegisterWriteCalls[registerIndex];
+                const uint64_t writeDots = deferredFlushPpuRegisterWriteDots[registerIndex];
+                if (readCalls == 0 && writeCalls == 0) {
+                    continue;
+                }
+
+                const double readAvgDots = readCalls > 0
+                    ? static_cast<double>(readDots) / static_cast<double>(readCalls)
+                    : 0.0;
+                const double writeAvgDots = writeCalls > 0
+                    ? static_cast<double>(writeDots) / static_cast<double>(writeCalls)
+                    : 0.0;
+                fprintf(
+                    stderr,
+                    "  %s reads: %8llu (%8llu dots, avg %5.2f), writes: %8llu (%8llu dots, avg "
+                    "%5.2f)\n",
+                    kPpuRegisterNames[registerIndex],
+                    static_cast<unsigned long long>(readCalls),
+                    static_cast<unsigned long long>(readDots),
+                    readAvgDots,
+                    static_cast<unsigned long long>(writeCalls),
+                    static_cast<unsigned long long>(writeDots),
+                    writeAvgDots);
+            }
+            fprintf(stderr, "\n");
+        }
     }
     else {
         fprintf(

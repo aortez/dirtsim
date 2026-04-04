@@ -61,6 +61,18 @@ struct SmolnesRuntimeHandle {
     uint64_t runtimeThreadPpuVisibleBgOnlyScalarPixels;
     uint64_t runtimeThreadPpuVisibleBgOnlyBatchedPixels;
     uint64_t runtimeThreadPpuVisibleBgOnlyBatchedCalls;
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterCalls;
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterDots;
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterReadCalls[8];
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterReadDots[8];
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls[8];
+    uint64_t runtimeThreadDeferredPpuFlushPpuRegisterWriteDots[8];
+    uint64_t runtimeThreadDeferredPpuFlushOamDmaCalls;
+    uint64_t runtimeThreadDeferredPpuFlushOamDmaDots;
+    uint64_t runtimeThreadDeferredPpuFlushMapperWriteCalls;
+    uint64_t runtimeThreadDeferredPpuFlushMapperWriteDots;
+    uint64_t runtimeThreadDeferredPpuFlushDot256BoundaryCalls;
+    uint64_t runtimeThreadDeferredPpuFlushDot256BoundaryDots;
     double runtimeThreadPpuSpriteEvalMs;
     uint64_t runtimeThreadPpuSpriteEvalCalls;
     double runtimeThreadPpuPostVisibleMs;
@@ -167,6 +179,18 @@ static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlySpanPixels = 0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyScalarPixels = 0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyBatchedPixels = 0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuVisibleBgOnlyBatchedCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterDots = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterReadCalls[8] = { 0 };
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterReadDots[8] = { 0 };
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterWriteCalls[8] = { 0 };
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushPpuRegisterWriteDots[8] = { 0 };
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushOamDmaCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushOamDmaDots = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushMapperWriteCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushMapperWriteDots = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushDot256BoundaryCalls = 0;
+static SMOLNES_THREAD_LOCAL uint64_t gDeferredPpuFlushDot256BoundaryDots = 0;
 typedef enum SmolnesPpuPhaseBucket {
     SmolnesPpuPhaseBucketNone = 0,
     SmolnesPpuPhaseBucketVisiblePixels = 1,
@@ -325,6 +349,19 @@ static void resetPerInstructionAccumulators(void)
     gPpuVisibleBgOnlyScalarPixels = 0;
     gPpuVisibleBgOnlyBatchedPixels = 0;
     gPpuVisibleBgOnlyBatchedCalls = 0;
+    gDeferredPpuFlushPpuRegisterCalls = 0;
+    gDeferredPpuFlushPpuRegisterDots = 0;
+    memset(gDeferredPpuFlushPpuRegisterReadCalls, 0, sizeof(gDeferredPpuFlushPpuRegisterReadCalls));
+    memset(gDeferredPpuFlushPpuRegisterReadDots, 0, sizeof(gDeferredPpuFlushPpuRegisterReadDots));
+    memset(
+        gDeferredPpuFlushPpuRegisterWriteCalls, 0, sizeof(gDeferredPpuFlushPpuRegisterWriteCalls));
+    memset(gDeferredPpuFlushPpuRegisterWriteDots, 0, sizeof(gDeferredPpuFlushPpuRegisterWriteDots));
+    gDeferredPpuFlushOamDmaCalls = 0;
+    gDeferredPpuFlushOamDmaDots = 0;
+    gDeferredPpuFlushMapperWriteCalls = 0;
+    gDeferredPpuFlushMapperWriteDots = 0;
+    gDeferredPpuFlushDot256BoundaryCalls = 0;
+    gDeferredPpuFlushDot256BoundaryDots = 0;
     gDeferredPausedApuStep = false;
     gDeferredPausedCpuStep = false;
     gDeferredPpuProfilingActive = false;
@@ -348,6 +385,27 @@ static void flushPerInstructionAccumulatorsLocked(SmolnesRuntimeHandle* runtime)
     runtime->runtimeThreadPpuVisibleBgOnlyScalarPixels += gPpuVisibleBgOnlyScalarPixels;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedPixels += gPpuVisibleBgOnlyBatchedPixels;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedCalls += gPpuVisibleBgOnlyBatchedCalls;
+    runtime->runtimeThreadDeferredPpuFlushPpuRegisterCalls +=
+        gDeferredPpuFlushPpuRegisterCalls;
+    runtime->runtimeThreadDeferredPpuFlushPpuRegisterDots += gDeferredPpuFlushPpuRegisterDots;
+    for (size_t registerIndex = 0; registerIndex < 8; ++registerIndex) {
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls[registerIndex] +=
+            gDeferredPpuFlushPpuRegisterReadCalls[registerIndex];
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadDots[registerIndex] +=
+            gDeferredPpuFlushPpuRegisterReadDots[registerIndex];
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls[registerIndex] +=
+            gDeferredPpuFlushPpuRegisterWriteCalls[registerIndex];
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteDots[registerIndex] +=
+            gDeferredPpuFlushPpuRegisterWriteDots[registerIndex];
+    }
+    runtime->runtimeThreadDeferredPpuFlushOamDmaCalls += gDeferredPpuFlushOamDmaCalls;
+    runtime->runtimeThreadDeferredPpuFlushOamDmaDots += gDeferredPpuFlushOamDmaDots;
+    runtime->runtimeThreadDeferredPpuFlushMapperWriteCalls += gDeferredPpuFlushMapperWriteCalls;
+    runtime->runtimeThreadDeferredPpuFlushMapperWriteDots += gDeferredPpuFlushMapperWriteDots;
+    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryCalls +=
+        gDeferredPpuFlushDot256BoundaryCalls;
+    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryDots +=
+        gDeferredPpuFlushDot256BoundaryDots;
     runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
     runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
     runtime->runtimeThreadPpuPostVisibleMs += gPpuPostVisibleAccumMs;
@@ -881,6 +939,47 @@ void smolnesRuntimeWrappedPpuVisibleBgOnlyStats(
     gPpuVisibleBgOnlyBatchedCalls += batchedCalls;
 }
 
+void smolnesRuntimeWrappedDeferredPpuFlushReason(uint32_t reasonId, uint32_t dotCount)
+{
+    switch (reasonId) {
+        case 1u:
+            gDeferredPpuFlushPpuRegisterCalls++;
+            gDeferredPpuFlushPpuRegisterDots += dotCount;
+            break;
+        case 2u:
+            gDeferredPpuFlushOamDmaCalls++;
+            gDeferredPpuFlushOamDmaDots += dotCount;
+            break;
+        case 3u:
+            gDeferredPpuFlushMapperWriteCalls++;
+            gDeferredPpuFlushMapperWriteDots += dotCount;
+            break;
+        case 4u:
+            gDeferredPpuFlushDot256BoundaryCalls++;
+            gDeferredPpuFlushDot256BoundaryDots += dotCount;
+            break;
+        default:
+            break;
+    }
+}
+
+void smolnesRuntimeWrappedDeferredPpuFlushPpuRegisterAccess(
+    uint32_t registerIndex, uint32_t isWrite, uint32_t dotCount)
+{
+    if (registerIndex >= 8) {
+        return;
+    }
+
+    if (isWrite) {
+        gDeferredPpuFlushPpuRegisterWriteCalls[registerIndex]++;
+        gDeferredPpuFlushPpuRegisterWriteDots[registerIndex] += dotCount;
+        return;
+    }
+
+    gDeferredPpuFlushPpuRegisterReadCalls[registerIndex]++;
+    gDeferredPpuFlushPpuRegisterReadDots[registerIndex] += dotCount;
+}
+
 void smolnesRuntimeWrappedFrameSubmitBegin(void)
 {
     SmolnesRuntimeHandle* runtime = getCurrentRuntime();
@@ -1071,6 +1170,14 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_DEFERRED_PPU_SAMPLE smolnesRuntimeWrappedDeferredPpuSample
 #define SMOLNES_DEFERRED_PPU_STEP_BEGIN smolnesRuntimeWrappedDeferredPpuStepBegin
 #define SMOLNES_DEFERRED_PPU_STEP_END smolnesRuntimeWrappedDeferredPpuStepEnd
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON(reason, dots)                                       \
+    smolnesRuntimeWrappedDeferredPpuFlushReason((reason), (dots))
+#define SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(reg, is_write, dots)                   \
+    smolnesRuntimeWrappedDeferredPpuFlushPpuRegisterAccess((reg), (is_write), (dots))
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS 1u
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA 2u
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE 3u
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY 4u
 #define SMOLNES_PPU_PHASE_SET smolnesRuntimeWrappedPpuPhaseSet
 #define SMOLNES_PPU_PHASE_CLEAR smolnesRuntimeWrappedPpuPhaseClear
 #define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)                                              \
@@ -1279,6 +1386,30 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->runtimeThreadPpuVisibleBgOnlyScalarPixels = 0;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedPixels = 0;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedCalls = 0;
+    runtime->runtimeThreadDeferredPpuFlushPpuRegisterCalls = 0;
+    runtime->runtimeThreadDeferredPpuFlushPpuRegisterDots = 0;
+    memset(
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls,
+        0,
+        sizeof(runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls));
+    memset(
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadDots,
+        0,
+        sizeof(runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadDots));
+    memset(
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls,
+        0,
+        sizeof(runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls));
+    memset(
+        runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteDots,
+        0,
+        sizeof(runtime->runtimeThreadDeferredPpuFlushPpuRegisterWriteDots));
+    runtime->runtimeThreadDeferredPpuFlushOamDmaCalls = 0;
+    runtime->runtimeThreadDeferredPpuFlushOamDmaDots = 0;
+    runtime->runtimeThreadDeferredPpuFlushMapperWriteCalls = 0;
+    runtime->runtimeThreadDeferredPpuFlushMapperWriteDots = 0;
+    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryCalls = 0;
+    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryDots = 0;
     runtime->runtimeThreadPpuSpriteEvalMs = 0.0;
     runtime->runtimeThreadPpuSpriteEvalCalls = 0;
     runtime->runtimeThreadPpuPostVisibleMs = 0.0;
@@ -1641,6 +1772,38 @@ bool smolnesRuntimeCopyProfilingSnapshot(
         mutableRuntime->runtimeThreadPpuVisibleBgOnlyBatchedPixels;
     snapshotOut->runtime_thread_ppu_visible_bg_only_batched_calls =
         mutableRuntime->runtimeThreadPpuVisibleBgOnlyBatchedCalls;
+    snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_calls =
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterCalls;
+    snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_dots =
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterDots;
+    memcpy(
+        snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_read_calls,
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls,
+        sizeof(snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_read_calls));
+    memcpy(
+        snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_read_dots,
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterReadDots,
+        sizeof(snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_read_dots));
+    memcpy(
+        snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_write_calls,
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls,
+        sizeof(snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_write_calls));
+    memcpy(
+        snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_write_dots,
+        mutableRuntime->runtimeThreadDeferredPpuFlushPpuRegisterWriteDots,
+        sizeof(snapshotOut->runtime_thread_deferred_ppu_flush_ppu_register_write_dots));
+    snapshotOut->runtime_thread_deferred_ppu_flush_oam_dma_calls =
+        mutableRuntime->runtimeThreadDeferredPpuFlushOamDmaCalls;
+    snapshotOut->runtime_thread_deferred_ppu_flush_oam_dma_dots =
+        mutableRuntime->runtimeThreadDeferredPpuFlushOamDmaDots;
+    snapshotOut->runtime_thread_deferred_ppu_flush_mapper_write_calls =
+        mutableRuntime->runtimeThreadDeferredPpuFlushMapperWriteCalls;
+    snapshotOut->runtime_thread_deferred_ppu_flush_mapper_write_dots =
+        mutableRuntime->runtimeThreadDeferredPpuFlushMapperWriteDots;
+    snapshotOut->runtime_thread_deferred_ppu_flush_dot_256_boundary_calls =
+        mutableRuntime->runtimeThreadDeferredPpuFlushDot256BoundaryCalls;
+    snapshotOut->runtime_thread_deferred_ppu_flush_dot_256_boundary_dots =
+        mutableRuntime->runtimeThreadDeferredPpuFlushDot256BoundaryDots;
     snapshotOut->runtime_thread_ppu_sprite_eval_ms = mutableRuntime->runtimeThreadPpuSpriteEvalMs;
     snapshotOut->runtime_thread_ppu_sprite_eval_calls =
         mutableRuntime->runtimeThreadPpuSpriteEvalCalls;
