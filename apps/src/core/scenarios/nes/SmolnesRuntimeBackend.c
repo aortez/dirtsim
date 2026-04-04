@@ -190,6 +190,11 @@ static SMOLNES_THREAD_LOCAL double gPpuNonVisibleScanlinesAccumMs = 0.0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuNonVisibleScanlinesAccumCalls = 0;
 static SMOLNES_THREAD_LOCAL double gPpuOtherAccumMs = 0.0;
 static SMOLNES_THREAD_LOCAL uint64_t gPpuOtherAccumCalls = 0;
+static SMOLNES_THREAD_LOCAL bool gDeferredPausedApuStep = false;
+static SMOLNES_THREAD_LOCAL bool gDeferredPausedCpuStep = false;
+static SMOLNES_THREAD_LOCAL bool gDeferredPpuProfilingActive = false;
+static SMOLNES_THREAD_LOCAL double gDeferredPpuScale = 1.0;
+static SMOLNES_THREAD_LOCAL uint32_t gDeferredSampledPpuDots = 0;
 static SMOLNES_THREAD_LOCAL bool gFrameSubmitActive = false;
 static SMOLNES_THREAD_LOCAL double gFrameSubmitStartMs = 0.0;
 
@@ -320,6 +325,11 @@ static void resetPerInstructionAccumulators(void)
     gPpuVisibleBgOnlyScalarPixels = 0;
     gPpuVisibleBgOnlyBatchedPixels = 0;
     gPpuVisibleBgOnlyBatchedCalls = 0;
+    gDeferredPausedApuStep = false;
+    gDeferredPausedCpuStep = false;
+    gDeferredPpuProfilingActive = false;
+    gDeferredPpuScale = 1.0;
+    gDeferredSampledPpuDots = 0;
     resetPpuPhaseBreakdown();
 }
 
@@ -355,6 +365,9 @@ static void accumulatePpuPhaseDuration(SmolnesPpuPhaseBucket phase, double durat
 {
     if (durationMs <= 0.0) {
         return;
+    }
+    if (gDeferredPpuProfilingActive) {
+        durationMs *= gDeferredPpuScale;
     }
 
     switch (phase) {
@@ -734,6 +747,79 @@ void smolnesRuntimeWrappedPpuStepEnd(void)
     }
 }
 
+void smolnesRuntimeWrappedDeferredPpuSample(uint32_t ppuDotCount)
+{
+    if (!gTimingThisInstruction || ppuDotCount == 0) {
+        return;
+    }
+
+    gDeferredSampledPpuDots += ppuDotCount;
+    gTimingThisInstruction = false;
+}
+
+void smolnesRuntimeWrappedDeferredPpuStepBegin(uint32_t totalPpuDots)
+{
+    gDeferredPausedApuStep = false;
+    gDeferredPausedCpuStep = false;
+
+    const double nowMs = monotonicNowMs();
+    if (gCpuStepActive) {
+        const double cpuStepMs = nowMs - gCpuStepStartMs;
+        gCpuStepActive = false;
+        gCpuStepStartMs = 0.0;
+        if (cpuStepMs > 0.0) {
+            gCpuStepAccumMs += cpuStepMs;
+        }
+        gDeferredPausedCpuStep = true;
+    }
+    if (gApuStepActive) {
+        const double apuStepMs = nowMs - gApuStepStartMs;
+        gApuStepActive = false;
+        gApuStepStartMs = 0.0;
+        if (apuStepMs > 0.0) {
+            gApuStepAccumMs += apuStepMs;
+        }
+        gDeferredPausedApuStep = true;
+    }
+
+    if (!gDetailedTimingEnabled || totalPpuDots == 0 || gDeferredSampledPpuDots == 0) {
+        return;
+    }
+
+    gDeferredPpuProfilingActive = true;
+    gDeferredPpuScale = (double)gDeferredSampledPpuDots / (double)totalPpuDots;
+    gPpuStepStartMs = nowMs;
+    gPpuStepActive = true;
+}
+
+void smolnesRuntimeWrappedDeferredPpuStepEnd(void)
+{
+    const double nowMs = monotonicNowMs();
+    if (gPpuStepActive) {
+        setPpuPhaseBucket(SmolnesPpuPhaseBucketNone);
+        const double ppuStepMs = nowMs - gPpuStepStartMs;
+        gPpuStepActive = false;
+        if (ppuStepMs > 0.0) {
+            gPpuStepAccumMs += ppuStepMs * gDeferredPpuScale;
+        }
+    }
+
+    gDeferredPpuProfilingActive = false;
+    gDeferredPpuScale = 1.0;
+    gDeferredSampledPpuDots = 0;
+
+    if (gDeferredPausedApuStep) {
+        gApuStepStartMs = nowMs;
+        gApuStepActive = true;
+        gDeferredPausedApuStep = false;
+    }
+    if (gDeferredPausedCpuStep) {
+        gCpuStepStartMs = nowMs;
+        gCpuStepActive = true;
+        gDeferredPausedCpuStep = false;
+    }
+}
+
 void smolnesRuntimeWrappedPpuPhaseSet(uint32_t phaseId)
 {
     SmolnesRuntimeHandle* runtime = getCurrentRuntime();
@@ -982,6 +1068,9 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_FRAME_EXEC_END smolnesRuntimeWrappedFrameExecutionEnd
 #define SMOLNES_PPU_STEP_BEGIN smolnesRuntimeWrappedPpuStepBegin
 #define SMOLNES_PPU_STEP_END smolnesRuntimeWrappedPpuStepEnd
+#define SMOLNES_DEFERRED_PPU_SAMPLE smolnesRuntimeWrappedDeferredPpuSample
+#define SMOLNES_DEFERRED_PPU_STEP_BEGIN smolnesRuntimeWrappedDeferredPpuStepBegin
+#define SMOLNES_DEFERRED_PPU_STEP_END smolnesRuntimeWrappedDeferredPpuStepEnd
 #define SMOLNES_PPU_PHASE_SET smolnesRuntimeWrappedPpuPhaseSet
 #define SMOLNES_PPU_PHASE_CLEAR smolnesRuntimeWrappedPpuPhaseClear
 #define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)                                              \
@@ -1052,6 +1141,9 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_FRAME_EXEC_END
 #undef SMOLNES_PPU_STEP_BEGIN
 #undef SMOLNES_PPU_STEP_END
+#undef SMOLNES_DEFERRED_PPU_SAMPLE
+#undef SMOLNES_DEFERRED_PPU_STEP_BEGIN
+#undef SMOLNES_DEFERRED_PPU_STEP_END
 #undef SMOLNES_PPU_PHASE_SET
 #undef SMOLNES_PPU_PHASE_CLEAR
 #undef SMOLNES_PPU_PHASE_SET_IF_ACTIVE

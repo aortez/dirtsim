@@ -45,6 +45,18 @@
 #define SMOLNES_PPU_STEP_END()
 #endif
 
+#ifndef SMOLNES_DEFERRED_PPU_SAMPLE
+#define SMOLNES_DEFERRED_PPU_SAMPLE(ppu_dot_count)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_STEP_BEGIN
+#define SMOLNES_DEFERRED_PPU_STEP_BEGIN(total_ppu_dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_STEP_END
+#define SMOLNES_DEFERRED_PPU_STEP_END()
+#endif
+
 #ifndef SMOLNES_PPU_PHASE_SET
 #define SMOLNES_PPU_PHASE_SET(phase)
 #endif
@@ -177,6 +189,7 @@ SMOLNES_TLS uint8_t frame_buffer_palette[61440];
 SMOLNES_TLS int shift_at = 0;
 
 SMOLNES_TLS uint16_t scanline_fb_offset;
+SMOLNES_TLS uint16_t deferred_ppu_dots;
 
 // 2C02G hardware-measured NES palette converted to RGB565.
 // Source: Ricoh 2C02G PPU NTSC decode (Mesen/nesdev wiki reference).
@@ -776,10 +789,51 @@ static inline void run_prefetch_dot(uint16_t bg_pattern_base) {
       &ptb_lo);
 }
 
+static inline uint8_t canDeferVisiblePpuDots(uint16_t ppu_dot_count) {
+  if (!(ppumask & 24))
+    return 0;
+  if (scany >= 240)
+    return 0;
+  if (dot >= 256)
+    return 0;
+  return dot + deferred_ppu_dots + ppu_dot_count <= 256;
+}
+
+static inline void runDeferredVisiblePpuDots(uint16_t ppu_dot_count) {
+  if (!ppu_dot_count)
+    return;
+
+  SMOLNES_DEFERRED_PPU_STEP_BEGIN(ppu_dot_count);
+  if (dot == 0) {
+    SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_SPRITE_EVAL);
+    scanline_fb_offset = scany * 256;
+    evaluate_scanline_sprites();
+  }
+  SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
+  render_visible_span(ppu_dot_count, fine_x, ppuctrl << 8 & 4096);
+  dot += ppu_dot_count;
+  SMOLNES_PPU_PHASE_CLEAR();
+  SMOLNES_DEFERRED_PPU_STEP_END();
+}
+
+static inline void flushDeferredPpuDots(void) {
+  if (!deferred_ppu_dots)
+    return;
+  runDeferredVisiblePpuDots(deferred_ppu_dots);
+  deferred_ppu_dots = 0;
+}
+
 // If `write` is non-zero, writes `val` to the address `hi:lo`, otherwise reads
 // a value from the address `hi:lo`.
 uint8_t mem(uint8_t lo, uint8_t hi, uint8_t val, uint8_t write) {
   uint16_t addr = hi << 8 | lo;
+  if (deferred_ppu_dots) {
+    const uint8_t is_ppu_register_access = addr >= 0x2000 && addr < 0x4000;
+    const uint8_t is_oam_dma = write && addr == 0x4014;
+    const uint8_t is_mapper_write = write && addr >= 0x8000;
+    if (is_mapper_write || is_oam_dma || is_ppu_register_access)
+      flushDeferredPpuDots();
+  }
 
   switch (hi >>= 4) {
   case 0: case 1: // $0000...$1fff RAM
@@ -1298,6 +1352,13 @@ loop:
   SMOLNES_APU_CLOCK_BEGIN();
   SMOLNES_APU_CLOCK(cycles + 2);
   SMOLNES_APU_CLOCK_END();
+  const uint16_t ppu_dot_count = cycles * 3 + 6;
+  if (canDeferVisiblePpuDots(ppu_dot_count)) {
+    SMOLNES_DEFERRED_PPU_SAMPLE(ppu_dot_count);
+    deferred_ppu_dots += ppu_dot_count;
+    goto loop;
+  }
+  flushDeferredPpuDots();
   SMOLNES_PPU_STEP_BEGIN();
   const uint8_t rendering_enabled = ppumask & 24;
   const uint16_t bg_pattern_base = ppuctrl << 8 & 4096;
@@ -1315,7 +1376,7 @@ loop:
     }
   }
   SMOLNES_PPU_PHASE_SET_IF_ACTIVE(smolnes_ppu_phase);
-  for (tmp = cycles * 3 + 6; tmp--;) {
+  for (tmp = ppu_dot_count; tmp--;) {
     if (rendering_enabled) {
       if (scany < 240) {
         if (dot < 256) {
