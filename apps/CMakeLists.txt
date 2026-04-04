@@ -309,6 +309,7 @@ set(DIRTSIM_CORE_SOURCES
 
     # Gamepad input.
     src/core/input/GamepadManager.cpp
+    src/core/input/PlayerControlFrame.cpp
 )
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
@@ -328,6 +329,7 @@ target_compile_options(dirtsim-core PRIVATE ${DIRTSIM_WARNINGS})
 # Server library - physics engine and server logic.
 add_library(dirtsim-server-lib STATIC
     # Server state machine.
+    src/server/PlanRepository.cpp
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
     src/server/UserSettings.cpp
@@ -340,6 +342,9 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
     src/server/states/Idle.cpp
+    src/server/states/PlanPlayback.cpp
+    src/server/states/SearchActive.cpp
+    src/server/states/SearchBroadcastHelpers.cpp
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp
     src/server/states/SimRunning.cpp
@@ -368,6 +373,11 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
     src/server/api/NesApuGet.cpp
+    src/server/api/Plan.cpp
+    src/server/api/PlanList.cpp
+    src/server/api/PlanPlaybackStopped.cpp
+    src/server/api/PlanSaved.cpp
+    src/server/api/SearchCompleted.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
@@ -376,6 +386,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/RenderStreamConfigSet.cpp
     src/server/api/Reset.cpp
     src/server/api/ScenarioListGet.cpp
+    src/server/api/SearchProgress.cpp
     src/server/api/SeedAdd.cpp
     src/server/api/SimRun.cpp
     src/server/api/SimStop.cpp
@@ -396,6 +407,7 @@ add_library(dirtsim-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
+    src/server/search/SmbPlanExecution.cpp
 
     # Scenarios.
     src/core/scenarios/ScenarioRegistry.cpp
@@ -536,6 +548,11 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/states/Disconnected.cpp
     src/ui/state-machine/states/Network.cpp
     src/ui/state-machine/states/Paused.cpp
+    src/ui/state-machine/states/PlanPlayback.cpp
+    src/ui/state-machine/states/SearchActive.cpp
+    src/ui/state-machine/states/SearchHelpers.cpp
+    src/ui/state-machine/states/SearchIdle.cpp
+    src/ui/state-machine/states/SearchPlanBrowser.cpp
     src/ui/state-machine/states/Shutdown.cpp
     src/ui/state-machine/states/SimRunning.cpp
     src/ui/state-machine/states/StartMenu.cpp
@@ -566,8 +583,17 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/NetworkDiagnosticsGet.cpp
     src/ui/state-machine/api/NetworkPasswordSubmit.cpp
     src/ui/state-machine/api/PlantSeed.cpp
+    src/ui/state-machine/api/PlanBrowserOpen.cpp
+    src/ui/state-machine/api/PlanDetailOpen.cpp
+    src/ui/state-machine/api/PlanDetailSelect.cpp
+    src/ui/state-machine/api/PlanPlaybackPauseSet.cpp
+    src/ui/state-machine/api/PlanPlaybackStart.cpp
+    src/ui/state-machine/api/PlanPlaybackStop.cpp
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
+    src/ui/state-machine/api/SearchPauseSet.cpp
+    src/ui/state-machine/api/SearchStart.cpp
+    src/ui/state-machine/api/SearchStop.cpp
     src/ui/state-machine/api/SimPause.cpp
     src/ui/state-machine/api/SimRun.cpp
     src/ui/state-machine/api/SimStop.cpp
@@ -628,6 +654,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/NetworkDiagnosticsPanel.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsPanel.cpp
+    src/ui/controls/PlanBrowserPanel.cpp
     src/ui/controls/RainingControls.cpp
     src/ui/controls/SandboxControls.cpp
     src/ui/controls/ScenarioControlsBase.cpp

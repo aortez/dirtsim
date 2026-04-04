@@ -30,7 +30,11 @@ enum class IconId {
     MUSIC = 10,
     DUCK = 11,
     SETTINGS = 12,
-    SCANNER = 13
+    SCANNER = 13,
+    PLAN_BROWSER = 14,
+    PAUSE = 15,
+    STOP = 16,
+    BACK = 17
 };
 
 enum class RailMode {

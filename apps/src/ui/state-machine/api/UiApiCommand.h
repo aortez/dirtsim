@@ -18,9 +18,18 @@
 #include "NetworkPasswordSubmit.h"
 #include "NetworkScannerEnterPress.h"
 #include "NetworkScannerExitPress.h"
+#include "PlanBrowserOpen.h"
+#include "PlanDetailOpen.h"
+#include "PlanDetailSelect.h"
+#include "PlanPlaybackPauseSet.h"
+#include "PlanPlaybackStart.h"
+#include "PlanPlaybackStop.h"
 #include "PlantSeed.h"
 #include "RenderModeSelect.h"
 #include "ScreenGrab.h"
+#include "SearchPauseSet.h"
+#include "SearchStart.h"
+#include "SearchStop.h"
 #include "SimPause.h"
 #include "SimRun.h"
 #include "SimStop.h"
@@ -65,9 +74,18 @@ using UiApiCommand = std::variant<
     UiApi::NetworkPasswordSubmit::Command,
     UiApi::NetworkScannerEnterPress::Command,
     UiApi::NetworkScannerExitPress::Command,
+    UiApi::PlanBrowserOpen::Command,
+    UiApi::PlanDetailOpen::Command,
+    UiApi::PlanDetailSelect::Command,
+    UiApi::PlanPlaybackPauseSet::Command,
+    UiApi::PlanPlaybackStart::Command,
+    UiApi::PlanPlaybackStop::Command,
     UiApi::PlantSeed::Command,
     UiApi::RenderModeSelect::Command,
     UiApi::ScreenGrab::Command,
+    UiApi::SearchPauseSet::Command,
+    UiApi::SearchStart::Command,
+    UiApi::SearchStop::Command,
     UiApi::SimPause::Command,
     UiApi::SimRun::Command,
     UiApi::SimStop::Command,

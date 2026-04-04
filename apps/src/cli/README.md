@@ -238,6 +238,10 @@ Run a minimal UI/server workflow check against a running system:
 # Default local ports (UI: 7070, server: 8080).
 ./build-debug/bin/cli functional-test canExit
 ./build-debug/bin/cli functional-test canExit --restart
+./build-debug/bin/cli functional-test canSearchHoldRight
+./build-debug/bin/cli functional-test canPauseSearch
+./build-debug/bin/cli functional-test canPlaybackPlan
+./build-debug/bin/cli functional-test canStopPlaybackPlan
 ./build-debug/bin/cli functional-test canTrain
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 ./build-debug/bin/cli functional-test canPlantTreeSeed
@@ -281,6 +285,10 @@ Run a minimal UI/server workflow check against a running system:
 - Sends UI Exit.
 - Restarts the UI and server via os-manager after tests complete.
 - For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
+- For canSearchHoldRight: enters Search, runs the phase-1 hold-right search, then verifies a new saved Plan exists and its frames match the hold-right policy.
+- For canPauseSearch: starts Search, pauses it, verifies elapsedFrames stops advancing, then resumes and verifies progress continues.
+- For canPlaybackPlan: creates or loads a saved Plan, starts playback, and verifies playback completes naturally back to idle.
+- For canStopPlaybackPlan: creates or loads a saved Plan, starts playback, stops it explicitly, and verifies both UI and server return to idle.
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.
 - For canPlantTreeSeed: starts Tree Germination, plants a seed via the UI API, and waits for tree_vision.
 - For canOpenTrainingConfigPanel: starts training, opens the Training config panel via UI API, and verifies UI still responds.

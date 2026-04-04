@@ -20,9 +20,18 @@
 #include "api/NetworkPasswordSubmit.h"
 #include "api/NetworkScannerEnterPress.h"
 #include "api/NetworkScannerExitPress.h"
+#include "api/PlanBrowserOpen.h"
+#include "api/PlanDetailOpen.h"
+#include "api/PlanDetailSelect.h"
+#include "api/PlanPlaybackPauseSet.h"
+#include "api/PlanPlaybackStart.h"
+#include "api/PlanPlaybackStop.h"
 #include "api/PlantSeed.h"
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
+#include "api/SearchPauseSet.h"
+#include "api/SearchStart.h"
+#include "api/SearchStop.h"
 #include "api/SimPause.h"
 #include "api/SimRun.h"
 #include "api/SimStop.h"
@@ -46,6 +55,10 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/UserSettings.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/PlanPlaybackStopped.h"
+#include "server/api/PlanSaved.h"
+#include "server/api/SearchCompleted.h"
+#include "server/api/SearchProgress.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
@@ -254,6 +267,26 @@ struct EvolutionProgressReceivedEvent {
     static constexpr const char* name() { return "EvolutionProgressReceivedEvent"; }
 };
 
+struct SearchProgressReceivedEvent {
+    Api::SearchProgress progress;
+    static constexpr const char* name() { return "SearchProgressReceivedEvent"; }
+};
+
+struct PlanSavedReceivedEvent {
+    Api::PlanSaved saved;
+    static constexpr const char* name() { return "PlanSavedReceivedEvent"; }
+};
+
+struct PlanPlaybackStoppedReceivedEvent {
+    Api::PlanPlaybackStopped stopped;
+    static constexpr const char* name() { return "PlanPlaybackStoppedReceivedEvent"; }
+};
+
+struct SearchCompletedReceivedEvent {
+    Api::SearchCompleted completed;
+    static constexpr const char* name() { return "SearchCompletedReceivedEvent"; }
+};
+
 /**
  * @brief Best snapshot received from server (new all-time fitness).
  */
@@ -330,6 +363,10 @@ using Event = std::variant<
     // Server data updates
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
+    SearchProgressReceivedEvent,
+    PlanPlaybackStoppedReceivedEvent,
+    PlanSavedReceivedEvent,
+    SearchCompletedReceivedEvent,
     UserSettingsUpdatedEvent,
     TrainingBestPlaybackFrameReceivedEvent,
     TrainingBestSnapshotReceivedEvent,
@@ -359,9 +396,18 @@ using Event = std::variant<
     DirtSim::UiApi::NetworkPasswordSubmit::Cwc,
     DirtSim::UiApi::NetworkScannerEnterPress::Cwc,
     DirtSim::UiApi::NetworkScannerExitPress::Cwc,
+    DirtSim::UiApi::PlanBrowserOpen::Cwc,
+    DirtSim::UiApi::PlanDetailOpen::Cwc,
+    DirtSim::UiApi::PlanDetailSelect::Cwc,
+    DirtSim::UiApi::PlanPlaybackPauseSet::Cwc,
+    DirtSim::UiApi::PlanPlaybackStart::Cwc,
+    DirtSim::UiApi::PlanPlaybackStop::Cwc,
     DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,
+    DirtSim::UiApi::SearchPauseSet::Cwc,
+    DirtSim::UiApi::SearchStart::Cwc,
+    DirtSim::UiApi::SearchStop::Cwc,
     DirtSim::UiApi::SimPause::Cwc,
     DirtSim::UiApi::SimRun::Cwc,
     DirtSim::UiApi::SimStop::Cwc,

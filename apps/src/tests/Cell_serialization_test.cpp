@@ -3,6 +3,7 @@
 #include "core/RenderMessageUtils.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
+#include "ui/state-machine/network/MessageParser.h"
 #include <gtest/gtest.h>
 #include <zpp_bits.h>
 
@@ -189,4 +190,45 @@ TEST(CellSerializationTest, TrainingBestPlaybackFrameSerializationIncludesScenar
     EXPECT_EQ(decoded.scenarioVideoFrame->height, frame.height);
     EXPECT_EQ(decoded.scenarioVideoFrame->frame_id, frame.frame_id);
     EXPECT_EQ(decoded.scenarioVideoFrame->pixels, frame.pixels);
+}
+
+TEST(CellSerializationTest, PackVideoRenderMessageUsesScenarioVideoFrameDimensions)
+{
+    WorldData worldData;
+    worldData.width = 45;
+    worldData.height = 30;
+    worldData.timestep = 123;
+    worldData.fps_server = 60.0;
+
+    ScenarioVideoFrame frame;
+    frame.width = 256;
+    frame.height = 224;
+    frame.frame_id = 7;
+    frame.pixels.resize(static_cast<size_t>(frame.width) * frame.height * sizeof(uint16_t));
+
+    const RenderMessage msg =
+        packVideoRenderMessage(worldData, RenderFormat::EnumType::Basic, {}, frame);
+
+    EXPECT_EQ(msg.width, static_cast<int16_t>(frame.width));
+    EXPECT_EQ(msg.height, static_cast<int16_t>(frame.height));
+    EXPECT_TRUE(msg.payload.empty());
+    ASSERT_TRUE(msg.scenario_video_frame.has_value());
+    EXPECT_EQ(msg.scenario_video_frame->frame_id, frame.frame_id);
+    EXPECT_EQ(msg.scenario_video_frame->pixels, frame.pixels);
+}
+
+TEST(CellSerializationTest, ParseRenderMessageAssertsOnInvalidBasicPayload)
+{
+    RenderMessageFull fullMsg;
+    fullMsg.render_data.format = RenderFormat::EnumType::Basic;
+    fullMsg.render_data.width = 256;
+    fullMsg.render_data.height = 240;
+    fullMsg.render_data.timestep = 1;
+    fullMsg.render_data.payload.clear();
+
+    std::vector<std::byte> buffer;
+    auto out = zpp::bits::out(buffer);
+    out(fullMsg).or_throw();
+
+    EXPECT_DEATH({ static_cast<void>(Ui::MessageParser::parseRenderMessage(buffer)); }, "");
 }

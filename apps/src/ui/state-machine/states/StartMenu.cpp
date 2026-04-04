@@ -44,6 +44,7 @@ void StartMenu::onEnter(StateMachine& sm)
           IconId::MUSIC,
           IconId::EVOLUTION,
           IconId::NETWORK,
+          IconId::SCANNER,
           IconId::SCENARIO });
     iconRail->setLayout(RailLayout::TwoColumn);
     iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftTopSquare());
@@ -319,6 +320,13 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         if (auto* iconRail = uiManager->getIconRail()) {
             iconRail->deselectAll();
         }
+    }
+    else if (evt.selectedId == IconId::SCANNER) {
+        LOG_INFO(State, "Scanner icon clicked, entering SearchIdle");
+        if (auto* iconRail = uiManager->getIconRail()) {
+            iconRail->deselectAll();
+        }
+        return SearchIdle{};
     }
 
     return std::move(*this);

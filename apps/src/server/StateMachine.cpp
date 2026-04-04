@@ -1,9 +1,13 @@
 #include "StateMachine.h"
 #include "Event.h"
 #include "EventProcessor.h"
+#include "PlanRepository.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
 #include "UserSettingsDiskCompat.h"
+#include "api/PlanGet.h"
+#include "api/PlanList.h"
+#include "api/SearchProgress.h"
 #include "api/TrainingBestSnapshotGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
@@ -703,6 +707,7 @@ struct StateMachine::Impl {
     std::filesystem::path dataDir_;
     std::unique_ptr<GamepadManager> gamepadManager_;
     GenomeRepository genomeRepository_;
+    PlanRepository planRepository_;
     TrainingResultRepository trainingResultRepository_;
     ScenarioRegistry scenarioRegistry_;
     std::filesystem::path userSettingsPath_;
@@ -731,6 +736,7 @@ struct StateMachine::Impl {
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
         : dataDir_(dataDir.value_or(getDefaultDataDir())),
           genomeRepository_(initGenomeRepository(dataDir_)),
+          planRepository_(initPlanRepository(dataDir_)),
           trainingResultRepository_(initTrainingResultRepository(dataDir_)),
           scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_)),
           userSettingsPath_(getUserSettingsPath(dataDir_)),
@@ -772,6 +778,14 @@ private:
         auto dbPath = dataDir / "training_results.db";
         spdlog::info("TrainingResultRepository: Using database at {}", dbPath.string());
         return TrainingResultRepository(dbPath);
+    }
+
+    static PlanRepository initPlanRepository(const std::filesystem::path& dataDir)
+    {
+        std::filesystem::create_directories(dataDir);
+        auto dbPath = dataDir / "plans.db";
+        spdlog::info("PlanRepository: Using database at {}", dbPath.string());
+        return PlanRepository(dbPath);
     }
 };
 
@@ -931,6 +945,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
         DISPATCH_JSON_CMD_EMPTY(Api::NesInputSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanDelete);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanList);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanPlaybackPauseSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanPlaybackStart);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PlanPlaybackStop);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PerfStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PhysicsSettingsGet);
         DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
@@ -939,6 +959,10 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::RenderStreamConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::Reset);
         DISPATCH_JSON_CMD_EMPTY(Api::SeedAdd);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::SearchPauseSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::SearchProgressGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::SearchStart);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::SearchStop);
         DISPATCH_JSON_CMD_WITH_RESP(Api::SimRun);
         DISPATCH_JSON_CMD_EMPTY(Api::SimStop);
         DISPATCH_JSON_CMD_EMPTY(Api::SpawnDirtBall);
@@ -998,6 +1022,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
                 using T = std::decay_t<decltype(state)>;
                 if constexpr (std::is_same_v<T, State::SimRunning>) {
                     status.scenario_id = state.session.getScenarioId();
+                }
+                else if constexpr (std::is_same_v<T, State::SearchActive>) {
+                    status.scenario_id = Scenario::EnumType::NesSuperMarioBros;
+                }
+                else if constexpr (std::is_same_v<T, State::PlanPlayback>) {
+                    status.scenario_id = Scenario::EnumType::NesSuperMarioBros;
                 }
                 else if constexpr (std::is_same_v<T, State::Error>) {
                     status.error_message = state.error_message;
@@ -1186,6 +1216,17 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::NesFrameDelaySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::NesInputSet::Cwc>(
         [this](Api::NesInputSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanDelete::Cwc>(
+        [this](Api::PlanDelete::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanGet::Cwc>([this](Api::PlanGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanList::Cwc>(
+        [this](Api::PlanList::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanPlaybackPauseSet::Cwc>(
+        [this](Api::PlanPlaybackPauseSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanPlaybackStart::Cwc>(
+        [this](Api::PlanPlaybackStart::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::PlanPlaybackStop::Cwc>(
+        [this](Api::PlanPlaybackStop::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
         [this](Api::PerfStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PhysicsSettingsGet::Cwc>(
@@ -1197,6 +1238,14 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::ScenarioListGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ScenarioSwitch::Cwc>(
         [this](Api::ScenarioSwitch::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SearchPauseSet::Cwc>(
+        [this](Api::SearchPauseSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SearchProgressGet::Cwc>(
+        [this](Api::SearchProgressGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SearchStart::Cwc>(
+        [this](Api::SearchStart::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SearchStop::Cwc>(
+        [this](Api::SearchStop::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SeedAdd::Cwc>([this](Api::SeedAdd::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SimStop::Cwc>([this](Api::SimStop::Cwc cwc) { queueEvent(cwc); });
@@ -1300,6 +1349,16 @@ GenomeRepository& StateMachine::getGenomeRepository()
 const GenomeRepository& StateMachine::getGenomeRepository() const
 {
     return pImpl->genomeRepository_;
+}
+
+PlanRepository& StateMachine::getPlanRepository()
+{
+    return pImpl->planRepository_;
+}
+
+const PlanRepository& StateMachine::getPlanRepository() const
+{
+    return pImpl->planRepository_;
 }
 
 double StateMachine::getNesFrameDelayMs() const
@@ -1463,6 +1522,18 @@ void StateMachine::mainLoopRun()
             // Tick evolution state (evaluates one organism per tick).
             auto& evolution = std::get<State::Evolution>(pImpl->fsmState_.getVariant());
             if (auto nextState = evolution.tick(*this)) {
+                transitionTo(std::move(*nextState));
+            }
+        }
+        else if (std::holds_alternative<State::SearchActive>(pImpl->fsmState_.getVariant())) {
+            auto& searchActive = std::get<State::SearchActive>(pImpl->fsmState_.getVariant());
+            if (auto nextState = searchActive.tick(*this)) {
+                transitionTo(std::move(*nextState));
+            }
+        }
+        else if (std::holds_alternative<State::PlanPlayback>(pImpl->fsmState_.getVariant())) {
+            auto& planPlayback = std::get<State::PlanPlayback>(pImpl->fsmState_.getVariant());
+            if (auto nextState = planPlayback.tick(*this)) {
                 transitionTo(std::move(*nextState));
             }
         }
@@ -2187,8 +2258,10 @@ void StateMachine::broadcastRenderMessage(
             continue;
         }
 
-        RenderMessage msg = RenderMessageUtils::packRenderMessage(
-            data, client.renderFormat, organism_grid, scenarioVideoFrame);
+        RenderMessage msg = scenarioVideoFrame.has_value()
+            ? RenderMessageUtils::packVideoRenderMessage(
+                  data, client.renderFormat, organism_grid, scenarioVideoFrame.value())
+            : RenderMessageUtils::packCellRenderMessage(data, client.renderFormat, organism_grid);
 
         if (waterVolumeView && !msg.scenario_video_frame.has_value()
             && waterVolumeView->width == msg.width && waterVolumeView->height == msg.height

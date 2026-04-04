@@ -28,6 +28,17 @@ ColumnWidths computeColumnWidths(lv_obj_t* parent)
         panelWidth = ExpandablePanel::DefaultWidth * 2;
     }
 
+    if (panelWidth >= 560) {
+        const int usableWidth = std::max(0, panelWidth - kColumnGap);
+        const int minLeftWidth = 220;
+        const int minRightWidth = 220;
+        const int maxLeftWidth = std::max(0, usableWidth - minRightWidth);
+        int leftWidth = usableWidth * 58 / 100;
+        leftWidth = std::clamp(leftWidth, minLeftWidth, maxLeftWidth);
+        const int rightWidth = std::max(0, usableWidth - leftWidth);
+        return ColumnWidths{ leftWidth, rightWidth };
+    }
+
     const int maxLeftWidth = std::max(0, panelWidth - kMinRightColumnWidth);
     int leftWidth = std::min(ExpandablePanel::DefaultWidth, maxLeftWidth);
     leftWidth = std::max(kMinLeftColumnWidth, leftWidth);

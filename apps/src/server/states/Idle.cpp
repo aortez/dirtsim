@@ -9,8 +9,14 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "server/PlanRepository.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
+#include "server/api/PlanDelete.h"
+#include "server/api/PlanGet.h"
+#include "server/api/PlanList.h"
+#include "server/api/PlanPlaybackStart.h"
+#include "server/api/SearchStart.h"
 #include "server/states/ScenarioSession.h"
 #include <algorithm>
 #include <cassert>
@@ -639,6 +645,95 @@ State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
     // Transition to Shutdown state (Shutdown.onEnter will set shouldExit flag).
     return Shutdown{};
+}
+
+State::Any Idle::onEvent(const Api::PlanDelete::Cwc& cwc, StateMachine& dsm)
+{
+    const auto removeResult = dsm.getPlanRepository().remove(cwc.command.planId);
+    if (removeResult.isError()) {
+        cwc.sendResponse(Api::PlanDelete::Response::error(ApiError(removeResult.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        Api::PlanDelete::Response::okay(Api::PlanDelete::Okay{ .success = removeResult.value() }));
+    return std::move(*this);
+}
+
+State::Any Idle::onEvent(const Api::PlanGet::Cwc& cwc, StateMachine& dsm)
+{
+    const auto getResult = dsm.getPlanRepository().get(cwc.command.planId);
+    if (getResult.isError()) {
+        cwc.sendResponse(Api::PlanGet::Response::error(ApiError(getResult.errorValue())));
+        return std::move(*this);
+    }
+
+    const auto found = getResult.value();
+    if (!found.has_value()) {
+        cwc.sendResponse(
+            Api::PlanGet::Response::error(
+                ApiError("PlanGet not found: " + cwc.command.planId.toString())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(Api::PlanGet::Response::okay(Api::PlanGet::Okay{ .plan = found.value() }));
+    return std::move(*this);
+}
+
+State::Any Idle::onEvent(const Api::PlanList::Cwc& cwc, StateMachine& dsm)
+{
+    const auto listResult = dsm.getPlanRepository().list();
+    if (listResult.isError()) {
+        cwc.sendResponse(Api::PlanList::Response::error(ApiError(listResult.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        Api::PlanList::Response::okay(Api::PlanList::Okay{ .plans = listResult.value() }));
+    return std::move(*this);
+}
+
+State::Any Idle::onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& dsm)
+{
+    const auto getResult = dsm.getPlanRepository().get(cwc.command.planId);
+    if (getResult.isError()) {
+        cwc.sendResponse(Api::PlanPlaybackStart::Response::error(ApiError(getResult.errorValue())));
+        return std::move(*this);
+    }
+
+    const auto found = getResult.value();
+    if (!found.has_value()) {
+        cwc.sendResponse(
+            Api::PlanPlaybackStart::Response::error(
+                ApiError("PlanPlaybackStart not found: " + cwc.command.planId.toString())));
+        return std::move(*this);
+    }
+
+    PlanPlayback nextState;
+    nextState.planId = cwc.command.planId;
+    const auto startResult = nextState.execution.startPlayback(found.value());
+    if (startResult.isError()) {
+        cwc.sendResponse(
+            Api::PlanPlaybackStart::Response::error(ApiError(startResult.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(
+        Api::PlanPlaybackStart::Response::okay(Api::PlanPlaybackStart::Okay{ .queued = true }));
+    return nextState;
+}
+
+State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    SearchActive nextState;
+    const auto startResult = nextState.execution.startHoldRight();
+    if (startResult.isError()) {
+        cwc.sendResponse(Api::SearchStart::Response::error(ApiError(startResult.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(Api::SearchStart::Response::okay(Api::SearchStart::Okay{ .queued = true }));
+    return nextState;
 }
 
 State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)

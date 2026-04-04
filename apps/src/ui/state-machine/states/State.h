@@ -11,6 +11,10 @@
 #include "NetworkWifiDetails.h"
 #include "NetworkWifiPassword.h"
 #include "Paused.h"
+#include "PlanPlayback.h"
+#include "SearchActive.h"
+#include "SearchIdle.h"
+#include "SearchPlanBrowser.h"
 #include "Shutdown.h"
 #include "SimRunning.h"
 #include "StartMenu.h"
@@ -43,6 +47,10 @@ public:
         NetworkWifiDetails,
         NetworkWifiPassword,
         Paused,
+        SearchIdle,
+        SearchPlanBrowser,
+        SearchActive,
+        PlanPlayback,
         Shutdown,
         SimRunning,
         StartMenu,

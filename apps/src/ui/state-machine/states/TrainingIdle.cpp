@@ -152,6 +152,10 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
+        case IconId::PLAN_BROWSER:
+        case IconId::PAUSE:
+        case IconId::STOP:
+        case IconId::BACK:
         case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in Training idle");
             break;

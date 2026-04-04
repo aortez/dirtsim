@@ -11,7 +11,9 @@ namespace State {
 struct Error;
 struct Evolution;
 struct Idle;
+struct PlanPlayback;
 struct PreStartup;
+struct SearchActive;
 struct Shutdown;
 struct SimPaused;
 struct SimRunning;

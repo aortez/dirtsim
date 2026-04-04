@@ -14,10 +14,20 @@
 #include "server/api/PerfStatsGet.h"
 #include "server/api/PhysicsSettingsGet.h"
 #include "server/api/PhysicsSettingsSet.h"
+#include "server/api/PlanDelete.h"
+#include "server/api/PlanGet.h"
+#include "server/api/PlanList.h"
+#include "server/api/PlanPlaybackPauseSet.h"
+#include "server/api/PlanPlaybackStart.h"
+#include "server/api/PlanPlaybackStop.h"
 #include "server/api/RenderFormatGet.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/RenderStreamConfigSet.h"
 #include "server/api/Reset.h"
+#include "server/api/SearchPauseSet.h"
+#include "server/api/SearchProgress.h"
+#include "server/api/SearchStart.h"
+#include "server/api/SearchStop.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
 #include "server/api/SimStop.h"
@@ -111,6 +121,27 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::NesInputSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::NesInputSet::Command::fromJson(cmd));
         }
+        else if (commandName == Api::PlanDelete::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::PlanDelete::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::PlanGet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::PlanGet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::PlanList::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::PlanList::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::PlanPlaybackPauseSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::PlanPlaybackPauseSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::PlanPlaybackStart::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::PlanPlaybackStart::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::PlanPlaybackStop::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::PlanPlaybackStop::Command::fromJson(cmd));
+        }
         else if (commandName == Api::PerfStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::PerfStatsGet::Command::fromJson(cmd));
         }
@@ -137,6 +168,19 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::SeedAdd::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SeedAdd::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SearchPauseSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::SearchPauseSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SearchProgressGet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::SearchProgressGet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SearchStart::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::SearchStart::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SearchStop::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::SearchStop::Command::fromJson(cmd));
         }
         else if (commandName == Api::SimRun::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SimRun::Command::fromJson(cmd));

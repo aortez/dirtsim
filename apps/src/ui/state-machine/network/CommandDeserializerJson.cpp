@@ -15,9 +15,18 @@
 #include "ui/state-machine/api/NetworkConnectPress.h"
 #include "ui/state-machine/api/NetworkDiagnosticsGet.h"
 #include "ui/state-machine/api/NetworkPasswordSubmit.h"
+#include "ui/state-machine/api/PlanBrowserOpen.h"
+#include "ui/state-machine/api/PlanDetailOpen.h"
+#include "ui/state-machine/api/PlanDetailSelect.h"
+#include "ui/state-machine/api/PlanPlaybackPauseSet.h"
+#include "ui/state-machine/api/PlanPlaybackStart.h"
+#include "ui/state-machine/api/PlanPlaybackStop.h"
 #include "ui/state-machine/api/PlantSeed.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
 #include "ui/state-machine/api/ScreenGrab.h"
+#include "ui/state-machine/api/SearchPauseSet.h"
+#include "ui/state-machine/api/SearchStart.h"
+#include "ui/state-machine/api/SearchStop.h"
 #include "ui/state-machine/api/SimPause.h"
 #include "ui/state-machine/api/SimRun.h"
 #include "ui/state-machine/api/SimStop.h"
@@ -135,8 +144,32 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::NetworkScannerExitPress::Command::fromJson(cmd));
         }
+        else if (commandName == UiApi::PlanBrowserOpen::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanBrowserOpen::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::PlanDetailOpen::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanDetailOpen::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::PlanDetailSelect::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanDetailSelect::Command::fromJson(cmd));
+        }
         else if (commandName == UiApi::PlantSeed::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::PlantSeed::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::PlanPlaybackPauseSet::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanPlaybackPauseSet::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::PlanPlaybackStart::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanPlaybackStart::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::PlanPlaybackStop::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::PlanPlaybackStop::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::RenderModeSelect::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
@@ -144,6 +177,16 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::ScreenGrab::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::ScreenGrab::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::SearchPauseSet::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::SearchPauseSet::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::SearchStart::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(UiApi::SearchStart::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::SearchStop::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(UiApi::SearchStop::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::SimPause::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::SimPause::Command::fromJson(cmd));

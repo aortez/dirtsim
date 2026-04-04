@@ -45,6 +45,7 @@ namespace Server {
 
 class Event;
 class EventProcessor;
+class PlanRepository;
 class WebSocketServer;
 struct QuitApplicationCommand;
 struct GetFPSCommand;
@@ -101,6 +102,8 @@ public:
 
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
+    PlanRepository& getPlanRepository();
+    const PlanRepository& getPlanRepository() const;
     double getNesFrameDelayMs() const;
     UserSettings& getUserSettings();
     const UserSettings& getUserSettings() const;

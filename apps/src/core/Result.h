@@ -59,8 +59,9 @@ public:
     bool isError() const { return !inner_.has_value(); }
 
     // Value accessor (forward to inner_).
-    successT value() const& { return inner_.value(); }
-    successT value() && { return std::move(inner_).value(); }
+    const successT& value() const& { return inner_.value(); }
+    successT& value() & { return inner_.value(); }
+    successT&& value() && { return std::move(inner_).value(); }
 
     // Error accessor - renamed to errorValue() to avoid collision with static error() factory.
     const failureT& errorValue() const& { return inner_.error(); }
