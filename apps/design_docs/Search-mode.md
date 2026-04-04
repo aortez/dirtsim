@@ -474,58 +474,54 @@ Node Shape:
 
 Search algorithm:
 
-  - The first real SMB search algorithm is segment-oriented beam search.
-  - Search operates on one legal SMB action per fixed timestep.
-  - Each segment attempt starts from the current committed exact-savestate root.
-  - For each timestep in the segment budget:
-      - expand each beam node over the legal SMB action set
-      - advance the emulator one timestep
-      - update the reduced evaluator summary and cached search features
-      - discard terminal or otherwise pruned successors
-      - score the remaining successors
-      - keep the best N successors as the next beam frontier
-  - Search tracks the best checkpoint-eligible node found during the segment attempt, even if that node is not the current top beam survivor.
-  - At the end of a segment attempt:
-      - if a checkpoint-eligible node was found, promote the best such node to a new committed root
-      - otherwise the attempt fails and the caller may retry, widen the search budget, or roll back to a prior committed root
-  - The initial implementation is single-threaded.
-  - The initial implementation does not use a transposition table.
-  - Parallel expansion and exact transpositions are deferred until baseline behavior is working and measurable.
+  - The initial SMB search algorithm is segment-oriented deterministic candidate search.
+  - Search starts from a committed exact-savestate checkpoint root.
+  - For each segment, Search enumerates candidate action sequences in a fixed order:
+      - candidate `0` is baseline (`RightRun` in every decision slot)
+      - remaining candidates are ordered by increasing deviation count from baseline
+      - ties are broken by the fixed SMB action ordering
+  - Segment configuration separates:
+      - `segmentFrameBudget` (total frames explored per candidate)
+      - `searchDepth` (number of decision slots in the segment)
+  - Each candidate sequence is rolled out from the current checkpoint root to completion (or terminal).
+  - Candidate success is based on evaluator score increase over the root:
+      - endpoint must be non-terminal gameplay state
+      - endpoint evaluation score must be strictly greater than the root score
+  - First successful candidate at a checkpoint is promoted immediately.
+  - If all candidates for a checkpoint fail, Search backtracks to the prior committed checkpoint and resumes from its next candidate index.
+  - Search is single-threaded in this phase.
+  - Transposition tables and parallel expansion are deferred.
 
 Pruning/scoring policy
   - The initial pruning policy is intentionally minimal.
-    - The initial implementation prunes:
-        - terminal states
-        - evaluator-terminal states
-        - invalid or non-gameplay states if they arise
-    - The initial implementation does not yet use:
-        - transposition pruning
-        - dominance pruning
-        - optimistic-bound pruning
-    - The initial search uses separate scoring for:
-        - beam survival
-        - checkpoint promotion
-    - Initial beam-survival scoring prefers:
-        - higher best frontier
-        - fewer gameplay frames elapsed
-        - more stable motion states as tie-breakers, with grounded and controlled states preferred over unstable airborne states
-    - Initial checkpoint-promotion scoring prefers:
-        - checkpoint-eligible states only
-        - higher best frontier
-        - more stable grounded states
-        - fewer gameplay frames elapsed
-    - Scoring is based on best frontier reached so far, not only the node’s current position.
+    - prune terminal/evaluator-terminal outcomes
+    - reject non-gameplay endpoints for checkpoint promotion
+  - The initial implementation does not yet use:
+    - transposition pruning
+    - dominance pruning
+    - optimistic bound pruning
+  - Candidate ordering is deterministic and mostly heuristic-free beyond baseline-first ordering.
+  - Promotion uses evaluator score improvement over root as the primary success rule.
 
 Segment success/failure policy
    
   - A search session is a sequence of segment attempts from committed roots.
-  - A segment attempt succeeds if it finds at least one checkpoint-eligible node with strictly better frontier than the current committed root.
-  - Search promotes the best checkpoint-eligible node found during the segment attempt, not the first one found.
-  - Promotion stores both the exact savestate root and the segment Plan needed to reach it.
-  - A segment attempt fails if the beam is exhausted or the segment budget ends without a promotable checkpoint.
-  - In the initial implementation, segment failure ends the search session at the current committed root.
-  - The initial implementation does not retry the same root with identical parameters.
-  - Backtracking to prior committed roots and trying alternative checkpoint candidates is deferred to a later iteration.
+  - A segment attempt succeeds when the first promotable endpoint is found for the current checkpoint.
+  - Promotion stores the exact savestate root and segment `Plan` fragment.
+  - A segment attempt fails when all candidates for the current checkpoint are exhausted without a promotable endpoint.
+  - On segment failure, Search backtracks to the previous committed checkpoint and resumes from its next untried candidate.
+  - The search session ends when:
+    - max segment limit is reached (unless unlimited), or
+    - root checkpoint is exhausted (no further progress), or
+    - user stop/error.
+
+Live Search Rendering:
+  - Current implementation renders the active candidate endpoint frame, not every internal rollout frame.
+  - Planned next step:
+    - keep search running continuously
+    - on a wall-clock preview interval, emit the current live rollout frame
+    - do not retain historical frame buffers
+  - This requires making candidate rollout interruptible/resumable so Search can yield preview frames without waiting for full candidate completion.
 
 Test fixture strategy.
 - Search implementation should be developed against fixed exact-savestate SMB root fixtures.
@@ -566,36 +562,34 @@ Implementation plan:
       - crouch-jump-running
   - add tests for action mapping and plan reconstruction
 
-3. Single-threaded segment beam search.
+3. Single-threaded deterministic segment search.
 
   - implement one segment attempt from one exact root
-  - fixed beam width
-  - fixed segment budget
+  - deterministic candidate enumeration over fixed action ordering
+  - explicit `searchDepth` and `segmentFrameBudget`
+  - first-success promotion policy
   - no transposition table
-  - minimal pruning only:
-      - terminal
-      - evaluator-terminal
-      - invalid/non-gameplay if needed
   - add micro-benchmark tests for:
-      - determinism
-      - successful frontier gain on simple roots
-      - clean failure on insufficient budget
+    - determinism
+    - baseline progression
+    - dead-end candidate exhaustion
+    - backtrack and resume from parent checkpoint
 
 4. Checkpoint promotion and committed-root flow.
 
-  - add checkpoint-eligibility filter
-  - track best promotable checkpoint during a segment attempt
-  - promote best checkpoint at segment end, not first found
-  - store promoted checkpoint as exact savestate root plus segment Plan
-  - keep a small committed-root stack
-  - initial failure policy: end the search session on segment failure
-  - add tests for checkpoint eligibility and promotion behavior
+  - add checkpoint-eligibility filter using evaluator score increase
+  - promote first successful candidate at each checkpoint
+  - store promoted checkpoint as exact savestate root plus segment `Plan`
+  - keep a committed-root stack with per-checkpoint next-candidate cursor
+  - failure policy: backtrack and resume from prior checkpoint cursor
+  - add tests for checkpoint eligibility, exhaustion, and backtrack correctness
 
 5. Search runner integration.
 
   - plug the segment-search runner into SearchActive
   - keep the current Search UI shell
   - expose truthful progress for the real segment search
+  - expose completion reason and completion-state controls (`PLAY`, `BACK`)
   - add at least one CLI/functional smoke test for a real segment search path
 
 6. Performance and search-quality follow-ups.
@@ -603,8 +597,8 @@ Implementation plan:
   - exact transpositions
   - dominance / bucket policy
   - hazard-aware widening
-  - rollback to prior committed roots
-  - alternative checkpoint candidates
+  - richer checkpoint ranking beyond first-success
+  - rollout preview emission on wall-clock interval while search is in progress
   - parallel expansion
 
 
