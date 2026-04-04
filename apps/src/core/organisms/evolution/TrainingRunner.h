@@ -121,6 +121,9 @@ public:
         std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
         FrameTraceSink frameTraceSink = nullptr;
+        bool nesApuEnabled = false;
+        bool nesDetailedTimingEnabled = false;
+        bool nesRgbaOutputEnabled = true;
         std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
     };
 
@@ -230,6 +233,9 @@ private:
     uint64_t stepOrdinal_ = 0;
     BrainRegistryEntry::ControlMode controlMode_ = BrainRegistryEntry::ControlMode::OrganismDriven;
     NesScenarioRuntime* nesRuntime_ = nullptr;
+    bool nesApuEnabled_ = false;
+    bool nesDetailedTimingEnabled_ = false;
+    bool nesRgbaOutputEnabled_ = false;
     std::unique_ptr<NesGameAdapter> nesGameAdapter_;
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;

@@ -395,6 +395,15 @@ std::optional<SmolnesRuntime::MemorySnapshot> NesSmolnesScenarioDriver::copyRunt
     return runtime_->copyMemorySnapshot();
 }
 
+std::optional<SmolnesRuntime::ProfilingSnapshot> NesSmolnesScenarioDriver::
+    copyRuntimeProfilingSnapshot() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copyProfilingSnapshot();
+}
+
 std::optional<SmolnesRuntime::ApuSnapshot> NesSmolnesScenarioDriver::copyRuntimeApuSnapshot() const
 {
     if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
@@ -486,6 +495,34 @@ void NesSmolnesScenarioDriver::setAudioVolumePercent(int percent)
 {
     if (audioPlayer_) {
         audioPlayer_->setVolumePercent(percent);
+    }
+}
+
+void NesSmolnesScenarioDriver::setApuEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setApuEnabled(enabled);
+    }
+}
+
+void NesSmolnesScenarioDriver::setDetailedTimingEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setDetailedTimingEnabled(enabled);
+    }
+}
+
+void NesSmolnesScenarioDriver::setPixelOutputEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setPixelOutputEnabled(enabled);
+    }
+}
+
+void NesSmolnesScenarioDriver::setRgbaOutputEnabled(bool enabled)
+{
+    if (runtime_) {
+        runtime_->setRgbaOutputEnabled(enabled);
     }
 }
 
@@ -583,6 +620,12 @@ void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)
         current.runtimeThreadIdleWaitCalls,
         previous.runtimeThreadIdleWaitCalls);
     addDelta(
+        "nes_runtime_thread_apu_step",
+        current.runtimeThreadApuStepMs,
+        previous.runtimeThreadApuStepMs,
+        current.runtimeThreadApuStepCalls,
+        previous.runtimeThreadApuStepCalls);
+    addDelta(
         "nes_runtime_thread_cpu_step",
         current.runtimeThreadCpuStepMs,
         previous.runtimeThreadCpuStepMs,
@@ -613,11 +656,23 @@ void NesSmolnesScenarioDriver::updateRuntimeProfilingTimers(Timers& timers)
         current.runtimeThreadPpuSpriteEvalCalls,
         previous.runtimeThreadPpuSpriteEvalCalls);
     addDelta(
+        "nes_runtime_thread_ppu_post_visible",
+        current.runtimeThreadPpuPostVisibleMs,
+        previous.runtimeThreadPpuPostVisibleMs,
+        current.runtimeThreadPpuPostVisibleCalls,
+        previous.runtimeThreadPpuPostVisibleCalls);
+    addDelta(
         "nes_runtime_thread_ppu_prefetch",
         current.runtimeThreadPpuPrefetchMs,
         previous.runtimeThreadPpuPrefetchMs,
         current.runtimeThreadPpuPrefetchCalls,
         previous.runtimeThreadPpuPrefetchCalls);
+    addDelta(
+        "nes_runtime_thread_ppu_non_visible_scanlines",
+        current.runtimeThreadPpuNonVisibleScanlinesMs,
+        previous.runtimeThreadPpuNonVisibleScanlinesMs,
+        current.runtimeThreadPpuNonVisibleScanlinesCalls,
+        previous.runtimeThreadPpuNonVisibleScanlinesCalls);
     addDelta(
         "nes_runtime_thread_ppu_other",
         current.runtimeThreadPpuOtherMs,

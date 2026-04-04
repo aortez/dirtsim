@@ -77,6 +77,7 @@ public:
     std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const override;
     std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const override;
     std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const override;
+    std::optional<SmolnesRuntime::ProfilingSnapshot> copyRuntimeProfilingSnapshot() const;
     std::optional<SmolnesRuntime::ApuSnapshot> copyRuntimeApuSnapshot() const;
     uint32_t copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const;
     std::string getRuntimeResolvedRomId() const override;
@@ -86,8 +87,12 @@ public:
     void setController1State(uint8_t buttonMask) override;
     void setLiveController1State(uint8_t buttonMask, uint64_t observedTimestampNs);
 
+    void setApuEnabled(bool enabled);
     void setAudioPlaybackEnabled(bool enabled);
+    void setPixelOutputEnabled(bool enabled);
+    void setRgbaOutputEnabled(bool enabled);
     void setAudioVolumePercent(int percent);
+    void setDetailedTimingEnabled(bool enabled);
     void setLiveServerPacingEnabled(bool enabled);
     void setSmbResponseProbeEnabled(bool enabled);
 

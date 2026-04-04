@@ -294,6 +294,38 @@ void SmolnesRuntime::setPacingMode(SmolnesRuntimePacingMode mode)
                                                    : SMOLNES_RUNTIME_PACING_MODE_LOCKSTEP);
 }
 
+void SmolnesRuntime::setApuEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetApuEnabled(runtimeHandle_, enabled);
+}
+
+void SmolnesRuntime::setDetailedTimingEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetDetailedTimingEnabled(runtimeHandle_, enabled);
+}
+
+void SmolnesRuntime::setPixelOutputEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetPixelOutputEnabled(runtimeHandle_, enabled);
+}
+
+void SmolnesRuntime::setRgbaOutputEnabled(bool enabled)
+{
+    if (runtimeHandle_ == nullptr) {
+        return;
+    }
+    smolnesRuntimeSetRgbaOutputEnabled(runtimeHandle_, enabled);
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {
@@ -310,6 +342,8 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
     snapshot.runFramesWaitCalls = raw.run_frames_wait_calls;
     snapshot.runtimeThreadIdleWaitMs = raw.runtime_thread_idle_wait_ms;
     snapshot.runtimeThreadIdleWaitCalls = raw.runtime_thread_idle_wait_calls;
+    snapshot.runtimeThreadApuStepMs = raw.runtime_thread_apu_step_ms;
+    snapshot.runtimeThreadApuStepCalls = raw.runtime_thread_apu_step_calls;
     snapshot.runtimeThreadCpuStepMs = raw.runtime_thread_cpu_step_ms;
     snapshot.runtimeThreadCpuStepCalls = raw.runtime_thread_cpu_step_calls;
     snapshot.runtimeThreadFrameExecutionMs = raw.runtime_thread_frame_execution_ms;
@@ -318,10 +352,54 @@ std::optional<SmolnesRuntime::ProfilingSnapshot> SmolnesRuntime::copyProfilingSn
     snapshot.runtimeThreadPpuStepCalls = raw.runtime_thread_ppu_step_calls;
     snapshot.runtimeThreadPpuVisiblePixelsMs = raw.runtime_thread_ppu_visible_pixels_ms;
     snapshot.runtimeThreadPpuVisiblePixelsCalls = raw.runtime_thread_ppu_visible_pixels_calls;
+    snapshot.runtimeThreadPpuVisibleBgOnlySpanCalls =
+        raw.runtime_thread_ppu_visible_bg_only_span_calls;
+    snapshot.runtimeThreadPpuVisibleBgOnlySpanPixels =
+        raw.runtime_thread_ppu_visible_bg_only_span_pixels;
+    snapshot.runtimeThreadPpuVisibleBgOnlyScalarPixels =
+        raw.runtime_thread_ppu_visible_bg_only_scalar_pixels;
+    snapshot.runtimeThreadPpuVisibleBgOnlyBatchedPixels =
+        raw.runtime_thread_ppu_visible_bg_only_batched_pixels;
+    snapshot.runtimeThreadPpuVisibleBgOnlyBatchedCalls =
+        raw.runtime_thread_ppu_visible_bg_only_batched_calls;
+    snapshot.runtimeThreadDeferredPpuFlushPpuRegisterCalls =
+        raw.runtime_thread_deferred_ppu_flush_ppu_register_calls;
+    snapshot.runtimeThreadDeferredPpuFlushPpuRegisterDots =
+        raw.runtime_thread_deferred_ppu_flush_ppu_register_dots;
+    for (size_t registerIndex = 0;
+         registerIndex < snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadCalls.size();
+         ++registerIndex) {
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadCalls[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_read_calls[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterReadDots[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_read_dots[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterWriteCalls[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_write_calls[registerIndex];
+        snapshot.runtimeThreadDeferredPpuFlushPpuRegisterWriteDots[registerIndex] =
+            raw.runtime_thread_deferred_ppu_flush_ppu_register_write_dots[registerIndex];
+    }
+    snapshot.runtimeThreadDeferredPpuFlushOamDmaCalls =
+        raw.runtime_thread_deferred_ppu_flush_oam_dma_calls;
+    snapshot.runtimeThreadDeferredPpuFlushOamDmaDots =
+        raw.runtime_thread_deferred_ppu_flush_oam_dma_dots;
+    snapshot.runtimeThreadDeferredPpuFlushMapperWriteCalls =
+        raw.runtime_thread_deferred_ppu_flush_mapper_write_calls;
+    snapshot.runtimeThreadDeferredPpuFlushMapperWriteDots =
+        raw.runtime_thread_deferred_ppu_flush_mapper_write_dots;
+    snapshot.runtimeThreadDeferredPpuFlushDot256BoundaryCalls =
+        raw.runtime_thread_deferred_ppu_flush_dot_256_boundary_calls;
+    snapshot.runtimeThreadDeferredPpuFlushDot256BoundaryDots =
+        raw.runtime_thread_deferred_ppu_flush_dot_256_boundary_dots;
     snapshot.runtimeThreadPpuSpriteEvalMs = raw.runtime_thread_ppu_sprite_eval_ms;
     snapshot.runtimeThreadPpuSpriteEvalCalls = raw.runtime_thread_ppu_sprite_eval_calls;
+    snapshot.runtimeThreadPpuPostVisibleMs = raw.runtime_thread_ppu_post_visible_ms;
+    snapshot.runtimeThreadPpuPostVisibleCalls = raw.runtime_thread_ppu_post_visible_calls;
     snapshot.runtimeThreadPpuPrefetchMs = raw.runtime_thread_ppu_prefetch_ms;
     snapshot.runtimeThreadPpuPrefetchCalls = raw.runtime_thread_ppu_prefetch_calls;
+    snapshot.runtimeThreadPpuNonVisibleScanlinesMs =
+        raw.runtime_thread_ppu_non_visible_scanlines_ms;
+    snapshot.runtimeThreadPpuNonVisibleScanlinesCalls =
+        raw.runtime_thread_ppu_non_visible_scanlines_calls;
     snapshot.runtimeThreadPpuOtherMs = raw.runtime_thread_ppu_other_ms;
     snapshot.runtimeThreadPpuOtherCalls = raw.runtime_thread_ppu_other_calls;
     snapshot.runtimeThreadFrameSubmitMs = raw.runtime_thread_frame_submit_ms;
