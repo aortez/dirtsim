@@ -4,11 +4,13 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/WorldData.h"
-#include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
+#include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "server/api/Plan.h"
 #include "server/api/SearchProgress.h"
+#include "server/search/SmbSearchCore.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,21 +48,22 @@ private:
         PlanPlayback = 1,
     };
 
-    static uint64_t encodeFrontier(const NesSuperMarioBrosFitnessSnapshot& snapshot);
     static PlayerControlFrame holdRightFrame();
-    static uint8_t playerControlFrameToNesMask(const PlayerControlFrame& frame);
 
     Result<std::monostate, std::string> startCommon();
-    void updateProgress(const NesFitnessDetails& fitnessDetails);
+    void updateProgress(const SmbSearchEvaluatorSummary& evaluatorSummary);
 
     std::unique_ptr<NesSmolnesScenarioDriver> driver_;
+    NesSuperMarioBrosEvaluator evaluator_;
     std::unique_ptr<NesGameAdapter> gameAdapter_;
+    NesSuperMarioBrosRamExtractor ramExtractor_;
     Timers timers_;
     WorldData worldData_;
     std::optional<ScenarioVideoFrame> scenarioVideoFrame_ = std::nullopt;
     std::optional<uint8_t> lastGameState_ = std::nullopt;
     Api::Plan plan_;
     Api::SearchProgress progress_;
+    uint64_t progressFrameOffset_ = 0;
     size_t playbackFrameIndex_ = 0;
     bool completed_ = false;
     bool paused_ = false;

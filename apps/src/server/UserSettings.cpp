@@ -52,6 +52,16 @@ void to_json(nlohmann::json& j, const NesSessionSettings& settings)
     j = ReflectSerializer::to_json(settings);
 }
 
+void from_json(const nlohmann::json& j, SearchSettings& settings)
+{
+    settings = fromJsonStrict<SearchSettings>(j, "SearchSettings");
+}
+
+void to_json(nlohmann::json& j, const SearchSettings& settings)
+{
+    j = ReflectSerializer::to_json(settings);
+}
+
 void from_json(const nlohmann::json& j, UserSettings& settings)
 {
     settings = fromJsonStrict<UserSettings>(j, "UserSettings");

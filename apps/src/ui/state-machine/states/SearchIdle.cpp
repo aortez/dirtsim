@@ -11,7 +11,9 @@
 #include "server/api/SearchStart.h"
 #include "ui/SearchIdleView.h"
 #include "ui/UiComponentManager.h"
+#include "ui/UiServices.h"
 #include "ui/controls/ExpandablePanel.h"
+#include "ui/controls/SearchSettingsPanel.h"
 #include "ui/state-machine/StateMachine.h"
 #include <string>
 
@@ -111,7 +113,13 @@ void SearchIdle::onExit(StateMachine& sm)
         if (auto* iconRail = uiManager->getIconRail()) {
             iconRail->setAllowMinimize(true);
         }
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+            panel->resetWidth();
+        }
     }
+    settingsPanel_.reset();
     view_.reset();
 }
 
@@ -130,8 +138,33 @@ State::Any SearchIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.previousId),
         static_cast<int>(evt.selectedId));
 
+    auto* uiManager = sm.getUiComponentManager();
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+
+    if (evt.previousId == IconId::SETTINGS) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->hide();
+            panel->clearContent();
+            panel->resetWidth();
+        }
+        settingsPanel_.reset();
+    }
+
     if (evt.selectedId == IconId::DUCK) {
         return StartMenu{};
+    }
+
+    if (evt.selectedId == IconId::SETTINGS) {
+        UiServices& uiServices = static_cast<UiServices&>(sm);
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->resetWidth();
+            settingsPanel_ =
+                std::make_unique<SearchSettingsPanel>(panel->getContentArea(), uiServices);
+            settingsPanel_->applySettings(sm.getUserSettings());
+            panel->show();
+        }
+        return std::move(*this);
     }
 
     if (evt.selectedId == IconId::SCANNER) {
@@ -183,6 +216,30 @@ State::Any SearchIdle::onEvent(const PlanSavedReceivedEvent& evt, StateMachine& 
     if (view_) {
         view_->setLastError(lastError_);
     }
+    return std::move(*this);
+}
+
+State::Any SearchIdle::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& /*sm*/)
+{
+    if (settingsPanel_) {
+        settingsPanel_->applySettings(evt.settings);
+    }
+    return std::move(*this);
+}
+
+State::Any SearchIdle::onEvent(const UiApi::SearchSettingsSet::Cwc& cwc, StateMachine& sm)
+{
+    if (!settingsPanel_) {
+        cwc.sendResponse(
+            UiApi::SearchSettingsSet::Response::error(ApiError("Search settings panel not open")));
+        return std::move(*this);
+    }
+
+    settingsPanel_->setSearchSettingsAndPersist(cwc.command.settings);
+    const UiApi::SearchSettingsSet::Okay response{
+        .settings = sm.getUserSettings().searchSettings,
+    };
+    cwc.sendResponse(UiApi::SearchSettingsSet::Response::okay(response));
     return std::move(*this);
 }
 
@@ -257,7 +314,8 @@ void SearchIdle::updateVisibleIcons(StateMachine& sm)
     auto* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
 
-    iconRail->setVisibleIcons({ IconId::DUCK, IconId::SCANNER, IconId::PLAN_BROWSER });
+    iconRail->setVisibleIcons(
+        { IconId::DUCK, IconId::SETTINGS, IconId::SCANNER, IconId::PLAN_BROWSER });
 }
 
 } // namespace State

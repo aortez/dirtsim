@@ -3,7 +3,9 @@
 #include "StateForward.h"
 #include "server/api/Plan.h"
 #include "ui/SearchIdleView.h"
+#include "ui/controls/SearchSettingsPanel.h"
 #include "ui/state-machine/Event.h"
+#include "ui/state-machine/api/SearchSettingsSet.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,6 +26,8 @@ struct SearchIdle {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PlanPlaybackStoppedReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const PlanSavedReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm);
+    Any onEvent(const UiApi::SearchSettingsSet::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::PlanBrowserOpen::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::PlanDetailOpen::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::PlanDetailSelect::Cwc& cwc, StateMachine& sm);
@@ -38,6 +42,7 @@ private:
     std::optional<std::string> lastError_ = std::nullopt;
     std::optional<Api::PlanSummary> lastSavedPlan_ = std::nullopt;
     std::optional<UUID> selectedPlanId_ = std::nullopt;
+    std::unique_ptr<SearchSettingsPanel> settingsPanel_;
     std::unique_ptr<SearchIdleView> view_;
 };
 

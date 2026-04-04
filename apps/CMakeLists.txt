@@ -375,6 +375,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/PlanList.cpp
     src/server/api/PlanPlaybackStopped.cpp
     src/server/api/PlanSaved.cpp
+    src/server/api/SearchCompleted.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
@@ -404,6 +405,11 @@ add_library(dirtsim-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
+    src/server/search/SmbSegmentBeamSearch.cpp
+    src/server/search/SmbSegmentSearchSession.cpp
+    src/server/search/SmbSearchExecution.cpp
+    src/server/search/SmbSearchCore.cpp
+    src/server/search/SmbSearchHarness.cpp
     src/server/search/SmbPlanExecution.cpp
 
     # Scenarios.
@@ -588,6 +594,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
     src/ui/state-machine/api/SearchPauseSet.cpp
+    src/ui/state-machine/api/SearchSettingsSet.cpp
     src/ui/state-machine/api/SearchStart.cpp
     src/ui/state-machine/api/SearchStop.cpp
     src/ui/state-machine/api/SimPause.cpp
@@ -663,6 +670,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioControlsBase.cpp
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/ScenarioPanel.cpp
+    src/ui/controls/SearchSettingsPanel.cpp
     src/ui/controls/StartMenuCorePanel.cpp
     src/ui/controls/StartMenuSettingsPanel.cpp
     src/ui/controls/StopPanel.cpp
@@ -841,6 +849,10 @@ add_executable(dirtsim-tests
     src/server/tests/EvaluationExecutor_test.cpp
     src/server/tests/FitnessModelBundle_test.cpp
     src/server/tests/FitnessPresentationGenerator_test.cpp
+    src/server/tests/SmbSegmentBeamSearch_test.cpp
+    src/server/tests/SmbSegmentSearchSession_test.cpp
+    src/server/tests/SmbSearchExecution_test.cpp
+    src/server/tests/SmbSearchHarness_test.cpp
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp

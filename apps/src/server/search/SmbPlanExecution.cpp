@@ -2,8 +2,6 @@
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
 #include "core/UUID.h"
-#include "core/input/PlayerControlFrame.h"
-#include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
 #include <spdlog/spdlog.h>
 
@@ -22,6 +20,17 @@ bool isGameplayFrame(
 {
     return gameState.value_or(0u) == 1u
         && controllerOutput.source != NesGameAdapterControllerSource::ScriptedSetup;
+}
+
+SmolnesRuntime::Savestate makeSavestate(const Api::SmbPlaybackRoot& playbackRoot)
+{
+    SmolnesRuntime::Savestate savestate{};
+    savestate.frameId = playbackRoot.savestateFrameId;
+    savestate.bytes.reserve(playbackRoot.savestateBytes.size());
+    for (const uint8_t value : playbackRoot.savestateBytes) {
+        savestate.bytes.push_back(static_cast<std::byte>(value));
+    }
+    return savestate;
 }
 
 } // namespace
@@ -65,14 +74,62 @@ Result<std::monostate, std::string> SmbPlanExecution::startCommon()
     }
 
     gameAdapter_->reset(driver_->getRuntimeResolvedRomId());
+    evaluator_.reset();
     worldData_ = WorldData{};
     worldData_.width = 256;
     worldData_.height = 240;
     scenarioVideoFrame_.reset();
     lastGameState_.reset();
     progress_ = Api::SearchProgress{};
+    progressFrameOffset_ = 0;
     completed_ = false;
     paused_ = false;
+
+    if (mode_ == Mode::PlanPlayback && plan_.smbPlaybackRoot.has_value()) {
+        const auto warmupStepResult = driver_->step(timers_, 0u);
+        if (!warmupStepResult.runtimeHealthy || !warmupStepResult.runtimeRunning) {
+            return Result<std::monostate, std::string>::error(
+                warmupStepResult.lastError.empty() ? "NES runtime stopped during playback warmup"
+                                                   : warmupStepResult.lastError);
+        }
+
+        const Api::SmbPlaybackRoot& playbackRoot = plan_.smbPlaybackRoot.value();
+        const SmolnesRuntime::Savestate savestate = makeSavestate(playbackRoot);
+        if (!driver_->loadRuntimeSavestate(savestate, 2000u)) {
+            const std::string runtimeLastError = driver_->getRuntimeLastError();
+            return Result<std::monostate, std::string>::error(
+                runtimeLastError.empty() ? "Failed to load SMB playback root savestate"
+                                         : runtimeLastError);
+        }
+
+        evaluator_.restoreProgress(
+            decodeSmbStageIndex(playbackRoot.bestFrontier),
+            decodeSmbAbsoluteX(playbackRoot.bestFrontier),
+            playbackRoot.distanceRewardTotal,
+            playbackRoot.levelClearRewardTotal,
+            playbackRoot.gameplayFrames,
+            playbackRoot.gameplayFramesSinceProgress);
+        progressFrameOffset_ = playbackRoot.gameplayFrames;
+        lastGameState_ = playbackRoot.gameState;
+        scenarioVideoFrame_ = driver_->copyRuntimeFrameSnapshot();
+        if (scenarioVideoFrame_.has_value()) {
+            worldData_.width = static_cast<int16_t>(scenarioVideoFrame_->width);
+            worldData_.height = static_cast<int16_t>(scenarioVideoFrame_->height);
+        }
+        worldData_.timestep = static_cast<int32_t>(playbackRoot.gameplayFrames);
+        updateProgress(
+            SmbSearchEvaluatorSummary{
+                .bestFrontier = playbackRoot.bestFrontier,
+                .gameplayFrames = playbackRoot.gameplayFrames,
+                .gameplayFramesSinceProgress = playbackRoot.gameplayFramesSinceProgress,
+                .distanceRewardTotal = playbackRoot.distanceRewardTotal,
+                .evaluationScore = playbackRoot.evaluationScore,
+                .levelClearRewardTotal = playbackRoot.levelClearRewardTotal,
+                .gameState = playbackRoot.gameState,
+                .terminal = playbackRoot.terminal,
+            });
+    }
+
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -131,20 +188,26 @@ SmbPlanExecutionTickResult SmbPlanExecution::tick()
 
     worldData_.timestep += static_cast<int32_t>(stepResult.advancedFrames);
 
-    const auto evaluation = gameAdapter_->evaluateFrame(
-        NesGameAdapterFrameInput{
-            .advancedFrames = stepResult.advancedFrames,
-            .controllerMask = controllerOutput.resolvedControllerMask,
-            .paletteFrame =
-                stepResult.paletteFrame.has_value() ? &stepResult.paletteFrame.value() : nullptr,
-            .memorySnapshot = stepResult.memorySnapshot,
-        });
-
-    if (evaluation.gameState.has_value()) {
-        lastGameState_ = evaluation.gameState;
+    if (!stepResult.memorySnapshot.has_value()) {
+        completed_ = true;
+        return SmbPlanExecutionTickResult{
+            .completed = true,
+            .error = std::string("NES playback step did not provide a memory snapshot"),
+        };
     }
 
-    updateProgress(evaluation.fitnessDetails);
+    const NesSuperMarioBrosState state = ramExtractor_.extract(
+        stepResult.memorySnapshot.value(),
+        controllerOutput.source != NesGameAdapterControllerSource::ScriptedSetup);
+    lastGameState_ =
+        state.phase == SmbPhase::Gameplay ? std::optional<uint8_t>(1u) : std::optional<uint8_t>(0u);
+    const auto evaluation = evaluator_.evaluate(
+        NesSuperMarioBrosEvaluatorInput{
+            .advancedFrames = stepResult.advancedFrames,
+            .state = state,
+        });
+
+    updateProgress(buildSmbSearchEvaluatorSummary(evaluation.snapshot, lastGameState_));
     const bool gameplayFrame = isGameplayFrame(lastGameState_, controllerOutput);
 
     if (gameplayFrame) {
@@ -213,62 +276,18 @@ const WorldData& SmbPlanExecution::getWorldData() const
     return worldData_;
 }
 
-uint64_t SmbPlanExecution::encodeFrontier(const NesSuperMarioBrosFitnessSnapshot& snapshot)
-{
-    return (static_cast<uint64_t>(snapshot.bestStageIndex) << 16)
-        | static_cast<uint64_t>(snapshot.bestAbsoluteX);
-}
-
 PlayerControlFrame SmbPlanExecution::holdRightFrame()
 {
-    return PlayerControlFrame{
-        .xAxis = 127,
-        .yAxis = 0,
-        .buttons = 0,
-    };
+    return smbSearchLegalActionToPlayerControlFrame(SmbSearchLegalAction::Right);
 }
 
-uint8_t SmbPlanExecution::playerControlFrameToNesMask(const PlayerControlFrame& frame)
-{
-    uint8_t mask = 0;
-    if (frame.buttons & PlayerControlButtons::ButtonA) {
-        mask |= NesPolicyLayout::ButtonA;
-    }
-    if (frame.buttons & PlayerControlButtons::ButtonB) {
-        mask |= NesPolicyLayout::ButtonB;
-    }
-    if (frame.buttons & PlayerControlButtons::ButtonSelect) {
-        mask |= NesPolicyLayout::ButtonSelect;
-    }
-    if (frame.buttons & PlayerControlButtons::ButtonStart) {
-        mask |= NesPolicyLayout::ButtonStart;
-    }
-    if (frame.xAxis <= -64) {
-        mask |= NesPolicyLayout::ButtonLeft;
-    }
-    else if (frame.xAxis >= 64) {
-        mask |= NesPolicyLayout::ButtonRight;
-    }
-    if (frame.yAxis <= -64) {
-        mask |= NesPolicyLayout::ButtonUp;
-    }
-    else if (frame.yAxis >= 64) {
-        mask |= NesPolicyLayout::ButtonDown;
-    }
-    return mask;
-}
-
-void SmbPlanExecution::updateProgress(const NesFitnessDetails& fitnessDetails)
+void SmbPlanExecution::updateProgress(const SmbSearchEvaluatorSummary& evaluatorSummary)
 {
     progress_.paused = paused_;
-
-    const auto* snapshot = std::get_if<NesSuperMarioBrosFitnessSnapshot>(&fitnessDetails);
-    if (snapshot == nullptr) {
-        return;
-    }
-
-    progress_.bestFrontier = encodeFrontier(*snapshot);
-    progress_.elapsedFrames = snapshot->gameplayFrames;
+    progress_.bestFrontier = evaluatorSummary.bestFrontier;
+    progress_.elapsedFrames = evaluatorSummary.gameplayFrames >= progressFrameOffset_
+        ? (evaluatorSummary.gameplayFrames - progressFrameOffset_)
+        : 0u;
     plan_.summary.bestFrontier = progress_.bestFrontier;
     plan_.summary.elapsedFrames = progress_.elapsedFrames;
 }

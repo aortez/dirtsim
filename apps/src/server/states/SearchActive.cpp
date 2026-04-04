@@ -5,6 +5,7 @@
 #include "server/PlanRepository.h"
 #include "server/StateMachine.h"
 #include "server/api/PlanSaved.h"
+#include "server/api/SearchCompleted.h"
 #include <vector>
 
 namespace DirtSim {
@@ -20,7 +21,26 @@ void broadcastSearchProgress(StateMachine& dsm, const Api::SearchProgress& progr
     dsm.broadcastEventData(Api::SearchProgress::name(), Network::serialize_payload(progress));
 }
 
-void broadcastSearchRender(StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
+Api::SearchCompletionReason mapCompletionReason(
+    const std::optional<SearchSupport::SmbSearchCompletionReason>& reason)
+{
+    switch (reason.value_or(SearchSupport::SmbSearchCompletionReason::Error)) {
+        case SearchSupport::SmbSearchCompletionReason::StoppedByUser:
+            return Api::SearchCompletionReason::StoppedByUser;
+        case SearchSupport::SmbSearchCompletionReason::ReachedSegmentLimit:
+            return Api::SearchCompletionReason::ReachedSegmentLimit;
+        case SearchSupport::SmbSearchCompletionReason::NoFurtherProgress:
+            return Api::SearchCompletionReason::NoFurtherProgress;
+        case SearchSupport::SmbSearchCompletionReason::Error:
+            return Api::SearchCompletionReason::SearchError;
+    }
+
+    DIRTSIM_ASSERT(false, "Unhandled SMB search completion reason");
+    return Api::SearchCompletionReason::SearchError;
+}
+
+template <typename executionT>
+void broadcastSearchRender(StateMachine& dsm, const executionT& execution)
 {
     static const std::vector<OrganismId> emptyOrganismGrid{};
     const auto scenarioId = Scenario::EnumType::NesSuperMarioBros;
@@ -70,25 +90,42 @@ std::optional<Any> SearchActive::tick(StateMachine& dsm)
         lastProgressBroadcastTime_ = now;
     }
 
-    if (tickResult.error.has_value()) {
-        LOG_ERROR(State, "SearchActive: {}", tickResult.error.value());
-        return Idle{};
-    }
-
     if (!tickResult.completed) {
         return std::nullopt;
     }
 
-    auto storeResult = dsm.getPlanRepository().store(execution.getPlan());
-    if (storeResult.isError()) {
-        LOG_ERROR(State, "SearchActive: Failed to store plan: {}", storeResult.errorValue());
-        return Idle{};
+    if (tickResult.error.has_value()) {
+        LOG_ERROR(State, "SearchActive: {}", tickResult.error.value());
     }
 
-    const Api::PlanSaved saved{
-        .summary = execution.getPlan().summary,
+    std::optional<Api::PlanSummary> savedSummary = std::nullopt;
+    Api::SearchCompletionReason completionReason =
+        mapCompletionReason(execution.getCompletionReason());
+    std::string completionErrorMessage = execution.getCompletionErrorMessage().value_or("");
+
+    if (execution.hasPersistablePlan()) {
+        auto storeResult = dsm.getPlanRepository().store(execution.getPlan());
+        if (storeResult.isError()) {
+            LOG_ERROR(State, "SearchActive: Failed to store plan: {}", storeResult.errorValue());
+            completionReason = Api::SearchCompletionReason::SearchError;
+            completionErrorMessage = "Failed to store plan: " + storeResult.errorValue();
+        }
+        else {
+            savedSummary = execution.getPlan().summary;
+
+            const Api::PlanSaved saved{
+                .summary = execution.getPlan().summary,
+            };
+            dsm.broadcastEventData(Api::PlanSaved::name(), Network::serialize_payload(saved));
+        }
+    }
+
+    const Api::SearchCompleted completed{
+        .reason = completionReason,
+        .summary = savedSummary,
+        .errorMessage = completionErrorMessage,
     };
-    dsm.broadcastEventData(Api::PlanSaved::name(), Network::serialize_payload(saved));
+    dsm.broadcastEventData(Api::SearchCompleted::name(), Network::serialize_payload(completed));
     return Idle{};
 }
 
@@ -124,7 +161,7 @@ Any SearchActive::onEvent(const Api::SearchStop::Cwc& cwc, StateMachine& /*dsm*/
 {
     execution.stop();
     cwc.sendResponse(Api::SearchStop::Response::okay(Api::SearchStop::Okay{ .stopped = true }));
-    return Idle{};
+    return std::move(*this);
 }
 
 } // namespace State

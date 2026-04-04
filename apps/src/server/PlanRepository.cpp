@@ -9,7 +9,7 @@ namespace DirtSim {
 namespace Server {
 
 namespace {
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 
 template <typename Func>
 Result<std::monostate, std::string> execDb(sqlite::database& db, const char* operation, Func&& func)
@@ -46,6 +46,14 @@ int64_t currentEpochSeconds()
         .count();
 }
 
+bool plansTableHasColumn(sqlite::database& db, const std::string& columnName)
+{
+    int count = 0;
+    db << "SELECT COUNT(*) FROM pragma_table_info('plans') WHERE name = ?" << columnName >>
+        [&](int value) { count = value; };
+    return count > 0;
+}
+
 } // namespace
 
 PlanRepository::PlanRepository() = default;
@@ -79,6 +87,7 @@ void PlanRepository::initSchema()
             plan_id TEXT PRIMARY KEY,
             summary_json TEXT NOT NULL,
             frames_json TEXT NOT NULL,
+            playback_root_json TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL
         )
     )";
@@ -87,15 +96,18 @@ void PlanRepository::initSchema()
     *db_ << "SELECT version FROM schema_version LIMIT 1" >>
         [&](int version) { existingVersion = version; };
 
+    if (!plansTableHasColumn(*db_, "playback_root_json")) {
+        *db_ << "ALTER TABLE plans ADD COLUMN playback_root_json TEXT NOT NULL DEFAULT ''";
+    }
+
     if (existingVersion == 0) {
         *db_ << "INSERT INTO schema_version (version) VALUES (?)" << kSchemaVersion;
         spdlog::info("PlanRepository: Initialized schema version {}", kSchemaVersion);
     }
     else if (existingVersion != kSchemaVersion) {
-        spdlog::warn(
-            "PlanRepository: Schema version mismatch (db={}, code={})",
-            existingVersion,
-            kSchemaVersion);
+        *db_ << "UPDATE schema_version SET version = ?" << kSchemaVersion;
+        spdlog::info(
+            "PlanRepository: Migrated schema version {} -> {}", existingVersion, kSchemaVersion);
     }
 }
 
@@ -117,9 +129,13 @@ Result<std::monostate, std::string> PlanRepository::store(const Api::Plan& plan)
 
     nlohmann::json summaryJson;
     nlohmann::json framesJson;
+    std::string playbackRootJson;
     try {
         summaryJson = plan.summary;
         framesJson = plan.frames;
+        if (plan.smbPlaybackRoot.has_value()) {
+            playbackRootJson = nlohmann::json(plan.smbPlaybackRoot.value()).dump();
+        }
     }
     catch (const std::exception& e) {
         std::string message = "PlanRepository: serialize failed: ";
@@ -131,10 +147,10 @@ Result<std::monostate, std::string> PlanRepository::store(const Api::Plan& plan)
     return execDb(*db_, "store", [&](sqlite::database& db) {
         db << R"(
             INSERT OR REPLACE INTO plans
-                (plan_id, summary_json, frames_json, created_at)
-            VALUES (?, ?, ?, ?)
+                (plan_id, summary_json, frames_json, playback_root_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
         )" << plan.summary.id.toString()
-           << summaryJson.dump() << framesJson.dump() << currentEpochSeconds();
+           << summaryJson.dump() << framesJson.dump() << playbackRootJson << currentEpochSeconds();
     });
 }
 
@@ -159,13 +175,18 @@ Result<std::optional<Api::Plan>, std::string> PlanRepository::getFromDb(UUID pla
     std::optional<Api::Plan> result;
     std::string parseError;
     auto dbResult = execDb(*db_, "get", [&](sqlite::database& db) {
-        db << "SELECT summary_json, frames_json FROM plans WHERE plan_id = ?" << planId.toString()
-            >> [&](std::string summaryJson, std::string framesJson) {
+        db << "SELECT summary_json, frames_json, playback_root_json FROM plans WHERE plan_id = ?"
+           << planId.toString()
+            >> [&](std::string summaryJson, std::string framesJson, std::string playbackRootJson) {
                   try {
                       Api::Plan parsed;
                       parsed.summary = nlohmann::json::parse(summaryJson).get<Api::PlanSummary>();
                       parsed.frames =
                           nlohmann::json::parse(framesJson).get<std::vector<PlayerControlFrame>>();
+                      if (!playbackRootJson.empty()) {
+                          parsed.smbPlaybackRoot =
+                              nlohmann::json::parse(playbackRootJson).get<Api::SmbPlaybackRoot>();
+                      }
                       result = std::move(parsed);
                   }
                   catch (const std::exception& e) {

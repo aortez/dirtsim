@@ -55,6 +55,9 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(inMemory.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(inMemory.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
@@ -65,6 +68,9 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(fromDisk.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -131,6 +137,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     nlohmann::json legacyJson = legacySettings;
     legacyJson.erase("trainingResumePolicy");
     legacyJson.erase("treeGerminationScenarioConfig");
+    legacyJson.erase("searchSettings");
     legacyJson["nesSessionSettings"].erase("frameDelayMs");
     legacyJson["uiTraining"].erase("bestPlaybackIntervalMs");
     legacyJson["futureSetting"] = 123;
@@ -152,6 +159,9 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(inMemory.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(inMemory.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(
         inMemory.treeGerminationScenarioConfig.brain_type,
         UserSettings{}.treeGerminationScenarioConfig.brain_type);
@@ -163,6 +173,9 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(fromDisk.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(
         fromDisk.treeGerminationScenarioConfig.brain_type,
         UserSettings{}.treeGerminationScenarioConfig.brain_type);
@@ -177,6 +190,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     ASSERT_TRUE(canonicalJson.contains("uiTraining"));
     EXPECT_FALSE(canonicalJson["uiTraining"].contains("futureOverlayMode"));
     ASSERT_TRUE(canonicalJson.contains("nesSessionSettings"));
+    EXPECT_TRUE(canonicalJson.contains("searchSettings"));
     EXPECT_TRUE(canonicalJson.contains("trainingResumePolicy"));
     EXPECT_TRUE(canonicalJson.contains("treeGerminationScenarioConfig"));
     EXPECT_TRUE(canonicalJson["nesSessionSettings"].contains("frameDelayMs"));
@@ -207,6 +221,11 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     requestedSettings.clockScenarioConfig.timezone = static_cast<Config::ClockTimezone>(255);
     requestedSettings.nesSessionSettings.frameDelayEnabled = true;
     requestedSettings.nesSessionSettings.frameDelayMs = 999.0;
+    requestedSettings.searchSettings = SearchSettings{
+        .beamWidth = 0u,
+        .maxSegments = 999u,
+        .segmentFrameBudget = 999u,
+    };
     requestedSettings.volumePercent = 999;
     requestedSettings.defaultScenario = Scenario::EnumType::Clock;
     requestedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -236,6 +255,11 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_TRUE(response.value().settings.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(
         response.value().settings.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
+    EXPECT_EQ(response.value().settings.searchSettings.beamWidth, SearchSettings::BeamWidthMin);
+    EXPECT_EQ(response.value().settings.searchSettings.maxSegments, SearchSettings::MaxSegmentsMax);
+    EXPECT_EQ(
+        response.value().settings.searchSettings.segmentFrameBudget,
+        SearchSettings::SegmentFrameBudgetMax);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
@@ -253,6 +277,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
+    EXPECT_EQ(fromDisk.searchSettings.beamWidth, SearchSettings::BeamWidthMin);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, SearchSettings::MaxSegmentsMax);
+    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, SearchSettings::SegmentFrameBudgetMax);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
@@ -273,6 +300,11 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     changedSettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
     changedSettings.nesSessionSettings.frameDelayEnabled = true;
     changedSettings.nesSessionSettings.frameDelayMs = 4.2;
+    changedSettings.searchSettings = SearchSettings{
+        .beamWidth = 7u,
+        .maxSegments = 8u,
+        .segmentFrameBudget = 24u,
+    };
     changedSettings.volumePercent = 65;
     changedSettings.defaultScenario = Scenario::EnumType::Clock;
     changedSettings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
@@ -299,6 +331,9 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
         response.value().settings.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(response.value().settings.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(response.value().settings.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(response.value().settings.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(response.value().settings.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(response.value().settings.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 60000);
@@ -309,10 +344,39 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
+    EXPECT_EQ(fromDisk.searchSettings.beamWidth, 1u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
+    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+}
+
+TEST(UserSettingsTest, UserSettingsSetAllowsUnlimitedSearchSegments)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-unlimited-search");
+    bool callbackInvoked = false;
+    Api::UserSettingsSet::Response response;
+
+    UserSettings requestedSettings = fixture.stateMachine->getUserSettings();
+    requestedSettings.searchSettings.maxSegments = 0u;
+
+    Api::UserSettingsSet::Command command{ .settings = requestedSettings };
+    Api::UserSettingsSet::Cwc cwc(command, [&](Api::UserSettingsSet::Response&& result) {
+        callbackInvoked = true;
+        response = std::move(result);
+    });
+
+    fixture.stateMachine->handleEvent(Event{ cwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+    EXPECT_EQ(response.value().settings.searchSettings.maxSegments, 0u);
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 0u);
 }
 
 TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
@@ -323,6 +387,11 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     baseSettings.clockScenarioConfig.timezone = Config::ClockTimezone::Paris;
     baseSettings.nesSessionSettings.frameDelayEnabled = true;
     baseSettings.nesSessionSettings.frameDelayMs = 4.2;
+    baseSettings.searchSettings = SearchSettings{
+        .beamWidth = 2u,
+        .maxSegments = 3u,
+        .segmentFrameBudget = 10u,
+    };
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
     baseSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
@@ -344,6 +413,11 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     updatedTrainingSpec.population.clear();
 
     Api::UserSettingsPatch::Command patchCommand{};
+    patchCommand.searchSettings = SearchSettings{
+        .beamWidth = 9u,
+        .maxSegments = 10u,
+        .segmentFrameBudget = 30u,
+    };
     patchCommand.networkLiveScanPreferred = true;
     patchCommand.trainingSpec = updatedTrainingSpec;
     Api::UserSettingsPatch::Cwc patchCwc(
@@ -361,6 +435,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 4.2);
+    EXPECT_EQ(inMemory.searchSettings.beamWidth, SearchSettings::BeamWidthMax);
+    EXPECT_EQ(inMemory.searchSettings.maxSegments, 10u);
+    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 30u);
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
@@ -374,6 +451,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 4.2);
+    EXPECT_EQ(fromDisk.searchSettings.beamWidth, SearchSettings::BeamWidthMax);
+    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 10u);
+    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 30u);
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);

@@ -73,6 +73,8 @@ typedef enum SmolnesRuntimePacingModeValue {
 #define SMOLNES_RUNTIME_BUTTON_LEFT (1u << 6)
 #define SMOLNES_RUNTIME_BUTTON_RIGHT (1u << 7)
 
+uint32_t smolnesRuntimeGetSavestateSize(void);
+
 SmolnesRuntimeHandle* smolnesRuntimeCreate(void);
 void smolnesRuntimeDestroy(SmolnesRuntimeHandle* runtime);
 
@@ -122,6 +124,10 @@ bool smolnesRuntimeCopyApuSnapshot(
     const SmolnesRuntimeHandle* runtime, SmolnesApuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyApuSamples(
     const SmolnesRuntimeHandle* runtime, float* buffer, uint32_t maxSamples, uint32_t* samplesOut);
+bool smolnesRuntimeCopySavestate(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId);
+bool smolnesRuntimeLoadSavestate(
+    SmolnesRuntimeHandle* runtime, const uint8_t* buffer, uint32_t bufferSize, uint32_t timeoutMs);
 void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 void smolnesRuntimeSetApuSampleCallback(

@@ -2,7 +2,7 @@
 
 #include "StateForward.h"
 #include "server/Event.h"
-#include "server/search/SmbPlanExecution.h"
+#include "server/search/SmbSearchExecution.h"
 #include <chrono>
 #include <optional>
 
@@ -23,7 +23,7 @@ struct SearchActive {
 
     static constexpr const char* name() { return "SearchActive"; }
 
-    SearchSupport::SmbPlanExecution execution;
+    SearchSupport::SmbSearchExecution execution;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     bool renderBroadcasted_ = false;
 };

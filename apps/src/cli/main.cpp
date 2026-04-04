@@ -642,6 +642,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canExit --restart\n";
     examples += "  cli functional-test canSearchHoldRight\n";
     examples += "  cli functional-test canPauseSearch\n";
+    examples += "  cli functional-test canPersistSearchSettings\n";
     examples += "  cli functional-test canPlaybackPlan\n";
     examples += "  cli functional-test canStopPlaybackPlan\n";
     examples += "  cli functional-test canTrain\n";
@@ -1194,12 +1195,12 @@ int main(int argc, char** argv)
 
         const std::string testName = args::get(command);
         if (testName != "canExit" && testName != "canSearchHoldRight"
-            && testName != "canPauseSearch" && testName != "canPlaybackPlan"
-            && testName != "canStopPlaybackPlan" && testName != "canTrain"
-            && testName != "canTrainNesFlappy" && testName != "canSetGenerationsAndTrain"
-            && testName != "canPlantTreeSeed" && testName != "canLoadGenomeFromBrowser"
-            && testName != "canOpenTrainingConfigPanel" && testName != "canUpdateUserSettings"
-            && testName != "canResetUserSettings"
+            && testName != "canPauseSearch" && testName != "canPersistSearchSettings"
+            && testName != "canPlaybackPlan" && testName != "canStopPlaybackPlan"
+            && testName != "canTrain" && testName != "canTrainNesFlappy"
+            && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
+            && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
+            && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
             && testName != "canPersistUserSettingsAcrossRestart"
             && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
             && testName != "canControlNesScenario"
@@ -1216,7 +1217,8 @@ int main(int argc, char** argv)
             && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canSearchHoldRight, canPauseSearch, "
-                         "canPlaybackPlan, canStopPlaybackPlan, canTrain, canTrainNesFlappy, "
+                         "canPersistSearchSettings, canPlaybackPlan, canStopPlaybackPlan, "
+                         "canTrain, canTrainNesFlappy, "
                          "canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
                          "canOpenTrainingConfigPanel, canUpdateUserSettings, "
@@ -1271,6 +1273,10 @@ int main(int argc, char** argv)
         else if (testName == "canPauseSearch") {
             summary =
                 runner.runCanPauseSearch(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canPersistSearchSettings") {
+            summary = runner.runCanPersistSearchSettings(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "canPlaybackPlan") {
             summary =

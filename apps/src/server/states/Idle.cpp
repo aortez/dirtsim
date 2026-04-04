@@ -53,6 +53,15 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
     return scenarioConfig;
 }
 
+SearchSupport::SmbSearchExecutionParams buildSearchExecutionParams(const UserSettings& settings)
+{
+    return SearchSupport::SmbSearchExecutionParams{
+        .beamWidth = settings.searchSettings.beamWidth,
+        .maxSegments = settings.searchSettings.maxSegments,
+        .segmentFrameBudget = settings.searchSettings.segmentFrameBudget,
+    };
+}
+
 bool isWarmGenomeCompatibleForPopulation(
     const GenomeMetadata& metadata,
     OrganismType organismType,
@@ -723,10 +732,12 @@ State::Any Idle::onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& d
     return nextState;
 }
 
-State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& dsm)
 {
     SearchActive nextState;
-    const auto startResult = nextState.execution.startHoldRight();
+    nextState.execution =
+        SearchSupport::SmbSearchExecution(buildSearchExecutionParams(dsm.getUserSettings()));
+    const auto startResult = nextState.execution.start();
     if (startResult.isError()) {
         cwc.sendResponse(Api::SearchStart::Response::error(ApiError(startResult.errorValue())));
         return std::move(*this);

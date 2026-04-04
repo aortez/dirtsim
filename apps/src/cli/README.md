@@ -240,6 +240,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canExit --restart
 ./build-debug/bin/cli functional-test canSearchHoldRight
 ./build-debug/bin/cli functional-test canPauseSearch
+./build-debug/bin/cli functional-test canPersistSearchSettings
 ./build-debug/bin/cli functional-test canPlaybackPlan
 ./build-debug/bin/cli functional-test canStopPlaybackPlan
 ./build-debug/bin/cli functional-test canTrain
@@ -287,6 +288,7 @@ Run a minimal UI/server workflow check against a running system:
 - For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
 - For canSearchHoldRight: enters Search, runs the phase-1 hold-right search, then verifies a new saved Plan exists and its frames match the hold-right policy.
 - For canPauseSearch: starts Search, pauses it, verifies elapsedFrames stops advancing, then resumes and verifies progress continues.
+- For canPersistSearchSettings: opens the Search settings panel, changes Search parameters through the UI, restarts services, verifies the settings persisted, and verifies a new Search run uses them.
 - For canPlaybackPlan: creates or loads a saved Plan, starts playback, and verifies playback completes naturally back to idle.
 - For canStopPlaybackPlan: creates or loads a saved Plan, starts playback, stops it explicitly, and verifies both UI and server return to idle.
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.

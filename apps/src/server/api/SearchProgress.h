@@ -12,11 +12,21 @@ namespace Api {
 
 struct SearchProgress {
     bool paused = false;
+    uint32_t attemptIndex = 0;
+    uint32_t backtrackCount = 0;
+    uint32_t beamWidth = 0;
     uint64_t bestFrontier = 0;
+    uint32_t candidateCount = 0;
+    uint32_t candidateIndex = 0;
     uint64_t elapsedFrames = 0;
+    uint64_t expandedNodeCount = 0;
+    uint32_t segmentIndex = 0;
+    uint32_t maxSegments = 0;
+    uint32_t stepIndex = 0;
+    uint32_t maxSteps = 0;
 
     static constexpr const char* name() { return "SearchProgress"; }
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const SearchProgress& value);

@@ -3,8 +3,11 @@
 #include "core/scenarios/ClockTimezone.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/UserSettings.h"
+#include "server/api/SearchStart.h"
 #include "server/states/Idle.h"
+#include "server/states/SearchActive.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
 #include "server/states/State.h"
@@ -16,9 +19,17 @@ using namespace DirtSim::Server;
 using namespace DirtSim::Server::State;
 using namespace DirtSim::Server::Tests;
 
-/**
- * @brief Test that SimRun command creates a World and transitions to SimRunning.
- */
+namespace {
+
+void requireSmbRomOrSkip()
+{
+    if (!DirtSim::Test::resolveSmbRomPath().has_value()) {
+        GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
+    }
+}
+
+} // namespace
+
 TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
 {
     TestStateMachineFixture fixture;
@@ -247,4 +258,37 @@ TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
     const auto* clockConfig = std::get_if<Config::Clock>(&config);
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_EQ(clockConfig->timezone, Config::ClockTimezone::Tokyo);
+}
+
+TEST(StateIdleTest, SearchStartUsesUserSearchSettings)
+{
+    requireSmbRomOrSkip();
+
+    TestStateMachineFixture fixture;
+    fixture.stateMachine->getUserSettings().searchSettings = SearchSettings{
+        .beamWidth = 2u,
+        .maxSegments = 9u,
+        .segmentFrameBudget = 21u,
+    };
+
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::SearchStart::Response capturedResponse;
+    Api::SearchStart::Command cmd{};
+    Api::SearchStart::Cwc cwc(cmd, [&](Api::SearchStart::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SearchActive>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const SearchActive& searchActive = std::get<SearchActive>(newState.getVariant());
+    EXPECT_EQ(searchActive.execution.getProgress().beamWidth, 2u);
+    EXPECT_EQ(searchActive.execution.getProgress().maxSegments, 9u);
+    EXPECT_EQ(searchActive.execution.getProgress().maxSteps, 21u);
 }

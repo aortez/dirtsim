@@ -20,6 +20,7 @@ struct SearchActive {
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PlanSavedReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const SearchCompletedReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const SearchProgressReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
@@ -31,10 +32,14 @@ struct SearchActive {
 private:
     void updateBodyText();
     void updateVisibleIcons(StateMachine& sm);
+    bool isCompletedView() const;
 
     lv_obj_t* bodyLabel_ = nullptr;
     lv_obj_t* statusCard_ = nullptr;
+    lv_obj_t* titleLabel_ = nullptr;
     Api::SearchProgress progress_;
+    std::optional<Api::SearchCompleted> completedSearch_ = std::nullopt;
+    std::optional<Api::PlanSummary> savedPlan_ = std::nullopt;
     std::optional<std::string> lastError_ = std::nullopt;
     std::unique_ptr<SimPlayground> playground_;
     std::unique_ptr<WorldData> worldData_;

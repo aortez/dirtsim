@@ -30,6 +30,7 @@
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
 #include "api/SearchPauseSet.h"
+#include "api/SearchSettingsSet.h"
 #include "api/SearchStart.h"
 #include "api/SearchStop.h"
 #include "api/SimPause.h"
@@ -57,6 +58,7 @@
 #include "server/api/EvolutionProgress.h"
 #include "server/api/PlanPlaybackStopped.h"
 #include "server/api/PlanSaved.h"
+#include "server/api/SearchCompleted.h"
 #include "server/api/SearchProgress.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
@@ -281,6 +283,11 @@ struct PlanPlaybackStoppedReceivedEvent {
     static constexpr const char* name() { return "PlanPlaybackStoppedReceivedEvent"; }
 };
 
+struct SearchCompletedReceivedEvent {
+    Api::SearchCompleted completed;
+    static constexpr const char* name() { return "SearchCompletedReceivedEvent"; }
+};
+
 /**
  * @brief Best snapshot received from server (new all-time fitness).
  */
@@ -360,6 +367,7 @@ using Event = std::variant<
     SearchProgressReceivedEvent,
     PlanPlaybackStoppedReceivedEvent,
     PlanSavedReceivedEvent,
+    SearchCompletedReceivedEvent,
     UserSettingsUpdatedEvent,
     TrainingBestPlaybackFrameReceivedEvent,
     TrainingBestSnapshotReceivedEvent,
@@ -399,6 +407,7 @@ using Event = std::variant<
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,
     DirtSim::UiApi::SearchPauseSet::Cwc,
+    DirtSim::UiApi::SearchSettingsSet::Cwc,
     DirtSim::UiApi::SearchStart::Cwc,
     DirtSim::UiApi::SearchStop::Cwc,
     DirtSim::UiApi::SimPause::Cwc,

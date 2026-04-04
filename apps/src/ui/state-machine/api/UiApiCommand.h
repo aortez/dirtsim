@@ -28,6 +28,7 @@
 #include "RenderModeSelect.h"
 #include "ScreenGrab.h"
 #include "SearchPauseSet.h"
+#include "SearchSettingsSet.h"
 #include "SearchStart.h"
 #include "SearchStop.h"
 #include "SimPause.h"
@@ -84,6 +85,7 @@ using UiApiCommand = std::variant<
     UiApi::RenderModeSelect::Command,
     UiApi::ScreenGrab::Command,
     UiApi::SearchPauseSet::Command,
+    UiApi::SearchSettingsSet::Command,
     UiApi::SearchStart::Command,
     UiApi::SearchStop::Command,
     UiApi::SimPause::Command,

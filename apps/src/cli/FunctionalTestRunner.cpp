@@ -55,6 +55,7 @@
 #include "ui/state-machine/api/PlantSeed.h"
 #include "ui/state-machine/api/ScreenGrab.h"
 #include "ui/state-machine/api/SearchPauseSet.h"
+#include "ui/state-machine/api/SearchSettingsSet.h"
 #include "ui/state-machine/api/SearchStart.h"
 #include "ui/state-machine/api/SearchStop.h"
 #include "ui/state-machine/api/SimRun.h"
@@ -2548,6 +2549,43 @@ Result<std::monostate, std::string> showUiIcons(Network::WebSocketService& uiCli
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
+Result<std::monostate, std::string> openSearchSettingsPanel(
+    Network::WebSocketService& uiClient, int timeoutMs)
+{
+    const auto showIconsResult = showUiIcons(uiClient, timeoutMs);
+    if (showIconsResult.isError()) {
+        return showIconsResult;
+    }
+
+    UiApi::IconSelect::Command settingsIcon{
+        .id = Ui::IconId::SETTINGS,
+    };
+    const auto settingsResult = unwrapResponse(
+        uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(settingsIcon, timeoutMs));
+    if (settingsResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "UI IconSelect(SETTINGS) failed: " + settingsResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<SearchSettings, std::string> setSearchSettingsViaUi(
+    Network::WebSocketService& uiClient, const SearchSettings& settings, int timeoutMs)
+{
+    UiApi::SearchSettingsSet::Command cmd{
+        .settings = settings,
+    };
+    const auto result = unwrapResponse(
+        uiClient.sendCommandAndGetResponse<UiApi::SearchSettingsSet::Okay>(cmd, timeoutMs));
+    if (result.isError()) {
+        return Result<SearchSettings, std::string>::error(
+            "UI SearchSettingsSet failed: " + result.errorValue());
+    }
+
+    return Result<SearchSettings, std::string>::okay(result.value().settings);
+}
+
 Result<std::monostate, std::string> runDefaultSimulationAndReturnToStartMenu(
     Network::WebSocketService& uiClient, Network::WebSocketService& serverClient, int timeoutMs)
 {
@@ -2625,21 +2663,65 @@ Result<std::monostate, std::string> ensureSearchIdle(
     }
 
     if (uiState == "SearchActive") {
+        const auto serverStatusResult = requestServerStatus(serverClient, timeoutMs);
+        if (serverStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(serverStatusResult.errorValue());
+        }
+
+        const std::string& serverState = serverStatusResult.value().state;
+        if (serverState != "SearchActive" && serverState != "Idle") {
+            return Result<std::monostate, std::string>::error(
+                "Expected SearchActive or Idle while recovering SearchActive UI, got "
+                + serverState);
+        }
+
         const auto showIconsResult = showUiIcons(uiClient, timeoutMs);
         if (showIconsResult.isError()) {
             return showIconsResult;
         }
 
-        UiApi::IconSelect::Command stopIcon{
-            .id = Ui::IconId::STOP,
-        };
-        auto stopResult = unwrapResponse(
-            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(stopIcon, timeoutMs));
-        if (stopResult.isError()) {
-            return Result<std::monostate, std::string>::error(
-                "UI IconSelect(STOP) failed while recovering SearchActive to SearchIdle: "
-                + stopResult.errorValue());
+        if (serverState == "SearchActive") {
+            UiApi::IconSelect::Command stopIcon{
+                .id = Ui::IconId::STOP,
+            };
+            auto stopResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(stopIcon, timeoutMs));
+            if (stopResult.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    "UI IconSelect(STOP) failed while recovering SearchActive to SearchIdle: "
+                    + stopResult.errorValue());
+            }
+
+            auto serverIdleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+            if (serverIdleResult.isError()) {
+                return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+            }
         }
+
+        UiApi::IconSelect::Command backIcon{
+            .id = Ui::IconId::BACK,
+        };
+        auto backStart = std::chrono::steady_clock::now();
+        std::string lastBackError;
+        bool backedToIdle = false;
+        while (std::chrono::steady_clock::now() - backStart
+               < std::chrono::milliseconds(timeoutMs)) {
+            auto backResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(backIcon, timeoutMs));
+            if (!backResult.isError()) {
+                backedToIdle = true;
+                break;
+            }
+
+            lastBackError = backResult.errorValue();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (!backedToIdle) {
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect(BACK) failed while recovering SearchActive to SearchIdle: "
+                + lastBackError);
+        }
+
         auto idleResult = waitForUiState(uiClient, "SearchIdle", timeoutMs);
         if (idleResult.isError()) {
             return Result<std::monostate, std::string>::error(idleResult.errorValue());
@@ -2648,6 +2730,7 @@ Result<std::monostate, std::string> ensureSearchIdle(
         if (serverIdleResult.isError()) {
             return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
         }
+
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
@@ -2865,14 +2948,14 @@ Result<SearchSessionResult, std::string> runSearchHoldRightSession(
     }
 
     const int searchTimeoutMs = std::max(timeoutMs, 120000);
-    const auto uiIdleResult = waitForUiState(uiClient, "SearchIdle", searchTimeoutMs);
-    if (uiIdleResult.isError()) {
-        return Result<SearchSessionResult, std::string>::error(uiIdleResult.errorValue());
-    }
-
     const auto serverIdleResult = waitForServerState(serverClient, "Idle", searchTimeoutMs);
     if (serverIdleResult.isError()) {
         return Result<SearchSessionResult, std::string>::error(serverIdleResult.errorValue());
+    }
+
+    const auto uiFinishedResult = waitForUiState(uiClient, "SearchActive", timeoutMs);
+    if (uiFinishedResult.isError()) {
+        return Result<SearchSessionResult, std::string>::error(uiFinishedResult.errorValue());
     }
 
     const auto finalPlansResult = requestPlanList(serverClient, timeoutMs);
@@ -3307,18 +3390,15 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error("Saved plan had no frames");
         }
-        for (size_t i = 0; i < plan.frames.size(); ++i) {
-            const auto& frame = plan.frames[i];
-            if (frame.xAxis != 127 || frame.yAxis != 0 || frame.buttons != 0) {
-                uiClient.disconnect();
-                serverClient.disconnect();
-                return Result<std::monostate, std::string>::error(
-                    "Saved plan frame " + std::to_string(i) + " did not match hold-right");
-            }
+        if (plan.summary.elapsedFrames != plan.frames.size()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Saved plan elapsedFrames did not match frame count");
         }
 
         const auto screenshotResult = captureRequiredUiScreenshotPng(
-            uiClient, "canSearchHoldRight", "search-idle", timeoutMs, successScreenshotPath);
+            uiClient, "canSearchHoldRight", "search-complete", timeoutMs, successScreenshotPath);
         if (screenshotResult.isError()) {
             uiClient.disconnect();
             serverClient.disconnect();
@@ -3660,7 +3740,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
                     "SearchProgressGet failed before pause: " + progressResult.errorValue());
             }
 
-            if (progressResult.value().elapsedFrames >= 120) {
+            if (progressResult.value().elapsedFrames >= 1) {
                 reachedPrePauseProgress = true;
                 break;
             }
@@ -3784,37 +3864,14 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
                 "Search did not resume advancing elapsedFrames");
         }
 
-        UiApi::IconSelect::Command stopIcon{
-            .id = Ui::IconId::STOP,
-        };
-        const auto showStopIconsResult = showUiIcons(uiClient, timeoutMs);
-        if (showStopIconsResult.isError()) {
-            uiClient.disconnect();
-            serverClient.disconnect();
-            return Result<std::monostate, std::string>::error(showStopIconsResult.errorValue());
-        }
-        const auto stopResult = unwrapResponse(
-            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(stopIcon, timeoutMs));
-        if (stopResult.isError()) {
+        const int idleTimeoutMs = std::max(timeoutMs, 10000);
+        const auto searchIdleAfterResumeResult =
+            ensureSearchIdle(uiClient, serverClient, idleTimeoutMs);
+        if (searchIdleAfterResumeResult.isError()) {
             uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
-                "UI IconSelect(STOP) failed while stopping search: " + stopResult.errorValue());
-        }
-
-        const int idleTimeoutMs = std::max(timeoutMs, 10000);
-        const auto uiIdleResult = waitForUiState(uiClient, "SearchIdle", idleTimeoutMs);
-        if (uiIdleResult.isError()) {
-            uiClient.disconnect();
-            serverClient.disconnect();
-            return Result<std::monostate, std::string>::error(uiIdleResult.errorValue());
-        }
-
-        const auto serverIdleResult = waitForServerState(serverClient, "Idle", idleTimeoutMs);
-        if (serverIdleResult.isError()) {
-            uiClient.disconnect();
-            serverClient.disconnect();
-            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+                searchIdleAfterResumeResult.errorValue());
         }
 
         uiClient.disconnect();
@@ -3838,6 +3895,257 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
 
     return FunctionalTestSummary{
         .name = "canPauseSearch",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .success_screenshot_path = successScreenshotPath,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanPersistSearchSettings(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    std::optional<std::string> successScreenshotPath;
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+    std::optional<UserSettings> originalSettings;
+
+    const auto disconnectClients = [&]() {
+        if (uiClient.isConnected()) {
+            uiClient.disconnect();
+        }
+        if (serverClient.isConnected()) {
+            serverClient.disconnect();
+        }
+    };
+
+    const auto restoreOriginalSettings = [&]() -> Result<std::monostate, std::string> {
+        if (!originalSettings.has_value()) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+
+        if (!serverClient.isConnected()) {
+            const auto reconnectResult =
+                connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+            if (reconnectResult.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    "Failed to reconnect server for Search settings cleanup: "
+                    + reconnectResult.errorValue());
+            }
+        }
+
+        const auto restoreResult = updateUserSettings(serverClient, *originalSettings, timeoutMs);
+        if (restoreResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to restore original Search settings: " + restoreResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    };
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        const auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        const auto connectResult =
+            connectSearchClients(uiClient, serverClient, uiAddress, serverAddress, timeoutMs);
+        if (connectResult.isError()) {
+            return Result<std::monostate, std::string>::error(connectResult.errorValue());
+        }
+
+        const auto originalSettingsResult = fetchUserSettings(serverClient, timeoutMs);
+        if (originalSettingsResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(originalSettingsResult.errorValue());
+        }
+        originalSettings = originalSettingsResult.value();
+
+        const SearchSettings requestedSettings{
+            .beamWidth = 2,
+            .maxSegments = 7,
+            .segmentFrameBudget = 18,
+        };
+
+        const auto searchIdleResult = ensureSearchIdle(uiClient, serverClient, timeoutMs);
+        if (searchIdleResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(searchIdleResult.errorValue());
+        }
+
+        const auto openSettingsResult = openSearchSettingsPanel(uiClient, timeoutMs);
+        if (openSettingsResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(openSettingsResult.errorValue());
+        }
+
+        const auto appliedSettingsResult =
+            setSearchSettingsViaUi(uiClient, requestedSettings, timeoutMs);
+        if (appliedSettingsResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(appliedSettingsResult.errorValue());
+        }
+
+        const SearchSettings& appliedSettings = appliedSettingsResult.value();
+        if (appliedSettings.beamWidth != requestedSettings.beamWidth
+            || appliedSettings.maxSegments != requestedSettings.maxSegments
+            || appliedSettings.segmentFrameBudget != requestedSettings.segmentFrameBudget) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                "Search settings panel did not apply requested values");
+        }
+
+        const auto verifySettingsBeforeRestart = fetchUserSettings(serverClient, timeoutMs);
+        if (verifySettingsBeforeRestart.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                verifySettingsBeforeRestart.errorValue());
+        }
+
+        const SearchSettings& serverSettingsBeforeRestart =
+            verifySettingsBeforeRestart.value().searchSettings;
+        if (serverSettingsBeforeRestart.beamWidth != appliedSettings.beamWidth
+            || serverSettingsBeforeRestart.maxSegments != appliedSettings.maxSegments
+            || serverSettingsBeforeRestart.segmentFrameBudget
+                != appliedSettings.segmentFrameBudget) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                "Server Search settings did not reflect UI changes before restart");
+        }
+
+        disconnectClients();
+
+        const auto secondRestartResult = restartServices(osManagerAddress, timeoutMs);
+        if (secondRestartResult.isError()) {
+            return Result<std::monostate, std::string>::error(secondRestartResult.errorValue());
+        }
+
+        const auto reconnectResult =
+            connectSearchClients(uiClient, serverClient, uiAddress, serverAddress, timeoutMs);
+        if (reconnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(reconnectResult.errorValue());
+        }
+
+        const auto searchIdleAfterRestartResult =
+            ensureSearchIdle(uiClient, serverClient, timeoutMs);
+        if (searchIdleAfterRestartResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                searchIdleAfterRestartResult.errorValue());
+        }
+
+        const auto reopenSettingsResult = openSearchSettingsPanel(uiClient, timeoutMs);
+        if (reopenSettingsResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(reopenSettingsResult.errorValue());
+        }
+
+        const auto screenshotResult = captureRequiredUiScreenshotPng(
+            uiClient,
+            "canPersistSearchSettings",
+            "search-settings-panel",
+            timeoutMs,
+            successScreenshotPath);
+        if (screenshotResult.isError()) {
+            disconnectClients();
+            return screenshotResult;
+        }
+
+        const auto verifySettingsAfterRestart = fetchUserSettings(serverClient, timeoutMs);
+        if (verifySettingsAfterRestart.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                verifySettingsAfterRestart.errorValue());
+        }
+
+        const SearchSettings& serverSettingsAfterRestart =
+            verifySettingsAfterRestart.value().searchSettings;
+        if (serverSettingsAfterRestart.beamWidth != appliedSettings.beamWidth
+            || serverSettingsAfterRestart.maxSegments != appliedSettings.maxSegments
+            || serverSettingsAfterRestart.segmentFrameBudget
+                != appliedSettings.segmentFrameBudget) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                "Search settings did not persist across restart");
+        }
+
+        const auto startResult = startSearchAndWaitActive(uiClient, serverClient, timeoutMs);
+        if (startResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(startResult.errorValue());
+        }
+
+        auto searchProgressResult = Result<Api::SearchProgress, std::string>::error("");
+        const auto progressDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (std::chrono::steady_clock::now() < progressDeadline) {
+            searchProgressResult = requestSearchProgress(serverClient, timeoutMs);
+            if (!searchProgressResult.isError()) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (searchProgressResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                "Failed to read Search progress after applying settings: "
+                + searchProgressResult.errorValue());
+        }
+
+        const Api::SearchProgress& progress = searchProgressResult.value();
+        if (progress.beamWidth != appliedSettings.beamWidth
+            || progress.maxSegments != appliedSettings.maxSegments
+            || progress.maxSteps != appliedSettings.segmentFrameBudget) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(
+                "Search execution did not use persisted Search settings");
+        }
+
+        const int idleTimeoutMs = std::max(timeoutMs, 10000);
+        const auto finalSearchIdleResult = ensureSearchIdle(uiClient, serverClient, idleTimeoutMs);
+        if (finalSearchIdleResult.isError()) {
+            disconnectClients();
+            return Result<std::monostate, std::string>::error(finalSearchIdleResult.errorValue());
+        }
+
+        disconnectClients();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    const auto cleanupResult = restoreOriginalSettings();
+    if (cleanupResult.isError()) {
+        if (testResult.isError()) {
+            testResult = Result<std::monostate, std::string>::error(
+                testResult.errorValue() + "; cleanup failed: " + cleanupResult.errorValue());
+        }
+        else {
+            testResult = cleanupResult;
+        }
+    }
+
+    disconnectClients();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canPersistSearchSettings",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

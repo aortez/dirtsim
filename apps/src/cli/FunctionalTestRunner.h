@@ -70,6 +70,11 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanPersistSearchSettings(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanTrainNesFlappy(
         const std::string& uiAddress,
         const std::string& serverAddress,
