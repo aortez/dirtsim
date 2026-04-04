@@ -1,9 +1,11 @@
 #include "SearchActive.h"
+#include "PlanPlayback.h"
 #include "SearchIdle.h"
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/PlanPlaybackStart.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SearchPauseSet.h"
 #include "server/api/SearchStop.h"
@@ -19,6 +21,43 @@ namespace State {
 namespace {
 
 constexpr int kServerTimeoutMs = 2000;
+
+const char* completionReasonText(Api::SearchCompletionReason reason)
+{
+    switch (reason) {
+        case Api::SearchCompletionReason::Completed:
+            return "Completed.";
+        case Api::SearchCompletionReason::Stopped:
+            return "Stopped.";
+        case Api::SearchCompletionReason::Error:
+            return "Error.";
+    }
+
+    DIRTSIM_ASSERT(false, "Unhandled SearchCompletionReason");
+    return "Error.";
+}
+
+Result<std::monostate, std::string> startPlanPlayback(StateMachine& sm, UUID planId)
+{
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return Result<std::monostate, std::string>::error("UI is not connected to the server");
+    }
+
+    Api::PlanPlaybackStart::Command command{
+        .planId = planId,
+    };
+    const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackStart::OkayType>(
+        command, kServerTimeoutMs);
+    if (result.isError()) {
+        return Result<std::monostate, std::string>::error(result.errorValue());
+    }
+    if (result.value().isError()) {
+        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
 
 void subscribeToBasicRender(StateMachine& sm)
 {
@@ -79,10 +118,10 @@ void SearchActive::onEnter(StateMachine& sm)
     lv_obj_clear_flag(statusCard_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(statusCard_);
 
-    auto* titleLabel = lv_label_create(statusCard_);
-    lv_label_set_text(titleLabel, "Search Active");
-    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, 0);
+    titleLabel_ = lv_label_create(statusCard_);
+    lv_label_set_text(titleLabel_, "Search Active");
+    lv_obj_set_style_text_color(titleLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel_, &lv_font_montserrat_24, 0);
 
     bodyLabel_ = lv_label_create(statusCard_);
     lv_obj_set_width(bodyLabel_, LV_PCT(100));
@@ -119,6 +158,7 @@ void SearchActive::onExit(StateMachine& sm)
     if (statusCard_ != nullptr) {
         lv_obj_del(statusCard_);
         statusCard_ = nullptr;
+        titleLabel_ = nullptr;
         bodyLabel_ = nullptr;
     }
 
@@ -142,25 +182,56 @@ void SearchActive::updateVisibleIcons(StateMachine& sm)
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
 
     std::vector<IconId> visibleIcons;
-    if (progress_.paused) {
-        visibleIcons.push_back(IconId::PLAY);
+    if (isCompletedView()) {
+        if (savedPlan_.has_value()) {
+            visibleIcons.push_back(IconId::PLAY);
+        }
+        visibleIcons.push_back(IconId::BACK);
     }
     else {
-        visibleIcons.push_back(IconId::PAUSE);
+        if (progress_.paused) {
+            visibleIcons.push_back(IconId::PLAY);
+        }
+        else {
+            visibleIcons.push_back(IconId::PAUSE);
+        }
+        visibleIcons.push_back(IconId::STOP);
     }
-    visibleIcons.push_back(IconId::STOP);
     iconRail->setVisibleIcons(visibleIcons);
 }
 
 void SearchActive::updateBodyText()
 {
     DIRTSIM_ASSERT(bodyLabel_, "SearchActive body label must exist");
+    DIRTSIM_ASSERT(titleLabel_, "SearchActive title label must exist");
 
-    std::string text = progress_.paused ? "Paused." : "Running.";
+    if (completedSearch_.has_value()
+        && completedSearch_->reason == Api::SearchCompletionReason::Error) {
+        lv_label_set_text(titleLabel_, "Search Error");
+    }
+    else if (isCompletedView()) {
+        lv_label_set_text(titleLabel_, "Search Complete");
+    }
+    else {
+        lv_label_set_text(titleLabel_, "Search Active");
+    }
+
+    std::string text;
+    if (completedSearch_.has_value()) {
+        text = completionReasonText(completedSearch_->reason);
+    }
+    else {
+        text = progress_.paused ? "Paused." : "Running.";
+    }
     text += "\nElapsed frames: ";
     text += std::to_string(progress_.elapsedFrames);
     text += "\nBest frontier: ";
     text += std::to_string(progress_.bestFrontier);
+
+    if (completedSearch_.has_value() && !completedSearch_->errorMessage.empty()) {
+        text += "\n\nError:\n";
+        text += completedSearch_->errorMessage;
+    }
 
     if (lastError_.has_value()) {
         text += "\n\nLast error:\n";
@@ -180,6 +251,38 @@ State::Any SearchActive::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* iconRail = sm.getUiComponentManager()->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+
+    if (isCompletedView()) {
+        if (evt.selectedId == IconId::PLAY && savedPlan_.has_value()) {
+            const auto playbackResult = startPlanPlayback(sm, savedPlan_->id);
+            if (playbackResult.isError()) {
+                lastError_ = playbackResult.errorValue();
+                updateBodyText();
+                iconRail->deselectAll();
+                return std::move(*this);
+            }
+
+            lastError_.reset();
+            iconRail->deselectAll();
+            return PlanPlayback{ savedPlan_->id };
+        }
+
+        if (evt.selectedId == IconId::BACK) {
+            iconRail->deselectAll();
+            return SearchIdle{
+                savedPlan_,
+                savedPlan_.has_value() ? std::make_optional(savedPlan_->id) : std::nullopt,
+            };
+        }
+
+        if (evt.selectedId == IconId::NONE) {
+            return std::move(*this);
+        }
+
+        LOG_WARN(State, "Ignoring unsupported icon selection during completed SearchActive");
+        iconRail->deselectAll();
+        return std::move(*this);
+    }
 
     if (evt.selectedId == IconId::PAUSE || evt.selectedId == IconId::PLAY) {
         const bool paused = evt.selectedId == IconId::PAUSE;
@@ -209,9 +312,23 @@ State::Any SearchActive::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any SearchActive::onEvent(const PlanSavedReceivedEvent& evt, StateMachine& /*sm*/)
+State::Any SearchActive::onEvent(const PlanSavedReceivedEvent& evt, StateMachine& sm)
 {
-    return SearchIdle{ evt.saved.summary, evt.saved.summary.id };
+    savedPlan_ = evt.saved.summary;
+    updateVisibleIcons(sm);
+    updateBodyText();
+    return std::move(*this);
+}
+
+State::Any SearchActive::onEvent(const SearchCompletedReceivedEvent& evt, StateMachine& sm)
+{
+    completedSearch_ = evt.completed;
+    if (evt.completed.summary.has_value()) {
+        savedPlan_ = evt.completed.summary;
+    }
+    updateVisibleIcons(sm);
+    updateBodyText();
+    return std::move(*this);
 }
 
 State::Any SearchActive::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
@@ -225,7 +342,9 @@ State::Any SearchActive::onEvent(const RailModeChangedEvent& /*evt*/, StateMachi
 State::Any SearchActive::onEvent(const SearchProgressReceivedEvent& evt, StateMachine& sm)
 {
     progress_ = evt.progress;
-    lastError_.reset();
+    if (!isCompletedView()) {
+        lastError_.reset();
+    }
     updateVisibleIcons(sm);
     updateBodyText();
     return std::move(*this);
@@ -333,7 +452,12 @@ State::Any SearchActive::onEvent(const UiApi::SearchStop::Cwc& cwc, StateMachine
         cwc.sendResponse(
             UiApi::SearchStop::Response::okay(UiApi::SearchStop::Okay{ .stopped = true }));
     }
-    return SearchIdle{};
+    return std::move(*this);
+}
+
+bool SearchActive::isCompletedView() const
+{
+    return completedSearch_.has_value();
 }
 
 } // namespace State

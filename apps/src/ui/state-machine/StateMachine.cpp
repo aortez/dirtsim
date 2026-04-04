@@ -1239,6 +1239,8 @@ void StateMachine::handleEvent(const Event& event)
                                 std::decay_t<decltype(evt)>,
                                 PlanPlaybackStoppedReceivedEvent>
                             || std::is_same_v<std::decay_t<decltype(evt)>, PlanSavedReceivedEvent>
+                            || std::
+                                is_same_v<std::decay_t<decltype(evt)>, SearchCompletedReceivedEvent>
                             || std::is_same_v<
                                 std::decay_t<decltype(evt)>,
                                 TrainingBestPlaybackFrameReceivedEvent>) {

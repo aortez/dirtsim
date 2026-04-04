@@ -14,7 +14,8 @@ namespace State {
 struct SearchIdle {
     SearchIdle(
         std::optional<Api::PlanSummary> lastSavedPlan = std::nullopt,
-        std::optional<UUID> selectedPlanId = std::nullopt);
+        std::optional<UUID> selectedPlanId = std::nullopt,
+        std::optional<std::string> lastError = std::nullopt);
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);

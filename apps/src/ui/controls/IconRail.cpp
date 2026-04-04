@@ -43,6 +43,7 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
         { IconId::PLAN_BROWSER, IconFont::FILE_CABINET, "Plan Browser", 0xFFD700 }, // Gold.
         { IconId::PAUSE, IconFont::PAUSE, "Pause", 0xFFD166 },                      // Warm yellow.
         { IconId::STOP, IconFont::STOP, "Stop", 0xFF6B6B },                         // Warm red.
+        { IconId::BACK, IconFont::ARROW_LEFT, "Back", 0xA0C4FF },                   // Cool blue.
         { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },                 // Orange.
         { IconId::PHYSICS, IconFont::COG, "World Settings", 0xC0C0C0 },             // Silver.
         { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },              // Light green.

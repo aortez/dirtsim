@@ -375,6 +375,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/PlanList.cpp
     src/server/api/PlanPlaybackStopped.cpp
     src/server/api/PlanSaved.cpp
+    src/server/api/SearchCompleted.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp

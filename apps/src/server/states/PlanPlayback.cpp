@@ -12,11 +12,15 @@ namespace State {
 namespace {
 
 void broadcastPlanPlaybackStopped(
-    StateMachine& dsm, UUID planId, Api::PlanPlaybackStopReason reason)
+    StateMachine& dsm,
+    UUID planId,
+    Api::PlanPlaybackStopReason reason,
+    std::string errorMessage = "")
 {
     const Api::PlanPlaybackStopped stopped{
         .planId = planId,
         .reason = reason,
+        .errorMessage = std::move(errorMessage),
     };
     dsm.broadcastEventData(Api::PlanPlaybackStopped::name(), Network::serialize_payload(stopped));
 }
@@ -65,6 +69,8 @@ std::optional<Any> PlanPlayback::tick(StateMachine& dsm)
 
     if (tickResult.error.has_value()) {
         LOG_ERROR(State, "PlanPlayback: {}", tickResult.error.value());
+        broadcastPlanPlaybackStopped(
+            dsm, planId, Api::PlanPlaybackStopReason::Error, tickResult.error.value());
         return Idle{};
     }
 

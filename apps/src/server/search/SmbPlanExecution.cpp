@@ -73,6 +73,8 @@ Result<std::monostate, std::string> SmbPlanExecution::startCommon()
     progress_ = Api::SearchProgress{};
     completed_ = false;
     paused_ = false;
+    completionReason_.reset();
+    completionErrorMessage_.reset();
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -88,14 +90,17 @@ SmbPlanExecutionTickResult SmbPlanExecution::tick()
 
     if (!driver_ || !gameAdapter_) {
         completed_ = true;
+        completionReason_ = SmbPlanExecutionCompletionReason::Error;
+        completionErrorMessage_ = "SMB execution not initialized";
         return SmbPlanExecutionTickResult{
             .completed = true,
-            .error = std::string("SMB execution not initialized"),
+            .error = completionErrorMessage_,
         };
     }
 
     if (mode_ == Mode::PlanPlayback && playbackFrameIndex_ >= plan_.frames.size()) {
         completed_ = true;
+        completionReason_ = SmbPlanExecutionCompletionReason::Completed;
         return SmbPlanExecutionTickResult{ .completed = true };
     }
 
@@ -117,11 +122,13 @@ SmbPlanExecutionTickResult SmbPlanExecution::tick()
 
     if (!stepResult.runtimeHealthy || !stepResult.runtimeRunning) {
         completed_ = true;
+        completionReason_ = SmbPlanExecutionCompletionReason::Error;
+        completionErrorMessage_ = stepResult.lastError.empty()
+            ? std::optional<std::string>("NES runtime stopped")
+            : std::optional<std::string>(stepResult.lastError);
         return SmbPlanExecutionTickResult{
             .completed = true,
-            .error = stepResult.lastError.empty()
-                ? std::optional<std::string>("NES runtime stopped")
-                : std::optional<std::string>(stepResult.lastError),
+            .error = completionErrorMessage_,
         };
     }
 
@@ -159,6 +166,7 @@ SmbPlanExecutionTickResult SmbPlanExecution::tick()
     if (evaluation.done
         || (mode_ == Mode::PlanPlayback && playbackFrameIndex_ >= plan_.frames.size())) {
         completed_ = true;
+        completionReason_ = SmbPlanExecutionCompletionReason::Completed;
     }
 
     return SmbPlanExecutionTickResult{
@@ -176,6 +184,13 @@ void SmbPlanExecution::pauseSet(bool paused)
 void SmbPlanExecution::stop()
 {
     completed_ = true;
+    completionReason_ = SmbPlanExecutionCompletionReason::Stopped;
+    completionErrorMessage_.reset();
+}
+
+bool SmbPlanExecution::hasPersistablePlan() const
+{
+    return !plan_.frames.empty();
 }
 
 bool SmbPlanExecution::isCompleted() const
@@ -191,6 +206,16 @@ bool SmbPlanExecution::isPaused() const
 bool SmbPlanExecution::hasRenderableFrame() const
 {
     return scenarioVideoFrame_.has_value();
+}
+
+std::optional<SmbPlanExecutionCompletionReason> SmbPlanExecution::getCompletionReason() const
+{
+    return completionReason_;
+}
+
+const std::optional<std::string>& SmbPlanExecution::getCompletionErrorMessage() const
+{
+    return completionErrorMessage_;
 }
 
 const Api::Plan& SmbPlanExecution::getPlan() const

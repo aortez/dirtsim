@@ -20,6 +20,17 @@ namespace {
 
 constexpr int kServerTimeoutMs = 2000;
 
+std::optional<std::string> playbackStoppedError(const Api::PlanPlaybackStopped& stopped)
+{
+    if (stopped.reason != Api::PlanPlaybackStopReason::Error) {
+        return std::nullopt;
+    }
+    if (stopped.errorMessage.empty()) {
+        return std::string("Plan playback failed");
+    }
+    return "Plan playback failed: " + stopped.errorMessage;
+}
+
 void subscribeToBasicRender(StateMachine& sm)
 {
     auto& wsService = sm.getWebSocketService();
@@ -220,7 +231,11 @@ State::Any PlanPlayback::onEvent(const PlanPlaybackStoppedReceivedEvent& evt, St
         planId_ = evt.stopped.planId;
     }
 
-    return SearchIdle{ std::nullopt, evt.stopped.planId };
+    return SearchIdle{
+        std::nullopt,
+        evt.stopped.planId,
+        playbackStoppedError(evt.stopped),
+    };
 }
 
 State::Any PlanPlayback::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)

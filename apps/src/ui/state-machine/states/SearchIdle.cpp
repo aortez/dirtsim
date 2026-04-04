@@ -21,6 +21,17 @@ namespace {
 
 constexpr int kServerTimeoutMs = 2000;
 
+std::optional<std::string> playbackStoppedError(const Api::PlanPlaybackStopped& stopped)
+{
+    if (stopped.reason != Api::PlanPlaybackStopReason::Error) {
+        return std::nullopt;
+    }
+    if (stopped.errorMessage.empty()) {
+        return std::string("Plan playback failed");
+    }
+    return "Plan playback failed: " + stopped.errorMessage;
+}
+
 Result<std::monostate, std::string> startPlanPlayback(StateMachine& sm, UUID planId)
 {
     auto& wsService = sm.getWebSocketService();
@@ -66,8 +77,12 @@ Result<std::monostate, std::string> startSearch(StateMachine& sm)
 } // namespace
 
 SearchIdle::SearchIdle(
-    std::optional<Api::PlanSummary> lastSavedPlan, std::optional<UUID> selectedPlanId)
-    : lastSavedPlan_(std::move(lastSavedPlan)), selectedPlanId_(std::move(selectedPlanId))
+    std::optional<Api::PlanSummary> lastSavedPlan,
+    std::optional<UUID> selectedPlanId,
+    std::optional<std::string> lastError)
+    : lastError_(std::move(lastError)),
+      lastSavedPlan_(std::move(lastSavedPlan)),
+      selectedPlanId_(std::move(selectedPlanId))
 {}
 
 void SearchIdle::onEnter(StateMachine& sm)
@@ -208,7 +223,7 @@ State::Any SearchIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 State::Any SearchIdle::onEvent(const PlanPlaybackStoppedReceivedEvent& evt, StateMachine& /*sm*/)
 {
     selectedPlanId_ = evt.stopped.planId;
-    lastError_.reset();
+    lastError_ = playbackStoppedError(evt.stopped);
     updateBodyText();
     return std::move(*this);
 }
