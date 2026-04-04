@@ -4,12 +4,15 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/evolution/EvaluationExecutor.h"
 #include "server/evolution/FitnessModelBundle.h"
 #include "server/tests/TestStateMachineFixture.h"
 
+#include <algorithm>
 #include <chrono>
 #include <gtest/gtest.h>
+#include <random>
 #include <thread>
 #include <vector>
 
@@ -482,4 +485,94 @@ TEST(EvaluationExecutorTest, BackgroundEvaluationsDoNotCompleteWhilePaused)
     }
 
     EXPECT_EQ(completedAfterResume, 2);
+}
+
+TEST(EvaluationExecutorTest, NesVisibleEvaluationProducesNonEmptyVideoFrame)
+{
+    const auto romPath = DirtSim::Test::resolveFlappyRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing for NES visible evaluation test.";
+    }
+
+    TestStateMachineFixture fixture;
+
+    TrainingSpec trainingSpec;
+    trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    trainingSpec.organismType = OrganismType::NES_DUCK;
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    population.count = 1;
+    population.randomCount = 1;
+    trainingSpec.population.push_back(population);
+
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(1, 1.0);
+
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
+
+    std::mt19937 rng(42);
+    const std::vector<EvaluationRequest> requests{
+        EvaluationRequest{
+            .taskType = EvaluationTaskType::GenerationEval,
+            .index = 0,
+            .individual =
+                EvaluationIndividual{
+                    .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+                    .brainVariant = std::nullopt,
+                    .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+                    .genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng),
+                },
+        },
+    };
+
+    executor.start(1);
+    executor.generationBatchSubmit(requests, evolutionConfig, ScenarioConfig{ nesConfig });
+
+    std::optional<VisibleRenderFrame> frame;
+    std::optional<uint64_t> lastFrameId = std::nullopt;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline && !frame.has_value()) {
+        const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        if (tick.frame.has_value() && tick.frame->scenarioVideoFrame.has_value()) {
+            const auto& candidate = tick.frame->scenarioVideoFrame.value();
+            lastFrameId = candidate.frame_id;
+            const bool allZero =
+                std::all_of(candidate.pixels.begin(), candidate.pixels.end(), [](std::byte b) {
+                    return b == std::byte{ 0 };
+                });
+            if (!allZero) {
+                frame = tick.frame;
+                break;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(frame.has_value())
+        << "No non-zero visible frame produced within timeout. Last frame_id="
+        << lastFrameId.value_or(0);
+    ASSERT_TRUE(frame->scenarioVideoFrame.has_value())
+        << "Visible frame missing ScenarioVideoFrame.";
+
+    const auto& videoFrame = frame->scenarioVideoFrame.value();
+    fprintf(
+        stderr,
+        "NES visible frame: %ux%u, frame_id=%lu, pixels=%zu bytes\n",
+        videoFrame.width,
+        videoFrame.height,
+        static_cast<unsigned long>(videoFrame.frame_id),
+        videoFrame.pixels.size());
+    EXPECT_GT(videoFrame.width, 0);
+    EXPECT_GT(videoFrame.height, 0);
+    EXPECT_FALSE(videoFrame.pixels.empty()) << "ScenarioVideoFrame has no pixel data.";
+
+    const bool allZero =
+        std::all_of(videoFrame.pixels.begin(), videoFrame.pixels.end(), [](std::byte b) {
+            return b == std::byte{ 0 };
+        });
+    EXPECT_FALSE(allZero) << "ScenarioVideoFrame pixels are all zero (RGBA output not working).";
 }

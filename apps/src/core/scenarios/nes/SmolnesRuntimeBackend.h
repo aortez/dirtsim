@@ -15,6 +15,8 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t run_frames_wait_calls;
     double runtime_thread_idle_wait_ms;
     uint64_t runtime_thread_idle_wait_calls;
+    double runtime_thread_apu_step_ms;
+    uint64_t runtime_thread_apu_step_calls;
     double runtime_thread_cpu_step_ms;
     uint64_t runtime_thread_cpu_step_calls;
     double runtime_thread_frame_execution_ms;
@@ -23,10 +25,31 @@ typedef struct SmolnesRuntimeProfilingSnapshot {
     uint64_t runtime_thread_ppu_step_calls;
     double runtime_thread_ppu_visible_pixels_ms;
     uint64_t runtime_thread_ppu_visible_pixels_calls;
+    uint64_t runtime_thread_ppu_visible_bg_only_span_calls;
+    uint64_t runtime_thread_ppu_visible_bg_only_span_pixels;
+    uint64_t runtime_thread_ppu_visible_bg_only_scalar_pixels;
+    uint64_t runtime_thread_ppu_visible_bg_only_batched_pixels;
+    uint64_t runtime_thread_ppu_visible_bg_only_batched_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_read_calls[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_read_dots[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_write_calls[8];
+    uint64_t runtime_thread_deferred_ppu_flush_ppu_register_write_dots[8];
+    uint64_t runtime_thread_deferred_ppu_flush_oam_dma_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_oam_dma_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_mapper_write_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_mapper_write_dots;
+    uint64_t runtime_thread_deferred_ppu_flush_dot_256_boundary_calls;
+    uint64_t runtime_thread_deferred_ppu_flush_dot_256_boundary_dots;
     double runtime_thread_ppu_sprite_eval_ms;
     uint64_t runtime_thread_ppu_sprite_eval_calls;
+    double runtime_thread_ppu_post_visible_ms;
+    uint64_t runtime_thread_ppu_post_visible_calls;
     double runtime_thread_ppu_prefetch_ms;
     uint64_t runtime_thread_ppu_prefetch_calls;
+    double runtime_thread_ppu_non_visible_scanlines_ms;
+    uint64_t runtime_thread_ppu_non_visible_scanlines_calls;
     double runtime_thread_ppu_other_ms;
     uint64_t runtime_thread_ppu_other_calls;
     double runtime_thread_frame_submit_ms;
@@ -126,6 +149,10 @@ void smolnesRuntimeGetLastErrorCopy(
     const SmolnesRuntimeHandle* runtime, char* buffer, uint32_t bufferSize);
 void smolnesRuntimeSetApuSampleCallback(
     SmolnesRuntimeHandle* runtime, SmolnesApuSampleCallback callback, void* userdata);
+void smolnesRuntimeSetApuEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetDetailedTimingEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetPixelOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
+void smolnesRuntimeSetRgbaOutputEnabled(SmolnesRuntimeHandle* runtime, bool enabled);
 void smolnesRuntimeSetPacingMode(SmolnesRuntimeHandle* runtime, SmolnesRuntimePacingModeValue mode);
 
 #ifdef __cplusplus

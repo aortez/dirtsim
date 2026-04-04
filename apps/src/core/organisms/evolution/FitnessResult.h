@@ -13,6 +13,7 @@ struct FitnessResult {
     int commandsRejected = 0;    // Total rejected commands during lifetime.
     int idleCancels = 0;         // Cancel commands issued while no action was active.
     double nesRewardTotal = 0.0; // Cumulative reward for NES evaluations.
+    bool organismDied = false;   // Whether evaluation ended because the organism died.
     bool exitedThroughDoor = false;
     double exitDoorTime = 0.0; // Sim time when duck exited through door.
 };

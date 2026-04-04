@@ -2636,28 +2636,53 @@ Result<std::monostate, std::string> ensureSearchIdle(
     }
 
     if (uiState == "SearchActive") {
+        const auto serverStatusResult = requestServerStatus(serverClient, timeoutMs);
+        if (serverStatusResult.isError()) {
+            return Result<std::monostate, std::string>::error(serverStatusResult.errorValue());
+        }
         const auto showIconsResult = showUiIcons(uiClient, timeoutMs);
         if (showIconsResult.isError()) {
             return showIconsResult;
         }
 
-        UiApi::IconSelect::Command stopIcon{
-            .id = Ui::IconId::STOP,
-        };
-        auto stopResult = unwrapResponse(
-            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(stopIcon, timeoutMs));
-        if (stopResult.isError()) {
+        if (serverStatusResult.value().state == "SearchActive") {
+            UiApi::IconSelect::Command stopIcon{
+                .id = Ui::IconId::STOP,
+            };
+            auto stopResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(stopIcon, timeoutMs));
+            if (stopResult.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    "UI IconSelect(STOP) failed while recovering SearchActive to SearchIdle: "
+                    + stopResult.errorValue());
+            }
+
+            auto serverIdleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+            if (serverIdleResult.isError()) {
+                return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+            }
+        }
+        else if (serverStatusResult.value().state != "Idle") {
             return Result<std::monostate, std::string>::error(
-                "UI IconSelect(STOP) failed while recovering SearchActive to SearchIdle: "
-                + stopResult.errorValue());
+                "Expected server Idle or SearchActive while recovering SearchActive, got "
+                + serverStatusResult.value().state);
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+        UiApi::IconSelect::Command backIcon{
+            .id = Ui::IconId::BACK,
+        };
+        auto backResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(backIcon, timeoutMs));
+        if (backResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect(BACK) failed while recovering SearchActive to SearchIdle: "
+                + backResult.errorValue());
         }
         auto idleResult = waitForUiState(uiClient, "SearchIdle", timeoutMs);
         if (idleResult.isError()) {
             return Result<std::monostate, std::string>::error(idleResult.errorValue());
-        }
-        auto serverIdleResult = waitForServerState(serverClient, "Idle", timeoutMs);
-        if (serverIdleResult.isError()) {
-            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
         }
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
@@ -2876,16 +2901,12 @@ Result<SearchSessionResult, std::string> runSearchHoldRightSession(
     }
 
     const int searchTimeoutMs = std::max(timeoutMs, 120000);
-    const auto uiIdleResult = waitForUiState(uiClient, "SearchIdle", searchTimeoutMs);
-    if (uiIdleResult.isError()) {
-        return Result<SearchSessionResult, std::string>::error(uiIdleResult.errorValue());
-    }
-
     const auto serverIdleResult = waitForServerState(serverClient, "Idle", searchTimeoutMs);
     if (serverIdleResult.isError()) {
         return Result<SearchSessionResult, std::string>::error(serverIdleResult.errorValue());
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
     const auto finalPlansResult = requestPlanList(serverClient, timeoutMs);
     if (finalPlansResult.isError()) {
         return Result<SearchSessionResult, std::string>::error(
@@ -3318,11 +3339,10 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
         }
 
         const auto screenshotResult = captureRequiredUiScreenshotPng(
-            uiClient, "canSearchHoldRight", "search-idle", timeoutMs, successScreenshotPath);
+            uiClient, "canSearchHoldRight", "search-complete", timeoutMs, successScreenshotPath);
         if (screenshotResult.isError()) {
             return screenshotResult;
         }
-
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -3427,7 +3447,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaybackPlan(
         if (serverIdleResult.isError()) {
             return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
         }
-
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -3546,7 +3565,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanStopPlaybackPlan(
         if (serverIdleResult.isError()) {
             return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
         }
-
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -3732,16 +3750,15 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
         }
 
         const int idleTimeoutMs = std::max(timeoutMs, 10000);
-        const auto uiIdleResult = waitForUiState(uiClient, "SearchIdle", idleTimeoutMs);
-        if (uiIdleResult.isError()) {
-            return Result<std::monostate, std::string>::error(uiIdleResult.errorValue());
-        }
-
         const auto serverIdleResult = waitForServerState(serverClient, "Idle", idleTimeoutMs);
         if (serverIdleResult.isError()) {
             return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
         }
-
+        const auto recoverSearchIdleResult =
+            ensureSearchIdle(uiClient, serverClient, idleTimeoutMs);
+        if (recoverSearchIdleResult.isError()) {
+            return Result<std::monostate, std::string>::error(recoverSearchIdleResult.errorValue());
+        }
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 

@@ -242,6 +242,57 @@ private:
     int* evaluateCallCount_ = nullptr;
 };
 
+class SnapshotRecordingNesAdapter : public NesGameAdapter {
+public:
+    SnapshotRecordingNesAdapter(
+        int* evaluateCallCount, int* memorySnapshotCount, int* paletteFrameCount)
+        : evaluateCallCount_(evaluateCallCount),
+          memorySnapshotCount_(memorySnapshotCount),
+          paletteFrameCount_(paletteFrameCount)
+    {}
+
+    NesGameAdapterControllerOutput resolveControllerMask(
+        const NesGameAdapterControllerInput& input) override
+    {
+        return NesGameAdapterControllerOutput{
+            .resolvedControllerMask = input.inferredControllerMask,
+        };
+    }
+
+    NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) override
+    {
+        if (evaluateCallCount_) {
+            ++(*evaluateCallCount_);
+        }
+        if (memorySnapshotCount_ && input.memorySnapshot.has_value()) {
+            ++(*memorySnapshotCount_);
+        }
+        if (paletteFrameCount_ && input.paletteFrame != nullptr) {
+            ++(*paletteFrameCount_);
+        }
+        return NesGameAdapterFrameOutput{
+            .rewardDelta = static_cast<double>(input.advancedFrames),
+        };
+    }
+
+    DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
+    {
+        DuckSensoryData sensory{};
+        sensory.actual_width = DuckSensoryData::GRID_SIZE;
+        sensory.actual_height = DuckSensoryData::GRID_SIZE;
+        sensory.scale_factor = 1.0;
+        sensory.world_offset = { 0, 0 };
+        sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
+        sensory.delta_time_seconds = input.deltaTimeSeconds;
+        return sensory;
+    }
+
+private:
+    int* evaluateCallCount_ = nullptr;
+    int* memorySnapshotCount_ = nullptr;
+    int* paletteFrameCount_ = nullptr;
+};
+
 class TraceNesAdapter : public NesGameAdapter {
 public:
     NesGameAdapterControllerOutput resolveControllerMask(
@@ -554,6 +605,59 @@ TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerEmitsPerFrameTrace)
     EXPECT_TRUE(std::isfinite(telemetry.aRaw));
     EXPECT_TRUE(std::isfinite(telemetry.bRaw));
     EXPECT_EQ(status.state, TrainingRunner::State::Running);
+}
+
+TEST_F(TrainingRunnerTest, NesScenarioDrivenRunnerPaletteOnlyStillFeedsAdapter)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = DuckNeuralNetRecurrentBrainV2::randomGenome(rng_);
+
+    int evaluateCalls = 0;
+    int memorySnapshotCalls = 0;
+    int paletteFrameCalls = 0;
+    NesGameAdapterRegistry adapterRegistry;
+    adapterRegistry.registerAdapter(
+        Scenario::EnumType::NesFlappyParatroopa,
+        [&evaluateCalls, &memorySnapshotCalls, &paletteFrameCalls]() {
+            return std::make_unique<SnapshotRecordingNesAdapter>(
+                &evaluateCalls, &memorySnapshotCalls, &paletteFrameCalls);
+        });
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesGameAdapterRegistry = adapterRegistry,
+        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnRngSeed = std::nullopt,
+        .nesRgbaOutputEnabled = false,
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while (evaluateCalls == 0
+           && (status = runner.step(1)).state == TrainingRunner::State::Running) {
+        ++steps;
+        ASSERT_LT(steps, 60) << "Runner should advance at least one NES frame quickly";
+    }
+
+    EXPECT_GT(status.nesFramesSurvived, 0u);
+    EXPECT_GT(evaluateCalls, 0);
+    EXPECT_GT(memorySnapshotCalls, 0);
+    EXPECT_GT(paletteFrameCalls, 0);
 }
 
 // Proves we can finish and get results.
@@ -1185,6 +1289,7 @@ TEST_F(TrainingRunnerTest, ClockDuckDoorLifecycle)
     EXPECT_EQ(runner.getOrganism(), nullptr) << "Duck should be removed after exiting";
 
     const TrainingRunner::Status finalStatus = runner.getStatus();
+    EXPECT_EQ(finalStatus.state, TrainingRunner::State::ScenarioCompleted);
     EXPECT_TRUE(finalStatus.exitedThroughDoor);
     EXPECT_GT(finalStatus.exitDoorTime, 0.0);
 

@@ -32,19 +32,26 @@ constexpr int W_H1H2_SIZE = H1_SIZE * H2_SIZE;
 constexpr int W_H2H2_SIZE = H2_SIZE * H2_SIZE;
 constexpr int B_H2_SIZE = H2_SIZE;
 constexpr int ALPHA2_LOGIT_SIZE = H2_SIZE;
+constexpr int ACTIVATION_LEAK_LOGIT_SIZE = 2;
 constexpr int W_H2O_SIZE = H2_SIZE * OUTPUT_SIZE;
 constexpr int B_O_SIZE = OUTPUT_SIZE;
 constexpr int TOTAL_WEIGHTS = W_XH1_SIZE + W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE + W_H1H2_SIZE
-    + W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE + W_H2O_SIZE + B_O_SIZE;
+    + W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE + ACTIVATION_LEAK_LOGIT_SIZE + W_H2O_SIZE
+    + B_O_SIZE;
 
 constexpr WeightType HIDDEN_STATE_CLAMP_ABS = 3.0f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_MIN = 0.02f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_MAX = 0.98f;
 constexpr WeightType HIDDEN_LEAK_ALPHA_LOGIT_INIT = -1.3862944f; // logit(0.2).
+constexpr WeightType LEAKY_RELU_NEGATIVE_SLOPE_MIN = 0.02f;
+constexpr WeightType LEAKY_RELU_NEGATIVE_SLOPE_MAX = 0.3f;
+constexpr WeightType LEAKY_RELU_NEGATIVE_SLOPE_INIT = 0.1f;
+// logit((0.1 - 0.02) / (0.3 - 0.02)).
+constexpr WeightType LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT = -0.91629076f;
 
-WeightType relu(WeightType x)
+WeightType leakyRelu(WeightType x, WeightType negativeSlope)
 {
-    return std::max(static_cast<WeightType>(0.0f), x);
+    return x >= 0.0f ? x : (negativeSlope * x);
 }
 
 WeightType sigmoid(WeightType x)
@@ -56,6 +63,13 @@ WeightType sigmoid(WeightType x)
 
     const WeightType z = std::exp(x);
     return z / (1.0f + z);
+}
+
+WeightType sigmoidToRange(WeightType x, WeightType minValue, WeightType maxValue)
+{
+    const WeightType unit = sigmoid(x);
+    const WeightType scaled = minValue + ((maxValue - minValue) * unit);
+    return std::clamp(scaled, minValue, maxValue);
 }
 
 } // namespace
@@ -72,6 +86,10 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
     std::vector<WeightType> b_h2;
     std::vector<WeightType> alpha2_logit;
     std::vector<WeightType> alpha2;
+    WeightType h1NegativeSlopeLogit = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
+    WeightType h1NegativeSlope = LEAKY_RELU_NEGATIVE_SLOPE_INIT;
+    WeightType h2NegativeSlopeLogit = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
+    WeightType h2NegativeSlope = LEAKY_RELU_NEGATIVE_SLOPE_INIT;
 
     std::vector<WeightType> w_h2o;
     std::vector<WeightType> b_o;
@@ -125,6 +143,9 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
             alpha1[i] =
                 std::clamp(sigmoid(alpha1_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
+        h1NegativeSlopeLogit = genome.weights[idx++];
+        h1NegativeSlope = sigmoidToRange(
+            h1NegativeSlopeLogit, LEAKY_RELU_NEGATIVE_SLOPE_MIN, LEAKY_RELU_NEGATIVE_SLOPE_MAX);
         for (int i = 0; i < W_H1H2_SIZE; ++i) {
             w_h1h2[i] = genome.weights[idx++];
         }
@@ -139,6 +160,9 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
             alpha2[i] =
                 std::clamp(sigmoid(alpha2_logit[i]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
         }
+        h2NegativeSlopeLogit = genome.weights[idx++];
+        h2NegativeSlope = sigmoidToRange(
+            h2NegativeSlopeLogit, LEAKY_RELU_NEGATIVE_SLOPE_MIN, LEAKY_RELU_NEGATIVE_SLOPE_MAX);
         for (int i = 0; i < W_H2O_SIZE; ++i) {
             w_h2o[i] = genome.weights[idx++];
         }
@@ -167,6 +191,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
             genome.weights[idx++] = alpha1_logit[i];
         }
+        genome.weights[idx++] = h1NegativeSlopeLogit;
         for (int i = 0; i < W_H1H2_SIZE; ++i) {
             genome.weights[idx++] = w_h1h2[i];
         }
@@ -179,6 +204,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
             genome.weights[idx++] = alpha2_logit[i];
         }
+        genome.weights[idx++] = h2NegativeSlopeLogit;
         for (int i = 0; i < W_H2O_SIZE; ++i) {
             genome.weights[idx++] = w_h2o[i];
         }
@@ -243,7 +269,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
 
         for (int h = 0; h < H1_SIZE; ++h) {
-            h1_buffer[h] = relu(h1_buffer[h]);
+            h1_buffer[h] = leakyRelu(h1_buffer[h], h1NegativeSlope);
         }
 
         for (int h = 0; h < H1_SIZE; ++h) {
@@ -279,7 +305,7 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         }
 
         for (int h = 0; h < H2_SIZE; ++h) {
-            h2_buffer[h] = relu(h2_buffer[h]);
+            h2_buffer[h] = leakyRelu(h2_buffer[h], h2NegativeSlope);
         }
 
         for (int h = 0; h < H2_SIZE; ++h) {
@@ -426,6 +452,7 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < ALPHA1_LOGIT_SIZE; ++i) {
         genome.weights[idx++] = alphaLogitDist(rng);
     }
+    genome.weights[idx++] = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
     for (int i = 0; i < W_H1H2_SIZE; ++i) {
         genome.weights[idx++] = h1h2Dist(rng);
     }
@@ -438,6 +465,7 @@ Genome DuckNeuralNetRecurrentBrainV2::randomGenome(std::mt19937& rng)
     for (int i = 0; i < ALPHA2_LOGIT_SIZE; ++i) {
         genome.weights[idx++] = alphaLogitDist(rng);
     }
+    genome.weights[idx++] = LEAKY_RELU_NEGATIVE_SLOPE_LOGIT_INIT;
     for (int i = 0; i < W_H2O_SIZE; ++i) {
         genome.weights[idx++] = h2oDist(rng);
     }
@@ -457,15 +485,15 @@ bool DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(const Genome& genome)
 
 GenomeLayout DuckNeuralNetRecurrentBrainV2::getGenomeLayout()
 {
-    // Group small recurrent-control parameters with adjacent matrices so the
-    // budgeted floor-of-one mutation rule does not force every tiny segment
-    // to move on every offspring.
+    // Group each layer's learned leak controls with its recurrent block so the
+    // floor-of-one mutation rule does not force tiny standalone segments to
+    // move on every offspring.
     return GenomeLayout{
         .segments = {
             { "input_h1", W_XH1_SIZE },
-            { "h1_recurrent", W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE },
+            { "h1_recurrent", W_H1H1_SIZE + B_H1_SIZE + ALPHA1_LOGIT_SIZE + 1 },
             { "h1_to_h2", W_H1H2_SIZE },
-            { "h2_recurrent", W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE },
+            { "h2_recurrent", W_H2H2_SIZE + B_H2_SIZE + ALPHA2_LOGIT_SIZE + 1 },
             { "output", W_H2O_SIZE + B_O_SIZE },
         },
     };

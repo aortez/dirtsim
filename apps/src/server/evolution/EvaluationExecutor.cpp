@@ -113,6 +113,7 @@ FitnessEvaluation computeFitnessEvaluationForRunner(
         .commandsRejected = status.commandsRejected,
         .idleCancels = status.idleCancels,
         .nesRewardTotal = status.nesRewardTotal,
+        .organismDied = status.state == TrainingRunner::State::OrganismDied,
         .exitedThroughDoor = status.exitedThroughDoor,
         .exitDoorTime = status.exitDoorTime,
     };
@@ -260,6 +261,7 @@ std::optional<EvaluationPassResult> runEvaluationPass(
         .brainRegistry = brainRegistry,
         .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
         .duckClockSpawnRngSeed = std::nullopt,
+        .nesRgbaOutputEnabled = visibleHandle != nullptr,
         .scenarioConfigOverride = scenarioConfigOverride,
     };
     TrainingRunner runner(

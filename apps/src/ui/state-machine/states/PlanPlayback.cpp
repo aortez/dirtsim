@@ -1,4 +1,5 @@
 #include "PlanPlayback.h"
+#include "SearchHelpers.h"
 #include "SearchIdle.h"
 #include "State.h"
 #include "core/Assert.h"
@@ -6,7 +7,6 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/PlanPlaybackPauseSet.h"
 #include "server/api/PlanPlaybackStop.h"
-#include "server/api/RenderFormatSet.h"
 #include "ui/UiComponentManager.h"
 #include "ui/UiServices.h"
 #include "ui/state-machine/EventSink.h"
@@ -18,33 +18,15 @@ namespace Ui {
 namespace State {
 namespace {
 
-constexpr int kServerTimeoutMs = 2000;
-
-void subscribeToBasicRender(StateMachine& sm)
+std::optional<std::string> playbackStoppedError(const Api::PlanPlaybackStopped& stopped)
 {
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "PlanPlayback: UI is not connected to the server");
-        return;
+    if (stopped.reason != Api::PlanPlaybackStopReason::Error) {
+        return std::nullopt;
     }
-
-    Api::RenderFormatSet::Command command{
-        .format = RenderFormat::EnumType::Basic,
-        .connectionId = "",
-    };
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::RenderFormatSet::OkayType>(command, 250);
-    if (result.isError()) {
-        LOG_WARN(
-            State, "PlanPlayback: Failed to subscribe to render stream: {}", result.errorValue());
-        return;
+    if (stopped.errorMessage.empty()) {
+        return std::string("Plan playback failed");
     }
-    if (result.value().isError()) {
-        LOG_WARN(
-            State,
-            "PlanPlayback: RenderFormatSet rejected: {}",
-            result.value().errorValue().message);
-    }
+    return "Plan playback failed: " + stopped.errorMessage;
 }
 
 } // namespace
@@ -109,7 +91,7 @@ void PlanPlayback::onEnter(StateMachine& sm)
     iconRail->deselectAll();
     updateVisibleIcons(sm);
 
-    subscribeToBasicRender(sm);
+    SearchHelpers::subscribeToBasicRender(sm);
     updateBodyText();
 }
 
@@ -220,7 +202,11 @@ State::Any PlanPlayback::onEvent(const PlanPlaybackStoppedReceivedEvent& evt, St
         planId_ = evt.stopped.planId;
     }
 
-    return SearchIdle{ std::nullopt, evt.stopped.planId };
+    return SearchIdle{
+        std::nullopt,
+        evt.stopped.planId,
+        playbackStoppedError(evt.stopped),
+    };
 }
 
 State::Any PlanPlayback::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
@@ -268,7 +254,7 @@ State::Any PlanPlayback::onEvent(const UiApi::PlanPlaybackPauseSet::Cwc& cwc, St
         .paused = cwc.command.paused,
     };
     const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackPauseSet::OkayType>(
-        command, kServerTimeoutMs);
+        command, SearchHelpers::kServerTimeoutMs);
     if (result.isError()) {
         lastError_ = result.errorValue();
         updateBodyText();
@@ -315,7 +301,7 @@ State::Any PlanPlayback::onEvent(const UiApi::PlanPlaybackStop::Cwc& cwc, StateM
 
     Api::PlanPlaybackStop::Command command{};
     const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackStop::OkayType>(
-        command, kServerTimeoutMs);
+        command, SearchHelpers::kServerTimeoutMs);
     if (result.isError()) {
         lastError_ = result.errorValue();
         updateBodyText();

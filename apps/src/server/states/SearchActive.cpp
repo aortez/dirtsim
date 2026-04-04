@@ -1,11 +1,12 @@
+#include "SearchBroadcastHelpers.h"
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "server/PlanRepository.h"
 #include "server/StateMachine.h"
 #include "server/api/PlanSaved.h"
-#include <vector>
+#include "server/api/SearchCompleted.h"
 
 namespace DirtSim {
 namespace Server {
@@ -20,18 +21,20 @@ void broadcastSearchProgress(StateMachine& dsm, const Api::SearchProgress& progr
     dsm.broadcastEventData(Api::SearchProgress::name(), Network::serialize_payload(progress));
 }
 
-void broadcastSearchRender(StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
+Api::SearchCompletionReason mapCompletionReason(
+    const std::optional<SearchSupport::SmbPlanExecutionCompletionReason>& reason)
 {
-    static const std::vector<OrganismId> emptyOrganismGrid{};
-    const auto scenarioId = Scenario::EnumType::NesSuperMarioBros;
-    const auto scenarioConfig = makeDefaultConfig(scenarioId);
-    dsm.broadcastRenderMessage(
-        execution.getWorldData(),
-        emptyOrganismGrid,
-        scenarioId,
-        scenarioConfig,
-        std::nullopt,
-        execution.getScenarioVideoFrame());
+    switch (reason.value_or(SearchSupport::SmbPlanExecutionCompletionReason::Error)) {
+        case SearchSupport::SmbPlanExecutionCompletionReason::Completed:
+            return Api::SearchCompletionReason::Completed;
+        case SearchSupport::SmbPlanExecutionCompletionReason::Stopped:
+            return Api::SearchCompletionReason::Stopped;
+        case SearchSupport::SmbPlanExecutionCompletionReason::Error:
+            return Api::SearchCompletionReason::Error;
+    }
+
+    DIRTSIM_ASSERT(false, "Unhandled SmbPlanExecutionCompletionReason");
+    return Api::SearchCompletionReason::Error;
 }
 
 } // namespace
@@ -42,7 +45,7 @@ void SearchActive::onEnter(StateMachine& dsm)
     dsm.updateCachedWorldData(execution.getWorldData());
     renderBroadcasted_ = false;
     if (execution.hasRenderableFrame()) {
-        broadcastSearchRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
     broadcastSearchProgress(dsm, execution.getProgress());
@@ -59,7 +62,7 @@ std::optional<Any> SearchActive::tick(StateMachine& dsm)
     const auto tickResult = execution.tick();
     if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
-        broadcastSearchRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
 
@@ -70,25 +73,41 @@ std::optional<Any> SearchActive::tick(StateMachine& dsm)
         lastProgressBroadcastTime_ = now;
     }
 
-    if (tickResult.error.has_value()) {
-        LOG_ERROR(State, "SearchActive: {}", tickResult.error.value());
-        return Idle{};
-    }
-
     if (!tickResult.completed) {
         return std::nullopt;
     }
 
-    auto storeResult = dsm.getPlanRepository().store(execution.getPlan());
-    if (storeResult.isError()) {
-        LOG_ERROR(State, "SearchActive: Failed to store plan: {}", storeResult.errorValue());
-        return Idle{};
+    if (tickResult.error.has_value()) {
+        LOG_ERROR(State, "SearchActive: {}", tickResult.error.value());
     }
 
-    const Api::PlanSaved saved{
-        .summary = execution.getPlan().summary,
+    auto completionReason = mapCompletionReason(execution.getCompletionReason());
+    std::string completionErrorMessage =
+        execution.getCompletionErrorMessage().value_or(std::string{});
+    std::optional<Api::PlanSummary> savedSummary = std::nullopt;
+
+    if (execution.hasPersistablePlan()) {
+        auto storeResult = dsm.getPlanRepository().store(execution.getPlan());
+        if (storeResult.isError()) {
+            LOG_ERROR(State, "SearchActive: Failed to store plan: {}", storeResult.errorValue());
+            completionReason = Api::SearchCompletionReason::Error;
+            completionErrorMessage = "Failed to store plan: " + storeResult.errorValue();
+        }
+        else {
+            savedSummary = execution.getPlan().summary;
+            const Api::PlanSaved saved{
+                .summary = execution.getPlan().summary,
+            };
+            dsm.broadcastEventData(Api::PlanSaved::name(), Network::serialize_payload(saved));
+        }
+    }
+
+    const Api::SearchCompleted completed{
+        .reason = completionReason,
+        .summary = savedSummary,
+        .errorMessage = completionErrorMessage,
     };
-    dsm.broadcastEventData(Api::PlanSaved::name(), Network::serialize_payload(saved));
+    dsm.broadcastEventData(Api::SearchCompleted::name(), Network::serialize_payload(completed));
     return Idle{};
 }
 
@@ -124,7 +143,7 @@ Any SearchActive::onEvent(const Api::SearchStop::Cwc& cwc, StateMachine& /*dsm*/
 {
     execution.stop();
     cwc.sendResponse(Api::SearchStop::Response::okay(Api::SearchStop::Okay{ .stopped = true }));
-    return Idle{};
+    return std::move(*this);
 }
 
 } // namespace State

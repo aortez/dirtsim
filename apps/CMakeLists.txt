@@ -309,6 +309,7 @@ set(DIRTSIM_CORE_SOURCES
 
     # Gamepad input.
     src/core/input/GamepadManager.cpp
+    src/core/input/PlayerControlFrame.cpp
 )
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
@@ -343,6 +344,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/Idle.cpp
     src/server/states/PlanPlayback.cpp
     src/server/states/SearchActive.cpp
+    src/server/states/SearchBroadcastHelpers.cpp
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp
     src/server/states/SimRunning.cpp
@@ -375,6 +377,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/PlanList.cpp
     src/server/api/PlanPlaybackStopped.cpp
     src/server/api/PlanSaved.cpp
+    src/server/api/SearchCompleted.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
@@ -547,6 +550,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/states/Paused.cpp
     src/ui/state-machine/states/PlanPlayback.cpp
     src/ui/state-machine/states/SearchActive.cpp
+    src/ui/state-machine/states/SearchHelpers.cpp
     src/ui/state-machine/states/SearchIdle.cpp
     src/ui/state-machine/states/SearchPlanBrowser.cpp
     src/ui/state-machine/states/Shutdown.cpp
@@ -964,6 +968,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/SmolnesApu_test.cpp
     src/core/scenarios/tests/SmolnesApuRegisterCapture_test.cpp
     src/core/scenarios/tests/SmolnesApuSampleBuffer_test.cpp
+    src/core/scenarios/tests/SmolnesRuntime_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp

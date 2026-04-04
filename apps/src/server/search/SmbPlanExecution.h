@@ -9,12 +9,18 @@
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "server/api/Plan.h"
 #include "server/api/SearchProgress.h"
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
 namespace DirtSim::Server::SearchSupport {
 
+enum class SmbPlanExecutionCompletionReason : uint8_t {
+    Completed = 0,
+    Stopped = 1,
+    Error = 2,
+};
 struct SmbPlanExecutionTickResult {
     bool completed = false;
     bool frameAdvanced = false;
@@ -31,10 +37,13 @@ public:
     void pauseSet(bool paused);
     void stop();
 
+    bool hasPersistablePlan() const;
     bool isCompleted() const;
     bool isPaused() const;
     bool hasRenderableFrame() const;
 
+    std::optional<SmbPlanExecutionCompletionReason> getCompletionReason() const;
+    const std::optional<std::string>& getCompletionErrorMessage() const;
     const Api::Plan& getPlan() const;
     const Api::SearchProgress& getProgress() const;
     const std::optional<ScenarioVideoFrame>& getScenarioVideoFrame() const;
@@ -65,6 +74,8 @@ private:
     bool completed_ = false;
     bool paused_ = false;
     Mode mode_ = Mode::HoldRightSearch;
+    std::optional<SmbPlanExecutionCompletionReason> completionReason_ = std::nullopt;
+    std::optional<std::string> completionErrorMessage_ = std::nullopt;
 };
 
 } // namespace DirtSim::Server::SearchSupport

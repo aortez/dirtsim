@@ -1,10 +1,9 @@
+#include "SearchBroadcastHelpers.h"
 #include "State.h"
 #include "core/LoggingChannels.h"
-#include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "server/StateMachine.h"
 #include "server/api/PlanPlaybackStopped.h"
-#include <vector>
 
 namespace DirtSim {
 namespace Server {
@@ -12,28 +11,17 @@ namespace State {
 namespace {
 
 void broadcastPlanPlaybackStopped(
-    StateMachine& dsm, UUID planId, Api::PlanPlaybackStopReason reason)
+    StateMachine& dsm,
+    UUID planId,
+    Api::PlanPlaybackStopReason reason,
+    std::string errorMessage = "")
 {
     const Api::PlanPlaybackStopped stopped{
         .planId = planId,
         .reason = reason,
+        .errorMessage = std::move(errorMessage),
     };
     dsm.broadcastEventData(Api::PlanPlaybackStopped::name(), Network::serialize_payload(stopped));
-}
-
-void broadcastPlanPlaybackRender(
-    StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
-{
-    static const std::vector<OrganismId> emptyOrganismGrid{};
-    const auto scenarioId = Scenario::EnumType::NesSuperMarioBros;
-    const auto scenarioConfig = makeDefaultConfig(scenarioId);
-    dsm.broadcastRenderMessage(
-        execution.getWorldData(),
-        emptyOrganismGrid,
-        scenarioId,
-        scenarioConfig,
-        std::nullopt,
-        execution.getScenarioVideoFrame());
 }
 
 } // namespace
@@ -44,7 +32,7 @@ void PlanPlayback::onEnter(StateMachine& dsm)
     dsm.updateCachedWorldData(execution.getWorldData());
     renderBroadcasted_ = false;
     if (execution.hasRenderableFrame()) {
-        broadcastPlanPlaybackRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
 }
@@ -59,12 +47,14 @@ std::optional<Any> PlanPlayback::tick(StateMachine& dsm)
     const auto tickResult = execution.tick();
     if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
-        broadcastPlanPlaybackRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
 
     if (tickResult.error.has_value()) {
         LOG_ERROR(State, "PlanPlayback: {}", tickResult.error.value());
+        broadcastPlanPlaybackStopped(
+            dsm, planId, Api::PlanPlaybackStopReason::Error, tickResult.error.value());
         return Idle{};
     }
 

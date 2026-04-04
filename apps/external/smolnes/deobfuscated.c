@@ -45,12 +45,80 @@
 #define SMOLNES_PPU_STEP_END()
 #endif
 
+#ifndef SMOLNES_DEFERRED_PPU_SAMPLE
+#define SMOLNES_DEFERRED_PPU_SAMPLE(ppu_dot_count)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_STEP_BEGIN
+#define SMOLNES_DEFERRED_PPU_STEP_BEGIN(total_ppu_dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_STEP_END
+#define SMOLNES_DEFERRED_PPU_STEP_END()
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON(reason, dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS
+#define SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(reg, is_write, dots)
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS 1u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA 2u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE 3u
+#endif
+
+#ifndef SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY 4u
+#endif
+
 #ifndef SMOLNES_PPU_PHASE_SET
 #define SMOLNES_PPU_PHASE_SET(phase)
 #endif
 
 #ifndef SMOLNES_PPU_PHASE_CLEAR
 #define SMOLNES_PPU_PHASE_CLEAR()
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_SET_IF_ACTIVE
+#define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_VISIBLE_PIXELS
+#define SMOLNES_PPU_PHASE_VISIBLE_PIXELS 1u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_PREFETCH
+#define SMOLNES_PPU_PHASE_PREFETCH 2u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_OTHER
+#define SMOLNES_PPU_PHASE_OTHER 3u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_SPRITE_EVAL
+#define SMOLNES_PPU_PHASE_SPRITE_EVAL 4u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_POST_VISIBLE
+#define SMOLNES_PPU_PHASE_POST_VISIBLE 5u
+#endif
+
+#ifndef SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES
+#define SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES 6u
+#endif
+
+#ifndef SMOLNES_PPU_VISIBLE_BG_ONLY_STATS
+#define SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(span_pixels, scalar_pixels, batched_pixels, batch_count)
 #endif
 
 #ifndef SMOLNES_APU_WRITE
@@ -63,6 +131,31 @@
 
 #ifndef SMOLNES_APU_CLOCK
 #define SMOLNES_APU_CLOCK(cycles)
+#endif
+
+#ifndef SMOLNES_APU_CLOCK_BEGIN
+#define SMOLNES_APU_CLOCK_BEGIN()
+#endif
+
+#ifndef SMOLNES_APU_CLOCK_END
+#define SMOLNES_APU_CLOCK_END()
+#endif
+
+#ifndef SMOLNES_PIXEL_OUTPUT
+#define SMOLNES_PIXEL_OUTPUT(offset, color, palette) \
+    do { \
+        uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0]; \
+        frame_buffer_palette[offset] = palette_index; \
+        frame_buffer[offset] = nes_palette_rgb565[palette_index]; \
+    } while (0)
+#endif
+
+#ifndef SMOLNES_PIXEL_OUTPUT_ENABLED
+#define SMOLNES_PIXEL_OUTPUT_ENABLED 1
+#endif
+
+#ifndef SMOLNES_RGBA_OUTPUT_ENABLED
+#define SMOLNES_RGBA_OUTPUT_ENABLED 1
 #endif
 
 #define PULL mem(++S, 1, 0, 0)
@@ -120,6 +213,7 @@ SMOLNES_TLS uint8_t frame_buffer_palette[61440];
 SMOLNES_TLS int shift_at = 0;
 
 SMOLNES_TLS uint16_t scanline_fb_offset;
+SMOLNES_TLS uint16_t deferred_ppu_dots;
 
 // 2C02G hardware-measured NES palette converted to RGB565.
 // Source: Ricoh 2C02G PPU NTSC decode (Mesen/nesdev wiki reference).
@@ -133,16 +227,8 @@ static const uint16_t nes_palette_rgb565[64] = {
     65535, 48895, 52927, 59039, 65151, 65116, 65145, 63158,
     59092, 53013, 46902, 44857, 44860, 46518,     0,     0};
 
-typedef struct {
-    uint8_t x;
-    uint8_t attr;
-    uint8_t pattern_lo;
-    uint8_t pattern_hi;
-    uint8_t is_sprite0;
-} ScanlineSprite;
-
-SMOLNES_TLS ScanlineSprite scanline_sprites[64];
-SMOLNES_TLS uint8_t scanline_sprite_count;
+SMOLNES_TLS uint8_t scanline_sprite_pixels[256];
+SMOLNES_TLS uint8_t scanline_has_sprite_pixels;
 
 // Read a byte from CHR ROM or CHR RAM.
 static inline uint8_t *get_chr_byte(uint16_t a) {
@@ -150,7 +236,7 @@ static inline uint8_t *get_chr_byte(uint16_t a) {
 }
 
 // Read a byte from nametable RAM.
-uint8_t *get_nametable_byte(uint16_t a) {
+static inline uint8_t *get_nametable_byte(uint16_t a) {
   return &vram[mirror == 0   ? a % 1024                  // single bank 0
                : mirror == 1 ? a % 1024 + 1024           // single bank 1
                : mirror == 2 ? a & 2047                  // vertical mirroring
@@ -158,7 +244,8 @@ uint8_t *get_nametable_byte(uint16_t a) {
 }
 
 static void evaluate_scanline_sprites(void) {
-  scanline_sprite_count = 0;
+  memset(scanline_sprite_pixels, 0, sizeof(scanline_sprite_pixels));
+  scanline_has_sprite_pixels = 0;
   uint16_t sprite_h = ppuctrl & 32 ? 16 : 8;
   for (uint8_t *sprite = oam; sprite < oam + 256; sprite += 4) {
     uint16_t sprite_y = scany - sprite[0] - 1;
@@ -186,19 +273,597 @@ static void evaluate_scanline_sprites(void) {
       pattern_hi = (pattern_hi & 0xAA) >> 1 | (pattern_hi & 0x55) << 1;
     }
 
-    ScanlineSprite *s = &scanline_sprites[scanline_sprite_count++];
-    s->x = sprite[3];
-    s->attr = sprite[2];
-    s->pattern_lo = pattern_lo;
-    s->pattern_hi = pattern_hi;
-    s->is_sprite0 = (sprite == oam);
+    const uint8_t sprite_attr = sprite[2];
+    const uint8_t is_sprite0 = (sprite == oam);
+    for (uint16_t sprite_x = 0; sprite_x < 8; ++sprite_x) {
+      uint16_t screen_x = sprite[3] + sprite_x;
+      if (screen_x >= 256)
+        break;
+
+      uint8_t offset = 7 - sprite_x;
+      uint8_t sprite_color =
+          (pattern_hi >> offset & 1) << 1 |
+          (pattern_lo >> offset & 1);
+      if (!sprite_color || scanline_sprite_pixels[screen_x])
+        continue;
+      scanline_sprite_pixels[screen_x] =
+          sprite_color | ((sprite_attr & 3) << 2) |
+          (sprite_attr & 32 ? 16 : 0) |
+          (is_sprite0 ? 32 : 0);
+      scanline_has_sprite_pixels = 1;
+    }
   }
+}
+
+static inline void step_background_fetch_pipeline_for_dot(uint16_t bg_pattern_base,
+                                                          uint16_t current_dot,
+                                                          uint16_t *local_V,
+                                                          uint16_t *local_atb,
+                                                          uint16_t *local_shift_hi,
+                                                          uint16_t *local_shift_lo,
+                                                          int *local_shift_at,
+                                                          uint8_t *local_ntb,
+                                                          uint8_t *local_ptb_lo) {
+  switch (current_dot & 7) {
+  case 1:
+    *local_ntb = *get_nametable_byte(*local_V);
+    break;
+  case 3:
+    *local_atb = (*get_nametable_byte(*local_V & 0xc00 | 0x3c0 | *local_V >> 4 & 0x38 |
+                                      *local_V / 4 & 7) >>
+                  (*local_V >> 5 & 2 | *local_V / 2 & 1) * 2) %
+                 4 * 0x5555;
+    break;
+  case 5: {
+    const int temp = bg_pattern_base | *local_ntb << 4 | *local_V >> 12;
+    *local_ptb_lo = *get_chr_byte(temp);
+    break;
+  }
+  case 7: {
+    const int temp = bg_pattern_base | *local_ntb << 4 | *local_V >> 12;
+    const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+    *local_V = (*local_V & 31) == 31 ? *local_V & ~31 ^ 1024 : *local_V + 1;
+    *local_shift_hi |= ptb_hi;
+    *local_shift_lo |= *local_ptb_lo;
+    *local_shift_at |= *local_atb;
+    break;
+  }
+  }
+}
+
+static inline void step_background_fetch_pipeline_for_dot_aligned(
+    uint16_t bg_pattern_base,
+    uint16_t current_dot,
+    uint16_t *local_V,
+    uint16_t *local_atb,
+    uint32_t *local_shift_hi_aligned,
+    uint32_t *local_shift_lo_aligned,
+    uint64_t *local_shift_at_aligned,
+    uint8_t *local_ntb,
+    uint8_t *local_ptb_lo,
+    uint8_t fine_x) {
+  switch (current_dot & 7) {
+  case 1:
+    *local_ntb = *get_nametable_byte(*local_V);
+    break;
+  case 3:
+    *local_atb = (*get_nametable_byte(*local_V & 0xc00 | 0x3c0 | *local_V >> 4 & 0x38 |
+                                      *local_V / 4 & 7) >>
+                  (*local_V >> 5 & 2 | *local_V / 2 & 1) * 2) %
+                 4 * 0x5555;
+    break;
+  case 5: {
+    const int temp = bg_pattern_base | *local_ntb << 4 | *local_V >> 12;
+    *local_ptb_lo = *get_chr_byte(temp);
+    break;
+  }
+  case 7: {
+    const int temp = bg_pattern_base | *local_ntb << 4 | *local_V >> 12;
+    const uint8_t ptb_hi = *get_chr_byte(temp | 8);
+    *local_V = (*local_V & 31) == 31 ? *local_V & ~31 ^ 1024 : *local_V + 1;
+    *local_shift_hi_aligned |= (uint32_t)ptb_hi << fine_x;
+    *local_shift_lo_aligned |= (uint32_t)(*local_ptb_lo) << fine_x;
+    *local_shift_at_aligned |= (uint64_t)(uint32_t)(*local_atb) << (fine_x * 2);
+    break;
+  }
+  }
+}
+
+static inline void render_visible_span_background_only(uint16_t span_count,
+                                                       uint8_t fine_x,
+                                                       uint16_t bg_pattern_base) {
+  const uint16_t total_span_count = span_count;
+  uint16_t current_dot = dot;
+  uint16_t local_V = V;
+  uint16_t local_atb = atb;
+  uint32_t local_shift_hi_aligned = (uint32_t)shift_hi << fine_x;
+  uint32_t local_shift_lo_aligned = (uint32_t)shift_lo << fine_x;
+  uint64_t local_shift_at_aligned = (uint64_t)(uint32_t)shift_at << (fine_x * 2);
+  uint8_t local_ntb = ntb;
+  uint8_t local_ptb_lo = ptb_lo;
+  uint16_t prefix_count = (8 - (current_dot & 7)) & 7;
+  uint16_t scalar_pixels = 0;
+  uint16_t batched_pixels = 0;
+  uint16_t batched_calls = 0;
+  if (prefix_count > span_count)
+    prefix_count = span_count;
+  scalar_pixels += prefix_count;
+
+  while (prefix_count > 0) {
+    uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                    local_shift_lo_aligned >> 15 & 1,
+            palette = local_shift_at_aligned >> 28 & 12;
+
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
+
+    local_shift_hi_aligned <<= 1;
+    local_shift_lo_aligned <<= 1;
+    local_shift_at_aligned <<= 2;
+    step_background_fetch_pipeline_for_dot_aligned(
+        bg_pattern_base, current_dot, &local_V, &local_atb,
+        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+        &local_ntb, &local_ptb_lo, fine_x);
+
+    ++current_dot;
+    --prefix_count;
+    --span_count;
+  }
+
+  if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+        frame_buffer_palette[base_offset + pixel] = palette_index;
+        frame_buffer[base_offset + pixel] = nes_palette_rgb565[palette_index];
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else {
+    while (span_count >= 8) {
+      batched_pixels += 8;
+      batched_calls++;
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        frame_buffer_palette[base_offset + pixel] =
+            palette_ram[(color) ? (palette) | (color) : 0];
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  }
+
+  scalar_pixels += span_count;
+  while (span_count > 0) {
+    uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                    local_shift_lo_aligned >> 15 & 1,
+            palette = local_shift_at_aligned >> 28 & 12;
+
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
+
+    local_shift_hi_aligned <<= 1;
+    local_shift_lo_aligned <<= 1;
+    local_shift_at_aligned <<= 2;
+    step_background_fetch_pipeline_for_dot_aligned(
+        bg_pattern_base, current_dot, &local_V, &local_atb,
+        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+        &local_ntb, &local_ptb_lo, fine_x);
+
+    ++current_dot;
+    --span_count;
+  }
+
+  V = local_V;
+  atb = local_atb;
+  shift_hi = local_shift_hi_aligned >> fine_x;
+  shift_lo = local_shift_lo_aligned >> fine_x;
+  shift_at = local_shift_at_aligned >> (fine_x * 2);
+  ntb = local_ntb;
+  ptb_lo = local_ptb_lo;
+  SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(
+      total_span_count, scalar_pixels, batched_pixels, batched_calls);
+}
+
+static inline void render_visible_span(uint16_t span_count,
+                                       uint8_t fine_x,
+                                       uint16_t bg_pattern_base) {
+  if (!scanline_has_sprite_pixels || !(ppumask & 16)) {
+    render_visible_span_background_only(span_count, fine_x, bg_pattern_base);
+    return;
+  }
+
+  uint16_t current_dot = dot;
+  uint16_t local_V = V;
+  uint16_t local_atb = atb;
+  uint32_t local_shift_hi_aligned = (uint32_t)shift_hi << fine_x;
+  uint32_t local_shift_lo_aligned = (uint32_t)shift_lo << fine_x;
+  uint64_t local_shift_at_aligned = (uint64_t)(uint32_t)shift_at << (fine_x * 2);
+  uint8_t local_ntb = ntb;
+  uint8_t local_ptb_lo = ptb_lo;
+  uint16_t prefix_count = (8 - (current_dot & 7)) & 7;
+  if (prefix_count > span_count)
+    prefix_count = span_count;
+
+  while (prefix_count > 0) {
+    uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                    local_shift_lo_aligned >> 15 & 1,
+            palette = local_shift_at_aligned >> 28 & 12;
+
+    const uint8_t sprite = scanline_sprite_pixels[current_dot];
+    if (sprite) {
+      if (!(sprite & 16 && color)) {
+        color = sprite & 3;
+        palette = 16 | (sprite & 12);
+      }
+      if (sprite & 32 && color)
+        ppustatus |= 64;
+    }
+
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
+
+    local_shift_hi_aligned <<= 1;
+    local_shift_lo_aligned <<= 1;
+    local_shift_at_aligned <<= 2;
+    step_background_fetch_pipeline_for_dot_aligned(
+        bg_pattern_base, current_dot, &local_V, &local_atb,
+        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+        &local_ntb, &local_ptb_lo, fine_x);
+
+    ++current_dot;
+    --prefix_count;
+    --span_count;
+  }
+
+  if (!SMOLNES_PIXEL_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
+          }
+          if (sprite & 32 && color)
+            ppustatus |= 64;
+        }
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else if (SMOLNES_RGBA_OUTPUT_ENABLED) {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
+          }
+          if (sprite & 32 && color)
+            ppustatus |= 64;
+        }
+
+        const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+        frame_buffer_palette[base_offset + pixel] = palette_index;
+        frame_buffer[base_offset + pixel] = nes_palette_rgb565[palette_index];
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  } else {
+    while (span_count >= 8) {
+      const uint16_t base_offset = scanline_fb_offset + current_dot;
+      for (uint16_t pixel = 0; pixel < 8; ++pixel) {
+        uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                        local_shift_lo_aligned >> 15 & 1,
+                palette = local_shift_at_aligned >> 28 & 12;
+
+        const uint8_t sprite = scanline_sprite_pixels[current_dot + pixel];
+        if (sprite) {
+          if (!(sprite & 16 && color)) {
+            color = sprite & 3;
+            palette = 16 | (sprite & 12);
+          }
+          if (sprite & 32 && color)
+            ppustatus |= 64;
+        }
+
+        frame_buffer_palette[base_offset + pixel] =
+            palette_ram[(color) ? (palette) | (color) : 0];
+
+        local_shift_hi_aligned <<= 1;
+        local_shift_lo_aligned <<= 1;
+        local_shift_at_aligned <<= 2;
+      }
+
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 1, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 3, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 5, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+      step_background_fetch_pipeline_for_dot_aligned(
+          bg_pattern_base, current_dot + 7, &local_V, &local_atb,
+          &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+          &local_ntb, &local_ptb_lo, fine_x);
+
+      current_dot += 8;
+      span_count -= 8;
+    }
+  }
+
+  while (span_count > 0) {
+    uint8_t color = local_shift_hi_aligned >> 14 & 2 |
+                    local_shift_lo_aligned >> 15 & 1,
+            palette = local_shift_at_aligned >> 28 & 12;
+
+    const uint8_t sprite = scanline_sprite_pixels[current_dot];
+    if (sprite) {
+      if (!(sprite & 16 && color)) {
+        color = sprite & 3;
+        palette = 16 | (sprite & 12);
+      }
+      if (sprite & 32 && color)
+        ppustatus |= 64;
+    }
+
+    if (SMOLNES_PIXEL_OUTPUT_ENABLED) {
+      const uint16_t output_offset = scanline_fb_offset + current_dot;
+      const uint8_t palette_index = palette_ram[(color) ? (palette) | (color) : 0];
+      frame_buffer_palette[output_offset] = palette_index;
+      if (SMOLNES_RGBA_OUTPUT_ENABLED)
+        frame_buffer[output_offset] = nes_palette_rgb565[palette_index];
+    }
+
+    local_shift_hi_aligned <<= 1;
+    local_shift_lo_aligned <<= 1;
+    local_shift_at_aligned <<= 2;
+    step_background_fetch_pipeline_for_dot_aligned(
+        bg_pattern_base, current_dot, &local_V, &local_atb,
+        &local_shift_hi_aligned, &local_shift_lo_aligned, &local_shift_at_aligned,
+        &local_ntb, &local_ptb_lo, fine_x);
+
+    ++current_dot;
+    --span_count;
+  }
+
+  V = local_V;
+  atb = local_atb;
+  shift_hi = local_shift_hi_aligned >> fine_x;
+  shift_lo = local_shift_lo_aligned >> fine_x;
+  shift_at = local_shift_at_aligned >> (fine_x * 2);
+  ntb = local_ntb;
+  ptb_lo = local_ptb_lo;
+}
+
+static inline void run_prefetch_dot(uint16_t bg_pattern_base) {
+  if (dot < 336) {
+    shift_hi <<= 1;
+    shift_lo <<= 1;
+    shift_at <<= 2;
+  }
+  step_background_fetch_pipeline_for_dot(
+      bg_pattern_base, dot, &V, &atb, &shift_hi, &shift_lo, &shift_at, &ntb,
+      &ptb_lo);
+}
+
+static inline uint8_t canDeferVisiblePpuDots(uint16_t ppu_dot_count) {
+  if (!(ppumask & 24))
+    return 0;
+  if (scany >= 240)
+    return 0;
+  if (dot >= 256)
+    return 0;
+  return dot + deferred_ppu_dots + ppu_dot_count <= 256;
+}
+
+static inline void runDeferredVisiblePpuDots(uint16_t ppu_dot_count) {
+  if (!ppu_dot_count)
+    return;
+
+  SMOLNES_DEFERRED_PPU_STEP_BEGIN(ppu_dot_count);
+  if (dot == 0) {
+    SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_SPRITE_EVAL);
+    scanline_fb_offset = scany * 256;
+    evaluate_scanline_sprites();
+  }
+  SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
+  render_visible_span(ppu_dot_count, fine_x, ppuctrl << 8 & 4096);
+  dot += ppu_dot_count;
+  SMOLNES_PPU_PHASE_CLEAR();
+  SMOLNES_DEFERRED_PPU_STEP_END();
+}
+
+static inline void flushDeferredPpuDots(uint32_t flush_reason) {
+  if (!deferred_ppu_dots)
+    return;
+  SMOLNES_DEFERRED_PPU_FLUSH_REASON(flush_reason, deferred_ppu_dots);
+  runDeferredVisiblePpuDots(deferred_ppu_dots);
+  deferred_ppu_dots = 0;
 }
 
 // If `write` is non-zero, writes `val` to the address `hi:lo`, otherwise reads
 // a value from the address `hi:lo`.
 uint8_t mem(uint8_t lo, uint8_t hi, uint8_t val, uint8_t write) {
   uint16_t addr = hi << 8 | lo;
+  if (deferred_ppu_dots) {
+    const uint8_t is_ppu_register_access = addr >= 0x2000 && addr < 0x4000;
+    const uint8_t is_oam_dma = write && addr == 0x4014;
+    const uint8_t is_mapper_write = write && addr >= 0x8000;
+    if (is_ppu_register_access) {
+      SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(addr & 7, write, deferred_ppu_dots);
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS);
+    } else if (is_oam_dma)
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA);
+    else if (is_mapper_write)
+      flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_MAPPER_WRITE);
+  }
 
   switch (hi >>= 4) {
   case 0: case 1: // $0000...$1fff RAM
@@ -714,113 +1379,82 @@ loop:
   // Update PPU, which runs 3 times faster than CPU. Each CPU instruction
   // takes at least 2 cycles.
   SMOLNES_CPU_STEP_END();
+  SMOLNES_APU_CLOCK_BEGIN();
   SMOLNES_APU_CLOCK(cycles + 2);
+  SMOLNES_APU_CLOCK_END();
+  const uint16_t ppu_dot_count = cycles * 3 + 6;
+  if (canDeferVisiblePpuDots(ppu_dot_count)) {
+    SMOLNES_DEFERRED_PPU_SAMPLE(ppu_dot_count);
+    deferred_ppu_dots += ppu_dot_count;
+    goto loop;
+  }
+  flushDeferredPpuDots(SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY);
   SMOLNES_PPU_STEP_BEGIN();
-  for (tmp = cycles * 3 + 6; tmp--;) {
-    if (ppumask & 24) {
+  const uint8_t rendering_enabled = ppumask & 24;
+  const uint16_t bg_pattern_base = ppuctrl << 8 & 4096;
+  uint32_t smolnes_ppu_phase = SMOLNES_PPU_PHASE_OTHER;
+  if (rendering_enabled) {
+    if (scany < 240) {
+      if (dot < 256)
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_VISIBLE_PIXELS;
+      else if (dot >= 320)
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_PREFETCH;
+      else
+        smolnes_ppu_phase = SMOLNES_PPU_PHASE_POST_VISIBLE;
+    } else {
+      smolnes_ppu_phase = SMOLNES_PPU_PHASE_NON_VISIBLE_SCANLINES;
+    }
+  }
+  SMOLNES_PPU_PHASE_SET_IF_ACTIVE(smolnes_ppu_phase);
+  for (tmp = ppu_dot_count; tmp--;) {
+    if (rendering_enabled) {
       if (scany < 240) {
         if (dot < 256) {
           if (dot == 0) {
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_SPRITE_EVAL);
             scanline_fb_offset = scany * 256;
             evaluate_scanline_sprites();
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_VISIBLE_PIXELS);
           }
-
-          uint8_t color = shift_hi >> 14 - fine_x & 2 |
-                          shift_lo >> 15 - fine_x & 1,
-                  palette = shift_at >> 28 - fine_x * 2 & 12;
-
-          if (ppumask & 16) {
-            for (uint8_t i = 0; i < scanline_sprite_count; ++i) {
-              ScanlineSprite *s = &scanline_sprites[i];
-              uint16_t sprite_x = dot - s->x;
-              if (sprite_x < 8) {
-                uint8_t offset = 7 - sprite_x;
-                uint8_t sprite_color =
-                    (s->pattern_hi >> offset & 1) << 1 |
-                    (s->pattern_lo >> offset & 1);
-                if (sprite_color) {
-                  if (!(s->attr & 32 && color)) {
-                    color = sprite_color;
-                    palette = 16 | s->attr * 4 & 12;
-                  }
-                  if (s->is_sprite0 && color)
-                    ppustatus |= 64;
-                  break;
-                }
-              }
-            }
-          }
-
-          uint8_t palette_index = palette_ram[color ? palette | color : 0];
-          frame_buffer_palette[scanline_fb_offset + dot] = palette_index;
-          frame_buffer[scanline_fb_offset + dot] =
-              nes_palette_rgb565[palette_index];
-
-          shift_hi <<= 1;
-          shift_lo <<= 1;
-          shift_at <<= 2;
-
-          int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
-          switch (dot & 7) {
-          case 1:
-            ntb = *get_nametable_byte(V);
-            break;
-          case 3:
-            atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
-                                       V / 4 & 7) >>
-                   (V >> 5 & 2 | V / 2 & 1) * 2) %
-                  4 * 0x5555;
-            break;
-          case 5:
-            ptb_lo = *get_chr_byte(temp);
-            break;
-          case 7: {
-            uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
-            shift_hi |= ptb_hi;
-            shift_lo |= ptb_lo;
-            shift_at |= atb;
-            break;
-          }
-          }
+          uint16_t visible_span = tmp + 1;
+          if (visible_span > 256 - dot)
+            visible_span = 256 - dot;
+          render_visible_span(visible_span, fine_x, bg_pattern_base);
+          dot += visible_span - 1;
+          tmp -= visible_span - 1;
         } else if (dot == 256) {
+          SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_POST_VISIBLE);
           V = ((V & 7 << 12) != 7 << 12 ? V + 4096
                : (V & 0x3e0) == 928     ? V & 0x8c1f ^ 2048
                : (V & 0x3e0) == 0x3e0   ? V & 0x8c1f
                                         : V & 0x8c1f | V + 32 & 0x3e0) &
                   ~0x41f |
               T & 0x41f;
-        } else if (dot >= 320) {
-          if (dot < 336) {
-            shift_hi <<= 1;
-            shift_lo <<= 1;
-            shift_at <<= 2;
-          }
+        } else if (dot < 320) {
+          const uint16_t post_visible_start_dot = dot;
+          uint16_t post_visible_span = tmp + 1;
+          if (post_visible_span > 320 - dot)
+            post_visible_span = 320 - dot;
 
-          int temp = ppuctrl << 8 & 4096 | ntb << 4 | V >> 12;
-          switch (dot & 7) {
-          case 1:
-            ntb = *get_nametable_byte(V);
-            break;
-          case 3:
-            atb = (*get_nametable_byte(V & 0xc00 | 0x3c0 | V >> 4 & 0x38 |
-                                       V / 4 & 7) >>
-                   (V >> 5 & 2 | V / 2 & 1) * 2) %
-                  4 * 0x5555;
-            break;
-          case 5:
-            ptb_lo = *get_chr_byte(temp);
-            break;
-          case 7: {
-            uint8_t ptb_hi = *get_chr_byte(temp | 8);
-            V = V % 32 == 31 ? V & ~31 ^ 1024 : V + 1;
-            shift_hi |= ptb_hi;
-            shift_lo |= ptb_lo;
-            shift_at |= atb;
-            break;
+          if (dot <= 261 && dot + post_visible_span > 261 && mmc3_irq
+              && (scany + 1) % 262 < 241) {
+            dot = 261;
+            tmp -= 261 - post_visible_start_dot;
+          } else {
+            dot += post_visible_span - 1;
+            tmp -= post_visible_span - 1;
           }
-          }
+        } else if (dot >= 320) {
+          if (dot == 320)
+            SMOLNES_PPU_PHASE_SET_IF_ACTIVE(SMOLNES_PPU_PHASE_PREFETCH);
+          run_prefetch_dot(bg_pattern_base);
         }
+      } else if (scany > 241 && scany < 261) {
+        uint16_t non_visible_span = tmp + 1;
+        if (non_visible_span > 341 - dot)
+          non_visible_span = 341 - dot;
+        dot += non_visible_span - 1;
+        tmp -= non_visible_span - 1;
       }
 
       // Check for MMC3 IRQ.

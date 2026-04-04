@@ -1,8 +1,8 @@
 #include "PlanRepository.h"
+#include "core/LoggingChannels.h"
 #include <algorithm>
 #include <chrono>
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 #include <sqlite_modern_cpp.h>
 
 namespace DirtSim {
@@ -26,7 +26,7 @@ Result<std::monostate, std::string> execDb(sqlite::database& db, const char* ope
         message += " (code ";
         message += std::to_string(e.get_code());
         message += ")";
-        spdlog::error("{}", message);
+        SLOG_ERROR("{}", message);
         return Result<std::monostate, std::string>::error(std::move(message));
     }
     catch (const std::exception& e) {
@@ -34,7 +34,7 @@ Result<std::monostate, std::string> execDb(sqlite::database& db, const char* ope
         message += operation;
         message += " failed: ";
         message += e.what();
-        spdlog::error("{}", message);
+        SLOG_ERROR("{}", message);
         return Result<std::monostate, std::string>::error(std::move(message));
     }
 }
@@ -53,7 +53,7 @@ PlanRepository::PlanRepository() = default;
 PlanRepository::PlanRepository(const std::filesystem::path& dbPath)
     : db_(std::make_unique<sqlite::database>(dbPath.string()))
 {
-    spdlog::info("PlanRepository: Opening database at {}", dbPath.string());
+    SLOG_INFO("PlanRepository: Opening database at {}", dbPath.string());
     initSchema();
 }
 
@@ -89,10 +89,10 @@ void PlanRepository::initSchema()
 
     if (existingVersion == 0) {
         *db_ << "INSERT INTO schema_version (version) VALUES (?)" << kSchemaVersion;
-        spdlog::info("PlanRepository: Initialized schema version {}", kSchemaVersion);
+        SLOG_INFO("PlanRepository: Initialized schema version {}", kSchemaVersion);
     }
     else if (existingVersion != kSchemaVersion) {
-        spdlog::warn(
+        SLOG_WARN(
             "PlanRepository: Schema version mismatch (db={}, code={})",
             existingVersion,
             kSchemaVersion);
@@ -124,7 +124,7 @@ Result<std::monostate, std::string> PlanRepository::store(const Api::Plan& plan)
     catch (const std::exception& e) {
         std::string message = "PlanRepository: serialize failed: ";
         message += e.what();
-        spdlog::error("{}", message);
+        SLOG_ERROR("{}", message);
         return Result<std::monostate, std::string>::error(std::move(message));
     }
 
@@ -180,7 +180,7 @@ Result<std::optional<Api::Plan>, std::string> PlanRepository::getFromDb(UUID pla
         return Result<std::optional<Api::Plan>, std::string>::error(dbResult.errorValue());
     }
     if (!parseError.empty()) {
-        spdlog::error("{}", parseError);
+        SLOG_ERROR("{}", parseError);
         return Result<std::optional<Api::Plan>, std::string>::error(std::move(parseError));
     }
     return Result<std::optional<Api::Plan>, std::string>::okay(result);
@@ -223,7 +223,7 @@ Result<std::vector<Api::PlanList::Entry>, std::string> PlanRepository::listFromD
         return Result<std::vector<Api::PlanList::Entry>, std::string>::error(dbResult.errorValue());
     }
     if (!parseError.empty()) {
-        spdlog::error("{}", parseError);
+        SLOG_ERROR("{}", parseError);
         return Result<std::vector<Api::PlanList::Entry>, std::string>::error(std::move(parseError));
     }
     return Result<std::vector<Api::PlanList::Entry>, std::string>::okay(std::move(entries));

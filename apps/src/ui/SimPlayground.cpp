@@ -149,6 +149,7 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::PLAN_BROWSER:
         case IconId::PAUSE:
         case IconId::STOP:
+        case IconId::BACK:
         case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;

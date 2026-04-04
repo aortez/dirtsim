@@ -33,7 +33,8 @@ enum class IconId {
     SCANNER = 13,
     PLAN_BROWSER = 14,
     PAUSE = 15,
-    STOP = 16
+    STOP = 16,
+    BACK = 17
 };
 
 enum class RailMode {

@@ -293,6 +293,8 @@ std::string formatRunnerState(TrainingRunner::State state)
     switch (state) {
         case TrainingRunner::State::Running:
             return "Running";
+        case TrainingRunner::State::ScenarioCompleted:
+            return "ScenarioCompleted";
         case TrainingRunner::State::TimeExpired:
             return "TimeExpired";
         case TrainingRunner::State::OrganismDied:

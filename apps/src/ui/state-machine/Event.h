@@ -57,6 +57,7 @@
 #include "server/api/EvolutionProgress.h"
 #include "server/api/PlanPlaybackStopped.h"
 #include "server/api/PlanSaved.h"
+#include "server/api/SearchCompleted.h"
 #include "server/api/SearchProgress.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
@@ -281,6 +282,10 @@ struct PlanPlaybackStoppedReceivedEvent {
     static constexpr const char* name() { return "PlanPlaybackStoppedReceivedEvent"; }
 };
 
+struct SearchCompletedReceivedEvent {
+    Api::SearchCompleted completed;
+    static constexpr const char* name() { return "SearchCompletedReceivedEvent"; }
+};
 /**
  * @brief Best snapshot received from server (new all-time fitness).
  */
@@ -360,6 +365,7 @@ using Event = std::variant<
     SearchProgressReceivedEvent,
     PlanPlaybackStoppedReceivedEvent,
     PlanSavedReceivedEvent,
+    SearchCompletedReceivedEvent,
     UserSettingsUpdatedEvent,
     TrainingBestPlaybackFrameReceivedEvent,
     TrainingBestSnapshotReceivedEvent,
@@ -392,10 +398,10 @@ using Event = std::variant<
     DirtSim::UiApi::PlanBrowserOpen::Cwc,
     DirtSim::UiApi::PlanDetailOpen::Cwc,
     DirtSim::UiApi::PlanDetailSelect::Cwc,
-    DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::PlanPlaybackPauseSet::Cwc,
     DirtSim::UiApi::PlanPlaybackStart::Cwc,
     DirtSim::UiApi::PlanPlaybackStop::Cwc,
+    DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,
     DirtSim::UiApi::SearchPauseSet::Cwc,

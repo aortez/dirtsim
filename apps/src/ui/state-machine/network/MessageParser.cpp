@@ -8,6 +8,7 @@
 #include "server/api/EvolutionProgress.h"
 #include "server/api/PlanPlaybackStopped.h"
 #include "server/api/PlanSaved.h"
+#include "server/api/SearchCompleted.h"
 #include "server/api/SearchProgress.h"
 #include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
@@ -103,6 +104,12 @@ std::optional<Event> MessageParser::parseServerCommand(
         return parseServerPayload<Api::PlanPlaybackStopped>(
             payload, messageType, [](Api::PlanPlaybackStopped stopped) {
                 return PlanPlaybackStoppedReceivedEvent{ std::move(stopped) };
+            });
+    }
+    if (messageType == Api::SearchCompleted::name()) {
+        return parseServerPayload<Api::SearchCompleted>(
+            payload, messageType, [](Api::SearchCompleted completed) {
+                return SearchCompletedReceivedEvent{ std::move(completed) };
             });
     }
     if (messageType == Api::TrainingBestSnapshot::name()) {
