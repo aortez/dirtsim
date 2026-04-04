@@ -488,9 +488,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/TreeCommandProcessor.cpp
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/Genome.cpp
-	    src/core/organisms/brains/DuckNeuralNetBrain.cpp
-	    src/core/organisms/brains/DuckNeuralNetRecurrentBrainV2.cpp
-	    src/core/organisms/brains/NeuralNetBrain.cpp
+    src/core/organisms/brains/DuckNeuralNetRecurrentBrainV2.cpp
+    src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
     src/core/organisms/evolution/DuckEvaluator.cpp

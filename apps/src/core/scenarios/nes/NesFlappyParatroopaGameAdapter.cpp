@@ -130,7 +130,12 @@ public:
     DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const override
     {
         return makeNesDuckSensoryData(
-            paletteClusterer_, input.paletteFrame, input.deltaTimeSeconds, cachedSpecialSenses_);
+            paletteClusterer_,
+            input.paletteFrame,
+            input.deltaTimeSeconds,
+            cachedSpecialSenses_,
+            0.0f,
+            input.controllerMask);
     }
 
 private:

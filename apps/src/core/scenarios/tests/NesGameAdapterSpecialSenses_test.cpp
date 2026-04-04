@@ -326,6 +326,30 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterSeparatesFacingFromMo
     EXPECT_NEAR(sensory.special_senses[17], -1.0, 1e-6);
 }
 
+TEST(
+    NesGameAdapterSpecialSensesTest,
+    SuperMarioBrosAdapterMapsPreviousControllerMaskToControlChannels)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    const uint8_t controllerMask = NesPolicyLayout::ButtonA | NesPolicyLayout::ButtonB
+        | NesPolicyLayout::ButtonRight | NesPolicyLayout::ButtonUp;
+    const DuckSensoryData sensory = adapter->makeDuckSensoryData(
+        {
+            .controllerMask = controllerMask,
+            .paletteFrame = nullptr,
+            .lastGameState = std::nullopt,
+            .deltaTimeSeconds = 0.016,
+        });
+
+    EXPECT_FLOAT_EQ(sensory.previous_control_x, 1.0f);
+    EXPECT_FLOAT_EQ(sensory.previous_control_y, -1.0f);
+    EXPECT_TRUE(sensory.previous_jump);
+    EXPECT_TRUE(sensory.previous_run);
+}
+
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterMarksMissingSecondEnemyExplicitly)
 {
     std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();

@@ -162,7 +162,8 @@ public:
             input.paletteFrame,
             input.deltaTimeSeconds,
             cachedSpecialSenses_,
-            cachedFacingX_);
+            cachedFacingX_,
+            input.controllerMask);
     }
 
 private:

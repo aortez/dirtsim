@@ -363,6 +363,40 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
     EXPECT_EQ(DuckSensoryData::GRID_SIZE, 21);
 }
 
+TEST(DuckSensoryDataTest, GatherSensoryDataIncludesPreviousAppliedControlChannels)
+{
+    auto world = std::make_unique<World>(15, 15);
+    for (uint32_t y = 0; y < 15; y++) {
+        for (uint32_t x = 0; x < 15; x++) {
+            if (y == 14) {
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::Wall,
+                    1.0);
+            }
+            else {
+                world->getData().at(x, y) = Cell();
+            }
+        }
+    }
+
+    OrganismId duckId = world->getOrganismManager().createDuck(*world, 7, 12);
+    Duck* duck = world->getOrganismManager().getDuck(duckId);
+    ASSERT_NE(duck, nullptr);
+
+    for (int i = 0; i < 50; i++) {
+        world->advanceTime(0.016);
+    }
+
+    duck->setInput({ .move = { -0.5f, 0.25f }, .jump = true, .run = true });
+    const DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
+
+    EXPECT_FLOAT_EQ(sensory.previous_control_x, -0.5f);
+    EXPECT_FLOAT_EQ(sensory.previous_control_y, 0.25f);
+    EXPECT_TRUE(sensory.previous_jump);
+    EXPECT_TRUE(sensory.previous_run);
+}
+
 /**
  * Test that Duck::gatherSensoryData correctly samples environment.
  */

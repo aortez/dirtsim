@@ -917,7 +917,7 @@ TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 1;
     population.randomCount = 1;
 
@@ -989,7 +989,7 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 10;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 1;
     population.randomCount = 1;
 
@@ -1063,7 +1063,7 @@ TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 3;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 1;
     population.randomCount = 1;
 
@@ -1102,7 +1102,7 @@ TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForFourPassesBeforeAdvan
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 2;
     population.randomCount = 2;
 
@@ -1146,7 +1146,7 @@ TEST(StateEvolutionTest, DuckClockConfiguredCountZeroSkipsRobustPassAndStoresSin
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 0;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 1;
     population.randomCount = 1;
 
@@ -1196,7 +1196,7 @@ TEST(StateEvolutionTest, DuckClockRobustValidationWaitsForAllSamplesBeforeFinali
     evolutionState.evolutionConfig.robustFitnessEvaluationCount = 2;
 
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
     population.count = 1;
     population.randomCount = 1;
 
@@ -2107,9 +2107,9 @@ TEST(StateEvolutionTest, EvolutionProgressReportsManagedArchiveOccupancyForTrain
             GenomePoolId::FlappyParatroopa));
     repo.store(
         UUID::generate(),
-        makeNeuralNetGenome(0.6f),
+        makeDuckRecurrentV2Genome(0.6f),
         makeManagedGenomeMetadata(
-            "duck_net", 6.0, OrganismType::DUCK, TrainingBrainKind::NeuralNet));
+            "duck_net", 6.0, OrganismType::DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2));
 
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;

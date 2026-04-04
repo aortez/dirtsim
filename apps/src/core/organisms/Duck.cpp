@@ -649,6 +649,10 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
     data.position = anchor_cell_;
     data.on_ground = on_ground_;
     data.facing_x = facing_.x;
+    data.previous_control_x = current_input_.move.x;
+    data.previous_control_y = current_input_.move.y;
+    data.previous_jump = current_input_.jump;
+    data.previous_run = current_input_.run;
     data.energy = static_cast<float>(std::clamp(energy_, 0.0, 1.0));
     data.health = static_cast<float>(std::clamp(health_, 0.0, 1.0));
     data.delta_time_seconds = deltaTime;

@@ -41,7 +41,6 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
         case OrganismType::DUCK:
             return {
                 { TrainingBrainKind::DuckNeuralNetRecurrentV2, true },
-                { TrainingBrainKind::NeuralNet, true },
                 { TrainingBrainKind::Random, false },
                 { TrainingBrainKind::WallBouncing, false },
                 { TrainingBrainKind::DuckBrain2, false },

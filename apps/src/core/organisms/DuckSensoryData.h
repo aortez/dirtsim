@@ -39,6 +39,13 @@ struct DuckSensoryData {
     // Facing direction (-1 = left, +1 = right).
     float facing_x = 1.0f;
 
+    // Previous applied control channels from the prior tick.
+    // For NES, these are reconstructed from the resolved controller mask.
+    float previous_control_x = 0.0f;
+    float previous_control_y = 0.0f;
+    bool previous_jump = false;
+    bool previous_run = false;
+
     // Scenario-provided special senses. Unused slots stay at zero.
     std::array<double, SPECIAL_SENSE_COUNT> special_senses{};
 
@@ -50,7 +57,7 @@ struct DuckSensoryData {
 
     double delta_time_seconds = 0.0;
 
-    using serialize = zpp::bits::members<15>;
+    using serialize = zpp::bits::members<17>;
 };
 
 void to_json(nlohmann::json& j, const DuckSensoryData& data);
