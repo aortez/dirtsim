@@ -934,6 +934,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/SmolnesApu_test.cpp
     src/core/scenarios/tests/SmolnesApuRegisterCapture_test.cpp
     src/core/scenarios/tests/SmolnesApuSampleBuffer_test.cpp
+    src/core/scenarios/tests/SmolnesRuntime_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp

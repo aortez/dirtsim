@@ -568,7 +568,7 @@ static inline void render_visible_span_background_only(uint16_t span_count,
 static inline void render_visible_span(uint16_t span_count,
                                        uint8_t fine_x,
                                        uint16_t bg_pattern_base) {
-  if (!scanline_has_sprite_pixels) {
+  if (!scanline_has_sprite_pixels || !(ppumask & 16)) {
     render_visible_span_background_only(span_count, fine_x, bg_pattern_base);
     return;
   }
