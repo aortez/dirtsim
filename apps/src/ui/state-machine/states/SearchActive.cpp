@@ -1,12 +1,11 @@
 #include "SearchActive.h"
 #include "PlanPlayback.h"
+#include "SearchHelpers.h"
 #include "SearchIdle.h"
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/PlanPlaybackStart.h"
-#include "server/api/RenderFormatSet.h"
 #include "server/api/SearchPauseSet.h"
 #include "server/api/SearchStop.h"
 #include "ui/UiComponentManager.h"
@@ -19,8 +18,6 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 namespace {
-
-constexpr int kServerTimeoutMs = 2000;
 
 const char* completionReasonText(Api::SearchCompletionReason reason)
 {
@@ -35,55 +32,6 @@ const char* completionReasonText(Api::SearchCompletionReason reason)
 
     DIRTSIM_ASSERT(false, "Unhandled SearchCompletionReason");
     return "Error.";
-}
-
-Result<std::monostate, std::string> startPlanPlayback(StateMachine& sm, UUID planId)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<std::monostate, std::string>::error("UI is not connected to the server");
-    }
-
-    Api::PlanPlaybackStart::Command command{
-        .planId = planId,
-    };
-    const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackStart::OkayType>(
-        command, kServerTimeoutMs);
-    if (result.isError()) {
-        return Result<std::monostate, std::string>::error(result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
-
-void subscribeToBasicRender(StateMachine& sm)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "SearchActive: UI is not connected to the server");
-        return;
-    }
-
-    Api::RenderFormatSet::Command command{
-        .format = RenderFormat::EnumType::Basic,
-        .connectionId = "",
-    };
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::RenderFormatSet::OkayType>(command, 250);
-    if (result.isError()) {
-        LOG_WARN(
-            State, "SearchActive: Failed to subscribe to render stream: {}", result.errorValue());
-        return;
-    }
-    if (result.value().isError()) {
-        LOG_WARN(
-            State,
-            "SearchActive: RenderFormatSet rejected: {}",
-            result.value().errorValue().message);
-    }
 }
 
 } // namespace
@@ -145,7 +93,7 @@ void SearchActive::onEnter(StateMachine& sm)
     iconRail->deselectAll();
     updateVisibleIcons(sm);
 
-    subscribeToBasicRender(sm);
+    SearchHelpers::subscribeToBasicRender(sm);
     updateBodyText();
 }
 
@@ -254,7 +202,7 @@ State::Any SearchActive::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     if (isCompletedView()) {
         if (evt.selectedId == IconId::PLAY && savedPlan_.has_value()) {
-            const auto playbackResult = startPlanPlayback(sm, savedPlan_->id);
+            const auto playbackResult = SearchHelpers::startPlanPlayback(sm, savedPlan_->id);
             if (playbackResult.isError()) {
                 lastError_ = playbackResult.errorValue();
                 updateBodyText();
@@ -385,7 +333,7 @@ State::Any SearchActive::onEvent(const UiApi::SearchPauseSet::Cwc& cwc, StateMac
         .paused = cwc.command.paused,
     };
     const auto result = wsService.sendCommandAndGetResponse<Api::SearchPauseSet::OkayType>(
-        command, kServerTimeoutMs);
+        command, SearchHelpers::kServerTimeoutMs);
     if (result.isError()) {
         lastError_ = result.errorValue();
         updateBodyText();
@@ -428,8 +376,8 @@ State::Any SearchActive::onEvent(const UiApi::SearchStop::Cwc& cwc, StateMachine
     }
 
     Api::SearchStop::Command command{};
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::SearchStop::OkayType>(command, kServerTimeoutMs);
+    const auto result = wsService.sendCommandAndGetResponse<Api::SearchStop::OkayType>(
+        command, SearchHelpers::kServerTimeoutMs);
     if (result.isError()) {
         lastError_ = result.errorValue();
         updateBodyText();

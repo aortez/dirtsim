@@ -1,14 +1,12 @@
 #include "SearchIdle.h"
 #include "PlanPlayback.h"
 #include "SearchActive.h"
+#include "SearchHelpers.h"
 #include "SearchPlanBrowser.h"
 #include "StartMenu.h"
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "core/network/WebSocketService.h"
-#include "server/api/PlanPlaybackStart.h"
-#include "server/api/SearchStart.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/ExpandablePanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -19,8 +17,6 @@ namespace Ui {
 namespace State {
 namespace {
 
-constexpr int kServerTimeoutMs = 2000;
-
 std::optional<std::string> playbackStoppedError(const Api::PlanPlaybackStopped& stopped)
 {
     if (stopped.reason != Api::PlanPlaybackStopReason::Error) {
@@ -30,48 +26,6 @@ std::optional<std::string> playbackStoppedError(const Api::PlanPlaybackStopped& 
         return std::string("Plan playback failed");
     }
     return "Plan playback failed: " + stopped.errorMessage;
-}
-
-Result<std::monostate, std::string> startPlanPlayback(StateMachine& sm, UUID planId)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<std::monostate, std::string>::error("UI is not connected to the server");
-    }
-
-    Api::PlanPlaybackStart::Command command{
-        .planId = planId,
-    };
-    const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackStart::OkayType>(
-        command, kServerTimeoutMs);
-    if (result.isError()) {
-        return Result<std::monostate, std::string>::error(result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
-
-Result<std::monostate, std::string> startSearch(StateMachine& sm)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<std::monostate, std::string>::error("UI is not connected to the server");
-    }
-
-    Api::SearchStart::Command command{};
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::SearchStart::OkayType>(command, kServerTimeoutMs);
-    if (result.isError()) {
-        return Result<std::monostate, std::string>::error(result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 } // namespace
@@ -196,7 +150,7 @@ State::Any SearchIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     if (evt.selectedId == IconId::SCANNER) {
-        const auto startResult = startSearch(sm);
+        const auto startResult = SearchHelpers::startSearch(sm);
         if (startResult.isError()) {
             lastError_ = startResult.errorValue();
             updateBodyText();
@@ -260,7 +214,7 @@ State::Any SearchIdle::onEvent(const UiApi::PlanDetailSelect::Cwc& cwc, StateMac
 
 State::Any SearchIdle::onEvent(const UiApi::PlanPlaybackStart::Cwc& cwc, StateMachine& sm)
 {
-    const auto startResult = startPlanPlayback(sm, cwc.command.planId);
+    const auto startResult = SearchHelpers::startPlanPlayback(sm, cwc.command.planId);
     if (startResult.isError()) {
         lastError_ = startResult.errorValue();
         cwc.sendResponse(UiApi::PlanPlaybackStart::Response::error(ApiError(lastError_.value())));
@@ -277,7 +231,7 @@ State::Any SearchIdle::onEvent(const UiApi::PlanPlaybackStart::Cwc& cwc, StateMa
 
 State::Any SearchIdle::onEvent(const UiApi::SearchStart::Cwc& cwc, StateMachine& sm)
 {
-    const auto startResult = startSearch(sm);
+    const auto startResult = SearchHelpers::startSearch(sm);
     if (startResult.isError()) {
         lastError_ = startResult.errorValue();
         cwc.sendResponse(UiApi::SearchStart::Response::error(ApiError(lastError_.value())));

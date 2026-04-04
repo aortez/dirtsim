@@ -5,7 +5,6 @@
 #include "core/input/PlayerControlFrame.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim::Server::SearchSupport {
 

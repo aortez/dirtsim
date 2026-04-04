@@ -32,8 +32,6 @@ struct SearchPlanBrowser {
 
 private:
     void applyBrowserState(const PlanBrowserState& state, StateMachine& sm);
-    Result<std::monostate, std::string> startPlanPlayback(StateMachine& sm, UUID planId);
-    Result<std::monostate, std::string> startSearch(StateMachine& sm);
     void updateErrorText();
     void updateVisibleIcons(StateMachine& sm);
 

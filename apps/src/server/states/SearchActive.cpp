@@ -1,13 +1,12 @@
+#include "SearchBroadcastHelpers.h"
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "server/PlanRepository.h"
 #include "server/StateMachine.h"
 #include "server/api/PlanSaved.h"
 #include "server/api/SearchCompleted.h"
-#include <vector>
 
 namespace DirtSim {
 namespace Server {
@@ -38,20 +37,6 @@ Api::SearchCompletionReason mapCompletionReason(
     return Api::SearchCompletionReason::Error;
 }
 
-void broadcastSearchRender(StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
-{
-    static const std::vector<OrganismId> emptyOrganismGrid{};
-    const auto scenarioId = Scenario::EnumType::NesSuperMarioBros;
-    const auto scenarioConfig = makeDefaultConfig(scenarioId);
-    dsm.broadcastRenderMessage(
-        execution.getWorldData(),
-        emptyOrganismGrid,
-        scenarioId,
-        scenarioConfig,
-        std::nullopt,
-        execution.getScenarioVideoFrame());
-}
-
 } // namespace
 
 void SearchActive::onEnter(StateMachine& dsm)
@@ -60,7 +45,7 @@ void SearchActive::onEnter(StateMachine& dsm)
     dsm.updateCachedWorldData(execution.getWorldData());
     renderBroadcasted_ = false;
     if (execution.hasRenderableFrame()) {
-        broadcastSearchRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
     broadcastSearchProgress(dsm, execution.getProgress());
@@ -77,7 +62,7 @@ std::optional<Any> SearchActive::tick(StateMachine& dsm)
     const auto tickResult = execution.tick();
     if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
-        broadcastSearchRender(dsm, execution);
+        broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
 

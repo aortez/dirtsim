@@ -1,14 +1,12 @@
 #include "SearchPlanBrowser.h"
 #include "PlanPlayback.h"
 #include "SearchActive.h"
+#include "SearchHelpers.h"
 #include "SearchIdle.h"
 #include "StartMenu.h"
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "core/network/WebSocketService.h"
-#include "server/api/PlanPlaybackStart.h"
-#include "server/api/SearchStart.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/ExpandablePanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -16,11 +14,6 @@
 namespace DirtSim {
 namespace Ui {
 namespace State {
-namespace {
-
-constexpr int kServerTimeoutMs = 2000;
-
-} // namespace
 
 SearchPlanBrowser::SearchPlanBrowser(
     std::optional<Api::PlanSummary> lastSavedPlan, std::optional<UUID> selectedPlanId)
@@ -125,49 +118,6 @@ void SearchPlanBrowser::applyBrowserState(const PlanBrowserState& state, StateMa
     updateErrorText();
 }
 
-Result<std::monostate, std::string> SearchPlanBrowser::startPlanPlayback(
-    StateMachine& sm, UUID planId)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<std::monostate, std::string>::error("UI is not connected to the server");
-    }
-
-    Api::PlanPlaybackStart::Command command{
-        .planId = planId,
-    };
-    const auto result = wsService.sendCommandAndGetResponse<Api::PlanPlaybackStart::OkayType>(
-        command, kServerTimeoutMs);
-    if (result.isError()) {
-        return Result<std::monostate, std::string>::error(result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
-
-Result<std::monostate, std::string> SearchPlanBrowser::startSearch(StateMachine& sm)
-{
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        return Result<std::monostate, std::string>::error("UI is not connected to the server");
-    }
-
-    Api::SearchStart::Command command{};
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::SearchStart::OkayType>(command, kServerTimeoutMs);
-    if (result.isError()) {
-        return Result<std::monostate, std::string>::error(result.errorValue());
-    }
-    if (result.value().isError()) {
-        return Result<std::monostate, std::string>::error(result.value().errorValue().message);
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
-
 void SearchPlanBrowser::updateErrorText()
 {
     DIRTSIM_ASSERT(errorLabel_, "SearchPlanBrowser error label must exist");
@@ -208,7 +158,7 @@ State::Any SearchPlanBrowser::onEvent(const IconSelectedEvent& evt, StateMachine
     }
 
     if (evt.selectedId == IconId::SCANNER) {
-        const auto startResult = startSearch(sm);
+        const auto startResult = SearchHelpers::startSearch(sm);
         if (startResult.isError()) {
             lastError_ = startResult.errorValue();
             updateErrorText();
@@ -226,7 +176,7 @@ State::Any SearchPlanBrowser::onEvent(const IconSelectedEvent& evt, StateMachine
 
     if (evt.selectedId == IconId::PLAY) {
         DIRTSIM_ASSERT(selectedPlanId_.has_value(), "PLAY requires a selected plan");
-        const auto startResult = startPlanPlayback(sm, selectedPlanId_.value());
+        const auto startResult = SearchHelpers::startPlanPlayback(sm, selectedPlanId_.value());
         if (startResult.isError()) {
             lastError_ = startResult.errorValue();
             updateErrorText();
@@ -319,7 +269,7 @@ State::Any SearchPlanBrowser::onEvent(const UiApi::PlanDetailSelect::Cwc& cwc, S
 
 State::Any SearchPlanBrowser::onEvent(const UiApi::PlanPlaybackStart::Cwc& cwc, StateMachine& sm)
 {
-    const auto startResult = startPlanPlayback(sm, cwc.command.planId);
+    const auto startResult = SearchHelpers::startPlanPlayback(sm, cwc.command.planId);
     if (startResult.isError()) {
         lastError_ = startResult.errorValue();
         cwc.sendResponse(UiApi::PlanPlaybackStart::Response::error(ApiError(lastError_.value())));
@@ -338,7 +288,7 @@ State::Any SearchPlanBrowser::onEvent(const UiApi::PlanPlaybackStart::Cwc& cwc, 
 
 State::Any SearchPlanBrowser::onEvent(const UiApi::SearchStart::Cwc& cwc, StateMachine& sm)
 {
-    const auto startResult = startSearch(sm);
+    const auto startResult = SearchHelpers::startSearch(sm);
     if (startResult.isError()) {
         lastError_ = startResult.errorValue();
         cwc.sendResponse(UiApi::SearchStart::Response::error(ApiError(lastError_.value())));
