@@ -112,13 +112,14 @@ void MazeSearchView::render()
 }
 
 void MazeSearchView::drawCells(
-    const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer)
+    const MazeSearchAnimator::Snapshot& snapshot,
+    const Viewport& viewport,
+    float cellSize,
+    lv_layer_t& layer)
 {
     DIRTSIM_ASSERT(snapshot.model, "MazeSearchView snapshot model must exist");
 
     const MazePalette& palette = paletteForStyle(presentationStyle_);
-    const float cellSize = computeCellSize(
-        width_, height_, viewport.cropWidth, viewport.cropHeight, presentationStyle_);
     const MazeModel& model = *snapshot.model;
     for (int index = 0; index < model.cellCount(); ++index) {
         const MazeCoord coord = model.coordForIndex(index);
@@ -188,15 +189,16 @@ void MazeSearchView::drawCells(
 }
 
 void MazeSearchView::drawPath(
-    const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer)
+    const MazeSearchAnimator::Snapshot& snapshot,
+    const Viewport& viewport,
+    float cellSize,
+    lv_layer_t& layer)
 {
     if (!snapshot.model || !snapshot.solutionPath || snapshot.revealedSolutionLength < 2) {
         return;
     }
 
     const MazePalette& palette = paletteForStyle(presentationStyle_);
-    const float cellSize = computeCellSize(
-        width_, height_, viewport.cropWidth, viewport.cropHeight, presentationStyle_);
     const MazeModel& model = *snapshot.model;
     const size_t pathLength =
         std::min(snapshot.revealedSolutionLength, snapshot.solutionPath->size());
@@ -223,13 +225,14 @@ void MazeSearchView::drawPath(
 }
 
 void MazeSearchView::drawWalls(
-    const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer)
+    const MazeSearchAnimator::Snapshot& snapshot,
+    const Viewport& viewport,
+    float cellSize,
+    lv_layer_t& layer)
 {
     DIRTSIM_ASSERT(snapshot.model, "MazeSearchView snapshot model must exist");
 
     const MazePalette& palette = paletteForStyle(presentationStyle_);
-    const float cellSize = computeCellSize(
-        width_, height_, viewport.cropWidth, viewport.cropHeight, presentationStyle_);
     const MazeModel& model = *snapshot.model;
     for (int index = 0; index < model.cellCount(); ++index) {
         const MazeCoord coord = model.coordForIndex(index);
@@ -390,6 +393,8 @@ void MazeSearchView::renderSnapshot(const MazeSearchAnimator::Snapshot& snapshot
     }
 
     const Viewport viewport = computeViewport(snapshot);
+    const float cellSize = computeCellSize(
+        width_, height_, viewport.cropWidth, viewport.cropHeight, presentationStyle_);
     lv_layer_t layer;
     lv_canvas_init_layer(canvas_, &layer);
     if (presentationStyle_ == PresentationStyle::IconBadge) {
@@ -408,9 +413,9 @@ void MazeSearchView::renderSnapshot(const MazeSearchAnimator::Snapshot& snapshot
         };
         lv_draw_rect(&layer, &frameDsc, &frameRect);
     }
-    drawCells(snapshot, viewport, layer);
-    drawPath(snapshot, viewport, layer);
-    drawWalls(snapshot, viewport, layer);
+    drawCells(snapshot, viewport, cellSize, layer);
+    drawPath(snapshot, viewport, cellSize, layer);
+    drawWalls(snapshot, viewport, cellSize, layer);
     lv_canvas_finish_layer(canvas_, &layer);
 }
 

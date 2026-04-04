@@ -29,13 +29,17 @@ void MazeSolverSession::advance(size_t stepBudget)
     for (size_t i = 0; i < stepBudget && !complete_; ++i) {
         advanceOneStep();
     }
+
+    if (!complete_) {
+        rebuildFrontier();
+    }
 }
 
 void MazeSolverSession::advanceOneStep()
 {
     if (queueHead_ >= queue_.size()) {
         complete_ = true;
-        frontier_.clear();
+        clearFrontier();
         return;
     }
 
@@ -44,7 +48,7 @@ void MazeSolverSession::advanceOneStep()
 
     if (currentIndex == model_.goalIndex()) {
         rebuildSolutionPath(currentIndex);
-        frontier_.clear();
+        clearFrontier();
         complete_ = true;
         return;
     }
@@ -74,8 +78,12 @@ void MazeSolverSession::advanceOneStep()
         parents_.at(static_cast<size_t>(neighborIndex)) = currentIndex;
         queue_.push_back(neighborIndex);
     }
+}
 
-    rebuildFrontier();
+void MazeSolverSession::clearFrontier()
+{
+    frontier_.clear();
+    std::fill(frontierFlags_.begin(), frontierFlags_.end(), 0);
 }
 
 void MazeSolverSession::rebuildFrontier()

@@ -38,11 +38,20 @@ private:
     };
 
     void drawCells(
-        const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer);
+        const MazeSearchAnimator::Snapshot& snapshot,
+        const Viewport& viewport,
+        float cellSize,
+        lv_layer_t& layer);
     void drawPath(
-        const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer);
+        const MazeSearchAnimator::Snapshot& snapshot,
+        const Viewport& viewport,
+        float cellSize,
+        lv_layer_t& layer);
     void drawWalls(
-        const MazeSearchAnimator::Snapshot& snapshot, const Viewport& viewport, lv_layer_t& layer);
+        const MazeSearchAnimator::Snapshot& snapshot,
+        const Viewport& viewport,
+        float cellSize,
+        lv_layer_t& layer);
     Viewport computeViewport(const MazeSearchAnimator::Snapshot& snapshot) const;
     bool isCellVisible(const MazeCoord& coord, const Viewport& viewport) const;
     void maybeResize();

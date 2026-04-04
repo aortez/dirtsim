@@ -6,9 +6,6 @@ namespace DirtSim {
 namespace Ui {
 namespace {
 
-constexpr int kMazeHeight = 23;
-constexpr int kMazeWidth = 39;
-
 lv_obj_t* createOverlayCard(
     lv_obj_t* parent,
     int padHorizontal,
@@ -39,7 +36,7 @@ lv_obj_t* createOverlayCard(
 } // namespace
 
 SearchIdleView::SearchIdleView(lv_obj_t* parent, IconRail& iconRail)
-    : iconRail_(iconRail), searchModeVisuals_(iconRail, kMazeWidth, kMazeHeight)
+    : iconRail_(iconRail), searchModeVisuals_(iconRail)
 {
     createUi(parent);
 }
@@ -142,6 +139,14 @@ void SearchIdleView::layoutContentViewport()
             railWidth = measuredRailWidth;
         }
     }
+
+    if (rootWidth == lastRootWidth_ && rootHeight == lastRootHeight_
+        && railWidth == lastRailWidth_) {
+        return;
+    }
+    lastRootWidth_ = rootWidth;
+    lastRootHeight_ = rootHeight;
+    lastRailWidth_ = railWidth;
 
     const int viewportWidth = std::max(0, rootWidth - railWidth);
     lv_obj_set_pos(contentViewport_, railWidth, 0);

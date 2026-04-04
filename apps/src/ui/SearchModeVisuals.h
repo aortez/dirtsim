@@ -11,7 +11,11 @@ class MazeSearchView;
 
 class SearchModeVisuals {
 public:
-    SearchModeVisuals(IconRail& iconRail, int mazeWidth, int mazeHeight);
+    static constexpr int kDefaultMazeWidth = 39;
+    static constexpr int kDefaultMazeHeight = 23;
+
+    SearchModeVisuals(
+        IconRail& iconRail, int mazeWidth = kDefaultMazeWidth, int mazeHeight = kDefaultMazeHeight);
     ~SearchModeVisuals();
 
     MazeSearchAnimator& animator() { return animator_; }

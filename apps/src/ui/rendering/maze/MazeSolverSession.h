@@ -21,6 +21,7 @@ public:
 
 private:
     void advanceOneStep();
+    void clearFrontier();
     void rebuildFrontier();
     void rebuildSolutionPath(int goalIndex);
 

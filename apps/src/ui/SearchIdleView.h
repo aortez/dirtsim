@@ -30,6 +30,9 @@ private:
     lv_obj_t* errorCard_ = nullptr;
     lv_obj_t* errorLabel_ = nullptr;
     IconRail& iconRail_;
+    int lastRailWidth_ = -1;
+    int lastRootHeight_ = -1;
+    int lastRootWidth_ = -1;
     std::optional<std::string> lastError_ = std::nullopt;
     std::unique_ptr<MazeSearchView> mazeView_;
     SearchModeVisuals searchModeVisuals_;

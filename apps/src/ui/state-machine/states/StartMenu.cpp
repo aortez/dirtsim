@@ -49,7 +49,7 @@ void StartMenu::onEnter(StateMachine& sm)
     iconRail->setLayout(RailLayout::TwoColumn);
     iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftTopSquare());
     iconRail->deselectAll();
-    searchModeVisuals_ = std::make_unique<SearchModeVisuals>(*iconRail, 39, 23);
+    searchModeVisuals_ = std::make_unique<SearchModeVisuals>(*iconRail);
     LOG_INFO(
         State,
         "Configured IconRail with CORE, SETTINGS, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
