@@ -79,7 +79,19 @@ TrainingSpec makeTrainingSpec(
     Scenario::EnumType scenarioId, OrganismType organismType, int populationSize)
 {
     PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
+    switch (organismType) {
+        case OrganismType::TREE:
+            population.brainKind = TrainingBrainKind::NeuralNet;
+            break;
+        case OrganismType::DUCK:
+        case OrganismType::NES_DUCK:
+            population.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+            break;
+        case OrganismType::GOOSE:
+        default:
+            population.brainKind = TrainingBrainKind::Random;
+            break;
+    }
     population.count = populationSize;
     population.randomCount = populationSize;
 

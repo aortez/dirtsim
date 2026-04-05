@@ -1,10 +1,34 @@
 #include "core/scenarios/nes/NesDuckSensoryBuilder.h"
 
+#include "core/organisms/evolution/NesPolicyLayout.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
 namespace DirtSim {
+
+namespace {
+
+void setPreviousControlFromControllerMask(DuckSensoryData& sensory, uint8_t controllerMask)
+{
+    const bool leftHeld = (controllerMask & NesPolicyLayout::ButtonLeft) != 0u;
+    const bool rightHeld = (controllerMask & NesPolicyLayout::ButtonRight) != 0u;
+    if (leftHeld != rightHeld) {
+        sensory.previous_control_x = leftHeld ? -1.0f : 1.0f;
+    }
+
+    const bool upHeld = (controllerMask & NesPolicyLayout::ButtonUp) != 0u;
+    const bool downHeld = (controllerMask & NesPolicyLayout::ButtonDown) != 0u;
+    if (upHeld != downHeld) {
+        sensory.previous_control_y = upHeld ? -1.0f : 1.0f;
+    }
+
+    sensory.previous_jump = (controllerMask & NesPolicyLayout::ButtonA) != 0u;
+    sensory.previous_run = (controllerMask & NesPolicyLayout::ButtonB) != 0u;
+}
+
+} // namespace
 
 DuckSensoryData makeNesDuckSensoryDataFromPaletteFrame(
     const NesPaletteClusterer& clusterer, const NesPaletteFrame& frame, double deltaTimeSeconds)
@@ -83,7 +107,10 @@ DuckSensoryData makeNesDuckSensoryData(
     const NesPaletteFrame* frame,
     double deltaTimeSeconds,
     const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
-    float facingX)
+    float facingX,
+    float selfViewX,
+    float selfViewY,
+    uint8_t controllerMask)
 {
     DuckSensoryData sensory{};
     sensory.delta_time_seconds = deltaTimeSeconds;
@@ -92,6 +119,9 @@ DuckSensoryData makeNesDuckSensoryData(
     }
 
     sensory.facing_x = facingX;
+    sensory.self_view_x = selfViewX;
+    sensory.self_view_y = selfViewY;
+    setPreviousControlFromControllerMask(sensory, controllerMask);
     sensory.special_senses = specialSenses;
     return sensory;
 }

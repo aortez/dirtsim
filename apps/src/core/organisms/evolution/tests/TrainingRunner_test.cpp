@@ -406,6 +406,14 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
     EXPECT_TRUE(entry->isGenomeCompatible(genome));
 }
 
+TEST_F(TrainingRunnerTest, TrainingBrainRegistryDoesNotIncludeLegacyDuckNeuralNetEntry)
+{
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::DUCK, TrainingBrainKind::NeuralNet, "");
+    EXPECT_EQ(entry, nullptr);
+}
+
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 {
     TrainingSpec spec;

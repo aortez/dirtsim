@@ -444,7 +444,7 @@ Run evolution training with JSON configuration:
   "resumePolicy": "WarmFromBest",
   "population": [
     {
-      "brainKind": "NeuralNet",
+      "brainKind": "DuckNeuralNetRecurrentV2",
       "count": 20,
       "randomCount": 20
     }

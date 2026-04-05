@@ -313,11 +313,13 @@ TEST_F(GenomeRepositoryTest, PruneManagedByFitnessAppliesPerOrganismBrainBucket)
     repo.store(
         duckLow,
         createTestGenome(0.3),
-        createManagedMetadataForBucket("duck_low", 2.0, OrganismType::DUCK, "NeuralNet"));
+        createManagedMetadataForBucket(
+            "duck_low", 2.0, OrganismType::DUCK, "DuckNeuralNetRecurrentV2"));
     repo.store(
         duckHigh,
         createTestGenome(0.4),
-        createManagedMetadataForBucket("duck_high", 8.0, OrganismType::DUCK, "NeuralNet"));
+        createManagedMetadataForBucket(
+            "duck_high", 8.0, OrganismType::DUCK, "DuckNeuralNetRecurrentV2"));
 
     const size_t removed = repo.pruneManagedByFitness(1);
     EXPECT_EQ(removed, 2u);
@@ -351,7 +353,8 @@ TEST_F(GenomeRepositoryTest, CountManagedByBucketIgnoresOtherScopes)
     repo.store(
         UUID::generate(),
         createTestGenome(0.5),
-        createManagedMetadataForBucket("duck_net", 5.0, OrganismType::DUCK, "NeuralNet"));
+        createManagedMetadataForBucket(
+            "duck_net", 5.0, OrganismType::DUCK, "DuckNeuralNetRecurrentV2"));
     repo.store(
         UUID::generate(),
         createTestGenome(0.6),
