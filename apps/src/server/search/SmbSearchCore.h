@@ -65,6 +65,8 @@ struct SmbSearchNode {
     SmbSearchMotionContext motionContext = SmbSearchMotionContext::Unknown;
     SmbSearchHazardContext hazardContext = SmbSearchHazardContext::Unknown;
     bool checkpointEligible = false;
+    uint8_t playerYScreen = 0;
+    uint8_t velocityStuckFrameCount = 0;
 };
 
 const std::vector<SmbSearchLegalAction>& getSmbSearchLegalActions();

@@ -9,11 +9,16 @@
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "server/search/SmbSearchHarness.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace DirtSim::Server::SearchSupport {
 
 namespace {
 
 constexpr uint32_t kLevelsPerWorld = 4u;
+constexpr uint8_t kVelocityPruneConsecutiveFrameThreshold = 2u;
+constexpr double kVelocityPruneHorizontalSpeedEpsilon = 0.05;
 
 std::unique_ptr<NesGameAdapter> createSmbGameAdapter()
 {
@@ -54,6 +59,8 @@ Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventT
             return Api::SearchProgressEvent::PrunedDead;
         case SmbDfsSearchTraceEventType::PrunedStalled:
             return Api::SearchProgressEvent::PrunedStalled;
+        case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
+            return Api::SearchProgressEvent::PrunedVelocityStuck;
         case SmbDfsSearchTraceEventType::RootInitialized:
             return Api::SearchProgressEvent::RootInitialized;
         case SmbDfsSearchTraceEventType::Stopped:
@@ -228,6 +235,8 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         const SmbSearchLegalAction action = actions[dfsFrame.nextActionIndex++];
         const SmbSearchNode& parent = nodes_[parentIndex];
         const uint64_t parentCurrentFrontier = parent.currentFrontier;
+        const uint8_t parentPlayerYScreen = parent.playerYScreen;
+        const uint8_t parentVelocityStuckFrameCount = parent.velocityStuckFrameCount;
 
         if (!driver_->loadRuntimeSavestate(parent.savestate, 2000u)) {
             const std::string runtimeLastError = driver_->getRuntimeLastError();
@@ -317,6 +326,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 .actionFromParent = action,
                 .currentFrontier = encodeCurrentFrontier(state),
                 .gameplayFrame = evaluatorSummary.gameplayFrames,
+                .playerYScreen = state.playerYScreen,
             });
         progress_.searchedNodeCount++;
         updateRenderableState(nodes_.back());
@@ -324,15 +334,24 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
 
         const bool dead = evaluatorSummary.terminal || state.phase != SmbPhase::Gameplay
             || state.lifeState != SmbLifeState::Alive;
-        const bool velocityStuck = options_.velocityPruningEnabled
-            && state.absoluteX == decodeSmbAbsoluteX(parentCurrentFrontier)
-            && state.horizontalSpeedNormalized == 0.0
+        const bool velocityStuckCandidate = options_.velocityPruningEnabled
+            && state.absoluteX == decodeSmbAbsoluteX(parentCurrentFrontier) && !state.airborne
+            && state.playerYScreen >= parentPlayerYScreen
+            && std::abs(state.horizontalSpeedNormalized) <= kVelocityPruneHorizontalSpeedEpsilon
             && evaluatorSummary.gameplayFramesSinceProgress > 0;
-        const bool stalled = velocityStuck
-            || evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
+        const uint8_t velocityStuckFrameCount = velocityStuckCandidate
+            ? static_cast<uint8_t>(std::min<uint16_t>(
+                  static_cast<uint16_t>(parentVelocityStuckFrameCount) + 1u, 255u))
+            : 0u;
+        nodes_.back().velocityStuckFrameCount = velocityStuckFrameCount;
+        const bool velocityStuck =
+            velocityStuckFrameCount >= kVelocityPruneConsecutiveFrameThreshold;
+        const bool stalled =
+            evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
         const SmbDfsSearchTraceEventType traceEvent = dead ? SmbDfsSearchTraceEventType::PrunedDead
-            : stalled ? SmbDfsSearchTraceEventType::PrunedStalled
-                      : SmbDfsSearchTraceEventType::ExpandedAlive;
+            : velocityStuck ? SmbDfsSearchTraceEventType::PrunedVelocityStuck
+            : stalled       ? SmbDfsSearchTraceEventType::PrunedStalled
+                            : SmbDfsSearchTraceEventType::ExpandedAlive;
         recordTrace(
             traceEvent,
             childIndex,
@@ -344,7 +363,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             evaluatorSummary.gameplayFramesSinceProgress);
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
-        if (!dead && !stalled) {
+        if (!dead && !velocityStuck && !stalled) {
             dfsStack_.push_back(
                 DfsFrame{
                     .nodeIndex = childIndex,

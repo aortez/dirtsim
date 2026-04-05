@@ -17,11 +17,12 @@ enum class SearchProgressEvent : uint8_t {
     Backtracked = 3,
     PrunedDead = 4,
     PrunedStalled = 5,
-    CompletedBudgetExceeded = 6,
-    CompletedExhausted = 7,
-    CompletedMilestoneReached = 8,
-    Stopped = 9,
-    Error = 10,
+    PrunedVelocityStuck = 6,
+    CompletedBudgetExceeded = 7,
+    CompletedExhausted = 8,
+    CompletedMilestoneReached = 9,
+    Stopped = 10,
+    Error = 11,
 };
 
 struct SearchProgress {

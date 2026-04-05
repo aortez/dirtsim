@@ -30,6 +30,7 @@ SearchSettings clampSearchSettings(const SearchSettings& settings)
             static_cast<int32_t>(settings.stallFrameLimit),
             SearchSettings::StallFrameLimitMin,
             SearchSettings::StallFrameLimitMax),
+        .velocityPruningEnabled = settings.velocityPruningEnabled,
     };
 }
 

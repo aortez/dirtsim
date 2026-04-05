@@ -52,8 +52,9 @@ enum class SmbDfsSearchTraceEventType : uint8_t {
     ExpandedAlive = 5,
     PrunedDead = 6,
     PrunedStalled = 7,
-    RootInitialized = 8,
-    Stopped = 9,
+    PrunedVelocityStuck = 8,
+    RootInitialized = 9,
+    Stopped = 10,
 };
 
 struct SmbDfsSearchTraceEntry {

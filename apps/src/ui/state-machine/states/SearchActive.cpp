@@ -49,6 +49,8 @@ const char* searchProgressEventText(Api::SearchProgressEvent event)
             return "Pruned dead";
         case Api::SearchProgressEvent::PrunedStalled:
             return "Pruned stalled";
+        case Api::SearchProgressEvent::PrunedVelocityStuck:
+            return "Pruned velocity";
         case Api::SearchProgressEvent::CompletedBudgetExceeded:
             return "Budget hit";
         case Api::SearchProgressEvent::CompletedExhausted:

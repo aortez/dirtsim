@@ -190,7 +190,8 @@ TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
 
         for (const auto& entry : search.getTrace()) {
             sawPrune |= entry.eventType == SmbDfsSearchTraceEventType::PrunedDead
-                || entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled;
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck;
             sawBacktrack |= entry.eventType == SmbDfsSearchTraceEventType::Backtracked;
         }
 
@@ -279,6 +280,9 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
             prunedDeadCount++;
         }
         else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled) {
+            prunedStalledCount++;
+        }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck) {
             prunedStalledCount++;
         }
         else if (entry.eventType == SmbDfsSearchTraceEventType::Backtracked) {
@@ -447,6 +451,43 @@ TEST(SmbDfsSearchTest, BacktrackSignalsRenderChange)
     }
 
     EXPECT_TRUE(sawBacktrackRenderChange);
+}
+
+TEST(SmbDfsSearchTest, VelocityPruningProducesDedicatedTraceEvent)
+{
+    requireSmbRomOrSkip();
+
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 5000u,
+            .stallFrameLimit = 120u,
+            .velocityPruningEnabled = true,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+    bool sawVelocityPrune = false;
+    for (size_t tickIndex = 0; tickIndex < 5000u && !search.isCompleted(); ++tickIndex) {
+        const auto tickResult = search.tick();
+        ASSERT_FALSE(tickResult.error.has_value()) << tickResult.error.value();
+
+        for (const auto& entry : search.getTrace()) {
+            if (entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck) {
+                sawVelocityPrune = true;
+                break;
+            }
+        }
+
+        if (sawVelocityPrune) {
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawVelocityPrune);
 }
 
 TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
