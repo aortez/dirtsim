@@ -1,11 +1,16 @@
+#include "NesTestRomPath.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <map>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -89,6 +94,21 @@ public:
         return snapshot;
     }
 
+    std::optional<Savestate> copySavestate() const override
+    {
+        const SavedState payload{
+            .renderedFrameCount = renderedFrameCount_,
+            .controllerSnapshot = controllerSnapshot_,
+            .lastControllerMask = lastControllerMask_,
+        };
+
+        Savestate savestate;
+        savestate.frameId = renderedFrameCount_;
+        savestate.bytes.resize(sizeof(payload));
+        std::memcpy(savestate.bytes.data(), &payload, sizeof(payload));
+        return savestate;
+    }
+
     std::optional<ProfilingSnapshot> copyProfilingSnapshot() const override
     {
         return ProfilingSnapshot{};
@@ -121,6 +141,19 @@ public:
     void setApuSampleCallback(SmolnesApuSampleCallback /*callback*/, void* /*userdata*/) override {}
     void setPacingMode(SmolnesRuntimePacingMode /*mode*/) override {}
     std::string getLastError() const override { return lastError_; }
+    bool loadSavestate(const Savestate& savestate, uint32_t /*timeoutMs*/) override
+    {
+        if (savestate.bytes.size() != sizeof(SavedState)) {
+            return false;
+        }
+
+        SavedState payload{};
+        std::memcpy(&payload, savestate.bytes.data(), sizeof(payload));
+        renderedFrameCount_ = payload.renderedFrameCount;
+        controllerSnapshot_ = payload.controllerSnapshot;
+        lastControllerMask_ = payload.lastControllerMask;
+        return true;
+    }
 
     const std::string& getStartedRomPath() const { return startedRomPath_; }
     uint8_t getLastControllerMask() const { return lastControllerMask_; }
@@ -140,6 +173,12 @@ public:
     }
 
 private:
+    struct SavedState {
+        uint64_t renderedFrameCount = 0;
+        ControllerSnapshot controllerSnapshot{};
+        uint8_t lastControllerMask = 0;
+    };
+
     static MemorySnapshot makeDefaultMemorySnapshot()
     {
         MemorySnapshot snapshot;
@@ -213,6 +252,47 @@ SmolnesRuntime::MemorySnapshot makeSmbProbeSnapshot(
     snapshot.prgRam[0x20] = 0xCDu;
     return snapshot;
 }
+
+uint8_t getSavestateWarmupMask(uint64_t frameIndex)
+{
+    if (frameIndex < getNesSuperMarioBrosSetupScriptEndFrame()) {
+        return getNesSuperMarioBrosScriptedSetupMaskForFrame(frameIndex);
+    }
+
+    return SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B;
+}
+
+std::vector<uint8_t> makeSavestateReplayScript()
+{
+    return {
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_A | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_A | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_A | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_A | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_LEFT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_LEFT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_DOWN,
+        SMOLNES_RUNTIME_BUTTON_DOWN,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+        SMOLNES_RUNTIME_BUTTON_RIGHT | SMOLNES_RUNTIME_BUTTON_B,
+    };
+}
+
+struct RecordedStep {
+    uint8_t controllerMask = 0;
+    SmolnesRuntime::MemorySnapshot memorySnapshot{};
+    ScenarioVideoFrame scenarioVideoFrame;
+};
 
 } // namespace
 
@@ -345,6 +425,64 @@ TEST(NesSmolnesScenarioDriverTest, StepPreservesLiveInputOriginAcrossHeldFrames)
     EXPECT_EQ(secondStep.controllerTelemetry->controllerLatchTimestampNs, 2001u);
 }
 
+TEST(NesSmolnesScenarioDriverTest, CopyAndLoadRuntimeSavestateRoundTripsThroughDriver)
+{
+    FakeSmolnesRuntime* runtime = nullptr;
+    const std::filesystem::path romPath = writeFakeRom();
+
+    NesSmolnesScenarioDriver driver(
+        Scenario::EnumType::NesSuperMarioBros,
+        NesSmolnesScenarioDriver::RuntimeConfig{
+            .runtimeFactory =
+                [&runtime]() {
+                    auto fakeRuntime = std::make_unique<FakeSmolnesRuntime>();
+                    runtime = fakeRuntime.get();
+                    return fakeRuntime;
+                },
+        });
+
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath.string();
+    ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
+    ASSERT_FALSE(driver.setup().isError());
+    ASSERT_NE(runtime, nullptr);
+
+    runtime->setFrameMemorySnapshot(
+        2u, makeSmbProbeSnapshot(0x08u, 1u, 1u, 0x00u, 0x22u, 12u, 0u, 120u));
+    runtime->setFrameMemorySnapshot(
+        4u, makeSmbProbeSnapshot(0x08u, 1u, 1u, 0x00u, 0x30u, 18u, 0u, 120u));
+
+    Timers timers;
+    ASSERT_TRUE(driver.step(timers, SMOLNES_RUNTIME_BUTTON_RIGHT).runtimeRunning);
+    const auto secondStep = driver.step(timers, SMOLNES_RUNTIME_BUTTON_LEFT);
+    ASSERT_TRUE(secondStep.runtimeRunning);
+    ASSERT_TRUE(secondStep.memorySnapshot.has_value());
+
+    const auto savestate = driver.copyRuntimeSavestate();
+    ASSERT_TRUE(savestate.has_value());
+    EXPECT_EQ(savestate->frameId, 2u);
+
+    ASSERT_TRUE(driver.step(timers, SMOLNES_RUNTIME_BUTTON_B).runtimeRunning);
+    ASSERT_TRUE(driver.step(timers, SMOLNES_RUNTIME_BUTTON_A).runtimeRunning);
+
+    ASSERT_TRUE(driver.loadRuntimeSavestate(savestate.value(), 100u));
+
+    const auto restoredMemorySnapshot = driver.copyRuntimeMemorySnapshot();
+    ASSERT_TRUE(restoredMemorySnapshot.has_value());
+    EXPECT_EQ(restoredMemorySnapshot->frameId, 2u);
+    EXPECT_EQ(restoredMemorySnapshot->cpuRam, secondStep.memorySnapshot->cpuRam);
+    EXPECT_EQ(restoredMemorySnapshot->prgRam, secondStep.memorySnapshot->prgRam);
+    EXPECT_EQ(runtime->getRenderedFrameCount(), 2u);
+    EXPECT_EQ(runtime->getLastControllerMask(), SMOLNES_RUNTIME_BUTTON_LEFT);
+
+    const auto restoredSavestate = driver.copyRuntimeSavestate();
+    ASSERT_TRUE(restoredSavestate.has_value());
+    EXPECT_EQ(restoredSavestate->frameId, savestate->frameId);
+    EXPECT_EQ(restoredSavestate->bytes, savestate->bytes);
+}
+
 TEST(NesSmolnesScenarioDriverTest, StepCapturesSmbResponseTelemetryWhenProbeEnabled)
 {
     FakeSmolnesRuntime* runtime = nullptr;
@@ -397,4 +535,84 @@ TEST(NesSmolnesScenarioDriverTest, StepCapturesSmbResponseTelemetryWhenProbeEnab
     const auto lastSmbResponseTelemetry = driver.getLastSmbResponseTelemetry();
     ASSERT_TRUE(lastSmbResponseTelemetry.has_value());
     EXPECT_EQ(lastSmbResponseTelemetry->responseFrameId, 301u);
+}
+
+TEST(NesSmolnesScenarioDriverTest, RuntimeSavestateLoadRestoresExactSmbReplayPath)
+{
+    const auto romPath = DirtSim::Test::resolveSmbRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
+    }
+
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperMarioBros);
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath->string();
+    ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
+    ASSERT_FALSE(driver.setup().isError());
+
+    Timers timers;
+    const uint64_t warmupFrames = getNesSuperMarioBrosSetupScriptEndFrame() + 40u;
+    for (uint64_t frameIndex = 0; frameIndex < warmupFrames; ++frameIndex) {
+        const auto stepResult = driver.step(timers, getSavestateWarmupMask(frameIndex));
+        ASSERT_TRUE(stepResult.runtimeHealthy);
+        ASSERT_TRUE(stepResult.runtimeRunning);
+        ASSERT_TRUE(stepResult.memorySnapshot.has_value());
+        ASSERT_TRUE(stepResult.scenarioVideoFrame.has_value());
+    }
+
+    const auto savedSavestate = driver.copyRuntimeSavestate();
+    const auto savedMemorySnapshot = driver.copyRuntimeMemorySnapshot();
+    const auto savedFrameSnapshot = driver.copyRuntimeFrameSnapshot();
+    ASSERT_TRUE(savedSavestate.has_value());
+    ASSERT_TRUE(savedMemorySnapshot.has_value());
+    ASSERT_TRUE(savedFrameSnapshot.has_value());
+
+    std::vector<RecordedStep> recordedSteps;
+    for (const uint8_t controllerMask : makeSavestateReplayScript()) {
+        const auto stepResult = driver.step(timers, controllerMask);
+        ASSERT_TRUE(stepResult.runtimeHealthy);
+        ASSERT_TRUE(stepResult.runtimeRunning);
+        ASSERT_TRUE(stepResult.memorySnapshot.has_value());
+        ASSERT_TRUE(stepResult.scenarioVideoFrame.has_value());
+        recordedSteps.push_back(
+            RecordedStep{
+                .controllerMask = controllerMask,
+                .memorySnapshot = stepResult.memorySnapshot.value(),
+                .scenarioVideoFrame = stepResult.scenarioVideoFrame.value(),
+            });
+    }
+
+    ASSERT_TRUE(driver.loadRuntimeSavestate(savedSavestate.value(), 2000u));
+
+    const auto restoredSavestate = driver.copyRuntimeSavestate();
+    const auto restoredMemorySnapshot = driver.copyRuntimeMemorySnapshot();
+    const auto restoredFrameSnapshot = driver.copyRuntimeFrameSnapshot();
+    ASSERT_TRUE(restoredSavestate.has_value());
+    ASSERT_TRUE(restoredMemorySnapshot.has_value());
+    ASSERT_TRUE(restoredFrameSnapshot.has_value());
+
+    EXPECT_EQ(restoredSavestate->frameId, savedSavestate->frameId);
+    EXPECT_EQ(restoredSavestate->bytes, savedSavestate->bytes);
+    EXPECT_EQ(restoredMemorySnapshot->frameId, savedMemorySnapshot->frameId);
+    EXPECT_EQ(restoredMemorySnapshot->cpuRam, savedMemorySnapshot->cpuRam);
+    EXPECT_EQ(restoredMemorySnapshot->prgRam, savedMemorySnapshot->prgRam);
+    EXPECT_EQ(restoredFrameSnapshot->frame_id, savedFrameSnapshot->frame_id);
+    EXPECT_EQ(restoredFrameSnapshot->pixels, savedFrameSnapshot->pixels);
+
+    for (const RecordedStep& recordedStep : recordedSteps) {
+        const auto replayedStep = driver.step(timers, recordedStep.controllerMask);
+        ASSERT_TRUE(replayedStep.runtimeHealthy);
+        ASSERT_TRUE(replayedStep.runtimeRunning);
+        ASSERT_TRUE(replayedStep.memorySnapshot.has_value());
+        ASSERT_TRUE(replayedStep.scenarioVideoFrame.has_value());
+
+        EXPECT_EQ(replayedStep.memorySnapshot->frameId, recordedStep.memorySnapshot.frameId);
+        EXPECT_EQ(replayedStep.memorySnapshot->cpuRam, recordedStep.memorySnapshot.cpuRam);
+        EXPECT_EQ(replayedStep.memorySnapshot->prgRam, recordedStep.memorySnapshot.prgRam);
+        EXPECT_EQ(
+            replayedStep.scenarioVideoFrame->frame_id, recordedStep.scenarioVideoFrame.frame_id);
+        EXPECT_EQ(replayedStep.scenarioVideoFrame->pixels, recordedStep.scenarioVideoFrame.pixels);
+    }
 }

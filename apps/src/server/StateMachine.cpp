@@ -205,6 +205,33 @@ UserSettings sanitizeUserSettings(
         recordUpdate("nesSessionSettings.frameDelayMs clamped below one NES frame");
     }
 
+    if (settings.searchSettings.searchDepth < SearchSettings::SearchDepthMin) {
+        settings.searchSettings.searchDepth = SearchSettings::SearchDepthMin;
+        recordUpdate("searchSettings.searchDepth clamped to minimum");
+    }
+    else if (settings.searchSettings.searchDepth > SearchSettings::SearchDepthMax) {
+        settings.searchSettings.searchDepth = SearchSettings::SearchDepthMax;
+        recordUpdate("searchSettings.searchDepth clamped to maximum");
+    }
+
+    if (settings.searchSettings.maxSegments < SearchSettings::MaxSegmentsMin) {
+        settings.searchSettings.maxSegments = SearchSettings::MaxSegmentsMin;
+        recordUpdate("searchSettings.maxSegments clamped to minimum");
+    }
+    else if (settings.searchSettings.maxSegments > SearchSettings::MaxSegmentsMax) {
+        settings.searchSettings.maxSegments = SearchSettings::MaxSegmentsMax;
+        recordUpdate("searchSettings.maxSegments clamped to maximum");
+    }
+
+    if (settings.searchSettings.segmentFrameBudget < SearchSettings::SegmentFrameBudgetMin) {
+        settings.searchSettings.segmentFrameBudget = SearchSettings::SegmentFrameBudgetMin;
+        recordUpdate("searchSettings.segmentFrameBudget clamped to minimum");
+    }
+    else if (settings.searchSettings.segmentFrameBudget > SearchSettings::SegmentFrameBudgetMax) {
+        settings.searchSettings.segmentFrameBudget = SearchSettings::SegmentFrameBudgetMax;
+        recordUpdate("searchSettings.segmentFrameBudget clamped to maximum");
+    }
+
     if (settings.volumePercent < 0) {
         settings.volumePercent = 0;
         recordUpdate("volumePercent clamped to 0");
@@ -1978,6 +2005,9 @@ void StateMachine::handleEvent(const Event& event)
         }
         if (cwc.command.nesSessionSettings.has_value()) {
             patched.nesSessionSettings = *cwc.command.nesSessionSettings;
+        }
+        if (cwc.command.searchSettings.has_value()) {
+            patched.searchSettings = *cwc.command.searchSettings;
         }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;

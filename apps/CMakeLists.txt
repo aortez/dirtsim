@@ -407,6 +407,8 @@ add_library(dirtsim-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
+    src/server/search/SmbSearchCore.cpp
+    src/server/search/SmbSearchHarness.cpp
     src/server/search/SmbPlanExecution.cpp
 
     # Scenarios.
@@ -592,6 +594,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/RenderModeSelect.cpp
     src/ui/state-machine/api/ScreenGrab.cpp
     src/ui/state-machine/api/SearchPauseSet.cpp
+    src/ui/state-machine/api/SearchSettingsSet.cpp
     src/ui/state-machine/api/SearchStart.cpp
     src/ui/state-machine/api/SearchStop.cpp
     src/ui/state-machine/api/SimPause.cpp
@@ -667,6 +670,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioControlsBase.cpp
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/ScenarioPanel.cpp
+    src/ui/controls/SearchSettingsPanel.cpp
     src/ui/controls/StartMenuCorePanel.cpp
     src/ui/controls/StartMenuSettingsPanel.cpp
     src/ui/controls/StopPanel.cpp
@@ -853,6 +857,7 @@ add_executable(dirtsim-tests
     src/server/tests/TrainingBestSnapshotGenerator_test.cpp
     src/server/tests/TrainingBestSnapshotCache_test.cpp
     src/server/tests/UserSettings_test.cpp
+    src/server/tests/SmbSearchHarness_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp
     src/ui/state-machine/tests/StateSimRunning_test.cpp

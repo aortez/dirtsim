@@ -137,6 +137,13 @@ struct SmolnesRuntimeHandle {
     SmolnesRuntimePacingModeValue pacingMode;
     double realtimePacingOriginMs;
     uint64_t realtimePacingOriginFrame;
+
+    void* latestSavestate;
+    void* pendingSavestate;
+    bool hasSavestate;
+    bool savestateLoadPending;
+    uint64_t savestateRequestSequence;
+    uint64_t savestateAppliedSequence;
 };
 
 // NTSC NES frame period: CPU clock 1789773 Hz / 29780.5 cycles per frame ≈ 60.0988 fps.
@@ -479,7 +486,9 @@ static SmolnesRuntimeHandle* getCurrentRuntime(void)
     return gCurrentRuntime;
 }
 
+static void captureSavestateLocked(SmolnesRuntimeHandle* runtime);
 static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime);
+static bool tryApplyPendingSavestateLocked(SmolnesRuntimeHandle* runtime);
 
 static void* runtimeThreadMain(void* arg)
 {
@@ -729,11 +738,13 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
     }
 
     pthread_mutex_lock(&runtime->runtimeMutex);
+    tryApplyPendingSavestateLocked(runtime);
     while (runtime->waitingForInitialFrameRequest && !runtime->stopRequested
            && !isRealtimePacingMode(runtime) && runtime->renderedFrames >= runtime->targetFrames) {
         const double waitStartMs = monotonicNowMs();
         pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
         recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
+        tryApplyPendingSavestateLocked(runtime);
     }
     runtime->waitingForInitialFrameRequest = false;
     if (runtime->pendingController1SequenceId != runtime->latchedController1SequenceId) {
@@ -1075,6 +1086,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
             if (runtime->targetFrames < runtime->renderedFrames) {
                 runtime->targetFrames = runtime->renderedFrames;
             }
+            captureSavestateLocked(runtime);
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
@@ -1116,11 +1128,16 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
                 runtime->latchedController1RequestTimestampNs;
             runtime->latestFrameController1SequenceId = runtime->latchedController1SequenceId;
             runtime->latestFrameController1State = runtime->latchedController1State;
+            captureSavestateLocked(runtime);
             runtime->runtimeThreadPresentMs += monotonicNowMs() - presentStartMs;
             runtime->runtimeThreadPresentCalls++;
             pthread_cond_broadcast(&runtime->runtimeCond);
+            tryApplyPendingSavestateLocked(runtime);
             while (!runtime->stopRequested && !isRealtimePacingMode(runtime)
                    && runtime->renderedFrames >= runtime->targetFrames) {
+                if (tryApplyPendingSavestateLocked(runtime)) {
+                    continue;
+                }
                 const double waitStartMs = monotonicNowMs();
                 pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
                 recordIdleWaitLocked(runtime, monotonicNowMs() - waitStartMs);
@@ -1269,6 +1286,372 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
 #undef SMOLNES_TLS
 #undef main
 
+enum {
+    kSmolnesRuntimeSavestateMagic = 0x44535631u,
+    kSmolnesRuntimeSavestateVersion = 1u,
+};
+
+typedef struct SmolnesRuntimeSavestateBlob {
+    uint32_t magic;
+    uint32_t version;
+    uint64_t frameId;
+
+    uint8_t prg[4];
+    uint8_t chr[8];
+    uint8_t prgbits;
+    uint8_t chrbits;
+    uint8_t A;
+    uint8_t X;
+    uint8_t Y;
+    uint8_t P;
+    uint8_t S;
+    uint8_t PCH;
+    uint8_t PCL;
+    uint8_t addr_lo;
+    uint8_t addr_hi;
+    uint8_t nomem;
+    uint8_t result;
+    uint8_t val;
+    uint8_t cross;
+    uint8_t tmp;
+    uint8_t ppumask;
+    uint8_t ppuctrl;
+    uint8_t ppustatus;
+    uint8_t ppubuf;
+    uint8_t W;
+    uint8_t fine_x;
+    uint8_t opcode;
+    uint8_t nmi_irq;
+    uint8_t ntb;
+    uint8_t ptb_lo;
+    uint8_t vram[2048];
+    uint8_t palette_ram[64];
+    uint8_t ram[8192];
+    uint8_t chrram[8192];
+    uint8_t prgram[8192];
+    uint8_t oam[256];
+    uint8_t keys;
+    uint8_t mirror;
+    uint8_t mmc1_bits;
+    uint8_t mmc1_data;
+    uint8_t mmc1_ctrl;
+    uint8_t mmc3_chrprg[8];
+    uint8_t mmc3_bits;
+    uint8_t mmc3_irq;
+    uint8_t mmc3_latch;
+    uint8_t chrbank0;
+    uint8_t chrbank1;
+    uint8_t prgbank;
+
+    uint16_t scany;
+    uint16_t T;
+    uint16_t V;
+    uint16_t sum;
+    uint16_t dot;
+    uint16_t atb;
+    uint16_t shift_hi;
+    uint16_t shift_lo;
+    uint16_t cycles;
+    int shift_at;
+    uint16_t scanline_fb_offset;
+    uint16_t deferred_ppu_dots;
+    uint8_t scanline_sprite_pixels[256];
+    uint8_t scanline_has_sprite_pixels;
+
+    uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
+    uint8_t latestPaletteFrame[SMOLNES_RUNTIME_PALETTE_FRAME_BYTES];
+
+    SmolnesApuState apuState;
+
+    uint8_t pendingController1State;
+    uint64_t pendingController1ObservedTimestampNs;
+    uint64_t pendingController1RequestTimestampNs;
+    uint64_t pendingController1SequenceId;
+    uint8_t latchedController1State;
+    uint64_t latchedController1ObservedTimestampNs;
+    uint64_t latchedController1LatchTimestampNs;
+    uint64_t latchedController1AppliedFrameId;
+    uint64_t latchedController1RequestTimestampNs;
+    uint64_t latchedController1SequenceId;
+    uint64_t latestFrameController1AppliedFrameId;
+    uint64_t latestFrameController1ObservedTimestampNs;
+    uint64_t latestFrameController1LatchTimestampNs;
+    uint64_t latestFrameController1RequestTimestampNs;
+    uint64_t latestFrameController1SequenceId;
+    uint8_t latestFrameController1State;
+    uint64_t nextController1SequenceId;
+} SmolnesRuntimeSavestateBlob;
+
+uint32_t smolnesRuntimeGetSavestateSize(void)
+{
+    return (uint32_t)sizeof(SmolnesRuntimeSavestateBlob);
+}
+
+static uint64_t computeApuSampleWindowStart(const SmolnesApuState* state)
+{
+    const uint64_t totalSamples = smolnesApuGetSampleCount(state);
+    if (totalSamples <= SMOLNES_APU_SAMPLE_COPY_MAX) {
+        return 0;
+    }
+    return totalSamples - SMOLNES_APU_SAMPLE_COPY_MAX;
+}
+
+static SmolnesRuntimeSavestateBlob* getLatestSavestateBlob(SmolnesRuntimeHandle* runtime)
+{
+    return (SmolnesRuntimeSavestateBlob*)runtime->latestSavestate;
+}
+
+static SmolnesRuntimeSavestateBlob* getPendingSavestateBlob(SmolnesRuntimeHandle* runtime)
+{
+    return (SmolnesRuntimeSavestateBlob*)runtime->pendingSavestate;
+}
+
+static void captureSavestateLocked(SmolnesRuntimeHandle* runtime)
+{
+    if (runtime == NULL || runtime->latestSavestate == NULL || !runtime->hasLatestFrame
+        || !runtime->hasLatestPaletteFrame) {
+        return;
+    }
+
+    SmolnesRuntimeSavestateBlob* savestate = getLatestSavestateBlob(runtime);
+    memset(savestate, 0, sizeof(*savestate));
+    savestate->magic = kSmolnesRuntimeSavestateMagic;
+    savestate->version = kSmolnesRuntimeSavestateVersion;
+    savestate->frameId = runtime->latestFrameId;
+
+    memcpy(savestate->prg, prg, sizeof(savestate->prg));
+    memcpy(savestate->chr, chr, sizeof(savestate->chr));
+    savestate->prgbits = prgbits;
+    savestate->chrbits = chrbits;
+    savestate->A = A;
+    savestate->X = X;
+    savestate->Y = Y;
+    savestate->P = P;
+    savestate->S = S;
+    savestate->PCH = PCH;
+    savestate->PCL = PCL;
+    savestate->addr_lo = addr_lo;
+    savestate->addr_hi = addr_hi;
+    savestate->nomem = nomem;
+    savestate->result = result;
+    savestate->val = val;
+    savestate->cross = cross;
+    savestate->tmp = tmp;
+    savestate->ppumask = ppumask;
+    savestate->ppuctrl = ppuctrl;
+    savestate->ppustatus = ppustatus;
+    savestate->ppubuf = ppubuf;
+    savestate->W = W;
+    savestate->fine_x = fine_x;
+    savestate->opcode = opcode;
+    savestate->nmi_irq = nmi_irq;
+    savestate->ntb = ntb;
+    savestate->ptb_lo = ptb_lo;
+    memcpy(savestate->vram, vram, sizeof(savestate->vram));
+    memcpy(savestate->palette_ram, palette_ram, sizeof(savestate->palette_ram));
+    memcpy(savestate->ram, ram, sizeof(savestate->ram));
+    memcpy(savestate->chrram, chrram, sizeof(savestate->chrram));
+    memcpy(savestate->prgram, prgram, sizeof(savestate->prgram));
+    memcpy(savestate->oam, oam, sizeof(savestate->oam));
+    savestate->keys = keys;
+    savestate->mirror = mirror;
+    savestate->mmc1_bits = mmc1_bits;
+    savestate->mmc1_data = mmc1_data;
+    savestate->mmc1_ctrl = mmc1_ctrl;
+    memcpy(savestate->mmc3_chrprg, mmc3_chrprg, sizeof(savestate->mmc3_chrprg));
+    savestate->mmc3_bits = mmc3_bits;
+    savestate->mmc3_irq = mmc3_irq;
+    savestate->mmc3_latch = mmc3_latch;
+    savestate->chrbank0 = chrbank0;
+    savestate->chrbank1 = chrbank1;
+    savestate->prgbank = prgbank;
+
+    savestate->scany = scany;
+    savestate->T = T;
+    savestate->V = V;
+    savestate->sum = sum;
+    savestate->dot = dot;
+    savestate->atb = atb;
+    savestate->shift_hi = shift_hi;
+    savestate->shift_lo = shift_lo;
+    savestate->cycles = cycles;
+    savestate->shift_at = shift_at;
+    savestate->scanline_fb_offset = scanline_fb_offset;
+    savestate->deferred_ppu_dots = deferred_ppu_dots;
+    memcpy(
+        savestate->scanline_sprite_pixels,
+        scanline_sprite_pixels,
+        sizeof(savestate->scanline_sprite_pixels));
+    savestate->scanline_has_sprite_pixels = scanline_has_sprite_pixels;
+
+    memcpy(savestate->latestFrame, runtime->latestFrame, sizeof(savestate->latestFrame));
+    memcpy(
+        savestate->latestPaletteFrame,
+        runtime->latestPaletteFrame,
+        sizeof(savestate->latestPaletteFrame));
+
+    savestate->apuState = gApuState;
+    savestate->apuState.sampleCallback = NULL;
+    savestate->apuState.sampleCallbackUserdata = NULL;
+
+    savestate->pendingController1State = runtime->pendingController1State;
+    savestate->pendingController1ObservedTimestampNs = 0;
+    savestate->pendingController1RequestTimestampNs = 0;
+    savestate->pendingController1SequenceId = runtime->pendingController1SequenceId;
+    savestate->latchedController1State = runtime->latchedController1State;
+    savestate->latchedController1ObservedTimestampNs = 0;
+    savestate->latchedController1LatchTimestampNs = 0;
+    savestate->latchedController1AppliedFrameId = runtime->latchedController1AppliedFrameId;
+    savestate->latchedController1RequestTimestampNs = 0;
+    savestate->latchedController1SequenceId = runtime->latchedController1SequenceId;
+    savestate->latestFrameController1AppliedFrameId =
+        runtime->latestFrameController1AppliedFrameId;
+    savestate->latestFrameController1ObservedTimestampNs = 0;
+    savestate->latestFrameController1LatchTimestampNs = 0;
+    savestate->latestFrameController1RequestTimestampNs = 0;
+    savestate->latestFrameController1SequenceId = runtime->latestFrameController1SequenceId;
+    savestate->latestFrameController1State = runtime->latestFrameController1State;
+    savestate->nextController1SequenceId = runtime->nextController1SequenceId;
+
+    runtime->hasSavestate = true;
+}
+
+static void applySavestateLocked(
+    SmolnesRuntimeHandle* runtime, const SmolnesRuntimeSavestateBlob* savestate)
+{
+    if (runtime == NULL || savestate == NULL) {
+        return;
+    }
+
+    memcpy(prg, savestate->prg, sizeof(prg));
+    memcpy(chr, savestate->chr, sizeof(chr));
+    prgbits = savestate->prgbits;
+    chrbits = savestate->chrbits;
+    A = savestate->A;
+    X = savestate->X;
+    Y = savestate->Y;
+    P = savestate->P;
+    S = savestate->S;
+    PCH = savestate->PCH;
+    PCL = savestate->PCL;
+    addr_lo = savestate->addr_lo;
+    addr_hi = savestate->addr_hi;
+    nomem = savestate->nomem;
+    result = savestate->result;
+    val = savestate->val;
+    cross = savestate->cross;
+    tmp = savestate->tmp;
+    ppumask = savestate->ppumask;
+    ppuctrl = savestate->ppuctrl;
+    ppustatus = savestate->ppustatus;
+    ppubuf = savestate->ppubuf;
+    W = savestate->W;
+    fine_x = savestate->fine_x;
+    opcode = savestate->opcode;
+    nmi_irq = savestate->nmi_irq;
+    ntb = savestate->ntb;
+    ptb_lo = savestate->ptb_lo;
+    memcpy(vram, savestate->vram, sizeof(vram));
+    memcpy(palette_ram, savestate->palette_ram, sizeof(palette_ram));
+    memcpy(ram, savestate->ram, sizeof(ram));
+    memcpy(chrram, savestate->chrram, sizeof(chrram));
+    memcpy(prgram, savestate->prgram, sizeof(prgram));
+    memcpy(oam, savestate->oam, sizeof(oam));
+    keys = savestate->keys;
+    mirror = savestate->mirror;
+    mmc1_bits = savestate->mmc1_bits;
+    mmc1_data = savestate->mmc1_data;
+    mmc1_ctrl = savestate->mmc1_ctrl;
+    memcpy(mmc3_chrprg, savestate->mmc3_chrprg, sizeof(mmc3_chrprg));
+    mmc3_bits = savestate->mmc3_bits;
+    mmc3_irq = savestate->mmc3_irq;
+    mmc3_latch = savestate->mmc3_latch;
+    chrbank0 = savestate->chrbank0;
+    chrbank1 = savestate->chrbank1;
+    prgbank = savestate->prgbank;
+
+    scany = savestate->scany;
+    T = savestate->T;
+    V = savestate->V;
+    sum = savestate->sum;
+    dot = savestate->dot;
+    atb = savestate->atb;
+    shift_hi = savestate->shift_hi;
+    shift_lo = savestate->shift_lo;
+    cycles = savestate->cycles;
+    shift_at = savestate->shift_at;
+    scanline_fb_offset = savestate->scanline_fb_offset;
+    deferred_ppu_dots = savestate->deferred_ppu_dots;
+    memcpy(
+        scanline_sprite_pixels,
+        savestate->scanline_sprite_pixels,
+        sizeof(scanline_sprite_pixels));
+    scanline_has_sprite_pixels = savestate->scanline_has_sprite_pixels;
+
+    gApuState = savestate->apuState;
+    gApuState.sampleCallback = runtime->apuSampleCallback;
+    gApuState.sampleCallbackUserdata = runtime->apuSampleCallbackUserdata;
+
+    rom = rombuf + 16;
+    chrrom = rombuf[5] ? rom + ((uint32_t)rombuf[4] << 14) : chrram;
+    key_state = gThreadKeyboardState;
+
+    runtime->latestFrameId = savestate->frameId;
+    runtime->renderedFrames = savestate->frameId;
+    runtime->targetFrames = savestate->frameId;
+    runtime->waitingForInitialFrameRequest = false;
+    runtime->realtimePacingOriginMs = 0.0;
+    runtime->realtimePacingOriginFrame = 0;
+    runtime->pendingController1State = savestate->pendingController1State;
+    runtime->pendingController1ObservedTimestampNs = savestate->pendingController1ObservedTimestampNs;
+    runtime->pendingController1RequestTimestampNs = savestate->pendingController1RequestTimestampNs;
+    runtime->pendingController1SequenceId = savestate->pendingController1SequenceId;
+    runtime->latchedController1State = savestate->latchedController1State;
+    runtime->latchedController1ObservedTimestampNs = savestate->latchedController1ObservedTimestampNs;
+    runtime->latchedController1LatchTimestampNs = savestate->latchedController1LatchTimestampNs;
+    runtime->latchedController1AppliedFrameId = savestate->latchedController1AppliedFrameId;
+    runtime->latchedController1RequestTimestampNs = savestate->latchedController1RequestTimestampNs;
+    runtime->latchedController1SequenceId = savestate->latchedController1SequenceId;
+    runtime->latestFrameController1AppliedFrameId =
+        savestate->latestFrameController1AppliedFrameId;
+    runtime->latestFrameController1ObservedTimestampNs =
+        savestate->latestFrameController1ObservedTimestampNs;
+    runtime->latestFrameController1LatchTimestampNs =
+        savestate->latestFrameController1LatchTimestampNs;
+    runtime->latestFrameController1RequestTimestampNs =
+        savestate->latestFrameController1RequestTimestampNs;
+    runtime->latestFrameController1SequenceId = savestate->latestFrameController1SequenceId;
+    runtime->latestFrameController1State = savestate->latestFrameController1State;
+    runtime->nextController1SequenceId = savestate->nextController1SequenceId;
+    memcpy(runtime->latestFrame, savestate->latestFrame, sizeof(runtime->latestFrame));
+    memcpy(
+        runtime->latestPaletteFrame,
+        savestate->latestPaletteFrame,
+        sizeof(runtime->latestPaletteFrame));
+    runtime->hasLatestFrame = true;
+    runtime->hasLatestPaletteFrame = true;
+
+    latchThreadKeyboardStateFromRuntime(runtime);
+    runtime->apuSampleBufferLastIndex = computeApuSampleWindowStart(&gApuState);
+    refreshMemorySnapshotLocked(runtime);
+    captureSavestateLocked(runtime);
+}
+
+static bool tryApplyPendingSavestateLocked(SmolnesRuntimeHandle* runtime)
+{
+    if (runtime == NULL || !runtime->savestateLoadPending || runtime->pendingSavestate == NULL) {
+        return false;
+    }
+
+    const SmolnesRuntimeSavestateBlob* savestate = getPendingSavestateBlob(runtime);
+    applySavestateLocked(runtime, savestate);
+    runtime->savestateLoadPending = false;
+    runtime->savestateAppliedSequence = runtime->savestateRequestSequence;
+    clearLastErrorLocked(runtime);
+    pthread_cond_broadcast(&runtime->runtimeCond);
+    return true;
+}
+
 static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
 {
     const double snapshotStartMs = monotonicNowMs();
@@ -1307,6 +1690,17 @@ SmolnesRuntimeHandle* smolnesRuntimeCreate(void)
         return NULL;
     }
 
+    runtime->latestSavestate = calloc(1u, (size_t)smolnesRuntimeGetSavestateSize());
+    runtime->pendingSavestate = calloc(1u, (size_t)smolnesRuntimeGetSavestateSize());
+    if (runtime->latestSavestate == NULL || runtime->pendingSavestate == NULL) {
+        free(runtime->latestSavestate);
+        free(runtime->pendingSavestate);
+        pthread_cond_destroy(&runtime->runtimeCond);
+        pthread_mutex_destroy(&runtime->runtimeMutex);
+        free(runtime);
+        return NULL;
+    }
+
     return runtime;
 }
 
@@ -1317,6 +1711,8 @@ void smolnesRuntimeDestroy(SmolnesRuntimeHandle* runtime)
     }
 
     smolnesRuntimeStop(runtime);
+    free(runtime->latestSavestate);
+    free(runtime->pendingSavestate);
     pthread_cond_destroy(&runtime->runtimeCond);
     pthread_mutex_destroy(&runtime->runtimeMutex);
     free(runtime);
@@ -1443,6 +1839,10 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->realtimePacingOriginMs = 0.0;
     runtime->realtimePacingOriginFrame = 0;
     runtime->waitingForInitialFrameRequest = true;
+    runtime->hasSavestate = false;
+    runtime->savestateLoadPending = false;
+    runtime->savestateRequestSequence = 0;
+    runtime->savestateAppliedSequence = 0;
     runtime->latchedController1State = 0;
     runtime->pendingController1State = 0;
     runtime->pendingController1ObservedTimestampNs = 0;
@@ -1460,6 +1860,12 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->latestFrameController1SequenceId = 0;
     runtime->latestFrameController1State = 0;
     runtime->nextController1SequenceId = 1;
+    if (runtime->latestSavestate != NULL) {
+        memset(runtime->latestSavestate, 0, (size_t)smolnesRuntimeGetSavestateSize());
+    }
+    if (runtime->pendingSavestate != NULL) {
+        memset(runtime->pendingSavestate, 0, (size_t)smolnesRuntimeGetSavestateSize());
+    }
     runtime->threadRunning = true;
 
     const int createResult =
@@ -1553,6 +1959,7 @@ void smolnesRuntimeStop(SmolnesRuntimeHandle* runtime)
     runtime->threadRunning = false;
     runtime->stopRequested = false;
     runtime->targetFrames = runtime->renderedFrames;
+    runtime->savestateLoadPending = false;
     pthread_cond_broadcast(&runtime->runtimeCond);
     pthread_mutex_unlock(&runtime->runtimeMutex);
 }
@@ -1970,6 +2377,92 @@ bool smolnesRuntimeCopyApuSamples(
     memcpy(buffer, mutableRuntime->apuSampleBuffer, count * sizeof(float));
     *samplesOut = count;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeCopySavestate(
+    const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)
+{
+    if (runtime == NULL || buffer == NULL || bufferSize < smolnesRuntimeGetSavestateSize()) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasSavestate
+        || mutableRuntime->latestSavestate == NULL) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    const SmolnesRuntimeSavestateBlob* savestate = getLatestSavestateBlob(mutableRuntime);
+    memcpy(buffer, savestate, (size_t)smolnesRuntimeGetSavestateSize());
+    if (frameId != NULL) {
+        *frameId = savestate->frameId;
+    }
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
+bool smolnesRuntimeLoadSavestate(
+    SmolnesRuntimeHandle* runtime, const uint8_t* buffer, uint32_t bufferSize, uint32_t timeoutMs)
+{
+    if (runtime == NULL || buffer == NULL || bufferSize != smolnesRuntimeGetSavestateSize()) {
+        return false;
+    }
+
+    const SmolnesRuntimeSavestateBlob* source = (const SmolnesRuntimeSavestateBlob*)buffer;
+    if (source->magic != kSmolnesRuntimeSavestateMagic
+        || source->version != kSmolnesRuntimeSavestateVersion) {
+        setLastError(runtime, "Invalid smolnes savestate payload.");
+        return false;
+    }
+
+    pthread_mutex_lock(&runtime->runtimeMutex);
+    if (!runtime->threadRunning || !runtime->healthy || runtime->pendingSavestate == NULL) {
+        setLastErrorLocked(runtime, "smolnes runtime is not healthy.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
+        return false;
+    }
+
+    memcpy(runtime->pendingSavestate, buffer, (size_t)bufferSize);
+    runtime->savestateRequestSequence++;
+    if (runtime->savestateRequestSequence == 0) {
+        runtime->savestateRequestSequence = 1;
+    }
+    const uint64_t requestSequence = runtime->savestateRequestSequence;
+    runtime->savestateLoadPending = true;
+    pthread_cond_broadcast(&runtime->runtimeCond);
+
+    const struct timespec deadline = buildDeadline(timeoutMs);
+    while (runtime->savestateAppliedSequence < requestSequence && runtime->threadRunning
+           && runtime->healthy) {
+        int waitResult = 0;
+        if (timeoutMs == 0) {
+            waitResult = pthread_cond_wait(&runtime->runtimeCond, &runtime->runtimeMutex);
+        }
+        else {
+            waitResult =
+                pthread_cond_timedwait(&runtime->runtimeCond, &runtime->runtimeMutex, &deadline);
+        }
+
+        if (waitResult == ETIMEDOUT) {
+            runtime->savestateLoadPending = false;
+            runtime->healthy = false;
+            setLastErrorLocked(runtime, "Timed out waiting for smolnes savestate load.");
+            pthread_mutex_unlock(&runtime->runtimeMutex);
+            return false;
+        }
+    }
+
+    if (runtime->savestateAppliedSequence < requestSequence) {
+        runtime->savestateLoadPending = false;
+        setLastErrorLocked(runtime, "smolnes runtime stopped before savestate load completed.");
+        pthread_mutex_unlock(&runtime->runtimeMutex);
+        return false;
+    }
+
+    pthread_mutex_unlock(&runtime->runtimeMutex);
     return true;
 }
 
