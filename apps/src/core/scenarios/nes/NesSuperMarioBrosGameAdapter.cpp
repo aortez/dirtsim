@@ -14,6 +14,9 @@ namespace DirtSim {
 
 namespace {
 
+constexpr double kNesFrameHeight = 240.0;
+constexpr double kNesFrameWidth = 256.0;
+
 double normalizeSmb(double value, double maxValue)
 {
     return std::clamp(value / maxValue, 0.0, 1.0);
@@ -22,6 +25,15 @@ double normalizeSmb(double value, double maxValue)
 double normalizeSmbSigned(double value, double maxMagnitude)
 {
     return std::clamp(value / maxMagnitude, -1.0, 1.0);
+}
+
+float normalizeViewCoordinate(double value, double extent)
+{
+    if (extent <= 0.0) {
+        return 0.5f;
+    }
+
+    return static_cast<float>(std::clamp(value / extent, 0.0, 1.0));
 }
 
 std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeSmbSpecialSenses(
@@ -98,6 +110,8 @@ public:
         advancedFrameCount_ += input.advancedFrames;
         cachedFacingX_ = 0.0f;
         cachedSpecialSenses_.fill(0.0);
+        cachedSelfViewX_ = 0.5f;
+        cachedSelfViewY_ = 0.5f;
 
         NesGameAdapterFrameOutput output;
         if (!input.memorySnapshot.has_value()) {
@@ -142,6 +156,10 @@ public:
         if (state.phase == SmbPhase::Gameplay) {
             cachedFacingX_ = state.facingX;
             cachedSpecialSenses_ = makeSmbSpecialSenses(state);
+            cachedSelfViewX_ =
+                normalizeViewCoordinate(static_cast<double>(state.playerXScreen), kNesFrameWidth);
+            cachedSelfViewY_ =
+                normalizeViewCoordinate(static_cast<double>(state.playerYScreen), kNesFrameHeight);
         }
 
         const NesSuperMarioBrosEvaluatorInput evaluatorInput{
@@ -163,6 +181,8 @@ public:
             input.deltaTimeSeconds,
             cachedSpecialSenses_,
             cachedFacingX_,
+            cachedSelfViewX_,
+            cachedSelfViewY_,
             input.controllerMask);
     }
 
@@ -173,6 +193,8 @@ private:
     uint64_t advancedFrameCount_ = 0;
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
     float cachedFacingX_ = 0.0f;
+    float cachedSelfViewX_ = 0.5f;
+    float cachedSelfViewY_ = 0.5f;
     bool setupFailureLogged_ = false;
 };
 

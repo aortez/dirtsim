@@ -35,9 +35,10 @@ constexpr const char* kBenchmarkRepeatsEnv = "DIRTSIM_DUCK_RNN_BENCH_REPEATS";
 constexpr const char* kBenchmarkWarmupIterationsEnv = "DIRTSIM_DUCK_RNN_BENCH_WARMUP_ITERATIONS";
 constexpr int kInputHistogramSize =
     DuckSensoryData::GRID_SIZE * DuckSensoryData::GRID_SIZE * DuckSensoryData::NUM_MATERIALS;
+constexpr int kBodyStateInputSize = 6;
 constexpr int kControlFeedbackInputSize = 4;
-constexpr int kInputSize =
-    kInputHistogramSize + 4 + kControlFeedbackInputSize + DuckSensoryData::SPECIAL_SENSE_COUNT + 2;
+constexpr int kInputSize = kInputHistogramSize + kBodyStateInputSize + kControlFeedbackInputSize
+    + DuckSensoryData::SPECIAL_SENSE_COUNT + 2;
 constexpr int kH1Size = 64;
 constexpr int kH2Size = 32;
 constexpr int kOutputSize = 4;
@@ -57,7 +58,8 @@ constexpr float kStrongPositiveLogit = 4.0f;
 size_t energyInputIndex()
 {
     return static_cast<size_t>(
-        kInputHistogramSize + 4 + kControlFeedbackInputSize + DuckSensoryData::SPECIAL_SENSE_COUNT);
+        kInputHistogramSize + kBodyStateInputSize + kControlFeedbackInputSize
+        + DuckSensoryData::SPECIAL_SENSE_COUNT);
 }
 
 size_t wXh1Index(size_t inputIndex, size_t hiddenIndex)
@@ -261,6 +263,8 @@ DuckSensoryData makeBenchmarkSensory(const Duck& duck, const World& world)
     sensory.previous_control_y = -1.0f;
     sensory.previous_jump = true;
     sensory.previous_run = false;
+    sensory.self_view_x = 0.25f;
+    sensory.self_view_y = 0.75f;
     sensory.velocity = Vector2d{ 1.5, -0.75 };
     for (int i = 0; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         sensory.special_senses[static_cast<size_t>(i)] = static_cast<double>((i % 7) - 3) / 3.0;
@@ -272,7 +276,8 @@ double consumeSensoryData(const DuckSensoryData& sensory)
 {
     constexpr int center = DuckSensoryData::GRID_SIZE / 2;
     return sensory.energy + sensory.health + sensory.facing_x + sensory.velocity.x
-        + sensory.velocity.y + sensory.previous_control_x + sensory.previous_control_y
+        + sensory.velocity.y + sensory.self_view_x + sensory.self_view_y
+        + sensory.previous_control_x + sensory.previous_control_y
         + (sensory.previous_jump ? 1.0 : 0.0) + (sensory.previous_run ? 1.0 : 0.0)
         + sensory.special_senses[0] + sensory.special_senses[7]
         + sensory.special_senses[DuckSensoryData::SPECIAL_SENSE_COUNT - 1]
@@ -399,7 +404,7 @@ TEST(DuckNeuralNetRecurrentBrainV2Test, GenomeLayoutUsesCoarseMutationDomains)
 
     ASSERT_EQ(layout.segments.size(), 5u);
     EXPECT_EQ(layout.segments[0].name, "input_h1");
-    EXPECT_EQ(layout.segments[0].size, 284928);
+    EXPECT_EQ(layout.segments[0].size, 285056);
     EXPECT_EQ(layout.segments[1].name, "h1_recurrent");
     EXPECT_EQ(layout.segments[1].size, 4225);
     EXPECT_EQ(layout.segments[2].name, "h1_to_h2");

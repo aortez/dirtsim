@@ -29,8 +29,13 @@ struct DuckSensoryData {
     double scale_factor = 1.0;
     Vector2i world_offset;
 
-    // Duck's current position in world coordinates.
+    // Coarse integer position in scenario coordinates.
+    // World ducks use anchor-cell coordinates; NES adapters typically pin this to view center.
     Vector2i position;
+
+    // Body reference point inside the current visual frame, normalized to [0,1].
+    float self_view_x = 0.5f;
+    float self_view_y = 0.5f;
 
     // Physics state.
     Vector2d velocity;
@@ -57,7 +62,7 @@ struct DuckSensoryData {
 
     double delta_time_seconds = 0.0;
 
-    using serialize = zpp::bits::members<17>;
+    using serialize = zpp::bits::members<19>;
 };
 
 void to_json(nlohmann::json& j, const DuckSensoryData& data);

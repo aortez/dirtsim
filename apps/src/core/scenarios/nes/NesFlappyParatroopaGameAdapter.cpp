@@ -10,6 +10,9 @@
 namespace DirtSim {
 
 namespace {
+constexpr float kFlappyBirdCenterXPx = 64.0f;
+constexpr float kFlappyFrameHeightPx = 240.0f;
+constexpr float kFlappyFrameWidthPx = 256.0f;
 constexpr uint8_t kNesStateTitle = 0;
 constexpr uint8_t kNesStateWaiting = 1;
 constexpr uint8_t kNesStateGameOver = 7;
@@ -31,6 +34,20 @@ constexpr size_t kFlappyFeatureBirdVelocityNormalized = 2;
 constexpr size_t kFlappyFeatureScrollXNormalized = 7;
 constexpr size_t kFlappyFeatureScrollNt = 8;
 constexpr size_t kFlappyFeatureScoreNormalized = 10;
+
+float computeFlappyBirdCenterYPx(const NesFlappyBirdState& state)
+{
+    return state.birdY + 8.0f + (state.birdYFraction / 256.0f);
+}
+
+float normalizeViewCoordinate(float value, float extent)
+{
+    if (extent <= 0.0f) {
+        return 0.5f;
+    }
+
+    return std::clamp(value / extent, 0.0f, 1.0f);
+}
 
 std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> makeFlappySpecialSenses(
     const std::array<float, NesPolicyLayout::InputCount>& ramFeatures)
@@ -61,6 +78,8 @@ public:
         startPulseFrameCounter_ = 0;
         waitingFlapPulseFrameCounter_ = 0;
         cachedSpecialSenses_.fill(0.0);
+        cachedSelfViewX_ = 0.5f;
+        cachedSelfViewY_ = 0.5f;
     }
 
     NesGameAdapterControllerOutput resolveControllerMask(
@@ -101,6 +120,8 @@ public:
         }
 
         cachedSpecialSenses_.fill(0.0);
+        cachedSelfViewX_ = 0.5f;
+        cachedSelfViewY_ = 0.5f;
 
         NesGameAdapterFrameOutput output;
         if (!extractor_.has_value() || !evaluator_.has_value() || !extractor_->isSupported()) {
@@ -121,6 +142,9 @@ public:
         const NesFlappyBirdEvaluatorOutput evaluation =
             evaluator_->evaluate(evaluatorInput.value());
         cachedSpecialSenses_ = makeFlappySpecialSenses(evaluation.features);
+        cachedSelfViewX_ = normalizeViewCoordinate(kFlappyBirdCenterXPx, kFlappyFrameWidthPx);
+        cachedSelfViewY_ = normalizeViewCoordinate(
+            computeFlappyBirdCenterYPx(evaluatorInput->state), kFlappyFrameHeightPx);
         output.done = evaluation.done;
         output.gameState = evaluation.gameState;
         output.rewardDelta = evaluation.rewardDelta;
@@ -135,6 +159,8 @@ public:
             input.deltaTimeSeconds,
             cachedSpecialSenses_,
             0.0f,
+            cachedSelfViewX_,
+            cachedSelfViewY_,
             input.controllerMask);
     }
 
@@ -145,6 +171,8 @@ private:
     uint32_t startPulseFrameCounter_ = 0;
     uint32_t waitingFlapPulseFrameCounter_ = 0;
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
+    float cachedSelfViewX_ = 0.5f;
+    float cachedSelfViewY_ = 0.5f;
 };
 
 } // namespace

@@ -108,6 +108,8 @@ DuckSensoryData makeNesDuckSensoryData(
     double deltaTimeSeconds,
     const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
     float facingX,
+    float selfViewX,
+    float selfViewY,
     uint8_t controllerMask)
 {
     DuckSensoryData sensory{};
@@ -117,6 +119,8 @@ DuckSensoryData makeNesDuckSensoryData(
     }
 
     sensory.facing_x = facingX;
+    sensory.self_view_x = selfViewX;
+    sensory.self_view_y = selfViewY;
     setPreviousControlFromControllerMask(sensory, controllerMask);
     sensory.special_senses = specialSenses;
     return sensory;
