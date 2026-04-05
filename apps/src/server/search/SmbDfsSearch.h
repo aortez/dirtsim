@@ -32,6 +32,7 @@ enum class SmbDfsSearchCompletionReason : uint8_t {
 struct SmbDfsSearchOptions {
     uint64_t maxSearchedNodeCount = 5'000;
     uint64_t stallFrameLimit = 120;
+    bool velocityPruningEnabled = true;
     std::optional<uint64_t> stopAfterBestFrontier = std::nullopt;
 };
 
@@ -116,6 +117,7 @@ private:
         uint64_t frontier,
         double evaluationScore,
         uint64_t framesSinceProgress);
+    void releaseNodeHeavyData(size_t nodeIndex);
     void updateBestLeaf(size_t nodeIndex);
     void updateRenderableState(const SmbSearchNode& node);
 

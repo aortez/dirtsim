@@ -1,9 +1,16 @@
+#include "core/RenderMessage.h"
 #include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/search/SmbDfsSearch.h"
 #include "server/search/SmbPlanExecution.h"
 #include "server/search/SmbSearchHarness.h"
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
+#include <iostream>
 
 using namespace DirtSim::Server::SearchSupport;
 
@@ -14,6 +21,59 @@ void requireSmbRomOrSkip()
     if (!DirtSim::Test::resolveSmbRomPath().has_value()) {
         GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
     }
+}
+
+// PPM screenshot helpers (from NesSuperMarioBrosRamProbe_test.cpp).
+
+std::optional<uint16_t> readRgb565Pixel(const DirtSim::ScenarioVideoFrame& frame, size_t pixelIndex)
+{
+    const size_t offset = pixelIndex * 2u;
+    if (offset + 1u >= frame.pixels.size()) {
+        return std::nullopt;
+    }
+    const uint8_t lo = std::to_integer<uint8_t>(frame.pixels[offset]);
+    const uint8_t hi = std::to_integer<uint8_t>(frame.pixels[offset + 1u]);
+    return static_cast<uint16_t>(lo | (static_cast<uint16_t>(hi) << 8));
+}
+
+std::array<uint8_t, 3> rgb565ToRgb888(uint16_t value)
+{
+    const uint8_t red5 = static_cast<uint8_t>((value >> 11) & 0x1Fu);
+    const uint8_t green6 = static_cast<uint8_t>((value >> 5) & 0x3Fu);
+    const uint8_t blue5 = static_cast<uint8_t>(value & 0x1Fu);
+    const uint8_t red8 = static_cast<uint8_t>((red5 << 3) | (red5 >> 2));
+    const uint8_t green8 = static_cast<uint8_t>((green6 << 2) | (green6 >> 4));
+    const uint8_t blue8 = static_cast<uint8_t>((blue5 << 3) | (blue5 >> 2));
+    return { red8, green8, blue8 };
+}
+
+bool writeScenarioFramePpm(
+    const DirtSim::ScenarioVideoFrame& frame, const std::filesystem::path& path)
+{
+    if (frame.width == 0 || frame.height == 0) {
+        return false;
+    }
+    const size_t expectedBytes =
+        static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 2u;
+    if (frame.pixels.size() != expectedBytes) {
+        return false;
+    }
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open()) {
+        return false;
+    }
+    stream << "P6\n" << frame.width << " " << frame.height << "\n255\n";
+    const size_t pixelCount = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
+    for (size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex) {
+        const std::optional<uint16_t> rgb565 = readRgb565Pixel(frame, pixelIndex);
+        if (!rgb565.has_value()) {
+            return false;
+        }
+        const std::array<uint8_t, 3> rgb = rgb565ToRgb888(rgb565.value());
+        stream.write(
+            reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
+    }
+    return stream.good();
 }
 
 void expectFrameEq(
@@ -149,22 +209,86 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
 
     SmbSearchHarness harness;
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
-    const auto goombaResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGoomba);
     ASSERT_FALSE(flatResult.isError()) << flatResult.errorValue();
-    ASSERT_FALSE(goombaResult.isError()) << goombaResult.errorValue();
 
-    const uint64_t targetFrontier = goombaResult.value().evaluatorSummary.bestFrontier + 32u;
+    // Determine the goomba death frontier by replaying pure RightRun from the fixture.
+    // The bestFrontier after replay is the furthest Mario gets before dying.
+    const size_t holdRightFrameCount = 200u;
+    std::vector<SmbSearchLegalAction> holdRightActions(
+        holdRightFrameCount, SmbSearchLegalAction::RightRun);
+    const auto holdRightReplay = harness.replayFromRoot(
+        flatResult.value().savestate, flatResult.value().evaluatorSummary, holdRightActions);
+    ASSERT_FALSE(holdRightReplay.isError()) << holdRightReplay.errorValue();
+    const uint64_t holdRightDeathFrontier = holdRightReplay.value().evaluatorSummary.bestFrontier;
+    ASSERT_GT(holdRightDeathFrontier, 0u) << "Hold-right replay produced no frontier progress.";
+
+    // Target must be past the death frontier to prove the search navigated around the goomba.
+    const uint64_t targetFrontier = holdRightDeathFrontier + 64u;
+    std::cout << "Hold-right death frontier: " << holdRightDeathFrontier << "\n";
+    std::cout << "Target frontier (death + 64): " << targetFrontier << "\n";
+
+    // Run the DFS search.
+    constexpr uint64_t kSearchBudget = 100000u;
     SmbDfsSearch search(
         SmbDfsSearchOptions{
-            .maxSearchedNodeCount = 250000u,
+            .maxSearchedNodeCount = kSearchBudget,
             .stallFrameLimit = 120u,
             .stopAfterBestFrontier = targetFrontier,
         });
     const auto startResult = search.startFromFixture(flatResult.value());
     ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
 
-    const auto runResult = runSearchToCompletion(search, 250000u);
+    const auto runResult = runSearchToCompletion(search, kSearchBudget * 2u);
     ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
+
+    // Report results.
+    std::cout << "Searched nodes: " << search.getProgress().searchedNodeCount << "\n";
+    std::cout << "Best frontier: " << search.getProgress().bestFrontier << "\n";
+    std::cout << "Plan frames: " << search.getPlan().frames.size() << "\n";
+    const bool reachedTarget = search.getProgress().bestFrontier >= targetFrontier;
+    std::cout << "Reached target: " << (reachedTarget ? "YES" : "NO") << "\n";
+
+    // Screenshot the search's best leaf video frame directly.
+    const auto screenshotDir = std::filesystem::path(::testing::TempDir());
+    if (search.getScenarioVideoFrame().has_value()) {
+        const auto bestLeafScreenshot = screenshotDir / "dfs_goomba_best_leaf.ppm";
+        writeScenarioFramePpm(search.getScenarioVideoFrame().value(), bestLeafScreenshot);
+        std::cout << "Best leaf screenshot: " << bestLeafScreenshot.string() << "\n";
+    }
+
+    // Screenshot the first PrunedDead node from the trace to show where death was detected.
+    for (const auto& entry : search.getTrace()) {
+        if (entry.eventType != SmbDfsSearchTraceEventType::PrunedDead) {
+            continue;
+        }
+        std::cout << "First death prune at node " << entry.nodeIndex << " (frame "
+                  << entry.gameplayFrame << ", frontier " << entry.frontier << ")\n";
+        break;
+    }
+
+    // Count trace events for diagnostics.
+    size_t expandedCount = 0;
+    size_t prunedDeadCount = 0;
+    size_t prunedStalledCount = 0;
+    size_t backtrackedCount = 0;
+    for (const auto& entry : search.getTrace()) {
+        if (entry.eventType == SmbDfsSearchTraceEventType::ExpandedAlive) {
+            expandedCount++;
+        }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedDead) {
+            prunedDeadCount++;
+        }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled) {
+            prunedStalledCount++;
+        }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::Backtracked) {
+            backtrackedCount++;
+        }
+    }
+    std::cout << "Trace: expanded=" << expandedCount << " prunedDead=" << prunedDeadCount
+              << " prunedStalled=" << prunedStalledCount << " backtracked=" << backtrackedCount
+              << "\n";
+
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
     EXPECT_GT(search.getPlan().summary.elapsedFrames, 0u);

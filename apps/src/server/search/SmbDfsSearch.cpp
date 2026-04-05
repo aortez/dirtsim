@@ -211,7 +211,9 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 exhaustedNode.evaluatorSummary.bestFrontier,
                 exhaustedNode.evaluatorSummary.evaluationScore,
                 exhaustedNode.evaluatorSummary.gameplayFramesSinceProgress);
+            const size_t poppedNodeIndex = dfsFrame.nodeIndex;
             dfsStack_.pop_back();
+            releaseNodeHeavyData(poppedNodeIndex);
             progress_.lastSearchEvent = Api::SearchProgressEvent::Backtracked;
             if (!dfsStack_.empty()) {
                 updateRenderableState(nodes_[dfsStack_.back().nodeIndex]);
@@ -225,6 +227,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         const size_t parentIndex = dfsFrame.nodeIndex;
         const SmbSearchLegalAction action = actions[dfsFrame.nextActionIndex++];
         const SmbSearchNode& parent = nodes_[parentIndex];
+        const uint64_t parentCurrentFrontier = parent.currentFrontier;
 
         if (!driver_->loadRuntimeSavestate(parent.savestate, 2000u)) {
             const std::string runtimeLastError = driver_->getRuntimeLastError();
@@ -319,10 +322,15 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         updateRenderableState(nodes_.back());
         updateBestLeaf(childIndex);
 
-        const bool stalled =
-            evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
-        const SmbDfsSearchTraceEventType traceEvent = evaluatorSummary.terminal
-            ? SmbDfsSearchTraceEventType::PrunedDead
+        const bool dead = evaluatorSummary.terminal || state.phase != SmbPhase::Gameplay
+            || state.lifeState != SmbLifeState::Alive;
+        const bool velocityStuck = options_.velocityPruningEnabled
+            && state.absoluteX == decodeSmbAbsoluteX(parentCurrentFrontier)
+            && state.horizontalSpeedNormalized == 0.0
+            && evaluatorSummary.gameplayFramesSinceProgress > 0;
+        const bool stalled = velocityStuck
+            || evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
+        const SmbDfsSearchTraceEventType traceEvent = dead ? SmbDfsSearchTraceEventType::PrunedDead
             : stalled ? SmbDfsSearchTraceEventType::PrunedStalled
                       : SmbDfsSearchTraceEventType::ExpandedAlive;
         recordTrace(
@@ -336,12 +344,16 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             evaluatorSummary.gameplayFramesSinceProgress);
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
-        if (!evaluatorSummary.terminal && !stalled) {
+        if (!dead && !stalled) {
             dfsStack_.push_back(
                 DfsFrame{
                     .nodeIndex = childIndex,
                     .nextActionIndex = 0,
                 });
+        }
+        else {
+            // Pruned node will never be loaded again. Release heavy data.
+            releaseNodeHeavyData(childIndex);
         }
 
         if (options_.stopAfterBestFrontier.has_value()
@@ -634,6 +646,18 @@ void SmbDfsSearch::recordTrace(
             .evaluationScore = evaluationScore,
             .framesSinceProgress = framesSinceProgress,
         });
+}
+
+void SmbDfsSearch::releaseNodeHeavyData(size_t nodeIndex)
+{
+    if (nodeIndex >= nodes_.size()) {
+        return;
+    }
+    SmbSearchNode& node = nodes_[nodeIndex];
+    node.savestate.bytes.clear();
+    node.savestate.bytes.shrink_to_fit();
+    node.memorySnapshot = SmolnesRuntime::MemorySnapshot{};
+    node.scenarioVideoFrame.reset();
 }
 
 void SmbDfsSearch::updateBestLeaf(size_t nodeIndex)

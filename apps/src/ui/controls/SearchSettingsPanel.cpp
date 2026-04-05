@@ -22,18 +22,14 @@ uint32_t clampStepperValue(int32_t value, uint32_t minValue, uint32_t maxValue)
 SearchSettings clampSearchSettings(const SearchSettings& settings)
 {
     return SearchSettings{
-        .searchDepth = clampStepperValue(
-            static_cast<int32_t>(settings.searchDepth),
-            SearchSettings::SearchDepthMin,
-            SearchSettings::SearchDepthMax),
-        .maxSegments = clampStepperValue(
-            static_cast<int32_t>(settings.maxSegments),
-            SearchSettings::MaxSegmentsMin,
-            SearchSettings::MaxSegmentsMax),
-        .segmentFrameBudget = clampStepperValue(
-            static_cast<int32_t>(settings.segmentFrameBudget),
-            SearchSettings::SegmentFrameBudgetMin,
-            SearchSettings::SegmentFrameBudgetMax),
+        .maxSearchedNodeCount = clampStepperValue(
+            static_cast<int32_t>(settings.maxSearchedNodeCount),
+            SearchSettings::MaxSearchedNodeCountMin,
+            SearchSettings::MaxSearchedNodeCountMax),
+        .stallFrameLimit = clampStepperValue(
+            static_cast<int32_t>(settings.stallFrameLimit),
+            SearchSettings::StallFrameLimitMin,
+            SearchSettings::StallFrameLimitMax),
     };
 }
 
@@ -56,18 +52,23 @@ void SearchSettingsPanel::applySettings(const DirtSim::UserSettings& settings)
     settings_ = settings;
     updatingUi_ = true;
 
-    if (searchDepthStepper_) {
+    if (maxSearchedNodeCountStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
-            searchDepthStepper_, static_cast<int32_t>(settings_.searchSettings.searchDepth));
+            maxSearchedNodeCountStepper_,
+            static_cast<int32_t>(settings_.searchSettings.maxSearchedNodeCount));
     }
-    if (maxSegmentsStepper_) {
+    if (stallFrameLimitStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
-            maxSegmentsStepper_, static_cast<int32_t>(settings_.searchSettings.maxSegments));
+            stallFrameLimitStepper_,
+            static_cast<int32_t>(settings_.searchSettings.stallFrameLimit));
     }
-    if (segmentFrameBudgetStepper_) {
-        LVGLBuilder::ActionStepperBuilder::setValue(
-            segmentFrameBudgetStepper_,
-            static_cast<int32_t>(settings_.searchSettings.segmentFrameBudget));
+    if (velocityPruningSwitch_) {
+        if (settings_.searchSettings.velocityPruningEnabled) {
+            lv_obj_add_state(velocityPruningSwitch_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(velocityPruningSwitch_, LV_STATE_CHECKED);
+        }
     }
 
     updatingUi_ = false;
@@ -85,39 +86,36 @@ void SearchSettingsPanel::createControls()
     lv_obj_set_style_text_color(header, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
 
-    searchDepthStepper_ = LVGLBuilder::actionStepper(container_)
-                              .label("Search Depth")
-                              .range(
-                                  static_cast<int32_t>(SearchSettings::SearchDepthMin),
-                                  static_cast<int32_t>(SearchSettings::SearchDepthMax))
-                              .step(1)
-                              .value(static_cast<int32_t>(settings_.searchSettings.searchDepth))
-                              .width(kPanelControlWidth)
-                              .callback(onSearchDepthChanged, this)
-                              .buildOrLog();
-
-    maxSegmentsStepper_ = LVGLBuilder::actionStepper(container_)
-                              .label("Max Segments (0 = unlimited)")
-                              .range(
-                                  static_cast<int32_t>(SearchSettings::MaxSegmentsMin),
-                                  static_cast<int32_t>(SearchSettings::MaxSegmentsMax))
-                              .step(1)
-                              .value(static_cast<int32_t>(settings_.searchSettings.maxSegments))
-                              .width(kPanelControlWidth)
-                              .callback(onMaxSegmentsChanged, this)
-                              .buildOrLog();
-
-    segmentFrameBudgetStepper_ =
+    maxSearchedNodeCountStepper_ =
         LVGLBuilder::actionStepper(container_)
-            .label("Frames / Segment")
+            .label("Node Budget")
             .range(
-                static_cast<int32_t>(SearchSettings::SegmentFrameBudgetMin),
-                static_cast<int32_t>(SearchSettings::SegmentFrameBudgetMax))
-            .step(1)
-            .value(static_cast<int32_t>(settings_.searchSettings.segmentFrameBudget))
+                static_cast<int32_t>(SearchSettings::MaxSearchedNodeCountMin),
+                static_cast<int32_t>(SearchSettings::MaxSearchedNodeCountMax))
+            .step(1000)
+            .value(static_cast<int32_t>(settings_.searchSettings.maxSearchedNodeCount))
             .width(kPanelControlWidth)
-            .callback(onSegmentFrameBudgetChanged, this)
+            .callback(onMaxSearchedNodeCountChanged, this)
             .buildOrLog();
+
+    stallFrameLimitStepper_ =
+        LVGLBuilder::actionStepper(container_)
+            .label("Stall Limit (frames)")
+            .range(
+                static_cast<int32_t>(SearchSettings::StallFrameLimitMin),
+                static_cast<int32_t>(SearchSettings::StallFrameLimitMax))
+            .step(5)
+            .value(static_cast<int32_t>(settings_.searchSettings.stallFrameLimit))
+            .width(kPanelControlWidth)
+            .callback(onStallFrameLimitChanged, this)
+            .buildOrLog();
+
+    velocityPruningSwitch_ = LVGLBuilder::labeledSwitch(container_)
+                                 .label("Velocity Pruning")
+                                 .initialState(settings_.searchSettings.velocityPruningEnabled)
+                                 .width(kPanelControlWidth)
+                                 .callback(onVelocityPruningChanged, this)
+                                 .buildOrLog();
 }
 
 void SearchSettingsPanel::patchCurrentSettings()
@@ -135,48 +133,46 @@ void SearchSettingsPanel::setSearchSettingsAndPersist(const SearchSettings& sett
     patchCurrentSettings();
 }
 
-void SearchSettingsPanel::onSearchDepthChanged(lv_event_t* e)
+void SearchSettingsPanel::onMaxSearchedNodeCountChanged(lv_event_t* e)
 {
     auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
-    DIRTSIM_ASSERT(self, "SearchSettingsPanel search-depth callback requires panel");
+    DIRTSIM_ASSERT(self, "SearchSettingsPanel node-budget callback requires panel");
     if (self->updatingUi_) {
         return;
     }
 
-    self->settings_.searchSettings.searchDepth = clampStepperValue(
-        LVGLBuilder::ActionStepperBuilder::getValue(self->searchDepthStepper_),
-        SearchSettings::SearchDepthMin,
-        SearchSettings::SearchDepthMax);
+    self->settings_.searchSettings.maxSearchedNodeCount = clampStepperValue(
+        LVGLBuilder::ActionStepperBuilder::getValue(self->maxSearchedNodeCountStepper_),
+        SearchSettings::MaxSearchedNodeCountMin,
+        SearchSettings::MaxSearchedNodeCountMax);
     self->patchCurrentSettings();
 }
 
-void SearchSettingsPanel::onMaxSegmentsChanged(lv_event_t* e)
+void SearchSettingsPanel::onStallFrameLimitChanged(lv_event_t* e)
 {
     auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
-    DIRTSIM_ASSERT(self, "SearchSettingsPanel max-segments callback requires panel");
+    DIRTSIM_ASSERT(self, "SearchSettingsPanel stall-limit callback requires panel");
     if (self->updatingUi_) {
         return;
     }
 
-    self->settings_.searchSettings.maxSegments = clampStepperValue(
-        LVGLBuilder::ActionStepperBuilder::getValue(self->maxSegmentsStepper_),
-        SearchSettings::MaxSegmentsMin,
-        SearchSettings::MaxSegmentsMax);
+    self->settings_.searchSettings.stallFrameLimit = clampStepperValue(
+        LVGLBuilder::ActionStepperBuilder::getValue(self->stallFrameLimitStepper_),
+        SearchSettings::StallFrameLimitMin,
+        SearchSettings::StallFrameLimitMax);
     self->patchCurrentSettings();
 }
 
-void SearchSettingsPanel::onSegmentFrameBudgetChanged(lv_event_t* e)
+void SearchSettingsPanel::onVelocityPruningChanged(lv_event_t* e)
 {
     auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
-    DIRTSIM_ASSERT(self, "SearchSettingsPanel frame-budget callback requires panel");
+    DIRTSIM_ASSERT(self, "SearchSettingsPanel velocity-pruning callback requires panel");
     if (self->updatingUi_) {
         return;
     }
 
-    self->settings_.searchSettings.segmentFrameBudget = clampStepperValue(
-        LVGLBuilder::ActionStepperBuilder::getValue(self->segmentFrameBudgetStepper_),
-        SearchSettings::SegmentFrameBudgetMin,
-        SearchSettings::SegmentFrameBudgetMax);
+    self->settings_.searchSettings.velocityPruningEnabled =
+        lv_obj_has_state(self->velocityPruningSwitch_, LV_STATE_CHECKED);
     self->patchCurrentSettings();
 }
 

@@ -38,16 +38,14 @@ struct NesSessionSettings {
 };
 
 struct SearchSettings {
-    static constexpr uint32_t SearchDepthMin = 1;
-    static constexpr uint32_t SearchDepthMax = 2;
-    static constexpr uint32_t MaxSegmentsMin = 0;
-    static constexpr uint32_t MaxSegmentsMax = 32;
-    static constexpr uint32_t SegmentFrameBudgetMin = 1;
-    static constexpr uint32_t SegmentFrameBudgetMax = 120;
+    static constexpr uint32_t MaxSearchedNodeCountMin = 100;
+    static constexpr uint32_t MaxSearchedNodeCountMax = 500000;
+    static constexpr uint32_t StallFrameLimitMin = 1;
+    static constexpr uint32_t StallFrameLimitMax = 300;
 
-    uint32_t searchDepth = 1;
-    uint32_t maxSegments = 4;
-    uint32_t segmentFrameBudget = 12;
+    uint32_t maxSearchedNodeCount = 5000;
+    uint32_t stallFrameLimit = 30;
+    bool velocityPruningEnabled = true;
 
     using serialize = zpp::bits::members<3>;
 };

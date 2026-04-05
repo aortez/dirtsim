@@ -205,31 +205,23 @@ UserSettings sanitizeUserSettings(
         recordUpdate("nesSessionSettings.frameDelayMs clamped below one NES frame");
     }
 
-    if (settings.searchSettings.searchDepth < SearchSettings::SearchDepthMin) {
-        settings.searchSettings.searchDepth = SearchSettings::SearchDepthMin;
-        recordUpdate("searchSettings.searchDepth clamped to minimum");
+    if (settings.searchSettings.maxSearchedNodeCount < SearchSettings::MaxSearchedNodeCountMin) {
+        settings.searchSettings.maxSearchedNodeCount = SearchSettings::MaxSearchedNodeCountMin;
+        recordUpdate("searchSettings.maxSearchedNodeCount clamped to minimum");
     }
-    else if (settings.searchSettings.searchDepth > SearchSettings::SearchDepthMax) {
-        settings.searchSettings.searchDepth = SearchSettings::SearchDepthMax;
-        recordUpdate("searchSettings.searchDepth clamped to maximum");
-    }
-
-    if (settings.searchSettings.maxSegments < SearchSettings::MaxSegmentsMin) {
-        settings.searchSettings.maxSegments = SearchSettings::MaxSegmentsMin;
-        recordUpdate("searchSettings.maxSegments clamped to minimum");
-    }
-    else if (settings.searchSettings.maxSegments > SearchSettings::MaxSegmentsMax) {
-        settings.searchSettings.maxSegments = SearchSettings::MaxSegmentsMax;
-        recordUpdate("searchSettings.maxSegments clamped to maximum");
+    else if (
+        settings.searchSettings.maxSearchedNodeCount > SearchSettings::MaxSearchedNodeCountMax) {
+        settings.searchSettings.maxSearchedNodeCount = SearchSettings::MaxSearchedNodeCountMax;
+        recordUpdate("searchSettings.maxSearchedNodeCount clamped to maximum");
     }
 
-    if (settings.searchSettings.segmentFrameBudget < SearchSettings::SegmentFrameBudgetMin) {
-        settings.searchSettings.segmentFrameBudget = SearchSettings::SegmentFrameBudgetMin;
-        recordUpdate("searchSettings.segmentFrameBudget clamped to minimum");
+    if (settings.searchSettings.stallFrameLimit < SearchSettings::StallFrameLimitMin) {
+        settings.searchSettings.stallFrameLimit = SearchSettings::StallFrameLimitMin;
+        recordUpdate("searchSettings.stallFrameLimit clamped to minimum");
     }
-    else if (settings.searchSettings.segmentFrameBudget > SearchSettings::SegmentFrameBudgetMax) {
-        settings.searchSettings.segmentFrameBudget = SearchSettings::SegmentFrameBudgetMax;
-        recordUpdate("searchSettings.segmentFrameBudget clamped to maximum");
+    else if (settings.searchSettings.stallFrameLimit > SearchSettings::StallFrameLimitMax) {
+        settings.searchSettings.stallFrameLimit = SearchSettings::StallFrameLimitMax;
+        recordUpdate("searchSettings.stallFrameLimit clamped to maximum");
     }
 
     if (settings.volumePercent < 0) {

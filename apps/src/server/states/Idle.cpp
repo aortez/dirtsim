@@ -723,9 +723,16 @@ State::Any Idle::onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& d
     return nextState;
 }
 
-State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& dsm)
 {
+    const auto& searchSettings = dsm.getUserSettings().searchSettings;
+    SearchSupport::SmbDfsSearchOptions options{
+        .maxSearchedNodeCount = searchSettings.maxSearchedNodeCount,
+        .stallFrameLimit = searchSettings.stallFrameLimit,
+        .velocityPruningEnabled = searchSettings.velocityPruningEnabled,
+    };
     SearchActive nextState;
+    nextState.search = SearchSupport::SmbDfsSearch(options);
     const auto startResult = nextState.search.startDfs();
     if (startResult.isError()) {
         cwc.sendResponse(Api::SearchStart::Response::error(ApiError(startResult.errorValue())));

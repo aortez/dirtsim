@@ -20,14 +20,14 @@ private:
     void createControls();
     void patchCurrentSettings();
 
-    static void onSearchDepthChanged(lv_event_t* e);
-    static void onMaxSegmentsChanged(lv_event_t* e);
-    static void onSegmentFrameBudgetChanged(lv_event_t* e);
+    static void onMaxSearchedNodeCountChanged(lv_event_t* e);
+    static void onStallFrameLimitChanged(lv_event_t* e);
+    static void onVelocityPruningChanged(lv_event_t* e);
 
     lv_obj_t* container_ = nullptr;
-    lv_obj_t* maxSegmentsStepper_ = nullptr;
-    lv_obj_t* searchDepthStepper_ = nullptr;
-    lv_obj_t* segmentFrameBudgetStepper_ = nullptr;
+    lv_obj_t* maxSearchedNodeCountStepper_ = nullptr;
+    lv_obj_t* stallFrameLimitStepper_ = nullptr;
+    lv_obj_t* velocityPruningSwitch_ = nullptr;
     UiServices& uiServices_;
     DirtSim::UserSettings settings_{};
     bool updatingUi_ = false;

@@ -55,9 +55,8 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(inMemory.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(inMemory.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(inMemory.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
@@ -68,9 +67,8 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(fromDisk.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -159,9 +157,8 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(inMemory.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(inMemory.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(inMemory.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(
         inMemory.treeGerminationScenarioConfig.brain_type,
         UserSettings{}.treeGerminationScenarioConfig.brain_type);
@@ -173,9 +170,8 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(fromDisk.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(
         fromDisk.treeGerminationScenarioConfig.brain_type,
         UserSettings{}.treeGerminationScenarioConfig.brain_type);
@@ -222,9 +218,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     requestedSettings.nesSessionSettings.frameDelayEnabled = true;
     requestedSettings.nesSessionSettings.frameDelayMs = 999.0;
     requestedSettings.searchSettings = SearchSettings{
-        .searchDepth = 0u,
-        .maxSegments = 999u,
-        .segmentFrameBudget = 999u,
+        .maxSearchedNodeCount = 0u,
+        .stallFrameLimit = 999u,
     };
     requestedSettings.volumePercent = 999;
     requestedSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -255,11 +250,12 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_TRUE(response.value().settings.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(
         response.value().settings.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
-    EXPECT_EQ(response.value().settings.searchSettings.searchDepth, SearchSettings::SearchDepthMin);
-    EXPECT_EQ(response.value().settings.searchSettings.maxSegments, SearchSettings::MaxSegmentsMax);
     EXPECT_EQ(
-        response.value().settings.searchSettings.segmentFrameBudget,
-        SearchSettings::SegmentFrameBudgetMax);
+        response.value().settings.searchSettings.maxSearchedNodeCount,
+        SearchSettings::MaxSearchedNodeCountMin);
+    EXPECT_EQ(
+        response.value().settings.searchSettings.stallFrameLimit,
+        SearchSettings::StallFrameLimitMax);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
@@ -277,9 +273,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, kMaxPersistedNesFrameDelayMs);
-    EXPECT_EQ(fromDisk.searchSettings.searchDepth, SearchSettings::SearchDepthMin);
-    EXPECT_EQ(fromDisk.searchSettings.maxSegments, SearchSettings::MaxSegmentsMax);
-    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, SearchSettings::SegmentFrameBudgetMax);
+    EXPECT_EQ(
+        fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMin);
+    EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
@@ -301,9 +297,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     changedSettings.nesSessionSettings.frameDelayEnabled = true;
     changedSettings.nesSessionSettings.frameDelayMs = 4.2;
     changedSettings.searchSettings = SearchSettings{
-        .searchDepth = 2u,
-        .maxSegments = 8u,
-        .segmentFrameBudget = 24u,
+        .maxSearchedNodeCount = 10000u,
+        .stallFrameLimit = 60u,
     };
     changedSettings.volumePercent = 65;
     changedSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -331,9 +326,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
         response.value().settings.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(response.value().settings.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(response.value().settings.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(response.value().settings.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(response.value().settings.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(response.value().settings.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(response.value().settings.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(response.value().settings.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 60000);
@@ -344,9 +338,8 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::LosAngeles);
     EXPECT_FALSE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
-    EXPECT_EQ(fromDisk.searchSettings.searchDepth, 1u);
-    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 4u);
-    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 12u);
+    EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
+    EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -362,9 +355,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     baseSettings.nesSessionSettings.frameDelayEnabled = true;
     baseSettings.nesSessionSettings.frameDelayMs = 4.2;
     baseSettings.searchSettings = SearchSettings{
-        .searchDepth = 2u,
-        .maxSegments = 3u,
-        .segmentFrameBudget = 10u,
+        .maxSearchedNodeCount = 8000u,
+        .stallFrameLimit = 50u,
     };
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -388,9 +380,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
 
     Api::UserSettingsPatch::Command patchCommand{};
     patchCommand.searchSettings = SearchSettings{
-        .searchDepth = 9u,
-        .maxSegments = 10u,
-        .segmentFrameBudget = 30u,
+        .maxSearchedNodeCount = 999999u,
+        .stallFrameLimit = 999u,
     };
     patchCommand.networkLiveScanPreferred = true;
     patchCommand.trainingSpec = updatedTrainingSpec;
@@ -409,9 +400,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(inMemory.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(inMemory.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 4.2);
-    EXPECT_EQ(inMemory.searchSettings.searchDepth, SearchSettings::SearchDepthMax);
-    EXPECT_EQ(inMemory.searchSettings.maxSegments, 10u);
-    EXPECT_EQ(inMemory.searchSettings.segmentFrameBudget, 30u);
+    EXPECT_EQ(
+        inMemory.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
+    EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
@@ -425,9 +416,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
     EXPECT_TRUE(fromDisk.nesSessionSettings.frameDelayEnabled);
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 4.2);
-    EXPECT_EQ(fromDisk.searchSettings.searchDepth, SearchSettings::SearchDepthMax);
-    EXPECT_EQ(fromDisk.searchSettings.maxSegments, 10u);
-    EXPECT_EQ(fromDisk.searchSettings.segmentFrameBudget, 30u);
+    EXPECT_EQ(
+        fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
+    EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
