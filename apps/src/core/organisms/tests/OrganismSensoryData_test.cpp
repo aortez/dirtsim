@@ -397,6 +397,36 @@ TEST(DuckSensoryDataTest, GatherSensoryDataIncludesPreviousAppliedControlChannel
     EXPECT_TRUE(sensory.previous_run);
 }
 
+TEST(DuckSensoryDataTest, GatherSensoryDataIncludesNormalizedSelfViewCoordinates)
+{
+    auto world = std::make_unique<World>(15, 15);
+    for (uint32_t y = 0; y < 15; y++) {
+        for (uint32_t x = 0; x < 15; x++) {
+            world->getData().at(x, y) = Cell();
+        }
+    }
+
+    const OrganismId duckId = world->getOrganismManager().createDuck(*world, 7, 12);
+    Duck* duck = world->getOrganismManager().getDuck(duckId);
+    ASSERT_NE(duck, nullptr);
+
+    const Vector2i anchor = duck->getAnchorCell();
+    world->getData().at(anchor.x, anchor.y).setCOM(0.5f, -0.5f);
+
+    const DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
+
+    const int halfWindow = DuckSensoryData::GRID_SIZE / 2;
+    const double expectedX =
+        (static_cast<double>(halfWindow) + ((static_cast<double>(0.5f) + 1.0) / 2.0))
+        / static_cast<double>(DuckSensoryData::GRID_SIZE);
+    const double expectedY =
+        (static_cast<double>(halfWindow) + ((static_cast<double>(-0.5f) + 1.0) / 2.0))
+        / static_cast<double>(DuckSensoryData::GRID_SIZE);
+
+    EXPECT_NEAR(sensory.self_view_x, expectedX, 1e-6);
+    EXPECT_NEAR(sensory.self_view_y, expectedY, 1e-6);
+}
+
 /**
  * Test that Duck::gatherSensoryData correctly samples environment.
  */

@@ -19,7 +19,9 @@ constexpr int SPECIAL_SENSE_COUNT = DuckSensoryData::SPECIAL_SENSE_COUNT;
 
 constexpr int INPUT_HISTOGRAM_SIZE = GRID_SIZE * GRID_SIZE * NUM_MATERIALS;
 constexpr int CONTROL_FEEDBACK_INPUT_SIZE = 4;
-constexpr int SCALAR_INPUT_SIZE = 4 + CONTROL_FEEDBACK_INPUT_SIZE + SPECIAL_SENSE_COUNT + 2;
+constexpr int BODY_STATE_INPUT_SIZE = 6;
+constexpr int SCALAR_INPUT_SIZE =
+    BODY_STATE_INPUT_SIZE + CONTROL_FEEDBACK_INPUT_SIZE + SPECIAL_SENSE_COUNT + 2;
 constexpr int INPUT_SIZE = INPUT_HISTOGRAM_SIZE + SCALAR_INPUT_SIZE;
 constexpr int H1_SIZE = 64;
 constexpr int H2_SIZE = 32;
@@ -233,6 +235,8 @@ struct DuckNeuralNetRecurrentBrainV2::Impl {
         input_buffer[index++] =
             sensory.on_ground ? static_cast<WeightType>(1.0f) : static_cast<WeightType>(0.0f);
         input_buffer[index++] = static_cast<WeightType>(sensory.facing_x);
+        input_buffer[index++] = static_cast<WeightType>(sensory.self_view_x);
+        input_buffer[index++] = static_cast<WeightType>(sensory.self_view_y);
         input_buffer[index++] = static_cast<WeightType>(sensory.previous_control_x);
         input_buffer[index++] = static_cast<WeightType>(sensory.previous_control_y);
         input_buffer[index++] =

@@ -17,6 +17,8 @@ DuckSensoryData makeNesDuckSensoryData(
     double deltaTimeSeconds,
     const std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT>& specialSenses,
     float facingX = 0.0f,
+    float selfViewX = 0.5f,
+    float selfViewY = 0.5f,
     uint8_t controllerMask = 0u);
 
 } // namespace DirtSim

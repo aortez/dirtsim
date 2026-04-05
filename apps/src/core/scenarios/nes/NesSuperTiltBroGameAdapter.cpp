@@ -49,6 +49,8 @@ public:
         lastPlayerAStocks_.reset();
         lastPlayerBStocks_.reset();
         cachedSpecialSenses_.fill(0.0);
+        cachedSelfViewX_ = 0.5f;
+        cachedSelfViewY_ = 0.5f;
     }
 
     NesGameAdapterControllerOutput resolveControllerMask(
@@ -74,6 +76,8 @@ public:
 
         advancedFrameCount_ += input.advancedFrames;
         cachedSpecialSenses_.fill(0.0);
+        cachedSelfViewX_ = 0.5f;
+        cachedSelfViewY_ = 0.5f;
 
         NesGameAdapterFrameOutput output;
         output.rewardDelta += static_cast<double>(input.advancedFrames);
@@ -154,6 +158,8 @@ public:
             input.deltaTimeSeconds,
             cachedSpecialSenses_,
             0.0f,
+            cachedSelfViewX_,
+            cachedSelfViewY_,
             input.controllerMask);
     }
 
@@ -183,6 +189,8 @@ private:
     std::optional<uint8_t> lastPlayerAStocks_ = std::nullopt;
     std::optional<uint8_t> lastPlayerBStocks_ = std::nullopt;
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
+    float cachedSelfViewX_ = 0.5f;
+    float cachedSelfViewY_ = 0.5f;
 };
 
 } // namespace

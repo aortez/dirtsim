@@ -47,6 +47,15 @@ static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
 static constexpr float MOVE_INPUT_DEADZONE = 0.01f;    // Ignore tiny input as no movement.
 
+double normalizeFrameCoordinate(double position, double origin, double extent)
+{
+    if (extent <= 0.0) {
+        return 0.5;
+    }
+
+    return std::clamp((position - origin) / extent, 0.0, 1.0);
+}
+
 std::string duckCommandSignature(const DirtSim::DuckInput& input, bool onGround)
 {
     std::string signature;
@@ -661,9 +670,24 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
     const WorldData& world_data = world.getData();
     if (world_data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
         const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
+        const double duckWorldX =
+            static_cast<double>(anchor_cell_.x) + ((static_cast<double>(cell.com.x) + 1.0) / 2.0);
+        const double duckWorldY =
+            static_cast<double>(anchor_cell_.y) + ((static_cast<double>(cell.com.y) + 1.0) / 2.0);
+
+        data.self_view_x = static_cast<float>(normalizeFrameCoordinate(
+            duckWorldX,
+            static_cast<double>(data.world_offset.x),
+            static_cast<double>(data.actual_width)));
+        data.self_view_y = static_cast<float>(normalizeFrameCoordinate(
+            duckWorldY,
+            static_cast<double>(data.world_offset.y),
+            static_cast<double>(data.actual_height)));
         data.velocity = cell.velocity;
     }
     else {
+        data.self_view_x = 0.5f;
+        data.self_view_y = 0.5f;
         data.velocity = Vector2d{ 0.0, 0.0 };
     }
 
