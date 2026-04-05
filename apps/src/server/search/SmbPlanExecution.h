@@ -21,7 +21,6 @@ enum class SmbPlanExecutionCompletionReason : uint8_t {
     Stopped = 1,
     Error = 2,
 };
-
 struct SmbPlanExecutionTickResult {
     bool completed = false;
     bool frameAdvanced = false;

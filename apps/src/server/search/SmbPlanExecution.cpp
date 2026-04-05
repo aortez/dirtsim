@@ -216,7 +216,6 @@ const std::optional<std::string>& SmbPlanExecution::getCompletionErrorMessage() 
 {
     return completionErrorMessage_;
 }
-
 const Api::Plan& SmbPlanExecution::getPlan() const
 {
     return plan_;

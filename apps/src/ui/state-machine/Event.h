@@ -286,7 +286,6 @@ struct SearchCompletedReceivedEvent {
     Api::SearchCompleted completed;
     static constexpr const char* name() { return "SearchCompletedReceivedEvent"; }
 };
-
 /**
  * @brief Best snapshot received from server (new all-time fitness).
  */

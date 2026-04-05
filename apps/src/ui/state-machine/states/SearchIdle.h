@@ -2,8 +2,9 @@
 
 #include "StateForward.h"
 #include "server/api/Plan.h"
+#include "ui/SearchIdleView.h"
 #include "ui/state-machine/Event.h"
-#include <lvgl/lvgl.h>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -19,6 +20,7 @@ struct SearchIdle {
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
+    void updateAnimations();
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PlanPlaybackStoppedReceivedEvent& evt, StateMachine& sm);
@@ -33,13 +35,11 @@ struct SearchIdle {
 
 private:
     void updateVisibleIcons(StateMachine& sm);
-    void updateBodyText();
 
-    lv_obj_t* bodyLabel_ = nullptr;
-    lv_obj_t* contentRoot_ = nullptr;
     std::optional<std::string> lastError_ = std::nullopt;
     std::optional<Api::PlanSummary> lastSavedPlan_ = std::nullopt;
     std::optional<UUID> selectedPlanId_ = std::nullopt;
+    std::unique_ptr<SearchIdleView> view_;
 };
 
 } // namespace State

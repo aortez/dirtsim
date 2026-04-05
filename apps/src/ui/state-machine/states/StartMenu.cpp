@@ -49,6 +49,7 @@ void StartMenu::onEnter(StateMachine& sm)
     iconRail->setLayout(RailLayout::TwoColumn);
     iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftTopSquare());
     iconRail->deselectAll();
+    searchModeVisuals_ = std::make_unique<SearchModeVisuals>(*iconRail);
     LOG_INFO(
         State,
         "Configured IconRail with CORE, SETTINGS, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
@@ -126,6 +127,7 @@ void StartMenu::onExit(StateMachine& sm)
 
     // Clean up panels.
     corePanel_.reset();
+    searchModeVisuals_.reset();
     settingsPanel_.reset();
 
     // Clean up sparkle button.
@@ -151,6 +153,9 @@ void StartMenu::updateAnimations()
     // Update sparkle button animation.
     if (startButton_) {
         startButton_->update();
+    }
+    if (searchModeVisuals_) {
+        searchModeVisuals_->updateAnimations();
     }
 
     DIRTSIM_ASSERT(sm_, "StartMenu requires a valid StateMachine");
