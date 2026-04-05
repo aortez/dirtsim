@@ -171,8 +171,8 @@ void SearchActive::updateBodyText()
     else {
         text = progress_.paused ? "Paused." : "Running.";
     }
-    text += "\nElapsed frames: ";
-    text += std::to_string(progress_.elapsedFrames);
+    text += "\nSearched nodes: ";
+    text += std::to_string(progress_.searchedNodeCount);
     text += "\nBest frontier: ";
     text += std::to_string(progress_.bestFrontier);
 

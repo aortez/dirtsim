@@ -726,7 +726,7 @@ State::Any Idle::onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& d
 State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& /*dsm*/)
 {
     SearchActive nextState;
-    const auto startResult = nextState.execution.startHoldRight();
+    const auto startResult = nextState.search.startDfs();
     if (startResult.isError()) {
         cwc.sendResponse(Api::SearchStart::Response::error(ApiError(startResult.errorValue())));
         return std::move(*this);

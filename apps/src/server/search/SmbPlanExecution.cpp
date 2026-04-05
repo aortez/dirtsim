@@ -291,9 +291,9 @@ void SmbPlanExecution::updateProgress(const NesFitnessDetails& fitnessDetails)
     }
 
     progress_.bestFrontier = encodeFrontier(*snapshot);
-    progress_.elapsedFrames = snapshot->gameplayFrames;
+    progress_.searchedNodeCount = snapshot->gameplayFrames;
     plan_.summary.bestFrontier = progress_.bestFrontier;
-    plan_.summary.elapsedFrames = progress_.elapsedFrames;
+    plan_.summary.elapsedFrames = snapshot->gameplayFrames;
 }
 
 } // namespace DirtSim::Server::SearchSupport

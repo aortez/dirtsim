@@ -407,6 +407,7 @@ add_library(dirtsim-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
+    src/server/search/SmbDfsSearch.cpp
     src/server/search/SmbSearchCore.cpp
     src/server/search/SmbSearchHarness.cpp
     src/server/search/SmbPlanExecution.cpp
@@ -857,6 +858,7 @@ add_executable(dirtsim-tests
     src/server/tests/TrainingBestSnapshotGenerator_test.cpp
     src/server/tests/TrainingBestSnapshotCache_test.cpp
     src/server/tests/UserSettings_test.cpp
+    src/server/tests/SmbDfsSearch_test.cpp
     src/server/tests/SmbSearchHarness_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp

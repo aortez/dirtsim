@@ -21,9 +21,9 @@ PlayerControlFrame makeFrame(int8_t xAxis, int8_t yAxis, uint8_t buttons)
 const std::vector<SmbSearchLegalAction>& getSmbSearchLegalActions()
 {
     static const std::vector<SmbSearchLegalAction> kActions = {
-        SmbSearchLegalAction::Neutral,         SmbSearchLegalAction::Right,
-        SmbSearchLegalAction::RightRun,        SmbSearchLegalAction::RightJump,
-        SmbSearchLegalAction::RightJumpRun,    SmbSearchLegalAction::LeftRun,
+        SmbSearchLegalAction::RightRun,        SmbSearchLegalAction::RightJumpRun,
+        SmbSearchLegalAction::Right,           SmbSearchLegalAction::RightJump,
+        SmbSearchLegalAction::Neutral,         SmbSearchLegalAction::LeftRun,
         SmbSearchLegalAction::LeftJumpRun,     SmbSearchLegalAction::Duck,
         SmbSearchLegalAction::DuckJump,        SmbSearchLegalAction::DuckRightJumpRun,
         SmbSearchLegalAction::DuckLeftJumpRun,

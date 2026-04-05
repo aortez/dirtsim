@@ -285,8 +285,8 @@ Run a minimal UI/server workflow check against a running system:
 - Sends UI Exit.
 - Restarts the UI and server via os-manager after tests complete.
 - For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
-- For canSearchHoldRight: enters Search, runs the phase-1 hold-right search, then verifies a new saved Plan exists and its frames match the hold-right policy.
-- For canPauseSearch: starts Search, pauses it, verifies elapsedFrames stops advancing, then resumes and verifies progress continues.
+- For canSearchHoldRight: enters Search, runs the current SMB search, then verifies a new saved Plan exists and contains non-empty progress.
+- For canPauseSearch: starts Search, pauses it, verifies searchedNodeCount stops advancing, then resumes and verifies progress continues.
 - For canPlaybackPlan: creates or loads a saved Plan, starts playback, and verifies playback completes naturally back to idle.
 - For canStopPlaybackPlan: creates or loads a saved Plan, starts playback, stops it explicitly, and verifies both UI and server return to idle.
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.

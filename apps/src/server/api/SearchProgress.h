@@ -13,7 +13,7 @@ namespace Api {
 struct SearchProgress {
     bool paused = false;
     uint64_t bestFrontier = 0;
-    uint64_t elapsedFrames = 0;
+    uint64_t searchedNodeCount = 0;
 
     static constexpr const char* name() { return "SearchProgress"; }
     using serialize = zpp::bits::members<3>;

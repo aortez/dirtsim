@@ -59,7 +59,7 @@ struct SmbSearchNode {
     std::optional<size_t> parentIndex = std::nullopt;
     std::optional<SmbSearchLegalAction> actionFromParent = std::nullopt;
     uint64_t currentFrontier = 0;
-    uint64_t depth = 0;
+    uint64_t gameplayFrame = 0;
     int16_t horizontalSpeed = 0;
     int16_t verticalSpeed = 0;
     SmbSearchMotionContext motionContext = SmbSearchMotionContext::Unknown;
