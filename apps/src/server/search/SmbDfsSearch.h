@@ -38,6 +38,7 @@ struct SmbDfsSearchOptions {
 struct SmbDfsSearchTickResult {
     bool completed = false;
     bool frameAdvanced = false;
+    bool renderChanged = false;
     std::optional<std::string> error = std::nullopt;
 };
 

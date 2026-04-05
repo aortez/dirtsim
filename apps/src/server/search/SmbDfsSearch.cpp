@@ -35,6 +35,34 @@ uint64_t encodeCurrentFrontier(const NesSuperMarioBrosState& state)
     return encodeSmbFrontier(stageIndex, state.absoluteX);
 }
 
+Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventType)
+{
+    switch (eventType) {
+        case SmbDfsSearchTraceEventType::Backtracked:
+            return Api::SearchProgressEvent::Backtracked;
+        case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
+            return Api::SearchProgressEvent::CompletedBudgetExceeded;
+        case SmbDfsSearchTraceEventType::CompletedExhausted:
+            return Api::SearchProgressEvent::CompletedExhausted;
+        case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
+            return Api::SearchProgressEvent::CompletedMilestoneReached;
+        case SmbDfsSearchTraceEventType::Error:
+            return Api::SearchProgressEvent::Error;
+        case SmbDfsSearchTraceEventType::ExpandedAlive:
+            return Api::SearchProgressEvent::ExpandedAlive;
+        case SmbDfsSearchTraceEventType::PrunedDead:
+            return Api::SearchProgressEvent::PrunedDead;
+        case SmbDfsSearchTraceEventType::PrunedStalled:
+            return Api::SearchProgressEvent::PrunedStalled;
+        case SmbDfsSearchTraceEventType::RootInitialized:
+            return Api::SearchProgressEvent::RootInitialized;
+        case SmbDfsSearchTraceEventType::Stopped:
+            return Api::SearchProgressEvent::Stopped;
+    }
+
+    return Api::SearchProgressEvent::Unknown;
+}
+
 } // namespace
 
 SmbDfsSearch::SmbDfsSearch(SmbDfsSearchOptions options) : options_(options)
@@ -184,8 +212,12 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 exhaustedNode.evaluatorSummary.evaluationScore,
                 exhaustedNode.evaluatorSummary.gameplayFramesSinceProgress);
             dfsStack_.pop_back();
+            progress_.lastSearchEvent = Api::SearchProgressEvent::Backtracked;
             if (!dfsStack_.empty()) {
                 updateRenderableState(nodes_[dfsStack_.back().nodeIndex]);
+                return SmbDfsSearchTickResult{
+                    .renderChanged = true,
+                };
             }
             continue;
         }
@@ -302,6 +334,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             evaluatorSummary.bestFrontier,
             evaluatorSummary.evaluationScore,
             evaluatorSummary.gameplayFramesSinceProgress);
+        progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
         if (!evaluatorSummary.terminal && !stalled) {
             dfsStack_.push_back(
@@ -317,12 +350,14 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             return SmbDfsSearchTickResult{
                 .completed = true,
                 .frameAdvanced = true,
+                .renderChanged = true,
             };
         }
 
         return SmbDfsSearchTickResult{
             .completed = completed_,
             .frameAdvanced = true,
+            .renderChanged = true,
         };
     }
 }
@@ -343,6 +378,7 @@ void SmbDfsSearch::stop()
     completed_ = true;
     paused_ = false;
     progress_.paused = false;
+    progress_.lastSearchEvent = Api::SearchProgressEvent::Stopped;
     completionReason_ = SmbDfsSearchCompletionReason::Stopped;
     completionErrorMessage_.reset();
 
@@ -485,6 +521,7 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
     bestScore_ = evaluatorSummary.evaluationScore;
     progress_.bestFrontier = bestFrontier_;
     updateRenderableState(nodes_.front());
+    progress_.lastSearchEvent = Api::SearchProgressEvent::RootInitialized;
     rebuildBestPlan();
     recordTrace(
         SmbDfsSearchTraceEventType::RootInitialized,
@@ -504,6 +541,7 @@ void SmbDfsSearch::completeWithError(const std::string& errorMessage)
     completed_ = true;
     paused_ = false;
     progress_.paused = false;
+    progress_.lastSearchEvent = Api::SearchProgressEvent::Error;
     completionReason_ = SmbDfsSearchCompletionReason::Error;
     completionErrorMessage_ = errorMessage;
 
@@ -531,6 +569,7 @@ void SmbDfsSearch::completeWithTraceEvent(SmbDfsSearchTraceEventType eventType)
     completed_ = true;
     paused_ = false;
     progress_.paused = false;
+    progress_.lastSearchEvent = toSearchProgressEvent(eventType);
     completionReason_ = SmbDfsSearchCompletionReason::Completed;
     completionErrorMessage_.reset();
 
@@ -618,6 +657,7 @@ void SmbDfsSearch::updateBestLeaf(size_t nodeIndex)
 void SmbDfsSearch::updateRenderableState(const SmbSearchNode& node)
 {
     scenarioVideoFrame_ = node.scenarioVideoFrame;
+    progress_.currentGameplayFrame = node.gameplayFrame;
     worldData_.timestep = static_cast<int32_t>(node.gameplayFrame);
     if (!scenarioVideoFrame_.has_value()) {
         return;

@@ -291,6 +291,8 @@ void SmbPlanExecution::updateProgress(const NesFitnessDetails& fitnessDetails)
     }
 
     progress_.bestFrontier = encodeFrontier(*snapshot);
+    progress_.currentGameplayFrame = snapshot->gameplayFrames;
+    progress_.lastSearchEvent = Api::SearchProgressEvent::ExpandedAlive;
     progress_.searchedNodeCount = snapshot->gameplayFrames;
     plan_.summary.bestFrontier = progress_.bestFrontier;
     plan_.summary.elapsedFrames = snapshot->gameplayFrames;

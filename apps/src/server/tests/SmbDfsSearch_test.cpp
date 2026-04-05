@@ -294,6 +294,37 @@ TEST(SmbDfsSearchTest, PauseHaltsTicks)
     EXPECT_GT(search.getProgress().searchedNodeCount, pausedSearchedNodeCount);
 }
 
+TEST(SmbDfsSearchTest, BacktrackSignalsRenderChange)
+{
+    requireSmbRomOrSkip();
+
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 5000u,
+            .stallFrameLimit = 120u,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+    bool sawBacktrackRenderChange = false;
+    for (size_t tickIndex = 0; tickIndex < 5000u && !search.isCompleted(); ++tickIndex) {
+        const auto tickResult = search.tick();
+        ASSERT_FALSE(tickResult.error.has_value()) << tickResult.error.value();
+        if (tickResult.renderChanged && !tickResult.frameAdvanced
+            && search.getProgress().lastSearchEvent
+                == DirtSim::Api::SearchProgressEvent::Backtracked) {
+            sawBacktrackRenderChange = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawBacktrackRenderChange);
+}
+
 TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
 {
     const auto& legalActions = getSmbSearchLegalActions();

@@ -10,13 +10,29 @@
 namespace DirtSim {
 namespace Api {
 
+enum class SearchProgressEvent : uint8_t {
+    Unknown = 0,
+    RootInitialized = 1,
+    ExpandedAlive = 2,
+    Backtracked = 3,
+    PrunedDead = 4,
+    PrunedStalled = 5,
+    CompletedBudgetExceeded = 6,
+    CompletedExhausted = 7,
+    CompletedMilestoneReached = 8,
+    Stopped = 9,
+    Error = 10,
+};
+
 struct SearchProgress {
     bool paused = false;
     uint64_t bestFrontier = 0;
+    uint64_t currentGameplayFrame = 0;
+    SearchProgressEvent lastSearchEvent = SearchProgressEvent::Unknown;
     uint64_t searchedNodeCount = 0;
 
     static constexpr const char* name() { return "SearchProgress"; }
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<5>;
 };
 
 void to_json(nlohmann::json& j, const SearchProgress& value);

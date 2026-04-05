@@ -60,15 +60,15 @@ void SearchActive::onExit(StateMachine& /*dsm*/)
 std::optional<Any> SearchActive::tick(StateMachine& dsm)
 {
     const auto tickResult = search.tick();
-    if (search.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
+    if (search.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.renderChanged)) {
         dsm.updateCachedWorldData(search.getWorldData());
         broadcastSearchRender(dsm, search.getWorldData(), search.getScenarioVideoFrame());
         renderBroadcasted_ = true;
     }
 
     const auto now = std::chrono::steady_clock::now();
-    if (tickResult.frameAdvanced || now - lastProgressBroadcastTime_ >= kProgressBroadcastInterval
-        || tickResult.completed) {
+    if (tickResult.frameAdvanced || tickResult.renderChanged
+        || now - lastProgressBroadcastTime_ >= kProgressBroadcastInterval || tickResult.completed) {
         broadcastSearchProgress(dsm, search.getProgress());
         lastProgressBroadcastTime_ = now;
     }
