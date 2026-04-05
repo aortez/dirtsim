@@ -49,13 +49,6 @@ Result<PreparedRuntime, std::string> prepareRuntime()
     return Result<PreparedRuntime, std::string>::okay(std::move(prepared));
 }
 
-bool isGameplayFrame(
-    const std::optional<uint8_t>& gameState, const NesGameAdapterControllerOutput& controllerOutput)
-{
-    return gameState.value_or(0u) == 1u
-        && controllerOutput.source != NesGameAdapterControllerSource::ScriptedSetup;
-}
-
 uint64_t getFixtureTargetGameplayFrames(SmbSearchRootFixtureId fixtureId)
 {
     switch (fixtureId) {
@@ -198,7 +191,7 @@ Result<SmbSearchRootFixture, std::string> SmbSearchHarness::captureGameplayRoot(
         fixture.memorySnapshot = stepResult.memorySnapshot;
         fixture.scenarioVideoFrame = stepResult.scenarioVideoFrame;
 
-        if (!isGameplayFrame(lastGameState, controllerOutput)) {
+        if (!isSmbGameplayFrame(lastGameState, controllerOutput)) {
             continue;
         }
         if (fixture.evaluatorSummary.gameplayFrames < targetGameplayFrames) {

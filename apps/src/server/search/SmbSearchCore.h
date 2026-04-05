@@ -12,6 +12,10 @@
 #include <string>
 #include <vector>
 
+namespace DirtSim {
+struct NesGameAdapterControllerOutput;
+} // namespace DirtSim
+
 namespace DirtSim::Server::SearchSupport {
 
 enum class SmbSearchLegalAction : uint8_t {
@@ -26,18 +30,6 @@ enum class SmbSearchLegalAction : uint8_t {
     DuckJump = 8,
     DuckRightJumpRun = 9,
     DuckLeftJumpRun = 10,
-};
-
-enum class SmbSearchHazardContext : uint8_t {
-    Safe = 0,
-    Unknown = 1,
-};
-
-enum class SmbSearchMotionContext : uint8_t {
-    ControlledAirborne = 0,
-    StableGrounded = 1,
-    Unknown = 2,
-    UnstableAirborne = 3,
 };
 
 struct SmbSearchEvaluatorSummary {
@@ -60,15 +52,13 @@ struct SmbSearchNode {
     std::optional<SmbSearchLegalAction> actionFromParent = std::nullopt;
     uint64_t currentFrontier = 0;
     uint64_t gameplayFrame = 0;
-    int16_t horizontalSpeed = 0;
-    int16_t verticalSpeed = 0;
-    SmbSearchMotionContext motionContext = SmbSearchMotionContext::Unknown;
-    SmbSearchHazardContext hazardContext = SmbSearchHazardContext::Unknown;
-    bool checkpointEligible = false;
     uint8_t playerYScreen = 0;
     uint8_t velocityStuckFrameCount = 0;
 };
 
+bool isSmbGameplayFrame(
+    const std::optional<uint8_t>& gameState,
+    const NesGameAdapterControllerOutput& controllerOutput);
 const std::vector<SmbSearchLegalAction>& getSmbSearchLegalActions();
 Result<std::vector<PlayerControlFrame>, std::string> reconstructPlanFrames(
     const std::vector<SmbSearchNode>& nodes, size_t nodeIndex);

@@ -1,9 +1,18 @@
 #include "server/search/SmbSearchCore.h"
 
+#include "core/Assert.h"
 #include "core/organisms/evolution/NesPolicyLayout.h"
+#include "core/scenarios/nes/NesGameAdapter.h"
 #include <algorithm>
 
 namespace DirtSim::Server::SearchSupport {
+
+bool isSmbGameplayFrame(
+    const std::optional<uint8_t>& gameState, const NesGameAdapterControllerOutput& controllerOutput)
+{
+    return gameState.value_or(0u) == 1u
+        && controllerOutput.source != NesGameAdapterControllerSource::ScriptedSetup;
+}
 
 namespace {
 
@@ -129,6 +138,7 @@ PlayerControlFrame smbSearchLegalActionToPlayerControlFrame(SmbSearchLegalAction
                 -127, 127, PlayerControlButtons::ButtonA | PlayerControlButtons::ButtonB);
     }
 
+    DIRTSIM_ASSERT(false, "Unhandled SmbSearchLegalAction");
     return makeFrame(0, 0, 0);
 }
 
@@ -159,6 +169,7 @@ std::string toString(SmbSearchLegalAction action)
             return "DuckLeftJumpRun";
     }
 
+    DIRTSIM_ASSERT(false, "Unhandled SmbSearchLegalAction");
     return "Unknown";
 }
 

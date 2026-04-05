@@ -1,9 +1,11 @@
-#include "core/scenarios/tests/NesTestRomPath.h"
+#include "SmbSearchTestHelpers.h"
 #include "server/search/SmbSearchHarness.h"
 
 #include <gtest/gtest.h>
 
 using namespace DirtSim::Server::SearchSupport;
+using DirtSim::Test::expectFrameEq;
+using DirtSim::Test::requireSmbRomOrSkip;
 
 namespace {
 
@@ -15,21 +17,6 @@ std::vector<SmbSearchLegalAction> makeReplayActions()
         SmbSearchLegalAction::RightRun,     SmbSearchLegalAction::LeftRun,
         SmbSearchLegalAction::Duck,         SmbSearchLegalAction::DuckRightJumpRun,
     };
-}
-
-void requireSmbRomOrSkip()
-{
-    if (!DirtSim::Test::resolveSmbRomPath().has_value()) {
-        GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
-    }
-}
-
-void expectFrameEq(
-    const DirtSim::PlayerControlFrame& actual, const DirtSim::PlayerControlFrame& expected)
-{
-    EXPECT_EQ(actual.xAxis, expected.xAxis);
-    EXPECT_EQ(actual.yAxis, expected.yAxis);
-    EXPECT_EQ(actual.buttons, expected.buttons);
 }
 
 } // namespace

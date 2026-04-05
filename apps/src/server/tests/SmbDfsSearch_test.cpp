@@ -1,5 +1,5 @@
+#include "SmbSearchTestHelpers.h"
 #include "core/RenderMessage.h"
-#include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/search/SmbDfsSearch.h"
 #include "server/search/SmbPlanExecution.h"
 #include "server/search/SmbSearchHarness.h"
@@ -13,15 +13,10 @@
 #include <iostream>
 
 using namespace DirtSim::Server::SearchSupport;
+using DirtSim::Test::expectFrameEq;
+using DirtSim::Test::requireSmbRomOrSkip;
 
 namespace {
-
-void requireSmbRomOrSkip()
-{
-    if (!DirtSim::Test::resolveSmbRomPath().has_value()) {
-        GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
-    }
-}
 
 // PPM screenshot helpers (from NesSuperMarioBrosRamProbe_test.cpp).
 
@@ -74,14 +69,6 @@ bool writeScenarioFramePpm(
             reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
     }
     return stream.good();
-}
-
-void expectFrameEq(
-    const DirtSim::PlayerControlFrame& actual, const DirtSim::PlayerControlFrame& expected)
-{
-    EXPECT_EQ(actual.xAxis, expected.xAxis);
-    EXPECT_EQ(actual.yAxis, expected.yAxis);
-    EXPECT_EQ(actual.buttons, expected.buttons);
 }
 
 Result<std::monostate, std::string> runSearchToCompletion(
@@ -229,7 +216,7 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
     std::cout << "Target frontier (death + 64): " << targetFrontier << "\n";
 
     // Run the DFS search.
-    constexpr uint64_t kSearchBudget = 100000u;
+    constexpr uint32_t kSearchBudget = 100000u;
     SmbDfsSearch search(
         SmbDfsSearchOptions{
             .maxSearchedNodeCount = kSearchBudget,

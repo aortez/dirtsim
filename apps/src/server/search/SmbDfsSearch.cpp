@@ -1,5 +1,6 @@
 #include "server/search/SmbDfsSearch.h"
 
+#include "core/Assert.h"
 #include "core/ScenarioConfig.h"
 #include "core/UUID.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
@@ -24,13 +25,6 @@ std::unique_ptr<NesGameAdapter> createSmbGameAdapter()
 {
     return NesGameAdapterRegistry::createDefault().createAdapter(
         Scenario::EnumType::NesSuperMarioBros);
-}
-
-bool isGameplayFrame(
-    const std::optional<uint8_t>& gameState, const NesGameAdapterControllerOutput& controllerOutput)
-{
-    return gameState.value_or(0u) == 1u
-        && controllerOutput.source != NesGameAdapterControllerSource::ScriptedSetup;
 }
 
 uint64_t encodeCurrentFrontier(const NesSuperMarioBrosState& state)
@@ -67,6 +61,7 @@ Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventT
             return Api::SearchProgressEvent::Stopped;
     }
 
+    DIRTSIM_ASSERT(false, "Unhandled SmbDfsSearchTraceEventType");
     return Api::SearchProgressEvent::Unknown;
 }
 
@@ -124,7 +119,7 @@ Result<std::monostate, std::string> SmbDfsSearch::startDfs()
             lastGameState = evaluation.gameState;
         }
 
-        if (!isGameplayFrame(lastGameState, controllerOutput)) {
+        if (!isSmbGameplayFrame(lastGameState, controllerOutput)) {
             continue;
         }
 
@@ -210,14 +205,17 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         if (dfsFrame.nextActionIndex >= actions.size()) {
             const SmbSearchNode& exhaustedNode = nodes_[dfsFrame.nodeIndex];
             recordTrace(
-                SmbDfsSearchTraceEventType::Backtracked,
-                dfsFrame.nodeIndex,
-                exhaustedNode.parentIndex,
-                exhaustedNode.actionFromParent,
-                exhaustedNode.gameplayFrame,
-                exhaustedNode.evaluatorSummary.bestFrontier,
-                exhaustedNode.evaluatorSummary.evaluationScore,
-                exhaustedNode.evaluatorSummary.gameplayFramesSinceProgress);
+                SmbDfsSearchTraceEntry{
+                    .eventType = SmbDfsSearchTraceEventType::Backtracked,
+                    .nodeIndex = dfsFrame.nodeIndex,
+                    .parentIndex = exhaustedNode.parentIndex,
+                    .action = exhaustedNode.actionFromParent,
+                    .gameplayFrame = exhaustedNode.gameplayFrame,
+                    .frontier = exhaustedNode.evaluatorSummary.bestFrontier,
+                    .evaluationScore = exhaustedNode.evaluatorSummary.evaluationScore,
+                    .framesSinceProgress =
+                        exhaustedNode.evaluatorSummary.gameplayFramesSinceProgress,
+                });
             const size_t poppedNodeIndex = dfsFrame.nodeIndex;
             dfsStack_.pop_back();
             releaseNodeHeavyData(poppedNodeIndex);
@@ -353,14 +351,16 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             : stalled       ? SmbDfsSearchTraceEventType::PrunedStalled
                             : SmbDfsSearchTraceEventType::ExpandedAlive;
         recordTrace(
-            traceEvent,
-            childIndex,
-            parentIndex,
-            action,
-            evaluatorSummary.gameplayFrames,
-            evaluatorSummary.bestFrontier,
-            evaluatorSummary.evaluationScore,
-            evaluatorSummary.gameplayFramesSinceProgress);
+            SmbDfsSearchTraceEntry{
+                .eventType = traceEvent,
+                .nodeIndex = childIndex,
+                .parentIndex = parentIndex,
+                .action = action,
+                .gameplayFrame = evaluatorSummary.gameplayFrames,
+                .frontier = evaluatorSummary.bestFrontier,
+                .evaluationScore = evaluatorSummary.evaluationScore,
+                .framesSinceProgress = evaluatorSummary.gameplayFramesSinceProgress,
+            });
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
         if (!dead && !velocityStuck && !stalled) {
@@ -416,19 +416,23 @@ void SmbDfsSearch::stop()
     if (bestLeafIndex_.has_value()) {
         const SmbSearchNode& bestNode = nodes_[bestLeafIndex_.value()];
         recordTrace(
-            SmbDfsSearchTraceEventType::Stopped,
-            bestLeafIndex_.value(),
-            bestNode.parentIndex,
-            bestNode.actionFromParent,
-            bestNode.gameplayFrame,
-            bestNode.evaluatorSummary.bestFrontier,
-            bestNode.evaluatorSummary.evaluationScore,
-            bestNode.evaluatorSummary.gameplayFramesSinceProgress);
+            SmbDfsSearchTraceEntry{
+                .eventType = SmbDfsSearchTraceEventType::Stopped,
+                .nodeIndex = bestLeafIndex_.value(),
+                .parentIndex = bestNode.parentIndex,
+                .action = bestNode.actionFromParent,
+                .gameplayFrame = bestNode.gameplayFrame,
+                .frontier = bestNode.evaluatorSummary.bestFrontier,
+                .evaluationScore = bestNode.evaluatorSummary.evaluationScore,
+                .framesSinceProgress = bestNode.evaluatorSummary.gameplayFramesSinceProgress,
+            });
         return;
     }
 
     recordTrace(
-        SmbDfsSearchTraceEventType::Stopped, 0u, std::nullopt, std::nullopt, 0u, 0u, 0.0, 0u);
+        SmbDfsSearchTraceEntry{
+            .eventType = SmbDfsSearchTraceEventType::Stopped,
+        });
 }
 
 bool SmbDfsSearch::hasPersistablePlan() const
@@ -555,14 +559,13 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
     progress_.lastSearchEvent = Api::SearchProgressEvent::RootInitialized;
     rebuildBestPlan();
     recordTrace(
-        SmbDfsSearchTraceEventType::RootInitialized,
-        0u,
-        std::nullopt,
-        std::nullopt,
-        evaluatorSummary.gameplayFrames,
-        evaluatorSummary.bestFrontier,
-        evaluatorSummary.evaluationScore,
-        evaluatorSummary.gameplayFramesSinceProgress);
+        SmbDfsSearchTraceEntry{
+            .eventType = SmbDfsSearchTraceEventType::RootInitialized,
+            .gameplayFrame = evaluatorSummary.gameplayFrames,
+            .frontier = evaluatorSummary.bestFrontier,
+            .evaluationScore = evaluatorSummary.evaluationScore,
+            .framesSinceProgress = evaluatorSummary.gameplayFramesSinceProgress,
+        });
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
@@ -583,15 +586,18 @@ void SmbDfsSearch::completeWithError(const std::string& errorMessage)
         nodeIndex < nodes_.size() ? nodes_[nodeIndex].actionFromParent : std::nullopt;
     const uint64_t gameplayFrame = nodeIndex < nodes_.size() ? nodes_[nodeIndex].gameplayFrame : 0u;
     recordTrace(
-        SmbDfsSearchTraceEventType::Error,
-        nodeIndex,
-        parentIndex,
-        action,
-        gameplayFrame,
-        bestFrontier_,
-        bestScore_,
-        nodeIndex < nodes_.size() ? nodes_[nodeIndex].evaluatorSummary.gameplayFramesSinceProgress
-                                  : 0u);
+        SmbDfsSearchTraceEntry{
+            .eventType = SmbDfsSearchTraceEventType::Error,
+            .nodeIndex = nodeIndex,
+            .parentIndex = parentIndex,
+            .action = action,
+            .gameplayFrame = gameplayFrame,
+            .frontier = bestFrontier_,
+            .evaluationScore = bestScore_,
+            .framesSinceProgress = nodeIndex < nodes_.size()
+                ? nodes_[nodeIndex].evaluatorSummary.gameplayFramesSinceProgress
+                : 0u,
+        });
 }
 
 void SmbDfsSearch::completeWithTraceEvent(SmbDfsSearchTraceEventType eventType)
@@ -611,15 +617,18 @@ void SmbDfsSearch::completeWithTraceEvent(SmbDfsSearchTraceEventType eventType)
         nodeIndex < nodes_.size() ? nodes_[nodeIndex].actionFromParent : std::nullopt;
     const uint64_t gameplayFrame = nodeIndex < nodes_.size() ? nodes_[nodeIndex].gameplayFrame : 0u;
     recordTrace(
-        eventType,
-        nodeIndex,
-        parentIndex,
-        action,
-        gameplayFrame,
-        bestFrontier_,
-        bestScore_,
-        nodeIndex < nodes_.size() ? nodes_[nodeIndex].evaluatorSummary.gameplayFramesSinceProgress
-                                  : 0u);
+        SmbDfsSearchTraceEntry{
+            .eventType = eventType,
+            .nodeIndex = nodeIndex,
+            .parentIndex = parentIndex,
+            .action = action,
+            .gameplayFrame = gameplayFrame,
+            .frontier = bestFrontier_,
+            .evaluationScore = bestScore_,
+            .framesSinceProgress = nodeIndex < nodes_.size()
+                ? nodes_[nodeIndex].evaluatorSummary.gameplayFramesSinceProgress
+                : 0u,
+        });
 }
 
 void SmbDfsSearch::rebuildBestPlan()
@@ -644,27 +653,9 @@ void SmbDfsSearch::rebuildBestPlan()
     plan_.summary.elapsedFrames = plan_.frames.size();
 }
 
-void SmbDfsSearch::recordTrace(
-    SmbDfsSearchTraceEventType eventType,
-    size_t nodeIndex,
-    std::optional<size_t> parentIndex,
-    std::optional<SmbSearchLegalAction> action,
-    uint64_t gameplayFrame,
-    uint64_t frontier,
-    double evaluationScore,
-    uint64_t framesSinceProgress)
+void SmbDfsSearch::recordTrace(const SmbDfsSearchTraceEntry& entry)
 {
-    trace_.push_back(
-        SmbDfsSearchTraceEntry{
-            .eventType = eventType,
-            .nodeIndex = nodeIndex,
-            .parentIndex = parentIndex,
-            .action = action,
-            .gameplayFrame = gameplayFrame,
-            .frontier = frontier,
-            .evaluationScore = evaluationScore,
-            .framesSinceProgress = framesSinceProgress,
-        });
+    trace_.push_back(entry);
 }
 
 void SmbDfsSearch::releaseNodeHeavyData(size_t nodeIndex)
