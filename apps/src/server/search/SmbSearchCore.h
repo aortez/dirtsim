@@ -6,6 +6,7 @@
 #include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -32,6 +33,9 @@ enum class SmbSearchLegalAction : uint8_t {
     DuckLeftJumpRun = 10,
 };
 
+constexpr size_t kSmbSearchLegalActionCount = 11;
+using SmbSearchActionOrder = std::array<SmbSearchLegalAction, kSmbSearchLegalActionCount>;
+
 struct SmbSearchEvaluatorSummary {
     uint64_t bestFrontier = 0;
     uint64_t gameplayFrames = 0;
@@ -56,6 +60,10 @@ struct SmbSearchNode {
     uint8_t velocityStuckFrameCount = 0;
 };
 
+SmbSearchActionOrder buildDfsActionOrder(
+    bool airborne,
+    double verticalSpeedNormalized,
+    std::optional<SmbSearchLegalAction> actionFromParent);
 bool isSmbGameplayFrame(
     const std::optional<uint8_t>& gameState,
     const NesGameAdapterControllerOutput& controllerOutput);

@@ -27,6 +27,53 @@ PlayerControlFrame makeFrame(int8_t xAxis, int8_t yAxis, uint8_t buttons)
 
 } // namespace
 
+SmbSearchActionOrder buildDfsActionOrder(
+    bool airborne,
+    double verticalSpeedNormalized,
+    std::optional<SmbSearchLegalAction> actionFromParent)
+{
+    const auto& defaultOrder = getSmbSearchLegalActions();
+    SmbSearchActionOrder order{};
+    size_t writePos = 0;
+
+    auto isPlaced = [&](SmbSearchLegalAction action) {
+        for (size_t i = 0; i < writePos; ++i) {
+            if (order[i] == action) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto place = [&](SmbSearchLegalAction action) {
+        if (!isPlaced(action)) {
+            order[writePos++] = action;
+        }
+    };
+
+    // TODO: Generalize this bias to preserve the branch's current horizontal/jump intent instead
+    // of always hardcoding rightward jump-hold actions. The current heuristic is intentionally
+    // simple for SMB1 W1-1 pipe debugging, but it can steer ascending leftward or duck-jump
+    // branches away from their own held-jump continuation.
+    // Tier 1: If airborne and rising, boost A-held rightward jump actions.
+    if (airborne && verticalSpeedNormalized < 0.0) {
+        place(SmbSearchLegalAction::RightJumpRun);
+        place(SmbSearchLegalAction::RightJump);
+    }
+
+    // Tier 2: Continuity — prefer the parent's action.
+    if (actionFromParent.has_value()) {
+        place(actionFromParent.value());
+    }
+
+    // Tier 3: Fill remaining slots in default order.
+    for (const auto& action : defaultOrder) {
+        place(action);
+    }
+
+    return order;
+}
+
 const std::vector<SmbSearchLegalAction>& getSmbSearchLegalActions()
 {
     static const std::vector<SmbSearchLegalAction> kActions = {

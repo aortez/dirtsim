@@ -187,8 +187,6 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         };
     }
 
-    const auto& actions = getSmbSearchLegalActions();
-
     while (true) {
         if (options_.maxSearchedNodeCount > 0
             && progress_.searchedNodeCount >= options_.maxSearchedNodeCount) {
@@ -202,7 +200,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         }
 
         DfsFrame& dfsFrame = dfsStack_.back();
-        if (dfsFrame.nextActionIndex >= actions.size()) {
+        if (dfsFrame.nextActionIndex >= kSmbSearchLegalActionCount) {
             const SmbSearchNode& exhaustedNode = nodes_[dfsFrame.nodeIndex];
             recordTrace(
                 SmbDfsSearchTraceEntry{
@@ -230,7 +228,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         }
 
         const size_t parentIndex = dfsFrame.nodeIndex;
-        const SmbSearchLegalAction action = actions[dfsFrame.nextActionIndex++];
+        const SmbSearchLegalAction action = dfsFrame.actionOrder[dfsFrame.nextActionIndex++];
         const SmbSearchNode& parent = nodes_[parentIndex];
         const uint64_t parentCurrentFrontier = parent.currentFrontier;
         const uint8_t parentPlayerYScreen = parent.playerYScreen;
@@ -368,6 +366,8 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 DfsFrame{
                     .nodeIndex = childIndex,
                     .nextActionIndex = 0,
+                    .actionOrder =
+                        buildDfsActionOrder(state.airborne, state.verticalSpeedNormalized, action),
                 });
         }
         else {
@@ -549,6 +549,7 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
         DfsFrame{
             .nodeIndex = 0u,
             .nextActionIndex = 0,
+            .actionOrder = buildDfsActionOrder(false, 0.0, std::nullopt),
         });
 
     bestLeafIndex_ = 0u;
