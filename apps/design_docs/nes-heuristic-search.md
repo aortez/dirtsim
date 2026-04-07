@@ -179,27 +179,11 @@ future work.
 
 ## Move Ordering Heuristics
 
-Move ordering determines the priority in which child actions are expanded at each search node. In
-depth-first search, the first action tried at every node determines the shape of the main line. A
-bad default order can bury the correct action under exponential backtracking. A good order can make
-the planner find a solution on its first deep pass.
+### Currently Implemented Ordering Heuristics
 
-### Implemented Ordering Heuristics
+- Continuity. Try the parent action first to preserve multi-frame maneuvers such as held jumps and sustained runs.
+- Descending-airborne pruning. While airborne and descending, drop jump-button variants from the move list and keep only directional/run variants.
 
-- `Rising-airborne jump hold.` If Mario is airborne and rising, place `RightJumpRun` and
-  `RightJump` first. In SMB, jump height is controlled by how long the A button is held. A 1-frame
-  tap-jump reaches about 1.5 tiles, while a held jump reaches about 4 tiles. Without this
-  heuristic, DFS always tries `RightRun` (releasing A) as the first child after a jump frame,
-  producing only tap-jumps. Exploring a 10-frame held jump via backtracking requires exhausting 10
-  nested subtrees. This heuristic was validated on the first pipe in SMB 1-1: the pipe is 2 tiles
-  tall, so tap-jumps peak 8 pixels below the pipe top and fail. With the heuristic, DFS naturally
-  holds the jump and clears the pipe on its first deep pass.
-- `Continuity.` Among actions not promoted by a state-specific bias, prefer the parent's action.
-  This preserves momentum during open running (parent was `RightRun`, first child is `RightRun`)
-  and naturally extends jump arcs even outside the rising phase.
-
-### Other ideas
-- If in freefall (not a player initiated jump), remove all Jump move options.
 
 ## Automatic Landmarks And Segment Discovery
 
