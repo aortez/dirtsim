@@ -1,6 +1,7 @@
 #include "SmbSearchTestHelpers.h"
 #include "core/RenderMessage.h"
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
+#include "server/PlanRepository.h"
 #include "server/search/SmbDfsSearch.h"
 #include "server/search/SmbPlanExecution.h"
 #include "server/search/SmbSearchHarness.h"
@@ -1001,6 +1002,54 @@ Result<std::monostate, std::string> runSearchToCompletion(
     return Result<std::monostate, std::string>::error("DFS search did not complete in time");
 }
 
+Result<std::monostate, std::string> runPlaybackToCompletion(
+    SmbPlanExecution& playback, size_t maxTicks = 200000u)
+{
+    for (size_t tickIndex = 0; tickIndex < maxTicks; ++tickIndex) {
+        const auto tickResult = playback.tick();
+        if (tickResult.error.has_value()) {
+            return Result<std::monostate, std::string>::error(tickResult.error.value());
+        }
+        if (tickResult.completed) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+    }
+
+    return Result<std::monostate, std::string>::error("SMB playback did not complete in time");
+}
+
+void expectPlanFramesEq(
+    const std::vector<DirtSim::PlayerControlFrame>& actual,
+    const std::vector<DirtSim::PlayerControlFrame>& expected);
+
+void expectPersistedPlanPlaybackMatchesSearchPlan(const DirtSim::Api::Plan& searchPlan)
+{
+    DirtSim::Server::PlanRepository planRepository;
+    const auto storeResult = planRepository.store(searchPlan);
+    ASSERT_FALSE(storeResult.isError()) << storeResult.errorValue();
+
+    const auto getResult = planRepository.get(searchPlan.summary.id);
+    ASSERT_FALSE(getResult.isError()) << getResult.errorValue();
+    ASSERT_TRUE(getResult.value().has_value());
+    const DirtSim::Api::Plan persistedPlan = getResult.value().value();
+    expectPlanFramesEq(persistedPlan.frames, searchPlan.frames);
+
+    SmbPlanExecution playback;
+    const auto playbackStartResult = playback.startPlayback(persistedPlan);
+    ASSERT_FALSE(playbackStartResult.isError()) << playbackStartResult.errorValue();
+
+    const auto playbackRunResult =
+        runPlaybackToCompletion(playback, persistedPlan.frames.size() + 2000u);
+    ASSERT_FALSE(playbackRunResult.isError()) << playbackRunResult.errorValue();
+    EXPECT_EQ(
+        playback.getCompletionReason(),
+        std::optional<SmbPlanExecutionCompletionReason>{
+            SmbPlanExecutionCompletionReason::Completed });
+    EXPECT_EQ(playback.getProgress().bestFrontier, searchPlan.summary.bestFrontier);
+    EXPECT_EQ(playback.getPlan().summary.bestFrontier, searchPlan.summary.bestFrontier);
+    EXPECT_EQ(playback.getPlan().summary.elapsedFrames, searchPlan.summary.elapsedFrames);
+}
+
 void expectTraceEq(const SmbDfsSearchTraceEntry& actual, const SmbDfsSearchTraceEntry& expected)
 {
     EXPECT_EQ(actual.eventType, expected.eventType);
@@ -1268,7 +1317,7 @@ TEST(SmbDfsSearchTest, NeverExpandsUncontrollableNodes)
     EXPECT_GT(expandedNodeCount, 0u);
 }
 
-TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
+TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
 {
     requireSmbRomOrSkip();
 
@@ -1276,24 +1325,12 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
     ASSERT_FALSE(flatResult.isError()) << flatResult.errorValue();
 
-    // Determine the goomba death frontier by replaying pure RightRun from the fixture.
-    // The bestFrontier after replay is the furthest Mario gets before dying.
-    const size_t holdRightFrameCount = 200u;
-    std::vector<SmbSearchLegalAction> holdRightActions(
-        holdRightFrameCount, SmbSearchLegalAction::RightRun);
-    const auto holdRightReplay = harness.replayFromRoot(
-        flatResult.value().savestate, flatResult.value().evaluatorSummary, holdRightActions);
-    ASSERT_FALSE(holdRightReplay.isError()) << holdRightReplay.errorValue();
-    const uint64_t holdRightDeathFrontier = holdRightReplay.value().evaluatorSummary.bestFrontier;
-    ASSERT_GT(holdRightDeathFrontier, 0u) << "Hold-right replay produced no frontier progress.";
+    const auto firstGapResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGap);
+    ASSERT_FALSE(firstGapResult.isError()) << firstGapResult.errorValue();
+    const uint64_t targetFrontier = firstGapResult.value().evaluatorSummary.bestFrontier;
+    std::cout << "First gap frontier: " << targetFrontier << "\n";
 
-    // Target must be past the death frontier to prove the search navigated around the goomba.
-    const uint64_t targetFrontier = holdRightDeathFrontier + 64u;
-    std::cout << "Hold-right death frontier: " << holdRightDeathFrontier << "\n";
-    std::cout << "Target frontier (death + 64): " << targetFrontier << "\n";
-
-    // Run the DFS search.
-    constexpr uint32_t kSearchBudget = 100000u;
+    constexpr uint32_t kSearchBudget = 2000u;
     SmbDfsSearch search(
         SmbDfsSearchOptions{
             .maxSearchedNodeCount = kSearchBudget,
@@ -1306,22 +1343,19 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
     const auto runResult = runSearchToCompletion(search, kSearchBudget * 2u);
     ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
 
-    // Report results.
     std::cout << "Searched nodes: " << search.getProgress().searchedNodeCount << "\n";
     std::cout << "Best frontier: " << search.getProgress().bestFrontier << "\n";
     std::cout << "Plan frames: " << search.getPlan().frames.size() << "\n";
     const bool reachedTarget = search.getProgress().bestFrontier >= targetFrontier;
     std::cout << "Reached target: " << (reachedTarget ? "YES" : "NO") << "\n";
 
-    // Screenshot the search's best leaf video frame directly.
     const auto screenshotDir = std::filesystem::path(::testing::TempDir());
     if (search.getScenarioVideoFrame().has_value()) {
-        const auto bestLeafScreenshot = screenshotDir / "dfs_goomba_best_leaf.ppm";
+        const auto bestLeafScreenshot = screenshotDir / "dfs_first_gap_best_leaf.ppm";
         writeScenarioFramePpm(search.getScenarioVideoFrame().value(), bestLeafScreenshot);
         std::cout << "Best leaf screenshot: " << bestLeafScreenshot.string() << "\n";
     }
 
-    // Screenshot the first PrunedDead node from the trace to show where death was detected.
     for (const auto& entry : search.getTrace()) {
         if (entry.eventType != SmbDfsSearchTraceEventType::PrunedDead) {
             continue;
@@ -1331,7 +1365,6 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
         break;
     }
 
-    // Count trace events for diagnostics.
     size_t expandedCount = 0;
     size_t prunedDeadCount = 0;
     size_t prunedStalledCount = 0;
@@ -1359,7 +1392,8 @@ TEST(SmbDfsSearchTest, FindsPlanPastGoomba)
 
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
-    EXPECT_GT(search.getPlan().summary.elapsedFrames, 0u);
+    EXPECT_GE(
+        search.getPlan().summary.elapsedFrames, flatResult.value().evaluatorSummary.gameplayFrames);
 }
 
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
@@ -1782,48 +1816,54 @@ TEST(SmbDfsSearchTest, DeterministicTrace)
     expectPlanFramesEq(firstSearch.getPlan().frames, secondSearch.getPlan().frames);
 }
 
-TEST(SmbDfsSearchTest, ReconstructedPlanIsPlayable)
+TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesFixtureSearchToFirstGap)
 {
     requireSmbRomOrSkip();
 
     SmbSearchHarness harness;
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
     ASSERT_FALSE(flatResult.isError()) << flatResult.errorValue();
-
-    const auto holdRightReplay = replayHoldRight(harness, flatResult.value(), 200u);
-    ASSERT_FALSE(holdRightReplay.isError()) << holdRightReplay.errorValue();
-    const uint64_t targetFrontier = holdRightReplay.value().evaluatorSummary.bestFrontier + 64u;
+    const auto firstGapResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGap);
+    ASSERT_FALSE(firstGapResult.isError()) << firstGapResult.errorValue();
+    const uint64_t targetFrontier = firstGapResult.value().evaluatorSummary.bestFrontier;
 
     SmbDfsSearch search(
         SmbDfsSearchOptions{
-            .maxSearchedNodeCount = 250000u,
+            .maxSearchedNodeCount = 2000u,
             .stallFrameLimit = 120u,
             .stopAfterBestFrontier = targetFrontier,
         });
     const auto startResult = search.startFromFixture(flatResult.value());
     ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
-    const auto runResult = runSearchToCompletion(search, 250000u);
+    const auto runResult = runSearchToCompletion(search, 4000u);
     ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
+    expectPersistedPlanPlaybackMatchesSearchPlan(search.getPlan());
+}
 
-    SmbPlanExecution playback;
-    const auto playbackStartResult = playback.startPlayback(search.getPlan());
-    ASSERT_FALSE(playbackStartResult.isError()) << playbackStartResult.errorValue();
+TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesStartDfsSearchToFirstGap)
+{
+    requireSmbRomOrSkip();
 
-    for (size_t tickIndex = 0; tickIndex < search.getPlan().frames.size() + 2000u; ++tickIndex) {
-        const auto tickResult = playback.tick();
-        ASSERT_FALSE(tickResult.error.has_value()) << tickResult.error.value();
-        if (tickResult.completed) {
-            EXPECT_EQ(
-                playback.getCompletionReason(),
-                std::optional<SmbPlanExecutionCompletionReason>{
-                    SmbPlanExecutionCompletionReason::Completed });
-            return;
-        }
-    }
+    SmbSearchHarness harness;
+    const auto firstGapResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGap);
+    ASSERT_FALSE(firstGapResult.isError()) << firstGapResult.errorValue();
+    const uint64_t targetFrontier = firstGapResult.value().evaluatorSummary.bestFrontier;
 
-    FAIL() << "Playback did not complete in time.";
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 2000u,
+            .stallFrameLimit = 120u,
+            .stopAfterBestFrontier = targetFrontier,
+        });
+    const auto startResult = search.startDfs();
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+    const auto runResult = runSearchToCompletion(search, 4000u);
+    ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
+    ASSERT_TRUE(search.hasPersistablePlan());
+    EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
+    expectPersistedPlanPlaybackMatchesSearchPlan(search.getPlan());
 }
 
 TEST(SmbDfsSearchTest, StopCompletes)

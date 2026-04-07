@@ -122,6 +122,7 @@ private:
     std::optional<ScenarioVideoFrame> scenarioVideoFrame_ = std::nullopt;
     Api::Plan plan_;
     Api::SearchProgress progress_;
+    std::vector<PlayerControlFrame> rootPrefixFrames_;
     std::vector<SmbSearchNode> nodes_;
     std::vector<DfsFrame> dfsStack_;
     std::vector<SmbDfsSearchTraceEntry> trace_;

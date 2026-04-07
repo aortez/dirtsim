@@ -34,6 +34,13 @@ uint64_t encodeCurrentFrontier(const NesSuperMarioBrosState& state)
     return encodeSmbFrontier(stageIndex, state.absoluteX);
 }
 
+std::vector<PlayerControlFrame> makeRootPrefixFrames(uint64_t gameplayFrameCount)
+{
+    return std::vector<PlayerControlFrame>(
+        gameplayFrameCount,
+        smbSearchLegalActionToPlayerControlFrame(SmbSearchLegalAction::RightRun));
+}
+
 Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventType)
 {
     switch (eventType) {
@@ -87,6 +94,7 @@ Result<std::monostate, std::string> SmbDfsSearch::startDfs()
     const PlayerControlFrame setupFrame =
         smbSearchLegalActionToPlayerControlFrame(SmbSearchLegalAction::RightRun);
     std::optional<uint8_t> lastGameState = std::nullopt;
+    std::vector<PlayerControlFrame> capturedPrefixFrames;
 
     for (uint64_t stepIndex = 0; stepIndex < 2000u; ++stepIndex) {
         const NesGameAdapterControllerOutput controllerOutput = gameAdapter->resolveControllerMask(
@@ -119,9 +127,12 @@ Result<std::monostate, std::string> SmbDfsSearch::startDfs()
             lastGameState = evaluation.gameState;
         }
 
-        if (!isSmbGameplayFrame(lastGameState, controllerOutput)) {
+        const bool gameplayFrame = isSmbGameplayFrame(lastGameState, controllerOutput);
+        if (!gameplayFrame) {
             continue;
         }
+
+        capturedPrefixFrames.push_back(setupFrame);
 
         const auto savestate = driver_->copyRuntimeSavestate();
         if (!savestate.has_value()) {
@@ -131,6 +142,7 @@ Result<std::monostate, std::string> SmbDfsSearch::startDfs()
 
         const SmbSearchEvaluatorSummary evaluatorSummary =
             buildSmbSearchEvaluatorSummary(evaluation.fitnessDetails, lastGameState);
+        rootPrefixFrames_ = capturedPrefixFrames;
         return initializeRootNode(
             savestate.value(),
             evaluatorSummary,
@@ -156,6 +168,7 @@ Result<std::monostate, std::string> SmbDfsSearch::startFromFixture(
                                      : runtimeLastError);
     }
 
+    rootPrefixFrames_ = makeRootPrefixFrames(fixture.evaluatorSummary.gameplayFrames);
     return initializeRootNode(
         fixture.savestate,
         fixture.evaluatorSummary,
@@ -516,6 +529,7 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRuntime()
     plan_ = Api::Plan{};
     plan_.summary.id = UUID::generate();
     progress_ = Api::SearchProgress{};
+    rootPrefixFrames_.clear();
     nodes_.clear();
     dfsStack_.clear();
     trace_.clear();
@@ -651,7 +665,9 @@ void SmbDfsSearch::rebuildBestPlan()
         return;
     }
 
-    plan_.frames = planFramesResult.value();
+    plan_.frames = rootPrefixFrames_;
+    plan_.frames.insert(
+        plan_.frames.end(), planFramesResult.value().begin(), planFramesResult.value().end());
     plan_.summary.bestFrontier = bestFrontier_;
     plan_.summary.elapsedFrames = plan_.frames.size();
 }
