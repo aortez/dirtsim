@@ -25,16 +25,39 @@ PlayerControlFrame makeFrame(int8_t xAxis, int8_t yAxis, uint8_t buttons)
     };
 }
 
+bool isJumpButtonAction(SmbSearchLegalAction action)
+{
+    switch (action) {
+        case SmbSearchLegalAction::Neutral:
+        case SmbSearchLegalAction::Right:
+        case SmbSearchLegalAction::RightRun:
+        case SmbSearchLegalAction::LeftRun:
+        case SmbSearchLegalAction::Duck:
+            return false;
+        case SmbSearchLegalAction::RightJump:
+        case SmbSearchLegalAction::RightJumpRun:
+        case SmbSearchLegalAction::LeftJumpRun:
+        case SmbSearchLegalAction::DuckJump:
+        case SmbSearchLegalAction::DuckRightJumpRun:
+        case SmbSearchLegalAction::DuckLeftJumpRun:
+            return true;
+    }
+
+    return false;
+}
+
 } // namespace
 
-SmbSearchActionOrder buildDfsActionOrder(
+SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
     std::optional<SmbSearchLegalAction> actionFromParent)
 {
     const auto& defaultOrder = getSmbSearchLegalActions();
-    SmbSearchActionOrder order{};
+    SmbSearchActionOrdering ordering{};
+    SmbSearchActionOrder& order = ordering.actions;
     size_t writePos = 0;
+    const bool descendingAirborne = airborne && verticalSpeedNormalized > 0.0;
 
     auto isPlaced = [&](SmbSearchLegalAction action) {
         for (size_t i = 0; i < writePos; ++i) {
@@ -46,32 +69,28 @@ SmbSearchActionOrder buildDfsActionOrder(
     };
 
     auto place = [&](SmbSearchLegalAction action) {
+        if (descendingAirborne && isJumpButtonAction(action)) {
+            return;
+        }
+
         if (!isPlaced(action)) {
             order[writePos++] = action;
         }
     };
 
-    // TODO: Generalize this bias to preserve the branch's current horizontal/jump intent instead
-    // of always hardcoding rightward jump-hold actions. The current heuristic is intentionally
-    // simple for SMB1 W1-1 pipe debugging, but it can steer ascending leftward or duck-jump
-    // branches away from their own held-jump continuation.
-    // Tier 1: If airborne and rising, boost A-held rightward jump actions.
-    if (airborne && verticalSpeedNormalized < 0.0) {
-        place(SmbSearchLegalAction::RightJumpRun);
-        place(SmbSearchLegalAction::RightJump);
-    }
-
-    // Tier 2: Continuity — prefer the parent's action.
+    // Prefer the parent's action first so DFS preserves multi-frame control patterns.
     if (actionFromParent.has_value()) {
         place(actionFromParent.value());
     }
 
-    // Tier 3: Fill remaining slots in default order.
+    // While descending, A-button variants cannot recover height, so drop them entirely.
     for (const auto& action : defaultOrder) {
         place(action);
     }
 
-    return order;
+    ordering.count = static_cast<uint8_t>(writePos);
+    DIRTSIM_ASSERT(ordering.count > 0, "DFS action ordering unexpectedly produced no actions");
+    return ordering;
 }
 
 const std::vector<SmbSearchLegalAction>& getSmbSearchLegalActions()

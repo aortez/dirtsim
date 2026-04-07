@@ -97,7 +97,7 @@ private:
     struct DfsFrame {
         size_t nodeIndex = 0;
         uint8_t nextActionIndex = 0;
-        SmbSearchActionOrder actionOrder = {};
+        SmbSearchActionOrdering actionOrdering = {};
     };
 
     Result<std::monostate, std::string> initializeRuntime();

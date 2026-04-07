@@ -36,6 +36,11 @@ enum class SmbSearchLegalAction : uint8_t {
 constexpr size_t kSmbSearchLegalActionCount = 11;
 using SmbSearchActionOrder = std::array<SmbSearchLegalAction, kSmbSearchLegalActionCount>;
 
+struct SmbSearchActionOrdering {
+    SmbSearchActionOrder actions{};
+    uint8_t count = 0;
+};
+
 struct SmbSearchEvaluatorSummary {
     uint64_t bestFrontier = 0;
     uint64_t gameplayFrames = 0;
@@ -60,7 +65,7 @@ struct SmbSearchNode {
     uint8_t velocityStuckFrameCount = 0;
 };
 
-SmbSearchActionOrder buildDfsActionOrder(
+SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
     std::optional<SmbSearchLegalAction> actionFromParent);
