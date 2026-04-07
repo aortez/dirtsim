@@ -205,6 +205,25 @@ UserSettings sanitizeUserSettings(
         recordUpdate("nesSessionSettings.frameDelayMs clamped below one NES frame");
     }
 
+    if (settings.searchSettings.maxSearchedNodeCount < SearchSettings::MaxSearchedNodeCountMin) {
+        settings.searchSettings.maxSearchedNodeCount = SearchSettings::MaxSearchedNodeCountMin;
+        recordUpdate("searchSettings.maxSearchedNodeCount clamped to minimum");
+    }
+    else if (
+        settings.searchSettings.maxSearchedNodeCount > SearchSettings::MaxSearchedNodeCountMax) {
+        settings.searchSettings.maxSearchedNodeCount = SearchSettings::MaxSearchedNodeCountMax;
+        recordUpdate("searchSettings.maxSearchedNodeCount clamped to maximum");
+    }
+
+    if (settings.searchSettings.stallFrameLimit < SearchSettings::StallFrameLimitMin) {
+        settings.searchSettings.stallFrameLimit = SearchSettings::StallFrameLimitMin;
+        recordUpdate("searchSettings.stallFrameLimit clamped to minimum");
+    }
+    else if (settings.searchSettings.stallFrameLimit > SearchSettings::StallFrameLimitMax) {
+        settings.searchSettings.stallFrameLimit = SearchSettings::StallFrameLimitMax;
+        recordUpdate("searchSettings.stallFrameLimit clamped to maximum");
+    }
+
     if (settings.volumePercent < 0) {
         settings.volumePercent = 0;
         recordUpdate("volumePercent clamped to 0");
@@ -1978,6 +1997,9 @@ void StateMachine::handleEvent(const Event& event)
         }
         if (cwc.command.nesSessionSettings.has_value()) {
             patched.nesSessionSettings = *cwc.command.nesSessionSettings;
+        }
+        if (cwc.command.searchSettings.has_value()) {
+            patched.searchSettings = *cwc.command.searchSettings;
         }
         if (cwc.command.volumePercent.has_value()) {
             patched.volumePercent = *cwc.command.volumePercent;

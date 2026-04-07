@@ -56,6 +56,9 @@ void UserSettingsManager::patchOrAssert(const Api::UserSettingsPatch::Command& p
     if (patch.nesSessionSettings.has_value()) {
         settings_.nesSessionSettings = *patch.nesSessionSettings;
     }
+    if (patch.searchSettings.has_value()) {
+        settings_.searchSettings = *patch.searchSettings;
+    }
     if (patch.volumePercent.has_value()) {
         settings_.volumePercent = *patch.volumePercent;
     }

@@ -13,6 +13,7 @@
 #include "api/PlanPlaybackStart.h"
 #include "api/PlanPlaybackStop.h"
 #include "api/SearchPauseSet.h"
+#include "api/SearchSettingsSet.h"
 #include "api/SearchStart.h"
 #include "api/SearchStop.h"
 #include "api/StopButtonPress.h"
@@ -282,6 +283,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::SearchPauseSet::Cwc>(
         [this](UiApi::SearchPauseSet::Cwc cwc) { queueEvent(cwc); });
+    ws.registerHandler<UiApi::SearchSettingsSet::Cwc>(
+        [this](UiApi::SearchSettingsSet::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::SearchStart::Cwc>(
         [this](UiApi::SearchStart::Cwc cwc) { queueEvent(cwc); });
     ws.registerHandler<UiApi::SearchStop::Cwc>(
@@ -365,6 +368,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanPlaybackStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::PlanPlaybackStop);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchPauseSet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchSettingsSet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SearchStop);
             DISPATCH_UI_CMD_EMPTY(UiApi::SimPause);

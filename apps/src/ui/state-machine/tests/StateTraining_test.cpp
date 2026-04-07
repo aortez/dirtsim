@@ -15,6 +15,7 @@
 #include "server/api/TrainingResultSave.h"
 #include "server/api/UserSettingsPatch.h"
 #include "ui/UiComponentManager.h"
+#include "ui/controls/SearchSettingsPanel.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
 #include "ui/state-machine/states/TrainingFitnessHistory.h"
@@ -699,6 +700,51 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+}
+
+TEST(StateTrainingTest, SearchSettingsPanelPreservesVelocityPruningWhenPersisting)
+{
+    LvglTestDisplay display;
+    TestStateMachineFixture fixture;
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getUserSettings(),
+    };
+    settingsOkay.settings.searchSettings.maxSearchedNodeCount = 12000u;
+    settingsOkay.settings.searchSettings.stallFrameLimit = 45u;
+    settingsOkay.settings.searchSettings.velocityPruningEnabled = false;
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    lv_obj_t* root = lv_obj_create(lv_scr_act());
+    ASSERT_NE(root, nullptr);
+
+    {
+        SearchSettingsPanel panel(root, *fixture.stateMachine);
+        panel.setSearchSettingsAndPersist(settingsOkay.settings.searchSettings);
+    }
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "UserSettingsPatch");
+
+    const auto sentCommand = Network::deserialize_payload<Api::UserSettingsPatch::Command>(
+        fixture.mockWebSocketService->sentEnvelopes()[0].payload);
+    ASSERT_TRUE(sentCommand.searchSettings.has_value());
+    EXPECT_EQ(
+        sentCommand.searchSettings->maxSearchedNodeCount,
+        settingsOkay.settings.searchSettings.maxSearchedNodeCount);
+    EXPECT_EQ(
+        sentCommand.searchSettings->stallFrameLimit,
+        settingsOkay.settings.searchSettings.stallFrameLimit);
+    EXPECT_FALSE(sentCommand.searchSettings->velocityPruningEnabled);
+
+    const auto& localSettings = fixture.stateMachine->getUserSettings().searchSettings;
+    EXPECT_EQ(
+        localSettings.maxSearchedNodeCount,
+        settingsOkay.settings.searchSettings.maxSearchedNodeCount);
+    EXPECT_EQ(localSettings.stallFrameLimit, settingsOkay.settings.searchSettings.stallFrameLimit);
+    EXPECT_FALSE(localSettings.velocityPruningEnabled);
+
+    lv_obj_del(root);
 }
 
 TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)

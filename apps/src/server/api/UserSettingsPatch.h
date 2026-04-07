@@ -23,6 +23,7 @@ struct Command {
     std::optional<Config::Raining> rainingScenarioConfig = std::nullopt;
     std::optional<Config::TreeGermination> treeGerminationScenarioConfig = std::nullopt;
     std::optional<NesSessionSettings> nesSessionSettings = std::nullopt;
+    std::optional<SearchSettings> searchSettings = std::nullopt;
     std::optional<int> volumePercent = std::nullopt;
     std::optional<Scenario::EnumType> defaultScenario = std::nullopt;
     std::optional<StartMenuIdleAction> startMenuIdleAction = std::nullopt;
@@ -41,15 +42,15 @@ struct Command {
     {
         return !clockScenarioConfig.has_value() && !sandboxScenarioConfig.has_value()
             && !rainingScenarioConfig.has_value() && !treeGerminationScenarioConfig.has_value()
-            && !nesSessionSettings.has_value() && !volumePercent.has_value()
-            && !defaultScenario.has_value() && !startMenuIdleAction.has_value()
-            && !startMenuIdleTimeoutMs.has_value() && !trainingSpec.has_value()
-            && !evolutionConfig.has_value() && !mutationConfig.has_value()
-            && !trainingResumePolicy.has_value() && !uiTraining.has_value()
-            && !networkLiveScanPreferred.has_value();
+            && !nesSessionSettings.has_value() && !searchSettings.has_value()
+            && !volumePercent.has_value() && !defaultScenario.has_value()
+            && !startMenuIdleAction.has_value() && !startMenuIdleTimeoutMs.has_value()
+            && !trainingSpec.has_value() && !evolutionConfig.has_value()
+            && !mutationConfig.has_value() && !trainingResumePolicy.has_value()
+            && !uiTraining.has_value() && !networkLiveScanPreferred.has_value();
     }
 
-    using serialize = zpp::bits::members<15>;
+    using serialize = zpp::bits::members<16>;
 };
 
 struct Okay {

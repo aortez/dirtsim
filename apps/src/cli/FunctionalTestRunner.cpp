@@ -2875,7 +2875,7 @@ Result<std::monostate, std::string> browseAndSelectPlan(
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
-Result<SearchSessionResult, std::string> runSearchHoldRightSession(
+Result<SearchSessionResult, std::string> runSearchSession(
     Network::WebSocketService& uiClient, Network::WebSocketService& serverClient, int timeoutMs)
 {
     const auto initialPlansResult = requestPlanList(serverClient, timeoutMs);
@@ -3313,7 +3313,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
             return Result<std::monostate, std::string>::error(warmPathResult.errorValue());
         }
 
-        const auto searchResult = runSearchHoldRightSession(uiClient, serverClient, timeoutMs);
+        const auto searchResult = runSearchSession(uiClient, serverClient, timeoutMs);
         if (searchResult.isError()) {
             return Result<std::monostate, std::string>::error(searchResult.errorValue());
         }
@@ -3329,13 +3329,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanSearchHoldRight(
         }
         if (plan.frames.empty()) {
             return Result<std::monostate, std::string>::error("Saved plan had no frames");
-        }
-        for (size_t i = 0; i < plan.frames.size(); ++i) {
-            const auto& frame = plan.frames[i];
-            if (frame.xAxis != 127 || frame.yAxis != 0 || frame.buttons != 0) {
-                return Result<std::monostate, std::string>::error(
-                    "Saved plan frame " + std::to_string(i) + " did not match hold-right");
-            }
         }
 
         const auto screenshotResult = captureRequiredUiScreenshotPng(
@@ -3394,7 +3387,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaybackPlan(
         }
         ClientGuard guard{ uiClient, serverClient };
 
-        const auto searchResult = runSearchHoldRightSession(uiClient, serverClient, timeoutMs);
+        const auto searchResult = runSearchSession(uiClient, serverClient, timeoutMs);
         if (searchResult.isError()) {
             return Result<std::monostate, std::string>::error(searchResult.errorValue());
         }
@@ -3498,7 +3491,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanStopPlaybackPlan(
         }
         ClientGuard guard{ uiClient, serverClient };
 
-        const auto searchResult = runSearchHoldRightSession(uiClient, serverClient, timeoutMs);
+        const auto searchResult = runSearchSession(uiClient, serverClient, timeoutMs);
         if (searchResult.isError()) {
             return Result<std::monostate, std::string>::error(searchResult.errorValue());
         }
@@ -3635,7 +3628,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
                     "SearchProgressGet failed before pause: " + progressResult.errorValue());
             }
 
-            if (progressResult.value().elapsedFrames >= 120) {
+            if (progressResult.value().searchedNodeCount >= 120) {
                 reachedPrePauseProgress = true;
                 break;
             }
@@ -3689,10 +3682,10 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
                 "Second SearchProgressGet failed while paused: "
                 + pausedProgressAgainResult.errorValue());
         }
-        if (pausedProgressAgainResult.value().elapsedFrames
-            != pausedProgressResult.value().elapsedFrames) {
+        if (pausedProgressAgainResult.value().searchedNodeCount
+            != pausedProgressResult.value().searchedNodeCount) {
             return Result<std::monostate, std::string>::error(
-                "elapsedFrames advanced while paused");
+                "searchedNodeCount advanced while paused");
         }
 
         const auto screenshotResult = captureRequiredUiScreenshotPng(
@@ -3717,14 +3710,15 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
 
         const auto resumeStart = std::chrono::steady_clock::now();
         bool progressedAfterResume = false;
-        const uint64_t pausedElapsedFrames = pausedProgressAgainResult.value().elapsedFrames;
+        const uint64_t pausedSearchedNodeCount =
+            pausedProgressAgainResult.value().searchedNodeCount;
         while (std::chrono::steady_clock::now() - resumeStart < std::chrono::seconds(5)) {
             const auto progressResult = requestSearchProgress(serverClient, timeoutMs);
             if (progressResult.isError()) {
                 return Result<std::monostate, std::string>::error(
                     "SearchProgressGet failed after resume: " + progressResult.errorValue());
             }
-            if (progressResult.value().elapsedFrames > pausedElapsedFrames) {
+            if (progressResult.value().searchedNodeCount > pausedSearchedNodeCount) {
                 progressedAfterResume = true;
                 break;
             }
@@ -3732,7 +3726,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPauseSearch(
         }
         if (!progressedAfterResume) {
             return Result<std::monostate, std::string>::error(
-                "Search did not resume advancing elapsedFrames");
+                "Search did not resume advancing searchedNodeCount");
         }
 
         UiApi::IconSelect::Command stopIcon{

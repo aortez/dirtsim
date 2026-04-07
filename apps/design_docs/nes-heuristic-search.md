@@ -14,6 +14,7 @@ future work.
 - Action And Segment Representation
 - Planner Families
 - Objectives, State Evaluation, And Search-Control Heuristics
+- Move Ordering Heuristics
 - Automatic Landmarks And Segment Discovery
 - Geometry And Terrain Extraction
 - Context-Conditioned Action Libraries
@@ -163,7 +164,8 @@ future work.
 
 ### Search-Control Heuristic Options
 
-- `Action ordering.` Expand the most sensible actions first.
+- `Action ordering.` Expand the most sensible actions first. See the Move Ordering Heuristics
+  section for detailed options.
 - `Branch suppression.` Limit branching on safe flat ground.
 - `Hazard-triggered branching.` Increase branching near pits, enemy clusters, transitions, and
   hotspots.
@@ -174,6 +176,14 @@ future work.
 - `Novelty or diversity bonus.` Intentionally keep some structurally different candidates alive.
 - `Optimistic bounds.` Use a rough upper bound on future progress to stop exploring hopeless
   states.
+
+## Move Ordering Heuristics
+
+### Currently Implemented Ordering Heuristics
+
+- Continuity. Try the parent action first to preserve multi-frame maneuvers such as held jumps and sustained runs.
+- Descending-airborne pruning. While airborne and descending, drop jump-button variants from the move list and keep only directional/run variants.
+
 
 ## Automatic Landmarks And Segment Discovery
 
@@ -475,6 +485,7 @@ The major topic buckets gathered so far are:
 - action representation and segment structure
 - planner families, including graph search, beam search, MCTS, RHEA, CEM, and MPPI
 - objectives, evaluation functions, and search-control heuristics
+- move ordering heuristics, including state-specific bias, continuity, and per-node ordering
 - automatic landmarks, especially failure-cluster and motion-context landmarks
 - geometry and terrain extraction with minimal manual labeling
 - context-conditioned action libraries
