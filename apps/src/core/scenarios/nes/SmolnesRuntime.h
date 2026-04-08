@@ -2,6 +2,7 @@
 
 #include "core/RenderMessage.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
+#include "core/scenarios/nes/NesPpuSnapshot.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <array>
@@ -113,6 +114,7 @@ public:
     virtual std::optional<NesPaletteFrame> copyLatestPaletteFrame() const;
     virtual std::optional<LiveSnapshot> copyLiveSnapshot() const;
     virtual std::optional<ControllerSnapshot> copyControllerSnapshot() const;
+    virtual std::optional<NesPpuSnapshot> copyPpuSnapshot() const;
     struct ApuSnapshot {
         bool pulse1Enabled = false;
         bool pulse2Enabled = false;

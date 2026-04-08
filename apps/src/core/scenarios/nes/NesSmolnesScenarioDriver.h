@@ -5,6 +5,7 @@
 #include "core/ScenarioId.h"
 #include "core/Timers.h"
 #include "core/scenarios/nes/NesControllerTelemetry.h"
+#include "core/scenarios/nes/NesPpuSnapshot.h"
 #include "core/scenarios/nes/NesRomValidation.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSuperMarioBrosResponseProbe.h"
@@ -77,6 +78,7 @@ public:
     std::optional<ScenarioVideoFrame> copyRuntimeFrameSnapshot() const override;
     std::optional<NesPaletteFrame> copyRuntimePaletteFrame() const override;
     std::optional<SmolnesRuntime::MemorySnapshot> copyRuntimeMemorySnapshot() const override;
+    std::optional<NesPpuSnapshot> copyRuntimePpuSnapshot() const;
     std::optional<SmolnesRuntime::ProfilingSnapshot> copyRuntimeProfilingSnapshot() const;
     std::optional<SmolnesRuntime::ApuSnapshot> copyRuntimeApuSnapshot() const;
     uint32_t copyRuntimeApuSamples(float* buffer, uint32_t maxSamples) const;

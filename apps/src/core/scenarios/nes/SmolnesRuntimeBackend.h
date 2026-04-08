@@ -85,7 +85,22 @@ typedef enum SmolnesRuntimePacingModeValue {
 #define SMOLNES_RUNTIME_PALETTE_FRAME_BYTES \
     (SMOLNES_RUNTIME_FRAME_WIDTH * SMOLNES_RUNTIME_FRAME_HEIGHT)
 #define SMOLNES_RUNTIME_CPU_RAM_BYTES 8192u
+#define SMOLNES_RUNTIME_PPU_CHR_BYTES 8192u
+#define SMOLNES_RUNTIME_PPU_OAM_BYTES 256u
+#define SMOLNES_RUNTIME_PPU_VRAM_BYTES 2048u
 #define SMOLNES_RUNTIME_PRG_RAM_BYTES 8192u
+
+typedef struct SmolnesRuntimePpuSnapshot {
+    uint64_t frame_id;
+    uint16_t v;
+    uint8_t fine_x;
+    uint8_t mirror;
+    uint8_t ppuctrl;
+    uint8_t ppumask;
+    uint8_t chr[SMOLNES_RUNTIME_PPU_CHR_BYTES];
+    uint8_t oam[SMOLNES_RUNTIME_PPU_OAM_BYTES];
+    uint8_t vram[SMOLNES_RUNTIME_PPU_VRAM_BYTES];
+} SmolnesRuntimePpuSnapshot;
 
 #define SMOLNES_RUNTIME_BUTTON_A (1u << 0)
 #define SMOLNES_RUNTIME_BUTTON_B (1u << 1)
@@ -123,6 +138,8 @@ bool smolnesRuntimeCopyMemorySnapshot(
     uint64_t* frameId);
 bool smolnesRuntimeCopyCpuRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
+bool smolnesRuntimeCopyPpuSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimePpuSnapshot* snapshotOut);
 bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize);
 bool smolnesRuntimeCopyProfilingSnapshot(

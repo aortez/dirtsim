@@ -2,6 +2,8 @@
 
 #include "SmolnesRuntimeBackend.h"
 
+#include <algorithm>
+
 namespace DirtSim {
 
 namespace {
@@ -210,6 +212,30 @@ std::optional<SmolnesRuntime::ControllerSnapshot> SmolnesRuntime::copyController
         .controller1SequenceId = raw.controller1_sequence_id,
         .controller1State = raw.controller1_state,
     };
+}
+
+std::optional<NesPpuSnapshot> SmolnesRuntime::copyPpuSnapshot() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    SmolnesRuntimePpuSnapshot raw{};
+    if (!smolnesRuntimeCopyPpuSnapshot(runtimeHandle_, &raw)) {
+        return std::nullopt;
+    }
+
+    NesPpuSnapshot snapshot;
+    snapshot.frameId = raw.frame_id;
+    snapshot.v = raw.v;
+    snapshot.fineX = raw.fine_x;
+    snapshot.mirror = raw.mirror;
+    snapshot.ppuCtrl = raw.ppuctrl;
+    snapshot.ppuMask = raw.ppumask;
+    std::copy(std::begin(raw.chr), std::end(raw.chr), snapshot.chr.begin());
+    std::copy(std::begin(raw.oam), std::end(raw.oam), snapshot.oam.begin());
+    std::copy(std::begin(raw.vram), std::end(raw.vram), snapshot.vram.begin());
+    return snapshot;
 }
 
 std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot() const
