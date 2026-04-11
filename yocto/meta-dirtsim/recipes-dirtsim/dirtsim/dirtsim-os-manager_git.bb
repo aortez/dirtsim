@@ -13,6 +13,7 @@ EXTERNALSRC_BUILD = "${WORKDIR}/build"
 
 SRC_URI = " \
     file://dirtsim-os-manager.service \
+    file://dirtsim-os-manager-logging-config.json \
 "
 
 DEPENDS = " \
@@ -49,6 +50,9 @@ do_install() {
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/dirtsim-os-manager.service ${D}${systemd_system_unitdir}/
+
+    install -d ${D}${sysconfdir}/dirtsim
+    install -m 0644 ${WORKDIR}/dirtsim-os-manager-logging-config.json ${D}${sysconfdir}/dirtsim/
 }
 
 SYSTEMD_SERVICE:${PN} = "dirtsim-os-manager.service"
@@ -57,6 +61,7 @@ SYSTEMD_AUTO_ENABLE = "enable"
 FILES:${PN} = " \
     ${bindir}/dirtsim-os-manager \
     ${systemd_system_unitdir}/dirtsim-os-manager.service \
+    ${sysconfdir}/dirtsim/dirtsim-os-manager-logging-config.json \
 "
 
 RDEPENDS:${PN} = " \

@@ -1,5 +1,7 @@
 [Unit]
 Description=DirtSim Audio Synth
+Requires=dirtsim-config-setup.service
+After=dirtsim-config-setup.service
 
 [Service]
 Type=simple
