@@ -24,12 +24,14 @@ private:
     static void onStallFrameLimitChanged(lv_event_t* e);
     static void onVelocityPruningChanged(lv_event_t* e);
     static void onBelowScreenPruningChanged(lv_event_t* e);
+    static void onGroundedVerticalJumpPrioritizationChanged(lv_event_t* e);
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* maxSearchedNodeCountStepper_ = nullptr;
     lv_obj_t* stallFrameLimitStepper_ = nullptr;
     lv_obj_t* velocityPruningSwitch_ = nullptr;
     lv_obj_t* belowScreenPruningSwitch_ = nullptr;
+    lv_obj_t* groundedVerticalJumpPrioritizationSwitch_ = nullptr;
     UiServices& uiServices_;
     DirtSim::UserSettings settings_{};
     bool updatingUi_ = false;

@@ -160,6 +160,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(inMemory.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, 30u);
     EXPECT_TRUE(inMemory.searchSettings.belowScreenPruningEnabled);
+    EXPECT_TRUE(inMemory.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(inMemory.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(
         inMemory.treeGerminationScenarioConfig.brain_type,
@@ -175,6 +176,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
     EXPECT_TRUE(fromDisk.searchSettings.belowScreenPruningEnabled);
+    EXPECT_TRUE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(
         fromDisk.treeGerminationScenarioConfig.brain_type,
@@ -192,6 +194,8 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     ASSERT_TRUE(canonicalJson.contains("nesSessionSettings"));
     EXPECT_TRUE(canonicalJson.contains("searchSettings"));
     EXPECT_TRUE(canonicalJson["searchSettings"].contains("belowScreenPruningEnabled"));
+    EXPECT_TRUE(
+        canonicalJson["searchSettings"].contains("groundedVerticalJumpPrioritizationEnabled"));
     EXPECT_TRUE(canonicalJson.contains("trainingResumePolicy"));
     EXPECT_TRUE(canonicalJson.contains("treeGerminationScenarioConfig"));
     EXPECT_TRUE(canonicalJson["nesSessionSettings"].contains("frameDelayMs"));
@@ -227,6 +231,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
         .stallFrameLimit = 999u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
+        .groundedVerticalJumpPrioritizationEnabled = false,
     };
     requestedSettings.volumePercent = 999;
     requestedSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -264,6 +269,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
         response.value().settings.searchSettings.stallFrameLimit,
         SearchSettings::StallFrameLimitMax);
     EXPECT_FALSE(response.value().settings.searchSettings.belowScreenPruningEnabled);
+    EXPECT_FALSE(
+        response.value().settings.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(response.value().settings.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
@@ -286,6 +293,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
         fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMin);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_FALSE(fromDisk.searchSettings.belowScreenPruningEnabled);
+    EXPECT_FALSE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
@@ -312,6 +320,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
         .stallFrameLimit = 60u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
+        .groundedVerticalJumpPrioritizationEnabled = false,
     };
     changedSettings.volumePercent = 65;
     changedSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -342,6 +351,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(response.value().settings.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(response.value().settings.searchSettings.stallFrameLimit, 30u);
     EXPECT_TRUE(response.value().settings.searchSettings.belowScreenPruningEnabled);
+    EXPECT_TRUE(response.value().settings.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(response.value().settings.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
@@ -356,6 +366,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
     EXPECT_TRUE(fromDisk.searchSettings.belowScreenPruningEnabled);
+    EXPECT_TRUE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
@@ -376,6 +387,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
         .stallFrameLimit = 50u,
         .velocityPruningEnabled = true,
         .belowScreenPruningEnabled = true,
+        .groundedVerticalJumpPrioritizationEnabled = true,
     };
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
@@ -403,6 +415,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
         .stallFrameLimit = 999u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
+        .groundedVerticalJumpPrioritizationEnabled = false,
     };
     patchCommand.networkLiveScanPreferred = true;
     patchCommand.trainingSpec = updatedTrainingSpec;
@@ -425,6 +438,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
         inMemory.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
     EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_FALSE(inMemory.searchSettings.belowScreenPruningEnabled);
+    EXPECT_FALSE(inMemory.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(inMemory.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
@@ -443,6 +457,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
         fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
     EXPECT_FALSE(fromDisk.searchSettings.belowScreenPruningEnabled);
+    EXPECT_FALSE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.velocityPruningEnabled);
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);

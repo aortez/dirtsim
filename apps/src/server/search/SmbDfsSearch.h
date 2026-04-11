@@ -34,6 +34,7 @@ struct SmbDfsSearchOptions {
     uint32_t stallFrameLimit = 120;
     bool velocityPruningEnabled = true;
     bool belowScreenPruningEnabled = true;
+    bool groundedVerticalJumpPrioritizationEnabled = true;
     std::optional<uint64_t> stopAfterBestFrontier = std::nullopt;
 };
 
@@ -68,6 +69,7 @@ struct SmbDfsSearchTraceEntry {
     uint64_t frontier = 0;
     double evaluationScore = 0.0;
     uint64_t framesSinceProgress = 0;
+    bool groundedVerticalJumpPriorityAction = false;
 };
 
 class SmbDfsSearch {

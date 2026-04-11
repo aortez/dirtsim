@@ -212,6 +212,8 @@ void SearchActive::updateBodyText()
     text += std::to_string(progress_.currentGameplayFrame);
     text += "\nBest frontier: ";
     text += std::to_string(progress_.bestFrontier);
+    text += "\nGround jump sorts: ";
+    text += std::to_string(progress_.groundedVerticalJumpPriorityActionCount);
     text += "\nLast event: ";
     text += searchProgressEventText(progress_.lastSearchEvent);
 

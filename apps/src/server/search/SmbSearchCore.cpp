@@ -4,6 +4,7 @@
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include <algorithm>
+#include <cmath>
 
 namespace DirtSim::Server::SearchSupport {
 
@@ -51,13 +52,16 @@ bool isJumpButtonAction(SmbSearchLegalAction action)
 SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
-    std::optional<SmbSearchLegalAction> actionFromParent)
+    std::optional<SmbSearchLegalAction> actionFromParent,
+    bool groundedVerticalJumpPrioritizationEnabled)
 {
     const auto& defaultOrder = getSmbSearchLegalActions();
     SmbSearchActionOrdering ordering{};
     SmbSearchActionOrder& order = ordering.actions;
     size_t writePos = 0;
     const bool descendingAirborne = airborne && verticalSpeedNormalized > 0.0;
+    const bool groundedMovingVertically = groundedVerticalJumpPrioritizationEnabled && !airborne
+        && std::abs(verticalSpeedNormalized) > 0.0;
 
     auto isPlaced = [&](SmbSearchLegalAction action) {
         for (size_t i = 0; i < writePos; ++i) {
@@ -78,7 +82,17 @@ SmbSearchActionOrdering buildDfsActionOrder(
         }
     };
 
-    // Prefer the parent's action first so DFS preserves multi-frame control patterns.
+    if (groundedMovingVertically) {
+        for (const auto& action : defaultOrder) {
+            if (isJumpButtonAction(action)) {
+                place(action);
+            }
+        }
+        ordering.groundedVerticalJumpPriorityActionCount = static_cast<uint8_t>(writePos);
+        ordering.groundedVerticalJumpPriorityApplied = writePos > 0u;
+    }
+
+    // Prefer the parent's action after any grounded recovery jump candidates.
     if (actionFromParent.has_value()) {
         place(actionFromParent.value());
     }

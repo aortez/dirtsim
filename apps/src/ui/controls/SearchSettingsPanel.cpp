@@ -32,6 +32,8 @@ SearchSettings clampSearchSettings(const SearchSettings& settings)
             SearchSettings::StallFrameLimitMax),
         .velocityPruningEnabled = settings.velocityPruningEnabled,
         .belowScreenPruningEnabled = settings.belowScreenPruningEnabled,
+        .groundedVerticalJumpPrioritizationEnabled =
+            settings.groundedVerticalJumpPrioritizationEnabled,
     };
 }
 
@@ -78,6 +80,14 @@ void SearchSettingsPanel::applySettings(const DirtSim::UserSettings& settings)
         }
         else {
             lv_obj_clear_state(belowScreenPruningSwitch_, LV_STATE_CHECKED);
+        }
+    }
+    if (groundedVerticalJumpPrioritizationSwitch_) {
+        if (settings_.searchSettings.groundedVerticalJumpPrioritizationEnabled) {
+            lv_obj_add_state(groundedVerticalJumpPrioritizationSwitch_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(groundedVerticalJumpPrioritizationSwitch_, LV_STATE_CHECKED);
         }
     }
 
@@ -133,6 +143,14 @@ void SearchSettingsPanel::createControls()
             .initialState(settings_.searchSettings.belowScreenPruningEnabled)
             .width(kPanelControlWidth)
             .callback(onBelowScreenPruningChanged, this)
+            .buildOrLog();
+
+    groundedVerticalJumpPrioritizationSwitch_ =
+        LVGLBuilder::labeledSwitch(container_)
+            .label("Grounded Vertical Jump Sorting")
+            .initialState(settings_.searchSettings.groundedVerticalJumpPrioritizationEnabled)
+            .width(kPanelControlWidth)
+            .callback(onGroundedVerticalJumpPrioritizationChanged, this)
             .buildOrLog();
 }
 
@@ -204,6 +222,20 @@ void SearchSettingsPanel::onBelowScreenPruningChanged(lv_event_t* e)
 
     self->settings_.searchSettings.belowScreenPruningEnabled =
         lv_obj_has_state(self->belowScreenPruningSwitch_, LV_STATE_CHECKED);
+    self->patchCurrentSettings();
+}
+
+void SearchSettingsPanel::onGroundedVerticalJumpPrioritizationChanged(lv_event_t* e)
+{
+    auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
+    DIRTSIM_ASSERT(
+        self, "SearchSettingsPanel grounded-vertical-jump-prioritization callback requires panel");
+    if (self->updatingUi_) {
+        return;
+    }
+
+    self->settings_.searchSettings.groundedVerticalJumpPrioritizationEnabled =
+        lv_obj_has_state(self->groundedVerticalJumpPrioritizationSwitch_, LV_STATE_CHECKED);
     self->patchCurrentSettings();
 }
 

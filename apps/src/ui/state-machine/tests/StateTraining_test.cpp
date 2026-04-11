@@ -714,6 +714,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
     settingsOkay.settings.searchSettings.stallFrameLimit = 45u;
     settingsOkay.settings.searchSettings.velocityPruningEnabled = false;
     settingsOkay.settings.searchSettings.belowScreenPruningEnabled = false;
+    settingsOkay.settings.searchSettings.groundedVerticalJumpPrioritizationEnabled = false;
     fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
 
     lv_obj_t* root = lv_obj_create(lv_scr_act());
@@ -738,6 +739,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
         settingsOkay.settings.searchSettings.stallFrameLimit);
     EXPECT_FALSE(sentCommand.searchSettings->velocityPruningEnabled);
     EXPECT_FALSE(sentCommand.searchSettings->belowScreenPruningEnabled);
+    EXPECT_FALSE(sentCommand.searchSettings->groundedVerticalJumpPrioritizationEnabled);
 
     const auto& localSettings = fixture.stateMachine->getUserSettings().searchSettings;
     EXPECT_EQ(
@@ -746,6 +748,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
     EXPECT_EQ(localSettings.stallFrameLimit, settingsOkay.settings.searchSettings.stallFrameLimit);
     EXPECT_FALSE(localSettings.velocityPruningEnabled);
     EXPECT_FALSE(localSettings.belowScreenPruningEnabled);
+    EXPECT_FALSE(localSettings.groundedVerticalJumpPrioritizationEnabled);
 
     lv_obj_del(root);
 }

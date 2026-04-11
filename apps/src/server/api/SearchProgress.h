@@ -32,9 +32,10 @@ struct SearchProgress {
     uint64_t currentGameplayFrame = 0;
     SearchProgressEvent lastSearchEvent = SearchProgressEvent::Unknown;
     uint64_t searchedNodeCount = 0;
+    uint64_t groundedVerticalJumpPriorityActionCount = 0;
 
     static constexpr const char* name() { return "SearchProgress"; }
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 void to_json(nlohmann::json& j, const SearchProgress& value);

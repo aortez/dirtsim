@@ -574,6 +574,7 @@ bool writeTraceJsonl(
             { "framesSinceProgress", entry.framesSinceProgress },
             { "frontier", entry.frontier },
             { "gameplayFrame", entry.gameplayFrame },
+            { "groundedVerticalJumpPriorityAction", entry.groundedVerticalJumpPriorityAction },
             { "inFocusWindow", inFocusWindow },
             { "nodeIndex", entry.nodeIndex },
             { "parentIndex",
@@ -764,6 +765,7 @@ nlohmann::json makeTraceEntryJson(size_t traceIndex, const SmbDfsSearchTraceEntr
         { "frontierAbsoluteX", decodeSmbAbsoluteX(entry.frontier) },
         { "frontierStageIndex", decodeSmbStageIndex(entry.frontier) },
         { "gameplayFrame", entry.gameplayFrame },
+        { "groundedVerticalJumpPriorityAction", entry.groundedVerticalJumpPriorityAction },
         { "nodeIndex", entry.nodeIndex },
         { "parentIndex",
           entry.parentIndex.has_value() ? nlohmann::json(entry.parentIndex.value())
@@ -1162,7 +1164,12 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
     size_t prunedVelocityStuckCount = 0u;
     size_t prunedBelowScreenCount = 0u;
     size_t backtrackedCount = 0u;
+    size_t groundedVerticalJumpPriorityActionCount = 0u;
     for (const auto& entry : trace) {
+        if (entry.groundedVerticalJumpPriorityAction) {
+            groundedVerticalJumpPriorityActionCount++;
+        }
+
         switch (entry.eventType) {
             case SmbDfsSearchTraceEventType::Backtracked:
                 backtrackedCount++;
@@ -1196,6 +1203,7 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
               << " prunedStalled=" << prunedStalledCount
               << " prunedVelocityStuck=" << prunedVelocityStuckCount
               << " prunedBelowScreen=" << prunedBelowScreenCount
+              << " groundedVerticalJumpPriorityAction=" << groundedVerticalJumpPriorityActionCount
               << " backtracked=" << backtrackedCount << "\n";
 }
 
@@ -1300,6 +1308,8 @@ void expectTraceEq(const SmbDfsSearchTraceEntry& actual, const SmbDfsSearchTrace
     EXPECT_EQ(actual.frontier, expected.frontier);
     EXPECT_DOUBLE_EQ(actual.evaluationScore, expected.evaluationScore);
     EXPECT_EQ(actual.framesSinceProgress, expected.framesSinceProgress);
+    EXPECT_EQ(
+        actual.groundedVerticalJumpPriorityAction, expected.groundedVerticalJumpPriorityAction);
 }
 
 void expectPlanFramesEq(
@@ -2436,4 +2446,39 @@ TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
     const auto& legalActions = getSmbSearchLegalActions();
     ASSERT_FALSE(legalActions.empty());
     EXPECT_EQ(legalActions[0], SmbSearchLegalAction::RightRun);
+}
+
+TEST(SmbDfsSearchTest, GroundedVerticalJumpPrioritizationMovesJumpActionsFirst)
+{
+    const SmbSearchActionOrdering enabledOrder =
+        buildDfsActionOrder(false, 0.03125, SmbSearchLegalAction::RightRun, true);
+
+    EXPECT_TRUE(enabledOrder.groundedVerticalJumpPriorityApplied);
+    EXPECT_EQ(enabledOrder.groundedVerticalJumpPriorityActionCount, 6u);
+    ASSERT_GE(enabledOrder.count, 7u);
+    EXPECT_EQ(enabledOrder.actions[0], SmbSearchLegalAction::RightJumpRun);
+    EXPECT_EQ(enabledOrder.actions[1], SmbSearchLegalAction::RightJump);
+    EXPECT_EQ(enabledOrder.actions[2], SmbSearchLegalAction::LeftJumpRun);
+    EXPECT_EQ(enabledOrder.actions[3], SmbSearchLegalAction::DuckJump);
+    EXPECT_EQ(enabledOrder.actions[4], SmbSearchLegalAction::DuckRightJumpRun);
+    EXPECT_EQ(enabledOrder.actions[5], SmbSearchLegalAction::DuckLeftJumpRun);
+    EXPECT_EQ(enabledOrder.actions[6], SmbSearchLegalAction::RightRun);
+
+    const SmbSearchActionOrdering disabledOrder =
+        buildDfsActionOrder(false, 0.03125, SmbSearchLegalAction::RightRun, false);
+    EXPECT_FALSE(disabledOrder.groundedVerticalJumpPriorityApplied);
+    EXPECT_EQ(disabledOrder.groundedVerticalJumpPriorityActionCount, 0u);
+    ASSERT_GT(disabledOrder.count, 0u);
+    EXPECT_EQ(disabledOrder.actions[0], SmbSearchLegalAction::RightRun);
+
+    const SmbSearchActionOrdering descendingAirborneOrder =
+        buildDfsActionOrder(true, 0.03125, SmbSearchLegalAction::RightJumpRun, true);
+    EXPECT_FALSE(descendingAirborneOrder.groundedVerticalJumpPriorityApplied);
+    EXPECT_EQ(descendingAirborneOrder.groundedVerticalJumpPriorityActionCount, 0u);
+    ASSERT_EQ(descendingAirborneOrder.count, 5u);
+    EXPECT_EQ(descendingAirborneOrder.actions[0], SmbSearchLegalAction::RightRun);
+    EXPECT_EQ(descendingAirborneOrder.actions[1], SmbSearchLegalAction::Right);
+    EXPECT_EQ(descendingAirborneOrder.actions[2], SmbSearchLegalAction::Neutral);
+    EXPECT_EQ(descendingAirborneOrder.actions[3], SmbSearchLegalAction::LeftRun);
+    EXPECT_EQ(descendingAirborneOrder.actions[4], SmbSearchLegalAction::Duck);
 }

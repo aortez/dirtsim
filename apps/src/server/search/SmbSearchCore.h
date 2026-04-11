@@ -39,6 +39,8 @@ using SmbSearchActionOrder = std::array<SmbSearchLegalAction, kSmbSearchLegalAct
 struct SmbSearchActionOrdering {
     SmbSearchActionOrder actions{};
     uint8_t count = 0;
+    uint8_t groundedVerticalJumpPriorityActionCount = 0;
+    bool groundedVerticalJumpPriorityApplied = false;
 };
 
 struct SmbSearchEvaluatorSummary {
@@ -68,7 +70,8 @@ struct SmbSearchNode {
 SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
-    std::optional<SmbSearchLegalAction> actionFromParent);
+    std::optional<SmbSearchLegalAction> actionFromParent,
+    bool groundedVerticalJumpPrioritizationEnabled);
 bool isSmbGameplayFrame(
     const std::optional<uint8_t>& gameState,
     const NesGameAdapterControllerOutput& controllerOutput);

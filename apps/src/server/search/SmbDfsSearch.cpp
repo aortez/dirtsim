@@ -244,8 +244,11 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         }
 
         const size_t parentIndex = dfsFrame.nodeIndex;
+        const uint8_t actionOrderIndex = dfsFrame.nextActionIndex;
         const SmbSearchLegalAction action =
             dfsFrame.actionOrdering.actions[dfsFrame.nextActionIndex++];
+        const bool groundedVerticalJumpPriorityAction =
+            actionOrderIndex < dfsFrame.actionOrdering.groundedVerticalJumpPriorityActionCount;
         const SmbSearchNode& parent = nodes_[parentIndex];
         const uint64_t parentCurrentFrontier = parent.currentFrontier;
         const uint8_t parentPlayerYScreen = parent.playerYScreen;
@@ -342,6 +345,9 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 .playerYScreen = state.playerYScreen,
             });
         progress_.searchedNodeCount++;
+        if (groundedVerticalJumpPriorityAction) {
+            progress_.groundedVerticalJumpPriorityActionCount++;
+        }
         updateRenderableState(nodes_.back());
         updateBestLeaf(childIndex);
 
@@ -378,12 +384,16 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 .frontier = evaluatorSummary.bestFrontier,
                 .evaluationScore = evaluatorSummary.evaluationScore,
                 .framesSinceProgress = evaluatorSummary.gameplayFramesSinceProgress,
+                .groundedVerticalJumpPriorityAction = groundedVerticalJumpPriorityAction,
             });
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
         if (!dead && !belowScreen && !velocityStuck && !stalled) {
-            const SmbSearchActionOrdering actionOrdering =
-                buildDfsActionOrder(state.airborne, state.verticalSpeedNormalized, action);
+            const SmbSearchActionOrdering actionOrdering = buildDfsActionOrder(
+                state.airborne,
+                state.verticalSpeedNormalized,
+                action,
+                options_.groundedVerticalJumpPrioritizationEnabled);
             dfsStack_.push_back(
                 DfsFrame{
                     .nodeIndex = childIndex,
@@ -571,7 +581,8 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
         DfsFrame{
             .nodeIndex = 0u,
             .nextActionIndex = 0,
-            .actionOrdering = buildDfsActionOrder(false, 0.0, std::nullopt),
+            .actionOrdering = buildDfsActionOrder(
+                false, 0.0, std::nullopt, options_.groundedVerticalJumpPrioritizationEnabled),
         });
 
     bestLeafIndex_ = 0u;

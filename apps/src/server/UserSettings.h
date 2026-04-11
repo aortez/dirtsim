@@ -47,8 +47,9 @@ struct SearchSettings {
     uint32_t stallFrameLimit = 30;
     bool velocityPruningEnabled = true;
     bool belowScreenPruningEnabled = true;
+    bool groundedVerticalJumpPrioritizationEnabled = true;
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 struct UserSettings {
