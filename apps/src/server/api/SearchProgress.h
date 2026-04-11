@@ -23,6 +23,7 @@ enum class SearchProgressEvent : uint8_t {
     CompletedMilestoneReached = 9,
     Stopped = 10,
     Error = 11,
+    PrunedBelowScreen = 12,
 };
 
 struct SearchProgress {

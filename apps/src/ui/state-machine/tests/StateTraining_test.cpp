@@ -702,7 +702,7 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
 }
 
-TEST(StateTrainingTest, SearchSettingsPanelPreservesVelocityPruningWhenPersisting)
+TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersisting)
 {
     LvglTestDisplay display;
     TestStateMachineFixture fixture;
@@ -713,6 +713,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesVelocityPruningWhenPersistin
     settingsOkay.settings.searchSettings.maxSearchedNodeCount = 12000u;
     settingsOkay.settings.searchSettings.stallFrameLimit = 45u;
     settingsOkay.settings.searchSettings.velocityPruningEnabled = false;
+    settingsOkay.settings.searchSettings.belowScreenPruningEnabled = false;
     fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
 
     lv_obj_t* root = lv_obj_create(lv_scr_act());
@@ -736,6 +737,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesVelocityPruningWhenPersistin
         sentCommand.searchSettings->stallFrameLimit,
         settingsOkay.settings.searchSettings.stallFrameLimit);
     EXPECT_FALSE(sentCommand.searchSettings->velocityPruningEnabled);
+    EXPECT_FALSE(sentCommand.searchSettings->belowScreenPruningEnabled);
 
     const auto& localSettings = fixture.stateMachine->getUserSettings().searchSettings;
     EXPECT_EQ(
@@ -743,6 +745,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesVelocityPruningWhenPersistin
         settingsOkay.settings.searchSettings.maxSearchedNodeCount);
     EXPECT_EQ(localSettings.stallFrameLimit, settingsOkay.settings.searchSettings.stallFrameLimit);
     EXPECT_FALSE(localSettings.velocityPruningEnabled);
+    EXPECT_FALSE(localSettings.belowScreenPruningEnabled);
 
     lv_obj_del(root);
 }

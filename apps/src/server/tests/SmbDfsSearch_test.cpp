@@ -6,6 +6,8 @@
 #include "server/search/SmbPlanExecution.h"
 #include "server/search/SmbSearchHarness.h"
 
+#include "external/stb/stb_image_write.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -15,6 +17,7 @@
 #include <functional>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -43,7 +46,7 @@ struct NodePathStats {
 
 using NodePathStatsMap = std::unordered_map<size_t, NodePathStats>;
 
-// PPM screenshot helpers (from NesSuperMarioBrosRamProbe_test.cpp).
+// PNG screenshot helpers (from NesSuperMarioBrosRamProbe_test.cpp).
 
 std::optional<uint16_t> readRgb565Pixel(const DirtSim::ScenarioVideoFrame& frame, size_t pixelIndex)
 {
@@ -67,7 +70,7 @@ std::array<uint8_t, 3> rgb565ToRgb888(uint16_t value)
     return { red8, green8, blue8 };
 }
 
-bool writeScenarioFramePpm(
+bool writeScenarioFramePng(
     const DirtSim::ScenarioVideoFrame& frame, const std::filesystem::path& path)
 {
     if (frame.width == 0 || frame.height == 0) {
@@ -78,22 +81,27 @@ bool writeScenarioFramePpm(
     if (frame.pixels.size() != expectedBytes) {
         return false;
     }
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream.is_open()) {
-        return false;
-    }
-    stream << "P6\n" << frame.width << " " << frame.height << "\n255\n";
     const size_t pixelCount = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
+    std::vector<uint8_t> rgb888(pixelCount * 3u);
     for (size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex) {
         const std::optional<uint16_t> rgb565 = readRgb565Pixel(frame, pixelIndex);
         if (!rgb565.has_value()) {
             return false;
         }
         const std::array<uint8_t, 3> rgb = rgb565ToRgb888(rgb565.value());
-        stream.write(
-            reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
+        const size_t rgbOffset = pixelIndex * 3u;
+        rgb888[rgbOffset + 0u] = rgb[0];
+        rgb888[rgbOffset + 1u] = rgb[1];
+        rgb888[rgbOffset + 2u] = rgb[2];
     }
-    return stream.good();
+    return stbi_write_png(
+               path.string().c_str(),
+               static_cast<int>(frame.width),
+               static_cast<int>(frame.height),
+               3,
+               rgb888.data(),
+               static_cast<int>(frame.width * 3u))
+        != 0;
 }
 
 bool isCreationEvent(SmbDfsSearchTraceEventType eventType)
@@ -103,6 +111,7 @@ bool isCreationEvent(SmbDfsSearchTraceEventType eventType)
         case SmbDfsSearchTraceEventType::PrunedDead:
         case SmbDfsSearchTraceEventType::PrunedStalled:
         case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
+        case SmbDfsSearchTraceEventType::PrunedBelowScreen:
         case SmbDfsSearchTraceEventType::RootInitialized:
             return true;
         case SmbDfsSearchTraceEventType::Backtracked:
@@ -138,6 +147,8 @@ std::string toString(SmbDfsSearchTraceEventType eventType)
             return "PrunedStalled";
         case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
             return "PrunedVelocityStuck";
+        case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+            return "PrunedBelowScreen";
         case SmbDfsSearchTraceEventType::RootInitialized:
             return "RootInitialized";
         case SmbDfsSearchTraceEventType::Stopped:
@@ -413,6 +424,7 @@ struct WindowStats {
     size_t prunedDeadCount = 0;
     size_t prunedStalledCount = 0;
     size_t prunedVelocityStuckCount = 0;
+    size_t prunedBelowScreenCount = 0;
 };
 
 WindowStats computeWindowStats(
@@ -439,6 +451,9 @@ WindowStats computeWindowStats(
                 break;
             case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
                 stats.prunedVelocityStuckCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+                stats.prunedBelowScreenCount++;
                 break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -468,7 +483,7 @@ bool writeReplayScreenshot(
         return false;
     }
 
-    return writeScenarioFramePpm(replayResult.scenarioVideoFrame.value(), path);
+    return writeScenarioFramePng(replayResult.scenarioVideoFrame.value(), path);
 }
 
 std::optional<size_t> findFirstControllableNodePastFrontier(
@@ -547,7 +562,7 @@ bool writeTraceJsonl(
     size_t emittedLines = 0u;
     for (size_t traceIndex = 0; traceIndex < trace.size(); ++traceIndex) {
         const auto& entry = trace[traceIndex];
-        const bool inPipeWindow =
+        const bool inFocusWindow =
             entry.frontier >= minWindowFrontier && entry.frontier <= maxWindowFrontier;
         nlohmann::json jsonLine{
             { "action",
@@ -559,7 +574,7 @@ bool writeTraceJsonl(
             { "framesSinceProgress", entry.framesSinceProgress },
             { "frontier", entry.frontier },
             { "gameplayFrame", entry.gameplayFrame },
-            { "inPipeWindow", inPipeWindow },
+            { "inFocusWindow", inFocusWindow },
             { "nodeIndex", entry.nodeIndex },
             { "parentIndex",
               entry.parentIndex.has_value() ? nlohmann::json(entry.parentIndex.value())
@@ -584,7 +599,7 @@ bool writeTraceJsonl(
             }
         }
 
-        if (isCreationEvent(entry.eventType) && inPipeWindow) {
+        if (isCreationEvent(entry.eventType) && inFocusWindow) {
             const auto& stateResult = getCachedReplayState(
                 replayCache, stateCache, harness, root, nodeMap, entry.nodeIndex);
             if (!stateResult.isError()) {
@@ -612,6 +627,114 @@ bool writeTraceJsonl(
     return stream.good();
 }
 
+struct PlayerYNodeSummary {
+    size_t nodeIndex = 0u;
+    uint64_t frontier = 0u;
+    uint64_t gameplayFrame = 0u;
+    uint16_t absoluteX = 0u;
+    uint8_t playerYScreen = 0u;
+    double verticalSpeedNormalized = 0.0;
+    SmbDfsSearchTraceEventType eventType = SmbDfsSearchTraceEventType::RootInitialized;
+};
+
+std::vector<PlayerYNodeSummary> collectTopCreationNodesByPlayerY(
+    const SmbSearchHarness& harness,
+    const SmbSearchRootFixture& root,
+    ReplayResultCache& replayCache,
+    ReplayStateCache& stateCache,
+    const TraceNodeMap& nodeMap,
+    const std::vector<SmbDfsSearchTraceEntry>& trace,
+    size_t maxCount)
+{
+    std::vector<PlayerYNodeSummary> topNodes;
+    for (const auto& entry : trace) {
+        if (!isCreationEvent(entry.eventType)) {
+            continue;
+        }
+
+        const auto& stateResult =
+            getCachedReplayState(replayCache, stateCache, harness, root, nodeMap, entry.nodeIndex);
+        if (stateResult.isError()) {
+            continue;
+        }
+
+        const auto& state = stateResult.value();
+        if (state.phase != SmbPhase::Gameplay) {
+            continue;
+        }
+
+        topNodes.push_back(
+            PlayerYNodeSummary{
+                .nodeIndex = entry.nodeIndex,
+                .frontier = entry.frontier,
+                .gameplayFrame = entry.gameplayFrame,
+                .absoluteX = state.absoluteX,
+                .playerYScreen = state.playerYScreen,
+                .verticalSpeedNormalized = state.verticalSpeedNormalized,
+                .eventType = entry.eventType,
+            });
+    }
+
+    std::sort(
+        topNodes.begin(),
+        topNodes.end(),
+        [](const PlayerYNodeSummary& lhs, const PlayerYNodeSummary& rhs) {
+            if (lhs.playerYScreen != rhs.playerYScreen) {
+                return lhs.playerYScreen > rhs.playerYScreen;
+            }
+            if (lhs.frontier != rhs.frontier) {
+                return lhs.frontier > rhs.frontier;
+            }
+            return lhs.nodeIndex < rhs.nodeIndex;
+        });
+
+    if (topNodes.size() > maxCount) {
+        topNodes.resize(maxCount);
+    }
+
+    return topNodes;
+}
+
+Result<std::monostate, std::string> writeFixtureRelativeReplayScreenshotsEveryFrames(
+    const SmbSearchHarness& harness,
+    const SmbSearchRootFixture& root,
+    const std::vector<DirtSim::PlayerControlFrame>& frames,
+    size_t frameInterval,
+    const std::filesystem::path& screenshotDir,
+    const std::string& screenshotPrefix)
+{
+    if (frameInterval == 0u) {
+        return Result<std::monostate, std::string>::error("Frame interval must be positive");
+    }
+
+    // These frames must be relative to root.savestate. Do not pass boot-replayable plan frames
+    // from search.getPlan() here.
+    std::vector<DirtSim::PlayerControlFrame> prefixFrames;
+    prefixFrames.reserve(frames.size());
+    for (size_t frameIndex = 0; frameIndex < frames.size(); ++frameIndex) {
+        prefixFrames.push_back(frames[frameIndex]);
+        const size_t frameCount = frameIndex + 1u;
+        if ((frameCount % frameInterval) != 0u && frameCount != frames.size()) {
+            continue;
+        }
+
+        const auto replayResult =
+            harness.replayFromRoot(root.savestate, root.evaluatorSummary, prefixFrames);
+        if (replayResult.isError()) {
+            return Result<std::monostate, std::string>::error(replayResult.errorValue());
+        }
+
+        const auto screenshotPath =
+            screenshotDir / (screenshotPrefix + "_frame_" + std::to_string(frameCount) + ".png");
+        if (writeReplayScreenshot(replayResult.value(), screenshotPath)) {
+            std::cout << screenshotPrefix << " screenshot frame " << frameCount << ": "
+                      << screenshotPath.string() << "\n";
+        }
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 std::vector<size_t> buildAncestorChain(const TraceNodeMap& nodeMap, size_t nodeIndex)
 {
     std::vector<size_t> reversedNodes;
@@ -627,6 +750,86 @@ std::vector<size_t> buildAncestorChain(const TraceNodeMap& nodeMap, size_t nodeI
 
     std::reverse(reversedNodes.begin(), reversedNodes.end());
     return reversedNodes;
+}
+
+nlohmann::json makeTraceEntryJson(size_t traceIndex, const SmbDfsSearchTraceEntry& entry)
+{
+    return nlohmann::json{
+        { "action",
+          entry.action.has_value() ? nlohmann::json(toString(entry.action.value()))
+                                   : nlohmann::json(nullptr) },
+        { "bestFrontier", entry.frontier },
+        { "eventType", toString(entry.eventType) },
+        { "framesSinceProgress", entry.framesSinceProgress },
+        { "frontierAbsoluteX", decodeSmbAbsoluteX(entry.frontier) },
+        { "frontierStageIndex", decodeSmbStageIndex(entry.frontier) },
+        { "gameplayFrame", entry.gameplayFrame },
+        { "nodeIndex", entry.nodeIndex },
+        { "parentIndex",
+          entry.parentIndex.has_value() ? nlohmann::json(entry.parentIndex.value())
+                                        : nlohmann::json(nullptr) },
+        { "traceIndex", traceIndex },
+    };
+}
+
+bool writeRawTraceJsonl(
+    const std::filesystem::path& path,
+    const std::vector<SmbDfsSearchTraceEntry>& trace,
+    const std::unordered_set<size_t>& branchNodeSet)
+{
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open()) {
+        return false;
+    }
+
+    for (size_t traceIndex = 0u; traceIndex < trace.size(); ++traceIndex) {
+        nlohmann::json jsonLine = makeTraceEntryJson(traceIndex, trace[traceIndex]);
+        jsonLine["onFocusBranch"] =
+            branchNodeSet.find(trace[traceIndex].nodeIndex) != branchNodeSet.end();
+        stream << jsonLine.dump() << "\n";
+    }
+
+    return stream.good();
+}
+
+bool writeBranchTraceJsonl(
+    const std::filesystem::path& path,
+    const TraceNodeMap& nodeMap,
+    const std::vector<SmbDfsSearchTraceEntry>& trace,
+    size_t nodeIndex)
+{
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open()) {
+        return false;
+    }
+
+    std::unordered_map<size_t, size_t> traceIndexByCreatedNode;
+    for (size_t traceIndex = 0u; traceIndex < trace.size(); ++traceIndex) {
+        if (!isCreationEvent(trace[traceIndex].eventType)) {
+            continue;
+        }
+        traceIndexByCreatedNode.try_emplace(trace[traceIndex].nodeIndex, traceIndex);
+    }
+
+    const std::vector<size_t> branchNodes = buildAncestorChain(nodeMap, nodeIndex);
+    for (size_t branchIndex = 0u; branchIndex < branchNodes.size(); ++branchIndex) {
+        const auto nodeIt = nodeMap.find(branchNodes[branchIndex]);
+        if (nodeIt == nodeMap.end()) {
+            return false;
+        }
+
+        const auto traceIndexIt = traceIndexByCreatedNode.find(branchNodes[branchIndex]);
+        nlohmann::json jsonLine = traceIndexIt == traceIndexByCreatedNode.end()
+            ? makeTraceEntryJson(0u, nodeIt->second)
+            : makeTraceEntryJson(traceIndexIt->second, nodeIt->second);
+        if (traceIndexIt == traceIndexByCreatedNode.end()) {
+            jsonLine["traceIndex"] = nullptr;
+        }
+        jsonLine["branchIndex"] = branchIndex;
+        stream << jsonLine.dump() << "\n";
+    }
+
+    return stream.good();
 }
 
 std::string buildFailureConeReport(
@@ -704,6 +907,7 @@ std::string buildDivergenceHistogramReport(
         size_t prunedDeadCount = 0u;
         size_t prunedStalledCount = 0u;
         size_t prunedVelocityStuckCount = 0u;
+        size_t prunedBelowScreenCount = 0u;
         size_t survivingCount = 0u;
         uint64_t bestFrontier = 0u;
     };
@@ -738,6 +942,9 @@ std::string buildDivergenceHistogramReport(
             case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
                 bucket.prunedVelocityStuckCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+                bucket.prunedBelowScreenCount++;
+                break;
             case SmbDfsSearchTraceEventType::Backtracked:
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -756,7 +963,8 @@ std::string buildDivergenceHistogramReport(
                << " bestFrontier=" << bucket.bestFrontier << " alive=" << bucket.survivingCount
                << " prunedDead=" << bucket.prunedDeadCount
                << " prunedStalled=" << bucket.prunedStalledCount
-               << " prunedVelocityStuck=" << bucket.prunedVelocityStuckCount << "\n";
+               << " prunedVelocityStuck=" << bucket.prunedVelocityStuckCount
+               << " prunedBelowScreen=" << bucket.prunedBelowScreenCount << "\n";
     }
 
     return stream.str();
@@ -952,6 +1160,7 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
     size_t prunedDeadCount = 0u;
     size_t prunedStalledCount = 0u;
     size_t prunedVelocityStuckCount = 0u;
+    size_t prunedBelowScreenCount = 0u;
     size_t backtrackedCount = 0u;
     for (const auto& entry : trace) {
         switch (entry.eventType) {
@@ -970,6 +1179,9 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
             case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
                 prunedVelocityStuckCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+                prunedBelowScreenCount++;
+                break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
             case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
@@ -983,6 +1195,7 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
     std::cout << "Trace summary: expanded=" << expandedCount << " prunedDead=" << prunedDeadCount
               << " prunedStalled=" << prunedStalledCount
               << " prunedVelocityStuck=" << prunedVelocityStuckCount
+              << " prunedBelowScreen=" << prunedBelowScreenCount
               << " backtracked=" << backtrackedCount << "\n";
 }
 
@@ -1022,11 +1235,34 @@ void expectPlanFramesEq(
     const std::vector<DirtSim::PlayerControlFrame>& actual,
     const std::vector<DirtSim::PlayerControlFrame>& expected);
 
-void expectPersistedPlanPlaybackMatchesSearchPlan(const DirtSim::Api::Plan& searchPlan)
+void writeScreenshotIfAvailable(
+    const std::optional<DirtSim::ScenarioVideoFrame>& frame,
+    const std::filesystem::path& path,
+    const std::string& label)
+{
+    if (!frame.has_value()) {
+        return;
+    }
+
+    if (writeScenarioFramePng(frame.value(), path)) {
+        std::cout << label << ": " << path.string() << "\n";
+    }
+}
+
+void expectPersistedPlanPlaybackMatchesSearchPlan(
+    const DirtSim::Api::Plan& searchPlan,
+    const std::optional<DirtSim::ScenarioVideoFrame>& searchFrame,
+    const std::string& screenshotStem)
 {
     DirtSim::Server::PlanRepository planRepository;
     const auto storeResult = planRepository.store(searchPlan);
     ASSERT_FALSE(storeResult.isError()) << storeResult.errorValue();
+
+    const auto screenshotDir = std::filesystem::path(::testing::TempDir());
+    writeScreenshotIfAvailable(
+        searchFrame,
+        screenshotDir / (screenshotStem + "_search.png"),
+        screenshotStem + " search screenshot");
 
     const auto getResult = planRepository.get(searchPlan.summary.id);
     ASSERT_FALSE(getResult.isError()) << getResult.errorValue();
@@ -1041,6 +1277,10 @@ void expectPersistedPlanPlaybackMatchesSearchPlan(const DirtSim::Api::Plan& sear
     const auto playbackRunResult =
         runPlaybackToCompletion(playback, persistedPlan.frames.size() + 2000u);
     ASSERT_FALSE(playbackRunResult.isError()) << playbackRunResult.errorValue();
+    writeScreenshotIfAvailable(
+        playback.getScenarioVideoFrame(),
+        screenshotDir / (screenshotStem + "_playback.png"),
+        screenshotStem + " playback screenshot");
     EXPECT_EQ(
         playback.getCompletionReason(),
         std::optional<SmbPlanExecutionCompletionReason>{
@@ -1265,7 +1505,8 @@ TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
         for (const auto& entry : search.getTrace()) {
             sawPrune |= entry.eventType == SmbDfsSearchTraceEventType::PrunedDead
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled
-                || entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck;
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen;
             sawBacktrack |= entry.eventType == SmbDfsSearchTraceEventType::Backtracked;
         }
 
@@ -1350,11 +1591,14 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
     std::cout << "Reached target: " << (reachedTarget ? "YES" : "NO") << "\n";
 
     const auto screenshotDir = std::filesystem::path(::testing::TempDir());
-    if (search.getScenarioVideoFrame().has_value()) {
-        const auto bestLeafScreenshot = screenshotDir / "dfs_first_gap_best_leaf.ppm";
-        writeScenarioFramePpm(search.getScenarioVideoFrame().value(), bestLeafScreenshot);
-        std::cout << "Best leaf screenshot: " << bestLeafScreenshot.string() << "\n";
-    }
+    writeScreenshotIfAvailable(
+        firstGapResult.value().scenarioVideoFrame,
+        screenshotDir / "dfs_first_gap_fixture.png",
+        "First gap fixture screenshot");
+    writeScreenshotIfAvailable(
+        search.getScenarioVideoFrame(),
+        screenshotDir / "dfs_first_gap_best_leaf.png",
+        "Best leaf screenshot");
 
     for (const auto& entry : search.getTrace()) {
         if (entry.eventType != SmbDfsSearchTraceEventType::PrunedDead) {
@@ -1368,6 +1612,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
     size_t expandedCount = 0;
     size_t prunedDeadCount = 0;
     size_t prunedStalledCount = 0;
+    size_t prunedBelowScreenCount = 0;
     size_t backtrackedCount = 0;
     for (const auto& entry : search.getTrace()) {
         if (entry.eventType == SmbDfsSearchTraceEventType::ExpandedAlive) {
@@ -1382,13 +1627,17 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
         else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck) {
             prunedStalledCount++;
         }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen) {
+            prunedBelowScreenCount++;
+        }
         else if (entry.eventType == SmbDfsSearchTraceEventType::Backtracked) {
             backtrackedCount++;
         }
     }
     std::cout << "Trace: expanded=" << expandedCount << " prunedDead=" << prunedDeadCount
-              << " prunedStalled=" << prunedStalledCount << " backtracked=" << backtrackedCount
-              << "\n";
+              << " prunedStalled=" << prunedStalledCount
+              << " prunedBelowScreen=" << prunedBelowScreenCount
+              << " backtracked=" << backtrackedCount << "\n";
 
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
@@ -1447,7 +1696,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
     std::cout << "Goomba clear frontier: " << goombaClearFrontier << "\n";
     printTraceSummary(search.getTrace());
 
-    const auto holdRightScreenshot = screenshotDir / "dfs_goomba_hold_right_death.ppm";
+    const auto holdRightScreenshot = screenshotDir / "dfs_goomba_hold_right_death.png";
     if (writeReplayScreenshot(holdRightReplay.value(), holdRightScreenshot)) {
         std::cout << "Hold-right death screenshot: " << holdRightScreenshot.string() << "\n";
     }
@@ -1464,7 +1713,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
         const auto& replayResult = getCachedReplayResult(
             replayCache, harness, fixtureResult.value(), nodeMap, highestNodeIndex.value());
         ASSERT_FALSE(replayResult.isError()) << replayResult.errorValue();
-        const auto highestScreenshot = screenshotDir / "dfs_goomba_best_frontier.ppm";
+        const auto highestScreenshot = screenshotDir / "dfs_goomba_best_frontier.png";
         if (writeReplayScreenshot(replayResult.value(), highestScreenshot)) {
             std::cout << "Best frontier screenshot: " << highestScreenshot.string() << "\n";
         }
@@ -1479,7 +1728,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
         const auto& clearReplayResult = getCachedReplayResult(
             replayCache, harness, fixtureResult.value(), nodeMap, firstClearNodeIndex.value());
         ASSERT_FALSE(clearReplayResult.isError()) << clearReplayResult.errorValue();
-        const auto clearScreenshot = screenshotDir / "dfs_goomba_first_clear.ppm";
+        const auto clearScreenshot = screenshotDir / "dfs_goomba_first_clear.png";
         if (writeReplayScreenshot(clearReplayResult.value(), clearScreenshot)) {
             std::cout << "First clear screenshot: " << clearScreenshot.string() << "\n";
         }
@@ -1494,10 +1743,115 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
     EXPECT_TRUE(firstClearNodeIndex.has_value());
 }
 
+TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitSearch)
+{
+    requireSmbRomOrSkip();
+
+    printDiagnosticProgress("Capturing FlatGroundSanity fixture");
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    constexpr uint32_t kSearchBudget = 1500u;
+    constexpr size_t kScreenshotFrameInterval = 25u;
+
+    printDiagnosticProgress("Running DFS search to completion");
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = kSearchBudget,
+            .stallFrameLimit = 120u,
+            .velocityPruningEnabled = true,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+    const auto runResult = runSearchToCompletion(search, kSearchBudget * 2u);
+    ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
+    ASSERT_TRUE(search.hasPersistablePlan());
+
+    const auto screenshotDir = std::filesystem::path(::testing::TempDir());
+    const auto nodeMap = buildCreatedNodeMap(search.getTrace());
+    const auto pathStatsByNode = buildNodePathStats(search.getTrace());
+    ReplayResultCache replayCache;
+    ReplayStateCache stateCache;
+    const auto highestNodeIndex = findHighestFrontierNodeIndex(search.getTrace());
+    ASSERT_TRUE(highestNodeIndex.has_value());
+    const auto highestNodeActionsResult =
+        reconstructTraceNodeActions(nodeMap, highestNodeIndex.value());
+    ASSERT_FALSE(highestNodeActionsResult.isError()) << highestNodeActionsResult.errorValue();
+    std::vector<DirtSim::PlayerControlFrame> highestNodeFrames;
+    highestNodeFrames.reserve(highestNodeActionsResult.value().size());
+    for (const SmbSearchLegalAction action : highestNodeActionsResult.value()) {
+        highestNodeFrames.push_back(smbSearchLegalActionToPlayerControlFrame(action));
+    }
+
+    std::cout << "\n=== First Pit Search Report ===\n";
+    std::cout << "Budget: " << kSearchBudget << "\n";
+    std::cout << "Searched nodes: " << search.getProgress().searchedNodeCount << "\n";
+    std::cout << "Best frontier: " << search.getProgress().bestFrontier << "\n";
+    std::cout << "Plan frames: " << search.getPlan().frames.size() << "\n";
+    std::cout << "Fixture-relative best-node frames: " << highestNodeFrames.size() << "\n";
+    printTraceSummary(search.getTrace());
+
+    const auto stepsJsonl = screenshotDir / "dfs_pit_steps.jsonl";
+    printDiagnosticProgress("Writing pit JSONL step log");
+    if (writeTraceJsonl(
+            stepsJsonl,
+            harness,
+            fixtureResult.value(),
+            replayCache,
+            stateCache,
+            search.getTrace(),
+            nodeMap,
+            pathStatsByNode,
+            0u,
+            std::numeric_limits<uint64_t>::max())) {
+        std::cout << "Pit step log: " << stepsJsonl.string() << "\n";
+    }
+
+    printDiagnosticProgress("Writing best-plan milestone screenshots");
+    const auto periodicScreenshotResult = writeFixtureRelativeReplayScreenshotsEveryFrames(
+        harness,
+        fixtureResult.value(),
+        highestNodeFrames,
+        kScreenshotFrameInterval,
+        screenshotDir,
+        "dfs_pit_best_plan");
+    ASSERT_FALSE(periodicScreenshotResult.isError()) << periodicScreenshotResult.errorValue();
+
+    const auto topYNodes = collectTopCreationNodesByPlayerY(
+        harness, fixtureResult.value(), replayCache, stateCache, nodeMap, search.getTrace(), 10u);
+    ASSERT_FALSE(topYNodes.empty());
+
+    std::cout << "Top nodes by playerYScreen:\n";
+    for (const auto& summary : topYNodes) {
+        std::cout << "  node=" << summary.nodeIndex << " frontier=" << summary.frontier
+                  << " frame=" << summary.gameplayFrame << " absoluteX=" << summary.absoluteX
+                  << " playerYScreen=" << static_cast<uint32_t>(summary.playerYScreen)
+                  << " verticalSpeedNormalized=" << summary.verticalSpeedNormalized
+                  << " event=" << toString(summary.eventType) << "\n";
+    }
+
+    const auto& highestYReplayResult = getCachedReplayResult(
+        replayCache, harness, fixtureResult.value(), nodeMap, topYNodes.front().nodeIndex);
+    ASSERT_FALSE(highestYReplayResult.isError()) << highestYReplayResult.errorValue();
+    const auto highestYScreenshot = screenshotDir / "dfs_pit_highest_y.png";
+    if (writeReplayScreenshot(highestYReplayResult.value(), highestYScreenshot)) {
+        std::cout << "Highest-Y screenshot: " << highestYScreenshot.string() << "\n";
+    }
+
+    const auto bestLeafScreenshot = screenshotDir / "dfs_pit_best_leaf.png";
+    writeScreenshotIfAvailable(
+        search.getScenarioVideoFrame(), bestLeafScreenshot, "Pit best leaf screenshot");
+}
+
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
 {
     requireSmbRomOrSkip();
 
+    printDiagnosticProgress("Capturing FlatGroundSanity fixture");
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
     // TODO: Align this harness with the scenario/configuration that reportedly reaches frontier
     // 1242. The checked-in diagnostic path here still plateaus at frontier 435 and does not clear
     // the pipe within the 4096-node budget, so it does not currently reproduce the commit's main
@@ -1505,11 +1859,6 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
     // TODO: Promote a fast deterministic pipe-clear assertion into the enabled suite once we have
     // a fixture/budget combination that pins this behavior. Right now the pipe investigation is
     // still diagnostic-only, so CI will not catch regressions in the dynamic action ordering.
-    printDiagnosticProgress("Capturing FlatGroundSanity fixture");
-    SmbSearchHarness harness;
-    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
-    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
-
     constexpr uint32_t kSearchBudget = 4096u;
     constexpr size_t kHoldRightFrameCount = 200u;
     constexpr uint64_t kGoombaClearMargin = 64u;
@@ -1541,8 +1890,18 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
         + " searched nodes");
 
     printDiagnosticProgress("Finding first best-plan replay stall");
-    const auto stallInfoResult = findFirstReplayStall(
-        harness, fixtureResult.value(), search.getPlan().frames, kPlanStallFrames);
+    const auto highestNodeIndex = findHighestFrontierNodeIndex(search.getTrace());
+    ASSERT_TRUE(highestNodeIndex.has_value());
+    const auto highestNodeActionsResult = reconstructTraceNodeActions(
+        buildCreatedNodeMap(search.getTrace()), highestNodeIndex.value());
+    ASSERT_FALSE(highestNodeActionsResult.isError()) << highestNodeActionsResult.errorValue();
+    std::vector<DirtSim::PlayerControlFrame> highestNodeFrames;
+    highestNodeFrames.reserve(highestNodeActionsResult.value().size());
+    for (const SmbSearchLegalAction action : highestNodeActionsResult.value()) {
+        highestNodeFrames.push_back(smbSearchLegalActionToPlayerControlFrame(action));
+    }
+    const auto stallInfoResult =
+        findFirstReplayStall(harness, fixtureResult.value(), highestNodeFrames, kPlanStallFrames);
     ASSERT_FALSE(stallInfoResult.isError()) << stallInfoResult.errorValue();
 
     const uint64_t stallFrontier = stallInfoResult.value().has_value()
@@ -1628,6 +1987,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
               << " prunedDead=" << windowStats.prunedDeadCount
               << " prunedStalled=" << windowStats.prunedStalledCount
               << " prunedVelocityStuck=" << windowStats.prunedVelocityStuckCount
+              << " prunedBelowScreen=" << windowStats.prunedBelowScreenCount
               << " backtracked=" << windowStats.backtrackedCount << "\n";
     printTraceSummary(search.getTrace());
 
@@ -1695,7 +2055,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
     }
 
     if (stallInfoResult.value().has_value()) {
-        const auto stallScreenshot = screenshotDir / "dfs_pipe_best_plan_stall.ppm";
+        const auto stallScreenshot = screenshotDir / "dfs_pipe_best_plan_stall.png";
         if (writeReplayScreenshot(stallInfoResult.value()->replayResult, stallScreenshot)) {
             std::cout << "Best plan stall screenshot: " << stallScreenshot.string() << "\n";
         }
@@ -1713,7 +2073,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
             nodeMap,
             firstVelocityPruneNodeIndex.value());
         ASSERT_FALSE(replayResult.isError()) << replayResult.errorValue();
-        const auto screenshot = screenshotDir / "dfs_pipe_first_velocity_prune.ppm";
+        const auto screenshot = screenshotDir / "dfs_pipe_first_velocity_prune.png";
         if (writeReplayScreenshot(replayResult.value(), screenshot)) {
             std::cout << "First velocity prune screenshot: " << screenshot.string() << "\n";
         }
@@ -1724,7 +2084,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
         const auto& replayResult = getCachedReplayResult(
             replayCache, harness, fixtureResult.value(), nodeMap, firstAirborneNodeIndex.value());
         ASSERT_FALSE(replayResult.isError()) << replayResult.errorValue();
-        const auto screenshot = screenshotDir / "dfs_pipe_first_airborne.ppm";
+        const auto screenshot = screenshotDir / "dfs_pipe_first_airborne.png";
         if (writeReplayScreenshot(replayResult.value(), screenshot)) {
             std::cout << "First airborne screenshot: " << screenshot.string() << "\n";
         }
@@ -1754,7 +2114,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
         const auto& clearReplayResult = getCachedReplayResult(
             replayCache, harness, fixtureResult.value(), nodeMap, firstPipeClearNodeIndex.value());
         ASSERT_FALSE(clearReplayResult.isError()) << clearReplayResult.errorValue();
-        const auto clearScreenshot = screenshotDir / "dfs_pipe_first_clear.ppm";
+        const auto clearScreenshot = screenshotDir / "dfs_pipe_first_clear.png";
         if (writeReplayScreenshot(clearReplayResult.value(), clearScreenshot)) {
             std::cout << "First pipe clear screenshot: " << clearScreenshot.string() << "\n";
         }
@@ -1839,7 +2199,8 @@ TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesFixtureSearchToFirstGap)
     ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
-    expectPersistedPlanPlaybackMatchesSearchPlan(search.getPlan());
+    expectPersistedPlanPlaybackMatchesSearchPlan(
+        search.getPlan(), search.getScenarioVideoFrame(), "dfs_first_gap_fixture_replay");
 }
 
 TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesStartDfsSearchToFirstGap)
@@ -1863,7 +2224,8 @@ TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesStartDfsSearchToFirstGap)
     ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
     ASSERT_TRUE(search.hasPersistablePlan());
     EXPECT_GE(search.getPlan().summary.bestFrontier, targetFrontier);
-    expectPersistedPlanPlaybackMatchesSearchPlan(search.getPlan());
+    expectPersistedPlanPlaybackMatchesSearchPlan(
+        search.getPlan(), search.getScenarioVideoFrame(), "dfs_first_gap_startdfs_replay");
 }
 
 TEST(SmbDfsSearchTest, StopCompletes)
@@ -1979,6 +2341,94 @@ TEST(SmbDfsSearchTest, VelocityPruningProducesDedicatedTraceEvent)
     }
 
     EXPECT_TRUE(sawVelocityPrune);
+}
+
+TEST(SmbDfsSearchTest, BelowScreenPruningProducesDedicatedTraceEvent)
+{
+    requireSmbRomOrSkip();
+
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 2000u,
+            .stallFrameLimit = 120u,
+            .velocityPruningEnabled = true,
+            .belowScreenPruningEnabled = true,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+    std::optional<SmbDfsSearchTraceEntry> firstBelowScreenPrune;
+    for (size_t tickIndex = 0; tickIndex < 2000u && !search.isCompleted(); ++tickIndex) {
+        const auto tickResult = search.tick();
+        ASSERT_FALSE(tickResult.error.has_value()) << tickResult.error.value();
+
+        for (const auto& entry : search.getTrace()) {
+            if (entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen) {
+                firstBelowScreenPrune = entry;
+                break;
+            }
+        }
+
+        if (firstBelowScreenPrune.has_value()) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(firstBelowScreenPrune.has_value());
+    std::cout << "First below-screen prune at node " << firstBelowScreenPrune->nodeIndex
+              << " frame " << firstBelowScreenPrune->gameplayFrame << " frontier "
+              << firstBelowScreenPrune->frontier << "\n";
+
+    const auto nodeMap = buildCreatedNodeMap(search.getTrace());
+    const auto actionsResult =
+        reconstructTraceNodeActions(nodeMap, firstBelowScreenPrune->nodeIndex);
+    ASSERT_FALSE(actionsResult.isError()) << actionsResult.errorValue();
+
+    const auto screenshotDir = std::filesystem::path(::testing::TempDir());
+    const std::vector<size_t> branchNodes =
+        buildAncestorChain(nodeMap, firstBelowScreenPrune->nodeIndex);
+    const std::unordered_set<size_t> branchNodeSet(branchNodes.begin(), branchNodes.end());
+    const auto rawTracePath = screenshotDir / "dfs_below_screen_trace.jsonl";
+    ASSERT_TRUE(writeRawTraceJsonl(rawTracePath, search.getTrace(), branchNodeSet));
+    std::cout << "Below-screen raw trace: " << rawTracePath.string() << "\n";
+    const auto branchTracePath = screenshotDir / "dfs_below_screen_branch.jsonl";
+    ASSERT_TRUE(writeBranchTraceJsonl(
+        branchTracePath, nodeMap, search.getTrace(), firstBelowScreenPrune->nodeIndex));
+    std::cout << "Below-screen branch trace: " << branchTracePath.string() << "\n";
+
+    const std::array<size_t, 8u> contextOffsets = { 30u, 20u, 12u, 8u, 4u, 2u, 1u, 0u };
+    for (const size_t contextOffset : contextOffsets) {
+        if (actionsResult.value().size() < contextOffset) {
+            continue;
+        }
+
+        const size_t prefixFrameCount = actionsResult.value().size() - contextOffset;
+        std::vector<SmbSearchLegalAction> prefixActions(
+            actionsResult.value().begin(),
+            actionsResult.value().begin() + static_cast<std::ptrdiff_t>(prefixFrameCount));
+        const auto replayResult = harness.replayFromRoot(
+            fixtureResult.value().savestate, fixtureResult.value().evaluatorSummary, prefixActions);
+        ASSERT_FALSE(replayResult.isError()) << replayResult.errorValue();
+        const auto stateResult = extractReplayState(replayResult.value());
+        ASSERT_FALSE(stateResult.isError()) << stateResult.errorValue();
+
+        const std::string label =
+            contextOffset == 0u ? "at" : "minus_" + std::to_string(contextOffset);
+        const auto screenshotPath = screenshotDir / ("dfs_below_screen_prune_" + label + ".png");
+        ASSERT_TRUE(writeReplayScreenshot(replayResult.value(), screenshotPath));
+
+        const auto& state = stateResult.value();
+        std::cout << "Below-screen context " << label << ": " << screenshotPath.string()
+                  << " relativeFrame=" << prefixFrameCount
+                  << " bestFrontier=" << replayResult.value().evaluatorSummary.bestFrontier
+                  << " absoluteX=" << state.absoluteX
+                  << " playerYScreen=" << static_cast<uint32_t>(state.playerYScreen)
+                  << " lifeState=" << static_cast<uint32_t>(state.lifeState) << "\n";
+    }
 }
 
 TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)

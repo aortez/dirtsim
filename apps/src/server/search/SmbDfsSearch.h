@@ -33,6 +33,7 @@ struct SmbDfsSearchOptions {
     uint32_t maxSearchedNodeCount = 5'000;
     uint32_t stallFrameLimit = 120;
     bool velocityPruningEnabled = true;
+    bool belowScreenPruningEnabled = true;
     std::optional<uint64_t> stopAfterBestFrontier = std::nullopt;
 };
 
@@ -55,6 +56,7 @@ enum class SmbDfsSearchTraceEventType : uint8_t {
     PrunedVelocityStuck = 8,
     RootInitialized = 9,
     Stopped = 10,
+    PrunedBelowScreen = 11,
 };
 
 struct SmbDfsSearchTraceEntry {

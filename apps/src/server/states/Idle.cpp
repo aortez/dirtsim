@@ -730,6 +730,7 @@ State::Any Idle::onEvent(const Api::SearchStart::Cwc& cwc, StateMachine& dsm)
         .maxSearchedNodeCount = searchSettings.maxSearchedNodeCount,
         .stallFrameLimit = searchSettings.stallFrameLimit,
         .velocityPruningEnabled = searchSettings.velocityPruningEnabled,
+        .belowScreenPruningEnabled = searchSettings.belowScreenPruningEnabled,
     };
     SearchActive nextState;
     nextState.search = SearchSupport::SmbDfsSearch(options);

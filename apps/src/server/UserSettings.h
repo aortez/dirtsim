@@ -46,8 +46,9 @@ struct SearchSettings {
     uint32_t maxSearchedNodeCount = 5000;
     uint32_t stallFrameLimit = 30;
     bool velocityPruningEnabled = true;
+    bool belowScreenPruningEnabled = true;
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 struct UserSettings {

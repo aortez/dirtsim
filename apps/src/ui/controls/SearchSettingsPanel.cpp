@@ -31,6 +31,7 @@ SearchSettings clampSearchSettings(const SearchSettings& settings)
             SearchSettings::StallFrameLimitMin,
             SearchSettings::StallFrameLimitMax),
         .velocityPruningEnabled = settings.velocityPruningEnabled,
+        .belowScreenPruningEnabled = settings.belowScreenPruningEnabled,
     };
 }
 
@@ -69,6 +70,14 @@ void SearchSettingsPanel::applySettings(const DirtSim::UserSettings& settings)
         }
         else {
             lv_obj_clear_state(velocityPruningSwitch_, LV_STATE_CHECKED);
+        }
+    }
+    if (belowScreenPruningSwitch_) {
+        if (settings_.searchSettings.belowScreenPruningEnabled) {
+            lv_obj_add_state(belowScreenPruningSwitch_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(belowScreenPruningSwitch_, LV_STATE_CHECKED);
         }
     }
 
@@ -117,6 +126,14 @@ void SearchSettingsPanel::createControls()
                                  .width(kPanelControlWidth)
                                  .callback(onVelocityPruningChanged, this)
                                  .buildOrLog();
+
+    belowScreenPruningSwitch_ =
+        LVGLBuilder::labeledSwitch(container_)
+            .label("Below Screen Pruning")
+            .initialState(settings_.searchSettings.belowScreenPruningEnabled)
+            .width(kPanelControlWidth)
+            .callback(onBelowScreenPruningChanged, this)
+            .buildOrLog();
 }
 
 void SearchSettingsPanel::patchCurrentSettings()
@@ -174,6 +191,19 @@ void SearchSettingsPanel::onVelocityPruningChanged(lv_event_t* e)
 
     self->settings_.searchSettings.velocityPruningEnabled =
         lv_obj_has_state(self->velocityPruningSwitch_, LV_STATE_CHECKED);
+    self->patchCurrentSettings();
+}
+
+void SearchSettingsPanel::onBelowScreenPruningChanged(lv_event_t* e)
+{
+    auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
+    DIRTSIM_ASSERT(self, "SearchSettingsPanel below-screen-pruning callback requires panel");
+    if (self->updatingUi_) {
+        return;
+    }
+
+    self->settings_.searchSettings.belowScreenPruningEnabled =
+        lv_obj_has_state(self->belowScreenPruningSwitch_, LV_STATE_CHECKED);
     self->patchCurrentSettings();
 }
 

@@ -18,6 +18,7 @@ namespace DirtSim::Server::SearchSupport {
 namespace {
 
 constexpr uint32_t kLevelsPerWorld = 4u;
+constexpr uint8_t kBelowScreenPrunePlayerYScreenThreshold = 224u;
 constexpr uint8_t kVelocityPruneConsecutiveFrameThreshold = 2u;
 constexpr double kVelocityPruneHorizontalSpeedEpsilon = 0.05;
 
@@ -62,6 +63,8 @@ Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventT
             return Api::SearchProgressEvent::PrunedStalled;
         case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
             return Api::SearchProgressEvent::PrunedVelocityStuck;
+        case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+            return Api::SearchProgressEvent::PrunedBelowScreen;
         case SmbDfsSearchTraceEventType::RootInitialized:
             return Api::SearchProgressEvent::RootInitialized;
         case SmbDfsSearchTraceEventType::Stopped:
@@ -344,6 +347,8 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
 
         const bool dead = evaluatorSummary.terminal || state.phase != SmbPhase::Gameplay
             || state.lifeState != SmbLifeState::Alive;
+        const bool belowScreen = options_.belowScreenPruningEnabled && !dead
+            && state.playerYScreen >= kBelowScreenPrunePlayerYScreenThreshold;
         const bool velocityStuckCandidate = options_.velocityPruningEnabled
             && state.absoluteX == decodeSmbAbsoluteX(parentCurrentFrontier) && !state.airborne
             && state.playerYScreen >= parentPlayerYScreen
@@ -359,6 +364,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         const bool stalled =
             evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
         const SmbDfsSearchTraceEventType traceEvent = dead ? SmbDfsSearchTraceEventType::PrunedDead
+            : belowScreen   ? SmbDfsSearchTraceEventType::PrunedBelowScreen
             : velocityStuck ? SmbDfsSearchTraceEventType::PrunedVelocityStuck
             : stalled       ? SmbDfsSearchTraceEventType::PrunedStalled
                             : SmbDfsSearchTraceEventType::ExpandedAlive;
@@ -375,7 +381,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             });
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
-        if (!dead && !velocityStuck && !stalled) {
+        if (!dead && !belowScreen && !velocityStuck && !stalled) {
             const SmbSearchActionOrdering actionOrdering =
                 buildDfsActionOrder(state.airborne, state.verticalSpeedNormalized, action);
             dfsStack_.push_back(
