@@ -63,17 +63,19 @@ visual input derived from the nametable.
 
 ### Observation
 
-The visual observation is a 32x28 grid of tile tokens, derived from the nametable and
-pattern table.
+The visible NES screen first produces a 32x28 screen-space grid of tile tokens, derived
+from the nametable and pattern table. The player-relative observation copies those tokens
+into a larger 63x55 grid so every visible tile can be represented no matter where the
+player is on screen.
 
 The visible NES screen is 256x224 pixels = 32x28 tiles. The nametable stores tile IDs for
 each position. Each tile ID is resolved through the current CHR bank state to its 16-byte
 pattern, then hashed to produce a stable token (see Tile Tokenization below). Using the
-scroll registers (V, fine_x) and the player's screen position from RAM, the grid is indexed
-relative to the player:
+scroll registers (V, fine_x) and the player's screen position from RAM, visible screen
+tiles are re-indexed relative to the player:
 
 ```
-     Mario at tile column 16, tile row 20
+     Screen-space tokens, Mario at tile column 16, tile row 20
      ┌──────────────────────────────────────┐
      │          32 columns                  │
      │     ┌─────────┐                      │
@@ -83,15 +85,17 @@ relative to the player:
      │                                      │
      └──────────────────────────────────────┘
              ↓ re-index relative to Mario
-     ┌──────────────────────────────────────┐
-     │  column 0 = 16 tiles left of Mario  │
-     │  column 31 = 15 tiles right of Mario│
-     │  row 0 = 20 tiles above Mario       │
-     │  row 27 = 7 tiles below Mario       │
-     └──────────────────────────────────────┘
+     ┌────────────────────────────────────────────────────────┐
+     │  63 columns, 55 rows                                  │
+     │  anchor column 31, row 27 = Mario                     │
+     │  relative column = 31 + screen_column - player_column │
+     │  relative row    = 27 + screen_row    - player_row    │
+     └────────────────────────────────────────────────────────┘
 ```
 
-Tiles outside the nametable map to a reserved "void" token (token 0).
+Cells in the 63x55 relative grid that do not correspond to a visible screen tile map to a
+reserved "void" token (token 0). This is larger than the visible screen, but it preserves
+all visible tiles even if the player is at an edge or corner.
 
 ### Tile Tokenization
 
@@ -143,13 +147,13 @@ tile always gets the same token regardless of tile ID, CHR bank state, or palett
 ### Network Architecture
 
 ```
-Tile tokens [28][32]
+Tile tokens [55][63]
     │
     ▼ embedding lookup (tile_embedding[512][D])
-Embedded grid [28][32][D]
+Embedded grid [55][63][D]
     │
     ▼ flatten
-Visual input (28 * 32 * D = 3,584 floats at D=4)
+Visual input (55 * 63 * D = 13,860 floats at D=4)
     │
     ├── + body state (6 floats)
     ├── + control feedback (4 floats)
@@ -157,9 +161,9 @@ Visual input (28 * 32 * D = 3,584 floats at D=4)
     ├── + energy, health (2 floats)
     │
     ▼
-Input buffer (3,628 floats)
+Input buffer (13,904 floats)
     │
-    ▼ W_xh1 (3,628 x 64) + W_h1h1 (64 x 64) + b_h1
+    ▼ W_xh1 (13,904 x 64) + W_h1h1 (64 x 64) + b_h1
 H1 state (64, recurrent, learned leak alpha, learned leaky ReLU)
     │
     ▼ W_h1h2 (64 x 32) + W_h2h2 (32 x 32) + b_h2
@@ -191,12 +195,12 @@ return GenomeLayout{
 
 | Component | Current (V2) | Tile Embedding |
 |-----------|-------------|----------------|
-| Visual input | 4,410 (21x21x10 histogram) | 3,584 (32x28x4 embedded) |
+| Visual input | 4,410 (21x21x10 histogram) | 13,860 (63x55x4 embedded) |
 | Embedding table | -- | 2,048 (512 x 4) |
 | Scalar inputs | 44 | 44 |
-| W_xh1 | 285,056 (4,454 x 64) | 232,192 (3,628 x 64) |
+| W_xh1 | 285,056 (4,454 x 64) | 889,856 (13,904 x 64) |
 | Rest of network | ~7,494 | ~7,494 |
-| **Total genome** | **~292,550** | **~241,734** |
+| **Total genome** | **~292,550** | **~899,398** |
 
 ## Enemies
 
