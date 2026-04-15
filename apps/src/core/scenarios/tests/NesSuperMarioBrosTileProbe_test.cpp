@@ -3,6 +3,8 @@
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
 #include "core/scenarios/nes/NesTileFrame.h"
+#include "core/scenarios/nes/NesTileTokenFrame.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
 
 #include "external/stb/stb_image_write.h"
 
@@ -99,17 +101,24 @@ void setRgbaPixel(
     rgba[offset + 3u] = static_cast<uint8_t>(color & 0xFFu);
 }
 
-uint32_t tileHashColor(uint64_t hash)
+uint32_t tileTokenColor(NesTileTokenizer::TileToken token)
 {
-    const uint8_t red = static_cast<uint8_t>(64u + ((hash >> 0u) & 0x7Fu));
-    const uint8_t green = static_cast<uint8_t>(64u + ((hash >> 8u) & 0x7Fu));
-    const uint8_t blue = static_cast<uint8_t>(64u + ((hash >> 16u) & 0x7Fu));
+    if (token == NesTileTokenizer::VoidToken) {
+        return 0x000000FFu;
+    }
+
+    const uint32_t mixed = static_cast<uint32_t>(token) * 2654435761u;
+    const uint8_t red = static_cast<uint8_t>(64u + ((mixed >> 0u) & 0x7Fu));
+    const uint8_t green = static_cast<uint8_t>(64u + ((mixed >> 8u) & 0x7Fu));
+    const uint8_t blue = static_cast<uint8_t>(64u + ((mixed >> 16u) & 0x7Fu));
     return (static_cast<uint32_t>(red) << 24u) | (static_cast<uint32_t>(green) << 16u)
         | (static_cast<uint32_t>(blue) << 8u) | 255u;
 }
 
 std::vector<uint8_t> makeComparisonImage(
-    const ScenarioVideoFrame& videoFrame, const NesTileFrame& tileFrame)
+    const ScenarioVideoFrame& videoFrame,
+    const NesTileFrame& tileFrame,
+    const NesTileTokenFrame& tokenFrame)
 {
     const uint32_t panelWidth = NesTileFrame::VisibleWidthPixels;
     const uint32_t panelHeight = NesTileFrame::VisibleHeightPixels;
@@ -155,7 +164,7 @@ std::vector<uint8_t> makeComparisonImage(
         for (uint32_t gx = 0; gx < NesTileFrame::VisibleTileColumns; ++gx) {
             const size_t cellIndex =
                 static_cast<size_t>(gy) * NesTileFrame::VisibleTileColumns + gx;
-            const uint32_t color = tileHashColor(tileFrame.tilePatternHashes[cellIndex]);
+            const uint32_t color = tileTokenColor(tokenFrame.tokens[cellIndex]);
             for (uint32_t py = 0; py < 8u; ++py) {
                 for (uint32_t px = 0; px < 8u; ++px) {
                     setRgbaPixel(rgba, width, tokenPanelX + gx * 8u + px, gy * 8u + py, color);
@@ -227,6 +236,7 @@ TEST(NesSuperMarioBrosTileProbeTest, DISABLED_SavesTileComparisonPngs)
     ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
     ASSERT_FALSE(driver.setup().isError()) << driver.getRuntimeLastError();
 
+    NesTileTokenizer tokenizer;
     Timers timers;
     const uint64_t finalFrame = kProbeFrames.back();
     for (uint64_t frameIndex = 0; frameIndex <= finalFrame; ++frameIndex) {
@@ -241,8 +251,10 @@ TEST(NesSuperMarioBrosTileProbeTest, DISABLED_SavesTileComparisonPngs)
         const auto ppuSnapshot = driver.copyRuntimePpuSnapshot();
         ASSERT_TRUE(ppuSnapshot.has_value()) << "Missing PPU snapshot at " << frameIndex;
         const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
-        const std::vector<uint8_t> rgba =
-            makeComparisonImage(stepResult.scenarioVideoFrame.value(), tileFrame);
+        const auto tokenFrameResult = makeNesTileTokenFrame(tileFrame, tokenizer);
+        ASSERT_TRUE(tokenFrameResult.isValue()) << tokenFrameResult.errorValue();
+        const std::vector<uint8_t> rgba = makeComparisonImage(
+            stepResult.scenarioVideoFrame.value(), tileFrame, tokenFrameResult.value());
         const std::filesystem::path outputPath = comparisonPathForFrame(frameIndex);
         ASSERT_TRUE(writePng(
             rgba,
