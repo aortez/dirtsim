@@ -1366,6 +1366,44 @@ TEST(SmbDfsSearchTest, TickAdvancesSearch)
     }
 }
 
+TEST(SmbDfsSearchTest, PrunedNodeDoesNotCompleteBestFrontierMilestone)
+{
+    requireSmbRomOrSkip();
+
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    const uint64_t rootFrontier = fixtureResult.value().evaluatorSummary.bestFrontier;
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 1u,
+            .stallFrameLimit = 0u,
+            .stopAfterBestFrontier = rootFrontier + 1u,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+    const auto firstTickResult = search.tick();
+    ASSERT_FALSE(firstTickResult.error.has_value()) << firstTickResult.error.value();
+    ASSERT_TRUE(firstTickResult.frameAdvanced);
+    EXPECT_FALSE(firstTickResult.completed);
+
+    ASSERT_GE(search.getTrace().size(), 2u);
+    const SmbDfsSearchTraceEntry& prunedEntry = search.getTrace()[1];
+    EXPECT_EQ(prunedEntry.eventType, SmbDfsSearchTraceEventType::PrunedStalled);
+    EXPECT_GT(prunedEntry.frontier, rootFrontier);
+    EXPECT_EQ(search.getProgress().bestFrontier, rootFrontier);
+    EXPECT_EQ(search.getPlan().summary.bestFrontier, rootFrontier);
+
+    const auto secondTickResult = search.tick();
+    ASSERT_FALSE(secondTickResult.error.has_value()) << secondTickResult.error.value();
+    EXPECT_TRUE(secondTickResult.completed);
+    ASSERT_FALSE(search.getTrace().empty());
+    EXPECT_EQ(
+        search.getTrace().back().eventType, SmbDfsSearchTraceEventType::CompletedBudgetExceeded);
+}
+
 TEST(SmbDfsSearchTest, ExploresRightRunPrefixOnFlatGround)
 {
     requireSmbRomOrSkip();

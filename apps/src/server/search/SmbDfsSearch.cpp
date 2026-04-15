@@ -349,7 +349,6 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             progress_.groundedVerticalJumpPriorityActionCount++;
         }
         updateRenderableState(nodes_.back());
-        updateBestLeaf(childIndex);
 
         const bool dead = evaluatorSummary.terminal || state.phase != SmbPhase::Gameplay
             || state.lifeState != SmbLifeState::Alive;
@@ -389,6 +388,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
         if (!dead && !belowScreen && !velocityStuck && !stalled) {
+            updateBestLeaf(childIndex);
             const SmbSearchActionOrdering actionOrdering = buildDfsActionOrder(
                 state.airborne,
                 state.verticalSpeedNormalized,
