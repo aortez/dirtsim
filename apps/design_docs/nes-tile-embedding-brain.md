@@ -246,6 +246,8 @@ the 896 visible tile positions.
   lossless 63x55 player-relative token frame.
 - Added `NesTileSensoryData`, a NES-only sensory container that carries tile visuals and
   scalar/controller/RAM inputs without carrying the legacy palette histogram grid.
+- Extracted a shared `ControllerOutput` type so the existing palette RNN and the planned
+  NES tile RNN can return the same controller-shaped output.
 - Added focused unit tests for tile extraction, tokenization, token-frame conversion,
   lossless player-relative remapping, and NES tile sensory scalar/controller fields.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,

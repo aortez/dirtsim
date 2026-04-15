@@ -395,8 +395,8 @@ DuckInput DuckNeuralNetRecurrentBrainV2::inferInput(const DuckSensoryData& senso
     return duckInput;
 }
 
-DuckNeuralNetRecurrentBrainV2::ControllerOutput DuckNeuralNetRecurrentBrainV2::
-    inferControllerOutput(const DuckSensoryData& sensory)
+ControllerOutput DuckNeuralNetRecurrentBrainV2::inferControllerOutput(
+    const DuckSensoryData& sensory)
 {
     const auto& input = impl_->flattenSensoryData(sensory);
     const auto& output = impl_->forward(input);

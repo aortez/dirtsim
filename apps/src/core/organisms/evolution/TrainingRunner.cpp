@@ -1004,8 +1004,7 @@ uint8_t TrainingRunner::inferNesControllerMask()
     uint8_t mask = 0;
     if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
         && nesDuckBrainV2_) {
-        const DuckNeuralNetRecurrentBrainV2::ControllerOutput output =
-            nesDuckBrainV2_->inferControllerOutput(sensory);
+        const ControllerOutput output = nesDuckBrainV2_->inferControllerOutput(sensory);
 
         if (output.a) {
             mask |= NesPolicyLayout::ButtonA;
