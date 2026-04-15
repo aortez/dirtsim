@@ -7,11 +7,9 @@
 
 namespace DirtSim::Test {
 
-inline void requireSmbRomOrSkip()
+inline bool hasSmbRom()
 {
-    if (!resolveSmbRomPath().has_value()) {
-        GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is required.";
-    }
+    return resolveSmbRomPath().has_value();
 }
 
 inline void expectFrameEq(const PlayerControlFrame& actual, const PlayerControlFrame& expected)
@@ -22,3 +20,11 @@ inline void expectFrameEq(const PlayerControlFrame& actual, const PlayerControlF
 }
 
 } // namespace DirtSim::Test
+
+#define REQUIRE_SMB_ROM_OR_SKIP()                                                        \
+    do {                                                                                 \
+        if (!::DirtSim::Test::hasSmbRom()) {                                             \
+            GTEST_SKIP() << "DIRTSIM_NES_SMB_TEST_ROM_PATH or testdata/roms/smb.nes is " \
+                            "required.";                                                 \
+        }                                                                                \
+    } while (false)

@@ -30,7 +30,6 @@ using DirtSim::NesSuperMarioBrosState;
 using DirtSim::SmbLifeState;
 using DirtSim::SmbPhase;
 using DirtSim::Test::expectFrameEq;
-using DirtSim::Test::requireSmbRomOrSkip;
 
 namespace {
 
@@ -1326,7 +1325,7 @@ void expectPlanFramesEq(
 
 TEST(SmbDfsSearchTest, StartCapturesRoot)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbDfsSearch search;
     const auto startResult = search.startDfs();
@@ -1341,7 +1340,7 @@ TEST(SmbDfsSearchTest, StartCapturesRoot)
 
 TEST(SmbDfsSearchTest, TickAdvancesSearch)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1368,7 +1367,7 @@ TEST(SmbDfsSearchTest, TickAdvancesSearch)
 
 TEST(SmbDfsSearchTest, PrunedNodeDoesNotCompleteBestFrontierMilestone)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1406,7 +1405,7 @@ TEST(SmbDfsSearchTest, PrunedNodeDoesNotCompleteBestFrontierMilestone)
 
 TEST(SmbDfsSearchTest, ExploresRightRunPrefixOnFlatGround)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1445,7 +1444,7 @@ TEST(SmbDfsSearchTest, ExploresRightRunPrefixOnFlatGround)
 
 TEST(SmbDfsSearchTest, BacktracksChronologicallyAndTriesRightJumpRunNext)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1530,7 +1529,7 @@ TEST(SmbDfsSearchTest, BacktracksChronologicallyAndTriesRightJumpRunNext)
 
 TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1569,7 +1568,7 @@ TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
 
 TEST(SmbDfsSearchTest, NeverExpandsUncontrollableNodes)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGoomba);
@@ -1608,7 +1607,7 @@ TEST(SmbDfsSearchTest, NeverExpandsUncontrollableNodes)
 
 TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1695,7 +1694,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
 
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -1793,7 +1792,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstGoombaSearch)
 
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitSearch)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     printDiagnosticProgress("Capturing FlatGroundSanity fixture");
     SmbSearchHarness harness;
@@ -1894,7 +1893,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitSearch)
 
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     printDiagnosticProgress("Capturing FlatGroundSanity fixture");
     SmbSearchHarness harness;
@@ -2190,7 +2189,7 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)
 
 TEST(SmbDfsSearchTest, DeterministicTrace)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGoomba);
@@ -2226,7 +2225,7 @@ TEST(SmbDfsSearchTest, DeterministicTrace)
 
 TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesFixtureSearchToFirstGap)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -2253,7 +2252,7 @@ TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesFixtureSearchToFirstGap)
 
 TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesStartDfsSearchToFirstGap)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto firstGapResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGap);
@@ -2278,7 +2277,7 @@ TEST(SmbDfsSearchTest, PersistedPlanPlaybackMatchesStartDfsSearchToFirstGap)
 
 TEST(SmbDfsSearchTest, StopCompletes)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -2298,7 +2297,7 @@ TEST(SmbDfsSearchTest, StopCompletes)
 
 TEST(SmbDfsSearchTest, PauseHaltsTicks)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -2325,7 +2324,7 @@ TEST(SmbDfsSearchTest, PauseHaltsTicks)
 
 TEST(SmbDfsSearchTest, BacktrackSignalsRenderChange)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -2356,7 +2355,7 @@ TEST(SmbDfsSearchTest, BacktrackSignalsRenderChange)
 
 TEST(SmbDfsSearchTest, VelocityPruningProducesDedicatedTraceEvent)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -2393,7 +2392,7 @@ TEST(SmbDfsSearchTest, VelocityPruningProducesDedicatedTraceEvent)
 
 TEST(SmbDfsSearchTest, BelowScreenPruningProducesDedicatedTraceEvent)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);

@@ -5,7 +5,6 @@
 
 using namespace DirtSim::Server::SearchSupport;
 using DirtSim::Test::expectFrameEq;
-using DirtSim::Test::requireSmbRomOrSkip;
 
 namespace {
 
@@ -71,7 +70,7 @@ TEST(SmbSearchHarnessTest, ReconstructPlanFramesUsesParentChain)
 
 TEST(SmbSearchHarnessTest, CaptureFixtureReturnsGameplayRoots)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto flatResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
@@ -105,7 +104,7 @@ TEST(SmbSearchHarnessTest, CaptureFixtureReturnsGameplayRoots)
 
 TEST(SmbSearchHarnessTest, ReplayFromRootIsDeterministic)
 {
-    requireSmbRomOrSkip();
+    REQUIRE_SMB_ROM_OR_SKIP();
 
     SmbSearchHarness harness;
     const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FirstGoomba);
