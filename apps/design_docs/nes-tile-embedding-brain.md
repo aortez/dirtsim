@@ -244,8 +244,10 @@ the 896 visible tile positions.
   tile tokens using a persistent tokenizer.
 - Added `NesPlayerRelativeTileFrame`, which maps the visible 32x28 token frame into a
   lossless 63x55 player-relative token frame.
-- Added focused unit tests for tile extraction, tokenization, token-frame conversion, and
-  lossless player-relative remapping.
+- Added `NesTileSensoryData`, a NES-only sensory container that carries tile visuals and
+  scalar/controller/RAM inputs without carrying the legacy palette histogram grid.
+- Added focused unit tests for tile extraction, tokenization, token-frame conversion,
+  lossless player-relative remapping, and NES tile sensory scalar/controller fields.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 
@@ -279,14 +281,12 @@ Each PNG currently has four panels:
 
 ### Next Step
 
-Split the NES tile observation and brain path away from generic duck sensory data. This
-keeps non-NES scenarios on the existing `DuckSensoryData` and
-`DuckNeuralNetRecurrentBrainV2` path while allowing NES scenarios to use tile-specific
-inputs and genome layouts.
+Add the NES-only recurrent tile brain that consumes `NesTileSensoryData`. This keeps
+non-NES scenarios on the existing `DuckSensoryData` and `DuckNeuralNetRecurrentBrainV2`
+path while allowing NES scenarios to use tile-specific inputs and genome layouts.
 
 Planned pieces:
 
-- Add a NES-only observation type that carries the 63x55 token frame and scalar NES inputs.
 - Add a NES-only recurrent tile brain variant with an embedding-table genome segment.
 - Register the new brain kind separately in `TrainingBrainRegistry`.
 - Wire NES training to select the NES tile brain explicitly, without changing the existing
