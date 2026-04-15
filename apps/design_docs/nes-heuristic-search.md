@@ -39,6 +39,11 @@ future work.
   level markup.
 - The current NN is not yet proven beyond 1-1, which makes it more natural to treat as optional
   support than as a required core component for the first round of design exploration.
+- The current DFS implementation can make early progress through goomba and pipe obstacles, but the
+  first pit exposes a search-control problem: DFS can spend budget enumerating equivalent late-fall
+  tails before it backs up far enough to try a useful ledge jump.
+- Detailed JSONL traces plus replay screenshots have been the most useful diagnostic tool so far
+  because they show the concrete action/state sequence that the tree actually expanded.
 
 ## State Representation And Transpositions
 
@@ -177,13 +182,30 @@ future work.
 - `Optimistic bounds.` Use a rough upper bound on future progress to stop exploring hopeless
   states.
 
+### Currently Implemented Search-Control Heuristics
+
+- `Stall pruning.` Prune branches once `framesSinceProgress` reaches the configured limit.
+- `Velocity-stuck pruning.` Prune obstacle/wall states where Mario is grounded, not advancing, and
+  has near-zero horizontal speed for consecutive frames.
+- `Below-screen pruning.` Prune alive-but-doomed SMB states once Mario falls below a screen-space
+  Y threshold, before the game reports full death.
+
 ## Move Ordering Heuristics
 
 ### Currently Implemented Ordering Heuristics
 
-- Continuity. Try the parent action first to preserve multi-frame maneuvers such as held jumps and sustained runs.
-- Descending-airborne pruning. While airborne and descending, drop jump-button variants from the move list and keep only directional/run variants.
+- Continuity. Try the parent action first to preserve multi-frame maneuvers such as held jumps and
+  sustained runs.
+- Descending-airborne pruning. While airborne and descending, drop jump-button variants from the
+  move list and keep only directional/run variants.
+- Grounded vertical jump priority. When SMB reports grounded but vertical motion is still present,
+  move jump-button variants before continuity and the default ordering. This biases the search
+  toward recovery jumps around ledge and pit-transition states.
 
+### Near-Term Candidates From First-Pit Diagnostics
+
+- `Falling-state transpositions or dominance.` Collapse repeated descending states that are
+  equivalent or dominated under a coarse `(x, y, vx, vy, airborne)` feature key.
 
 ## Automatic Landmarks And Segment Discovery
 

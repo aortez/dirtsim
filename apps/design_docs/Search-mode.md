@@ -2,7 +2,11 @@
 
 ## Status
 
-Draft implementation planning document.
+Living implementation planning document.
+
+Phase 1 is implemented. Phase 2 has an SMB1 DFS implementation in progress, with the
+current investigation focused on why the search reaches the first pit but does not yet
+find a stable way past it.
 
 This document describes how to add a first-class search workflow to DirtSim without overloading the existing training workflow. 
 
@@ -456,17 +460,18 @@ Replace the Phase 1 hold-right runner with a real frame-by-frame SMB searcher.
 - Each node stores the runtime savestate needed to continue searching from that node, plus the evaluator summary,
 parent link, and action-from-parent.
 - Phase 2 uses deterministic depth-first traversal with backtracking.
-- At each node, legal actions are tried in a fixed deterministic order, initially biased toward moving right and
-running.
+- At each node, legal actions are tried in a deterministic per-node order. The ordering can depend on the parent
+action and the current SMB motion state.
 - When an action produces a live child, search descends into that child.
-- When an action produces a terminal or dead child, that child is pruned immediately.
+- When an action produces a terminal, dead, or unrecoverable child, that child is pruned immediately.
 - When all legal actions from a node have been exhausted, search backtracks to the parent and tries the next legal
 action there.
-- A live branch may also be pruned if it exceeds an implementation-defined `framesSinceProgress` stall limit.
+- A live branch may also be pruned when it hits a configurable `framesSinceProgress` stall limit, gets stuck with
+no horizontal velocity against an obstacle, or falls below a configurable screen-space threshold.
 - The current best `Plan` is reconstructed by walking parent links from the best leaf seen so far back to the root.
 - Surviving branches are compared primarily by frontier progress, with evaluation score used as a secondary signal.
 - Phase 2 intentionally does not introduce checkpoints, segments, or user-facing search-depth controls.
-- Search remains deterministic for a fixed root state and fixed action ordering.
+- Search remains deterministic for a fixed root state and fixed option set.
 - Phase 2 continues to support `NesSuperMarioBros` only.
 
 Search completion for Phase 2 distinguishes between finding progress and exhausting the search:
@@ -474,14 +479,15 @@ Search completion for Phase 2 distinguishes between finding progress and exhaust
 - the user stops the search
 - no live branches remain
 - an implementation-defined global search budget is exhausted
-- a target milestone is reached, such as getting past the first goomba.  Then we can expand this to be getting to an evaluation score of 1000.
+- a target milestone is reached, such as getting past the first goomba or another fixture-defined progress target
 
 Phase 2 debugging support:
 
-- add a search trace that records node id, parent id, depth, action, frontier, evaluation score, `framesSinceProgress`,
-and prune or completion reason
-- use simple SMB1 roots such as flat ground and the first goomba as repeatable debug entry points
+- emit a search trace that records node id, parent id, depth, action, frontier, evaluation score,
+`framesSinceProgress`, motion-priority metadata, and prune or completion reason
+- use simple SMB1 roots such as flat ground, first goomba, first pipe, and first pit as repeatable debug entry points
 - ensure the same root and settings produce the same trace and the same selected best plan
+- write diagnostic JSONL traces and PNG screenshots from disabled tests when investigating search-tree behavior
 
 Success criteria:
 
@@ -491,6 +497,18 @@ Success criteria:
 - Search produces a deterministic trace for the same root and settings.
 - The best leaf can be reconstructed into a saved `Plan` and replayed through existing plan playback.
 - The debug trace is sufficient to explain why branches were expanded, pruned, or selected as best.
+
+Current implementation status:
+
+- DFS search, savestate backtracking, deterministic traces, saved-plan reconstruction, and `PlanPlayback` replay
+from boot are implemented.
+- The current SMB search can get past the first goomba and early pipe with the implemented action-ordering and
+pruning heuristics.
+- The current hotspot is the first pit. The search reaches the pit quickly, and below-screen pruning prevents
+continuing to search far off-screen alive-but-doomed states.
+- The first-pit diagnostic trace shows that DFS can still spend budget enumerating equivalent late-fall tails before
+it backtracks far enough to try a useful jump near the ledge.
+- Likely next work is falling-state transposition or dominance pruning.
 
 ### Phase 3: Generalize to support Clock Scenario and Duck
 
