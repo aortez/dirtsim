@@ -232,6 +232,90 @@ be recomputed whenever CHR banks change, or lazily rebuilt each frame (256 tile 
 hashes is negligible). The per-frame observation then just indexes this table for each of
 the 896 visible tile positions.
 
+## Implementation Status
+
+### Completed
+
+- Added PPU snapshot extraction from the SmolNES runtime backend.
+- Added `NesTileFrame`, which extracts visible 32x28 background tile IDs, pattern hashes,
+  and grayscale pattern pixels.
+- Added `NesTileTokenizer`, which maps stable tile-pattern hashes to bounded token IDs.
+- Added `NesTileTokenFrame`, which converts a screen-space tile frame into screen-space
+  tile tokens using a persistent tokenizer.
+- Added `NesPlayerRelativeTileFrame`, which maps the visible 32x28 token frame into a
+  lossless 63x55 player-relative token frame.
+- Added focused unit tests for tile extraction, tokenization, token-frame conversion, and
+  lossless player-relative remapping.
+- Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
+  grayscale pattern pixels, screen-space tokens, and player-relative tokens.
+
+### Current Diagnostic
+
+Run the SMB diagnostic with:
+
+```bash
+cd apps
+./build-debug/bin/dirtsim-tests-diagnostic \
+  --gtest_also_run_disabled_tests \
+  --gtest_filter='NesSuperMarioBrosTileProbeTest.DISABLED_SavesTileComparisonPngs'
+```
+
+It writes:
+
+```text
+/tmp/nes_smb_tile_probe_300.png
+/tmp/nes_smb_tile_probe_400.png
+/tmp/nes_smb_tile_probe_500.png
+/tmp/nes_smb_tile_probe_700.png
+/tmp/nes_smb_tile_probe_899.png
+```
+
+Each PNG currently has four panels:
+
+- Normal RGB565 video frame.
+- Palette-independent grayscale background pattern pixels.
+- Screen-space tile-token rendering.
+- Expanded 63x55 player-relative tile-token rendering.
+
+### Next Step
+
+Split the NES tile observation and brain path away from generic duck sensory data. This
+keeps non-NES scenarios on the existing `DuckSensoryData` and
+`DuckNeuralNetRecurrentBrainV2` path while allowing NES scenarios to use tile-specific
+inputs and genome layouts.
+
+Planned pieces:
+
+- Add a NES-only observation type that carries the 63x55 token frame and scalar NES inputs.
+- Add a NES-only recurrent tile brain variant with an embedding-table genome segment.
+- Register the new brain kind separately in `TrainingBrainRegistry`.
+- Wire NES training to select the NES tile brain explicitly, without changing the existing
+  palette RNN v2 brain.
+- Keep the palette RNN v2 path available for comparison runs and for non-NES scenarios.
+
+### Tests For Next Step
+
+- Genome layout reports the expected named segments and total size.
+- Random genome generation exactly matches the layout size.
+- Incompatible genome sizes fail compatibility checks.
+- Token embedding lookup maps token 0 to the void embedding and non-zero tokens to their
+  expected embedding rows.
+- A hand-authored tiny genome produces deterministic controller outputs from a synthetic
+  NES tile observation.
+- NES training registry can construct the new brain kind without affecting existing brain
+  kinds.
+
+### Open Decisions
+
+- Initial implementation will use the dense option: `63 * 55 * 4 = 13,860` embedded visual
+  inputs directly into H1.
+- Initial embedding dimension is 4.
+- Token vocabulary size remains 512 with token 0 reserved for void.
+- Sprites are not represented in the tile grid for v1; dynamic actors remain in
+  `special_senses`.
+- If dense training is too slow or unstable, revisit shared encoders or region pooling as a
+  later brain variant rather than blocking the first end-to-end implementation.
+
 ## Future Work
 
 ### Sprite Overlay
