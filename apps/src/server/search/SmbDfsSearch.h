@@ -13,11 +13,13 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace DirtSim {
 
 class NesSmolnesScenarioDriver;
+struct NesSuperMarioBrosState;
 
 namespace Server::SearchSupport {
 
@@ -34,6 +36,7 @@ struct SmbDfsSearchOptions {
     uint32_t stallFrameLimit = 120;
     bool velocityPruningEnabled = true;
     bool belowScreenPruningEnabled = true;
+    bool fallingTranspositionPruningEnabled = true;
     bool groundedVerticalJumpPrioritizationEnabled = true;
     std::optional<uint64_t> stopAfterBestFrontier = std::nullopt;
 };
@@ -58,6 +61,7 @@ enum class SmbDfsSearchTraceEventType : uint8_t {
     RootInitialized = 9,
     Stopped = 10,
     PrunedBelowScreen = 11,
+    PrunedTransposition = 12,
 };
 
 struct SmbDfsSearchTraceEntry {
@@ -104,6 +108,36 @@ private:
         SmbSearchActionOrdering actionOrdering = {};
     };
 
+    struct FallingTranspositionEntry {
+        uint64_t bestFrontier = 0;
+        uint64_t framesSinceProgress = 0;
+        uint64_t gameplayFrame = 0;
+    };
+
+    struct FallingTranspositionKey {
+        int16_t nearestEnemyDx = 0;
+        int16_t nearestEnemyDy = 0;
+        int16_t secondNearestEnemyDx = 0;
+        int16_t secondNearestEnemyDy = 0;
+        int16_t verticalSpeed = 0;
+        int8_t facingX = 0;
+        int8_t horizontalSpeed = 0;
+        int8_t movementX = 0;
+        uint16_t absoluteX = 0;
+        uint8_t level = 0;
+        uint8_t playerYScreen = 0;
+        uint8_t powerupState = 0;
+        uint8_t world = 0;
+        bool enemyPresent = false;
+        bool secondEnemyPresent = false;
+
+        bool operator==(const FallingTranspositionKey& other) const;
+    };
+
+    struct FallingTranspositionKeyHash {
+        size_t operator()(const FallingTranspositionKey& key) const;
+    };
+
     Result<std::monostate, std::string> initializeRuntime();
     Result<std::monostate, std::string> initializeRootNode(
         const SmolnesRuntime::Savestate& savestate,
@@ -113,6 +147,13 @@ private:
 
     void completeWithError(const std::string& errorMessage);
     void completeWithTraceEvent(SmbDfsSearchTraceEventType eventType);
+    std::optional<FallingTranspositionKey> buildFallingTranspositionKey(
+        const NesSuperMarioBrosState& state,
+        const SmbSearchEvaluatorSummary& evaluatorSummary) const;
+    bool isFallingTranspositionPruned(
+        const FallingTranspositionKey& key,
+        const SmbSearchEvaluatorSummary& evaluatorSummary) const;
+    void publishFallingTranspositionEntry(size_t nodeIndex);
     void rebuildBestPlan();
     void recordTrace(const SmbDfsSearchTraceEntry& entry);
     void releaseNodeHeavyData(size_t nodeIndex);
@@ -129,6 +170,12 @@ private:
     std::vector<PlayerControlFrame> rootPrefixFrames_;
     std::vector<SmbSearchNode> nodes_;
     std::vector<DfsFrame> dfsStack_;
+    std::vector<std::optional<FallingTranspositionKey>> fallingTranspositionKeys_;
+    std::unordered_map<
+        FallingTranspositionKey,
+        FallingTranspositionEntry,
+        FallingTranspositionKeyHash>
+        fallingTranspositionTable_;
     std::vector<SmbDfsSearchTraceEntry> trace_;
     std::optional<size_t> bestLeafIndex_ = std::nullopt;
     uint64_t bestFrontier_ = 0;

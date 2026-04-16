@@ -53,6 +53,8 @@ const char* searchProgressEventText(Api::SearchProgressEvent event)
             return "Pruned velocity";
         case Api::SearchProgressEvent::PrunedBelowScreen:
             return "Pruned below";
+        case Api::SearchProgressEvent::PrunedTransposition:
+            return "Pruned transposition";
         case Api::SearchProgressEvent::CompletedBudgetExceeded:
             return "Budget hit";
         case Api::SearchProgressEvent::CompletedExhausted:

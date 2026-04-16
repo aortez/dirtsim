@@ -111,6 +111,7 @@ bool isCreationEvent(SmbDfsSearchTraceEventType eventType)
         case SmbDfsSearchTraceEventType::PrunedStalled:
         case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
         case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+        case SmbDfsSearchTraceEventType::PrunedTransposition:
         case SmbDfsSearchTraceEventType::RootInitialized:
             return true;
         case SmbDfsSearchTraceEventType::Backtracked:
@@ -148,6 +149,8 @@ std::string toString(SmbDfsSearchTraceEventType eventType)
             return "PrunedVelocityStuck";
         case SmbDfsSearchTraceEventType::PrunedBelowScreen:
             return "PrunedBelowScreen";
+        case SmbDfsSearchTraceEventType::PrunedTransposition:
+            return "PrunedTransposition";
         case SmbDfsSearchTraceEventType::RootInitialized:
             return "RootInitialized";
         case SmbDfsSearchTraceEventType::Stopped:
@@ -424,6 +427,7 @@ struct WindowStats {
     size_t prunedStalledCount = 0;
     size_t prunedVelocityStuckCount = 0;
     size_t prunedBelowScreenCount = 0;
+    size_t prunedTranspositionCount = 0;
 };
 
 WindowStats computeWindowStats(
@@ -453,6 +457,9 @@ WindowStats computeWindowStats(
                 break;
             case SmbDfsSearchTraceEventType::PrunedBelowScreen:
                 stats.prunedBelowScreenCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedTransposition:
+                stats.prunedTranspositionCount++;
                 break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -909,6 +916,7 @@ std::string buildDivergenceHistogramReport(
         size_t prunedStalledCount = 0u;
         size_t prunedVelocityStuckCount = 0u;
         size_t prunedBelowScreenCount = 0u;
+        size_t prunedTranspositionCount = 0u;
         size_t survivingCount = 0u;
         uint64_t bestFrontier = 0u;
     };
@@ -946,6 +954,9 @@ std::string buildDivergenceHistogramReport(
             case SmbDfsSearchTraceEventType::PrunedBelowScreen:
                 bucket.prunedBelowScreenCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedTransposition:
+                bucket.prunedTranspositionCount++;
+                break;
             case SmbDfsSearchTraceEventType::Backtracked:
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -965,7 +976,8 @@ std::string buildDivergenceHistogramReport(
                << " prunedDead=" << bucket.prunedDeadCount
                << " prunedStalled=" << bucket.prunedStalledCount
                << " prunedVelocityStuck=" << bucket.prunedVelocityStuckCount
-               << " prunedBelowScreen=" << bucket.prunedBelowScreenCount << "\n";
+               << " prunedBelowScreen=" << bucket.prunedBelowScreenCount
+               << " prunedTransposition=" << bucket.prunedTranspositionCount << "\n";
     }
 
     return stream.str();
@@ -1162,6 +1174,7 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
     size_t prunedStalledCount = 0u;
     size_t prunedVelocityStuckCount = 0u;
     size_t prunedBelowScreenCount = 0u;
+    size_t prunedTranspositionCount = 0u;
     size_t backtrackedCount = 0u;
     size_t groundedVerticalJumpPriorityActionCount = 0u;
     for (const auto& entry : trace) {
@@ -1188,6 +1201,9 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
             case SmbDfsSearchTraceEventType::PrunedBelowScreen:
                 prunedBelowScreenCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedTransposition:
+                prunedTranspositionCount++;
+                break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
             case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
@@ -1202,6 +1218,7 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
               << " prunedStalled=" << prunedStalledCount
               << " prunedVelocityStuck=" << prunedVelocityStuckCount
               << " prunedBelowScreen=" << prunedBelowScreenCount
+              << " prunedTransposition=" << prunedTranspositionCount
               << " groundedVerticalJumpPriorityAction=" << groundedVerticalJumpPriorityActionCount
               << " backtracked=" << backtrackedCount << "\n";
 }
@@ -1553,7 +1570,8 @@ TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
             sawPrune |= entry.eventType == SmbDfsSearchTraceEventType::PrunedDead
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck
-                || entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen;
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedTransposition;
             sawBacktrack |= entry.eventType == SmbDfsSearchTraceEventType::Backtracked;
         }
 
@@ -1660,6 +1678,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
     size_t prunedDeadCount = 0;
     size_t prunedStalledCount = 0;
     size_t prunedBelowScreenCount = 0;
+    size_t prunedTranspositionCount = 0;
     size_t backtrackedCount = 0;
     for (const auto& entry : search.getTrace()) {
         if (entry.eventType == SmbDfsSearchTraceEventType::ExpandedAlive) {
@@ -1677,6 +1696,9 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
         else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen) {
             prunedBelowScreenCount++;
         }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedTransposition) {
+            prunedTranspositionCount++;
+        }
         else if (entry.eventType == SmbDfsSearchTraceEventType::Backtracked) {
             backtrackedCount++;
         }
@@ -1684,6 +1706,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
     std::cout << "Trace: expanded=" << expandedCount << " prunedDead=" << prunedDeadCount
               << " prunedStalled=" << prunedStalledCount
               << " prunedBelowScreen=" << prunedBelowScreenCount
+              << " prunedTransposition=" << prunedTranspositionCount
               << " backtracked=" << backtrackedCount << "\n";
 
     ASSERT_TRUE(search.hasPersistablePlan());
@@ -2476,6 +2499,56 @@ TEST(SmbDfsSearchTest, BelowScreenPruningProducesDedicatedTraceEvent)
                   << " playerYScreen=" << static_cast<uint32_t>(state.playerYScreen)
                   << " lifeState=" << static_cast<uint32_t>(state.lifeState) << "\n";
     }
+}
+
+TEST(SmbDfsSearchTest, FallingTranspositionPruningProducesDedicatedTraceEvent)
+{
+    REQUIRE_SMB_ROM_OR_SKIP();
+
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    SmbDfsSearch search(
+        SmbDfsSearchOptions{
+            .maxSearchedNodeCount = 1500u,
+            .stallFrameLimit = 120u,
+            .velocityPruningEnabled = true,
+            .belowScreenPruningEnabled = true,
+            .fallingTranspositionPruningEnabled = true,
+        });
+    const auto startResult = search.startFromFixture(fixtureResult.value());
+    ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+    std::optional<SmbDfsSearchTraceEntry> firstTranspositionPrune;
+    size_t traceCursor = 0u;
+    for (size_t tickIndex = 0; tickIndex < 1200u && !search.isCompleted(); ++tickIndex) {
+        const auto tickResult = search.tick();
+        ASSERT_FALSE(tickResult.error.has_value()) << tickResult.error.value();
+
+        const auto& trace = search.getTrace();
+        for (; traceCursor < trace.size(); ++traceCursor) {
+            if (trace[traceCursor].eventType == SmbDfsSearchTraceEventType::PrunedTransposition) {
+                firstTranspositionPrune = trace[traceCursor];
+                break;
+            }
+        }
+
+        if (firstTranspositionPrune.has_value()) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(firstTranspositionPrune.has_value());
+    EXPECT_EQ(
+        search.getProgress().lastSearchEvent,
+        DirtSim::Api::SearchProgressEvent::PrunedTransposition);
+    EXPECT_GT(firstTranspositionPrune->nodeIndex, 0u);
+    EXPECT_GT(firstTranspositionPrune->gameplayFrame, 0u);
+    EXPECT_GT(firstTranspositionPrune->framesSinceProgress, 0u);
+    std::cout << "First falling transposition prune at node " << firstTranspositionPrune->nodeIndex
+              << " frame " << firstTranspositionPrune->gameplayFrame << " frontier "
+              << firstTranspositionPrune->frontier << "\n";
 }
 
 TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
