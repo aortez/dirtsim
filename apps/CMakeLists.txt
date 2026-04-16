@@ -453,6 +453,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
     src/core/scenarios/nes/NesSuperMarioBrosTilePosition.cpp
     src/core/scenarios/nes/NesPlayerRelativeTileFrame.cpp
+    src/core/scenarios/nes/NesTileBrainMetadata.cpp
     src/core/scenarios/nes/NesTileDebugRenderer.cpp
     src/core/scenarios/nes/NesTileFrame.cpp
     src/core/scenarios/nes/NesTileRecurrentBrain.cpp

@@ -25,6 +25,7 @@
 namespace DirtSim {
 
 class GenomeRepository;
+class NesTileTokenizer;
 
 namespace Server::EvolutionSupport {
 
@@ -98,6 +99,7 @@ public:
         TrainingBrainRegistry brainRegistry;
         GenomeRepository* genomeRepository = nullptr;
         FitnessModelBundle fitnessModel;
+        std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr;
     };
 
     explicit EvaluationExecutor(Config config);

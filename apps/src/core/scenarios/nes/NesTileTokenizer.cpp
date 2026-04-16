@@ -3,11 +3,42 @@
 #include "core/Assert.h"
 
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace DirtSim {
+
+namespace {
+
+void hashBytes(uint64_t& hash, const void* data, size_t size)
+{
+    constexpr uint64_t FNV_PRIME = 1099511628211ull;
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < size; ++i) {
+        hash ^= bytes[i];
+        hash *= FNV_PRIME;
+    }
+}
+
+template <typename T>
+void hashValue(uint64_t& hash, const T& value)
+{
+    static_assert(std::is_trivially_copyable_v<T>);
+    hashBytes(hash, &value, sizeof(T));
+}
+
+std::string toHexString(uint64_t value)
+{
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0') << std::setw(16) << value;
+    return stream.str();
+}
+
+} // namespace
 
 NesTileTokenizer::NesTileTokenizer(TileToken vocabSize) : vocabSize_(vocabSize)
 {
@@ -103,6 +134,32 @@ Result<NesTileTokenizer::TileToken, std::string> NesTileTokenizer::tokenForHash(
     hashToToken_.emplace(patternHash.value(), assignedToken);
     ++nextToken_;
     return Result<TileToken, std::string>::okay(assignedToken);
+}
+
+std::string NesTileTokenizer::getVocabularyHash() const
+{
+    constexpr uint64_t FNV_OFFSET_BASIS = 1469598103934665603ull;
+    uint64_t hash = FNV_OFFSET_BASIS;
+
+    hashValue(hash, vocabSize_);
+    hashValue(hash, VoidToken);
+    hashValue(hash, mode_);
+
+    std::vector<std::pair<TileToken, TilePatternHash>> tokenToHash;
+    tokenToHash.reserve(hashToToken_.size());
+    for (const auto& [patternHash, token] : hashToToken_) {
+        tokenToHash.emplace_back(token, patternHash);
+    }
+    std::sort(tokenToHash.begin(), tokenToHash.end());
+
+    const uint64_t mappedHashCount = tokenToHash.size();
+    hashValue(hash, mappedHashCount);
+    for (const auto& [token, patternHash] : tokenToHash) {
+        hashValue(hash, token);
+        hashValue(hash, patternHash);
+    }
+
+    return toHexString(hash);
 }
 
 void NesTileTokenizer::reset()

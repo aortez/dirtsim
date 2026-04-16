@@ -1673,6 +1673,8 @@ void StateMachine::handleEvent(const Event& event)
                 .brainKind = std::nullopt,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
+                .genomePoolId = GenomePoolId::DirtSim,
+                .nesTileBrainCompatibility = std::nullopt,
             });
 
         repo.store(cwc.command.id, genome, meta);

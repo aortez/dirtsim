@@ -854,8 +854,10 @@ void EvaluationExecutor::generationBatchSubmit(
 
     std::vector<QueuedEvaluation> queuedEvaluations;
     queuedEvaluations.reserve(requests.size());
-    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer;
-    std::optional<Scenario::EnumType> sharedNesTileScenarioId = std::nullopt;
+    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer = impl_->config.nesTileTokenizer;
+    std::optional<Scenario::EnumType> sharedNesTileScenarioId = sharedNesTileTokenizer
+        ? std::optional<Scenario::EnumType>(impl_->config.trainingSpec.scenarioId)
+        : std::nullopt;
     for (const auto& request : requests) {
         auto nesTileTokenizer = resolveNesTileTokenizerForQueuedRequest(
             request, scenarioConfigOverride, sharedNesTileTokenizer, sharedNesTileScenarioId);
@@ -892,8 +894,10 @@ void EvaluationExecutor::robustnessPassSubmit(
 
     std::vector<QueuedEvaluation> queuedEvaluations;
     queuedEvaluations.reserve(static_cast<size_t>(resolvedEvalCount));
-    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer;
-    std::optional<Scenario::EnumType> sharedNesTileScenarioId = std::nullopt;
+    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer = impl_->config.nesTileTokenizer;
+    std::optional<Scenario::EnumType> sharedNesTileScenarioId = sharedNesTileTokenizer
+        ? std::optional<Scenario::EnumType>(impl_->config.trainingSpec.scenarioId)
+        : std::nullopt;
     for (int sampleOrdinal = 1; sampleOrdinal <= resolvedEvalCount; ++sampleOrdinal) {
         EvaluationRequest sampleRequest = request;
         sampleRequest.robustSampleOrdinal = sampleOrdinal;
@@ -936,6 +940,7 @@ std::optional<std::string> EvaluationExecutor::scenarioConfigOverrideSet(
                 return tokenizerResult.errorValue();
             }
             sharedNesTileTokenizer = std::move(tokenizerResult).value();
+            impl_->config.nesTileTokenizer = sharedNesTileTokenizer;
         }
 
         for (auto& queued : impl_->taskQueue) {

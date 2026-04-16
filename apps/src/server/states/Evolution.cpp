@@ -15,6 +15,8 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/nes/NesTileBrainMetadata.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
 #include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionMutationControlsSet.h"
@@ -441,6 +443,24 @@ bool requiresNesTileTokenizer(const Evolution::Individual& individual)
     return individual.brainKind == TrainingBrainKind::NesTileRecurrent;
 }
 
+bool trainingRequiresNesTileTokenizer(const TrainingSpec& trainingSpec)
+{
+    return std::any_of(
+        trainingSpec.population.begin(), trainingSpec.population.end(), [](const auto& spec) {
+            return spec.brainKind == TrainingBrainKind::NesTileRecurrent;
+        });
+}
+
+std::optional<NesTileBrainCompatibilityMetadata> brainCompatibilityMetadataForIndividual(
+    const Evolution::Individual& individual,
+    const std::optional<NesTileBrainCompatibilityMetadata>& nesTileCompatibility)
+{
+    if (individual.brainKind == TrainingBrainKind::NesTileRecurrent) {
+        return nesTileCompatibility;
+    }
+    return std::nullopt;
+}
+
 EvolutionSupport::EvaluationIndividual makeEvaluationIndividual(
     const Evolution::Individual& individual)
 {
@@ -704,6 +724,18 @@ void Evolution::onEnter(StateMachine& dsm)
     }
     genomePoolId_ = scenarioMeta ? scenarioMeta->genomePoolId : GenomePoolId::DirtSim;
 
+    nesTileTokenizer_.reset();
+    nesTileBrainCompatibility_.reset();
+    if (trainingRequiresNesTileTokenizer(trainingSpec)) {
+        auto tokenizerResult =
+            NesTileTokenizerBootstrapper::build(trainingSpec.scenarioId, scenarioConfigOverride_);
+        DIRTSIM_ASSERT(
+            tokenizerResult.isValue(),
+            "Evolution: Failed to bootstrap NES tile tokenizer: " + tokenizerResult.errorValue());
+        nesTileTokenizer_ = std::move(tokenizerResult).value();
+        nesTileBrainCompatibility_ = makeNesTileBrainCompatibilityMetadata(*nesTileTokenizer_);
+    }
+
     bestPlayback_.reset();
     executor_.reset();
 
@@ -732,6 +764,7 @@ void Evolution::onEnter(StateMachine& dsm)
             .brainRegistry = brainRegistry_,
             .genomeRepository = &dsm.getGenomeRepository(),
             .fitnessModel = fitnessModel_,
+            .nesTileTokenizer = nesTileTokenizer_,
         });
     executor_->start(evolutionConfig.maxParallelEvaluations);
     queueGenerationTasks();
@@ -1305,6 +1338,8 @@ void Evolution::finalizePendingBestWithoutRobustnessPass(StateMachine& dsm)
         .brainVariant = individual.brainVariant,
         .trainingSessionId = trainingSessionId_,
         .genomePoolId = genomePoolId_,
+        .nesTileBrainCompatibility =
+            brainCompatibilityMetadataForIndividual(individual, nesTileBrainCompatibility_),
     };
 
     bestFitnessThisGen = bestFitness;
@@ -1459,6 +1494,8 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         .brainVariant = individual.brainVariant,
         .trainingSessionId = trainingSessionId_,
         .genomePoolId = genomePoolId_,
+        .nesTileBrainCompatibility =
+            brainCompatibilityMetadataForIndividual(individual, nesTileBrainCompatibility_),
     };
 
     bestFitnessThisGen = robustFitness;
@@ -2087,16 +2124,21 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
     const auto startRunner = [&](std::optional<bool> spawnSideOverride) {
         if (requiresNesTileTokenizer(bestPlayback_.individual.value())
             && !bestPlayback_.nesTileTokenizer) {
-            auto tokenizerResult = NesTileTokenizerBootstrapper::build(
-                bestPlayback_.individual->scenarioId, scenarioConfigOverride_);
-            if (tokenizerResult.isError()) {
-                LOG_WARN(
-                    State,
-                    "Evolution: Failed to bootstrap NES tile tokenizer for best playback: {}",
-                    tokenizerResult.errorValue());
-                return;
+            if (nesTileTokenizer_) {
+                bestPlayback_.nesTileTokenizer = nesTileTokenizer_;
             }
-            bestPlayback_.nesTileTokenizer = std::move(tokenizerResult).value();
+            else {
+                auto tokenizerResult = NesTileTokenizerBootstrapper::build(
+                    bestPlayback_.individual->scenarioId, scenarioConfigOverride_);
+                if (tokenizerResult.isError()) {
+                    LOG_WARN(
+                        State,
+                        "Evolution: Failed to bootstrap NES tile tokenizer for best playback: {}",
+                        tokenizerResult.errorValue());
+                    return;
+                }
+                bestPlayback_.nesTileTokenizer = std::move(tokenizerResult).value();
+            }
         }
 
         const TrainingRunner::Config runnerConfig{
@@ -2417,6 +2459,8 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .brainVariant = population[bestIdx].brainVariant,
         .trainingSessionId = trainingSessionId_,
         .genomePoolId = genomePoolId_,
+        .nesTileBrainCompatibility = brainCompatibilityMetadataForIndividual(
+            population[bestIdx], nesTileBrainCompatibility_),
     };
     const auto storeResult = storeManagedGenome(
         dsm,
@@ -2493,6 +2537,9 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
             .brainKind = candidate.brainKind,
             .brainVariant = candidate.brainVariant,
             .trainingSessionId = trainingSessionId_,
+            .genomePoolId = genomePoolId_,
+            .nesTileBrainCompatibility =
+                brainCompatibilityMetadataForIndividual(population[i], nesTileBrainCompatibility_),
         };
         result.candidates.push_back(candidate);
     }

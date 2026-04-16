@@ -39,6 +39,7 @@ public:
     Mode getMode() const { return mode_; }
     TileToken getVocabSize() const { return vocabSize_; }
     size_t getMappedHashCount() const { return hashToToken_.size(); }
+    std::string getVocabularyHash() const;
     void reset();
 
 private:

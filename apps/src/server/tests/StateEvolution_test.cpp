@@ -100,6 +100,7 @@ GenomeMetadata makeManagedGenomeMetadata(
         .brainVariant = std::nullopt,
         .trainingSessionId = UUID::generate(),
         .genomePoolId = genomePoolId,
+        .nesTileBrainCompatibility = std::nullopt,
     };
 }
 
@@ -532,6 +533,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(bestId, bestGenome, bestMetadata);
     repo.markAsBest(bestId);
@@ -591,6 +594,8 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(bestId, bestGenome, bestMetadata);
     repo.markAsBest(bestId);
@@ -654,6 +659,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
             .brainKind = TrainingBrainKind::NeuralNet,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     };
 
@@ -737,6 +744,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeSkipsIncompatibleGenomeLayouts)
             .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     };
 
@@ -803,6 +812,7 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeUsesSingleEvalSeedsForDetermini
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
         .genomePoolId = GenomePoolId::Smb,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(smbBestId, makeDuckRecurrentV2Genome(0.5f), smbBestMetadata);
 
@@ -1517,6 +1527,8 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
     repo.markAsBest(seedId);
@@ -1646,6 +1658,8 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
 
@@ -1734,6 +1748,8 @@ TEST(StateEvolutionTest, AdaptiveBudgetedMutationTracksPhaseAndKeepsPopulationSi
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
 

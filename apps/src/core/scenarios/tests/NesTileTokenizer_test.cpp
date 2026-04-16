@@ -1,3 +1,5 @@
+#include "core/scenarios/nes/NesTileBrainMetadata.h"
+#include "core/scenarios/nes/NesTileRecurrentBrain.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
 
 #include <array>
@@ -94,6 +96,89 @@ TEST(NesTileTokenizerTest, BuildVocabularyIsIndependentOfInputOrder)
     EXPECT_EQ(firstTokenizer.tokenForHash(10u).value(), secondTokenizer.tokenForHash(10u).value());
     EXPECT_EQ(firstTokenizer.tokenForHash(20u).value(), secondTokenizer.tokenForHash(20u).value());
     EXPECT_EQ(firstTokenizer.tokenForHash(30u).value(), secondTokenizer.tokenForHash(30u).value());
+}
+
+TEST(NesTileTokenizerTest, VocabularyHashIsDeterministic)
+{
+    NesTileTokenizer firstTokenizer;
+    NesTileTokenizer secondTokenizer;
+    NesTileTokenizer differentTokenizer;
+
+    ASSERT_TRUE(
+        firstTokenizer
+            .buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 30u, 10u, 20u })
+            .isValue());
+    ASSERT_TRUE(
+        secondTokenizer
+            .buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 20u, 30u, 10u })
+            .isValue());
+    ASSERT_TRUE(
+        differentTokenizer
+            .buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 20u, 30u, 40u })
+            .isValue());
+    firstTokenizer.freeze();
+    secondTokenizer.freeze();
+    differentTokenizer.freeze();
+
+    EXPECT_EQ(firstTokenizer.getVocabularyHash(), secondTokenizer.getVocabularyHash());
+    EXPECT_NE(firstTokenizer.getVocabularyHash(), differentTokenizer.getVocabularyHash());
+}
+
+TEST(NesTileTokenizerTest, BrainCompatibilityMetadataCapturesTileBrainContract)
+{
+    NesTileTokenizer tokenizer;
+    ASSERT_TRUE(
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u, 20u })
+            .isValue());
+    tokenizer.freeze();
+
+    const NesTileBrainCompatibilityMetadata metadata =
+        makeNesTileBrainCompatibilityMetadata(tokenizer);
+
+    EXPECT_EQ(metadata.schemaVersion, NesTileBrainCompatibilityMetadata::CurrentSchemaVersion);
+    EXPECT_EQ(metadata.tileVocabularySize, NesTileRecurrentBrain::TileVocabularySize);
+    EXPECT_EQ(metadata.tileEmbeddingDim, NesTileRecurrentBrain::TileEmbeddingDim);
+    EXPECT_EQ(metadata.scalarInputSize, NesTileRecurrentBrain::ScalarInputSize);
+    EXPECT_EQ(metadata.voidTokenId, NesTileTokenizer::VoidToken);
+    EXPECT_EQ(metadata.tokenizerVocabularyHash, tokenizer.getVocabularyHash());
+}
+
+TEST(NesTileTokenizerTest, BrainCompatibilityMetadataRejectsMismatchedTokenizerHash)
+{
+    NesTileTokenizer tokenizer;
+    ASSERT_TRUE(
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u, 20u })
+            .isValue());
+    tokenizer.freeze();
+
+    const NesTileBrainCompatibilityMetadata expected =
+        makeNesTileBrainCompatibilityMetadata(tokenizer);
+    NesTileBrainCompatibilityMetadata actual = expected;
+    actual.tokenizerVocabularyHash = "different";
+
+    const auto validation = validateNesTileBrainCompatibilityMetadata(actual, expected);
+
+    ASSERT_TRUE(validation.isError());
+    EXPECT_NE(validation.errorValue().find("tokenizerVocabularyHash"), std::string::npos);
+}
+
+TEST(NesTileTokenizerTest, BrainCompatibilityMetadataRejectsMismatchedWindowShape)
+{
+    NesTileTokenizer tokenizer;
+    ASSERT_TRUE(
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u, 20u })
+            .isValue());
+    tokenizer.freeze();
+
+    const NesTileBrainCompatibilityMetadata expected =
+        makeNesTileBrainCompatibilityMetadata(tokenizer);
+    NesTileBrainCompatibilityMetadata actual = expected;
+    actual.relativeTileColumns += 1;
+
+    const auto validation = validateNesTileBrainCompatibilityMetadata(actual, expected);
+
+    ASSERT_TRUE(validation.isError());
+    EXPECT_NE(validation.errorValue().find("relativeTileColumns"), std::string::npos);
 }
 
 TEST(NesTileTokenizerTest, BuildVocabularyCollapsesDuplicateHashes)

@@ -166,6 +166,9 @@ GenomeMetadata mergeMetadata(const GenomeMetadata& existingRaw, const GenomeMeta
     if (!merged.trainingSessionId.has_value()) {
         merged.trainingSessionId = existing.trainingSessionId;
     }
+    if (!merged.nesTileBrainCompatibility.has_value()) {
+        merged.nesTileBrainCompatibility = existing.nesTileBrainCompatibility;
+    }
     if (merged.createdTimestamp == 0) {
         merged.createdTimestamp = existing.createdTimestamp;
     }
@@ -389,6 +392,22 @@ std::string GenomeRepository::computeContentHash(const Genome& genome, const Gen
     hashValue(hash, organismType);
     hashString(hash, meta.brainKind.value_or(""));
     hashString(hash, meta.brainVariant.value_or(""));
+    const bool hasNesTileCompatibility = meta.nesTileBrainCompatibility.has_value();
+    hashValue(hash, hasNesTileCompatibility);
+    if (hasNesTileCompatibility) {
+        const auto& compatibility = meta.nesTileBrainCompatibility.value();
+        hashValue(hash, compatibility.schemaVersion);
+        hashValue(hash, compatibility.tileVocabularySize);
+        hashValue(hash, compatibility.tileEmbeddingDim);
+        hashValue(hash, compatibility.relativeTileColumns);
+        hashValue(hash, compatibility.relativeTileRows);
+        hashValue(hash, compatibility.scalarInputSize);
+        hashValue(hash, compatibility.h1Size);
+        hashValue(hash, compatibility.h2Size);
+        hashValue(hash, compatibility.outputSize);
+        hashValue(hash, compatibility.voidTokenId);
+        hashString(hash, compatibility.tokenizerVocabularyHash);
+    }
 
     const uint64_t weightCount = genome.weights.size();
     hashValue(hash, weightCount);
