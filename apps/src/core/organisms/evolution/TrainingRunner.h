@@ -204,7 +204,7 @@ private:
     void resolveBrainEntry();
     NesFrameTrace runScenarioDrivenStep();
     DuckSensoryData makeNesDuckSensoryData() const;
-    NesTileSensoryData makeNesTileSensoryData() const;
+    NesTileSensoryData makeNesTileSensoryData();
     uint8_t inferNesControllerMask();
     std::optional<DuckEvaluationArtifacts> buildDuckEvaluationArtifacts(const Duck& duck) const;
     void snapshotDuckEvaluationArtifacts();

@@ -4,6 +4,7 @@
 #include "GenomeRepository.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/ScopeTimer.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/Duck.h"
@@ -1132,8 +1133,10 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
     return nesGameAdapter_->makeDuckSensoryData(sensoryInput);
 }
 
-NesTileSensoryData TrainingRunner::makeNesTileSensoryData() const
+NesTileSensoryData TrainingRunner::makeNesTileSensoryData()
 {
+    ScopeTimer totalTimer(nesTimers_, "nes_tile_sensory_total");
+
     DIRTSIM_ASSERT(
         nesGameAdapter_ != nullptr, "TrainingRunner: NES tile sensory requires a game adapter");
     DIRTSIM_ASSERT(nesDriver_ != nullptr, "TrainingRunner: NES tile sensory requires a NES driver");
@@ -1143,22 +1146,32 @@ NesTileSensoryData TrainingRunner::makeNesTileSensoryData() const
         nesTileTokenizer_->getMode() == NesTileTokenizer::Mode::Frozen,
         "TrainingRunner: NES tile sensory requires a frozen tile tokenizer");
 
-    const auto ppuSnapshot = nesDriver_->copyRuntimePpuSnapshot();
+    const auto ppuSnapshot = [this]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_copy_ppu_snapshot");
+        return nesDriver_->copyRuntimePpuSnapshot();
+    }();
     DIRTSIM_ASSERT(
         ppuSnapshot.has_value(), "TrainingRunner: NES tile sensory requires a PPU snapshot");
 
-    const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
-    const NesGameAdapterSensoryInput sensoryInput{
-        .controllerMask = nesControllerMask_,
-        .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
-        .lastGameState = nesLastGameState_,
-        .deltaTimeSeconds = TIMESTEP,
-        .tileFrameScrollX = tileFrame.scrollX,
-    };
-    const NesTileSensoryBuilderInput tileInput =
-        nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
-    auto sensoryResult =
-        makeNesTileSensoryDataFromTileFrame(tileFrame, *nesTileTokenizer_, tileInput);
+    const NesTileFrame tileFrame = [this, &ppuSnapshot]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_frame_extract");
+        return makeNesTileFrame(ppuSnapshot.value());
+    }();
+    const NesTileSensoryBuilderInput tileInput = [this, &tileFrame]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_adapter_input");
+        const NesGameAdapterSensoryInput sensoryInput{
+            .controllerMask = nesControllerMask_,
+            .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
+            .lastGameState = nesLastGameState_,
+            .deltaTimeSeconds = TIMESTEP,
+            .tileFrameScrollX = tileFrame.scrollX,
+        };
+        return nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
+    }();
+    auto sensoryResult = [this, &tileFrame, &tileInput]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_build_sensory");
+        return makeNesTileSensoryDataFromTileFrame(tileFrame, *nesTileTokenizer_, tileInput);
+    }();
     DIRTSIM_ASSERT(
         sensoryResult.isValue(),
         "TrainingRunner: Failed to build NES tile sensory data: " + sensoryResult.errorValue());
@@ -1183,6 +1196,7 @@ uint8_t TrainingRunner::inferNesControllerMask()
 
     if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
         && nesDuckBrainV2_) {
+        ScopeTimer timer(nesTimers_, "nes_palette_controller_infer_total");
         const DuckSensoryData sensory = makeNesDuckSensoryData();
         const ControllerOutput output = nesDuckBrainV2_->inferControllerOutput(sensory);
         const uint8_t mask = nesControllerMaskFromOutput(output);
@@ -1191,6 +1205,7 @@ uint8_t TrainingRunner::inferNesControllerMask()
     }
 
     if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent && nesTileBrain_) {
+        ScopeTimer timer(nesTimers_, "nes_tile_controller_infer_total");
         DIRTSIM_ASSERT(
             nesTileTokenizer_ != nullptr,
             "TrainingRunner: NES tile sensory requires a tile tokenizer");
@@ -1202,7 +1217,10 @@ uint8_t TrainingRunner::inferNesControllerMask()
             return 0;
         }
         const NesTileSensoryData sensory = makeNesTileSensoryData();
-        const ControllerOutput output = nesTileBrain_->inferControllerOutput(sensory);
+        const ControllerOutput output = [this, &sensory]() {
+            ScopeTimer brainTimer(nesTimers_, "nes_tile_brain_infer");
+            return nesTileBrain_->inferControllerOutput(sensory);
+        }();
         const uint8_t mask = nesControllerMaskFromOutput(output);
         recordTelemetry(output, mask);
         return mask;

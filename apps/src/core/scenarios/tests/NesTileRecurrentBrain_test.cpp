@@ -152,7 +152,7 @@ TEST(NesTileRecurrentBrainTest, IncompatibleGenomeSizesFailCompatibility)
             Genome(static_cast<size_t>(kTotalGenomeSize + 1), 0.0f)));
 }
 
-TEST(NesTileRecurrentBrainTest, TokenEmbeddingLookupUsesVoidAndTokenRows)
+TEST(NesTileRecurrentBrainTest, TokenEmbeddingLookupIgnoresVoidAndUsesTokenRows)
 {
     const Genome genome = makeEmbeddingProbeGenome();
     const float expectedScale = kMaxHiddenAlpha * kMaxHiddenAlpha;
@@ -165,7 +165,7 @@ TEST(NesTileRecurrentBrainTest, TokenEmbeddingLookupUsesVoidAndTokenRows)
     NesTileRecurrentBrain tokenBrain(genome);
     const ControllerOutput tokenOutput = tokenBrain.inferControllerOutput(tokenSensory);
 
-    EXPECT_NEAR(voidOutput.xRaw, 0.75f * expectedScale, 1e-5f);
+    EXPECT_NEAR(voidOutput.xRaw, 0.0f, 1e-5f);
     EXPECT_NEAR(tokenOutput.xRaw, 2.25f * expectedScale, 1e-5f);
 }
 

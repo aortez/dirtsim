@@ -235,6 +235,13 @@ struct NesTileRecurrentBrain::Impl {
         for (const auto token : sensory.tileFrame.tokens) {
             DIRTSIM_ASSERT(
                 token < TILE_VOCAB_SIZE, "NesTileRecurrentBrain: Tile token out of range");
+            if (token == NesTileTokenizer::VoidToken) {
+                for (int dim = 0; dim < TILE_EMBED_DIM; ++dim) {
+                    input_buffer[index++] = 0.0f;
+                }
+                continue;
+            }
+
             const WeightType* embedding =
                 &tile_embedding[static_cast<size_t>(token) * TILE_EMBED_DIM];
             for (int dim = 0; dim < TILE_EMBED_DIM; ++dim) {

@@ -609,6 +609,14 @@ TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokeniz
     EXPECT_TRUE(std::isfinite(telemetry.yRaw));
     EXPECT_TRUE(std::isfinite(telemetry.aRaw));
     EXPECT_TRUE(std::isfinite(telemetry.bRaw));
+
+    const Timers* timers = runner.getTimers();
+    ASSERT_NE(timers, nullptr);
+    EXPECT_GT(timers->getCallCount("nes_tile_controller_infer_total"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_sensory_total"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_extract"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_build_sensory"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_brain_infer"), 0u);
 }
 
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)
