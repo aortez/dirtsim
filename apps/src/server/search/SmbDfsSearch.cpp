@@ -11,6 +11,7 @@
 #include "server/search/SmbSearchHarness.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 
@@ -22,6 +23,16 @@ constexpr uint32_t kLevelsPerWorld = 4u;
 constexpr uint8_t kBelowScreenPrunePlayerYScreenThreshold = 224u;
 constexpr uint8_t kVelocityPruneConsecutiveFrameThreshold = 2u;
 constexpr double kVelocityPruneHorizontalSpeedEpsilon = 0.05;
+
+// Hidden movement, input, collision, scroll, and timer bytes used to keep TT probes exact.
+constexpr std::array<size_t, kFallingTranspositionRamByteCount> kFallingTranspositionRamByteAddrs{
+    0x0000, 0x0003, 0x000A, 0x000B, 0x000E, 0x001D, 0x0057, 0x009F, 0x00B5, 0x00CE, 0x03AD,
+    0x03B8, 0x0400, 0x0416, 0x0433, 0x0490, 0x04AC, 0x04AD, 0x04AE, 0x04AF, 0x06D5, 0x06FC,
+    0x0700, 0x0701, 0x0702, 0x0704, 0x0705, 0x0709, 0x070A, 0x070C, 0x070D, 0x0712, 0x0714,
+    0x071A, 0x071B, 0x071C, 0x071D, 0x071E, 0x071F, 0x0722, 0x0723, 0x072C, 0x072F, 0x0739,
+    0x0747, 0x074A, 0x0752, 0x0753, 0x0755, 0x0775, 0x077F, 0x0781, 0x0782, 0x0783, 0x0784,
+    0x0785, 0x0786, 0x0789, 0x078A, 0x0791, 0x0795, 0x079E, 0x079F,
+};
 
 int8_t encodeAxisSign(float value)
 {
@@ -87,6 +98,16 @@ int16_t quantizeVerticalSpeed(double normalizedSpeed)
     return static_cast<int16_t>(std::clamp(roundedSpeed, -128, 128));
 }
 
+std::array<uint8_t, kFallingTranspositionRamByteCount> buildFallingTranspositionRamBytes(
+    const SmolnesRuntime::MemorySnapshot& memorySnapshot)
+{
+    std::array<uint8_t, kFallingTranspositionRamByteCount> ramBytes{};
+    for (size_t i = 0u; i < kFallingTranspositionRamByteAddrs.size(); ++i) {
+        ramBytes[i] = memorySnapshot.cpuRam.at(kFallingTranspositionRamByteAddrs[i]);
+    }
+    return ramBytes;
+}
+
 std::vector<PlayerControlFrame> makeRootPrefixFrames(uint64_t gameplayFrameCount)
 {
     return std::vector<PlayerControlFrame>(
@@ -143,7 +164,7 @@ bool SmbDfsSearch::FallingTranspositionKey::operator==(const FallingTranspositio
         && horizontalSpeed == other.horizontalSpeed && movementX == other.movementX
         && absoluteX == other.absoluteX && level == other.level
         && playerYScreen == other.playerYScreen && powerupState == other.powerupState
-        && world == other.world && enemyPresent == other.enemyPresent
+        && world == other.world && ramBytes == other.ramBytes && enemyPresent == other.enemyPresent
         && secondEnemyPresent == other.secondEnemyPresent;
 }
 
@@ -164,6 +185,9 @@ size_t SmbDfsSearch::FallingTranspositionKeyHash::operator()(
     hashCombine(seed, std::hash<uint8_t>{}(key.playerYScreen));
     hashCombine(seed, std::hash<uint8_t>{}(key.powerupState));
     hashCombine(seed, std::hash<uint8_t>{}(key.world));
+    for (const uint8_t byte : key.ramBytes) {
+        hashCombine(seed, std::hash<uint8_t>{}(byte));
+    }
     hashCombine(seed, std::hash<bool>{}(key.enemyPresent));
     hashCombine(seed, std::hash<bool>{}(key.secondEnemyPresent));
     return seed;
@@ -422,7 +446,8 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         }
 
         const std::optional<FallingTranspositionKey> fallingTranspositionKey =
-            buildFallingTranspositionKey(state, evaluatorSummary);
+            buildFallingTranspositionKey(
+                state, stepResult.memorySnapshot.value(), evaluatorSummary);
         const bool prunedTransposition = fallingTranspositionKey.has_value()
             && isFallingTranspositionPruned(fallingTranspositionKey.value(), evaluatorSummary);
         const size_t childIndex = nodes_.size();
@@ -771,7 +796,9 @@ void SmbDfsSearch::completeWithTraceEvent(SmbDfsSearchTraceEventType eventType)
 }
 
 std::optional<SmbDfsSearch::FallingTranspositionKey> SmbDfsSearch::buildFallingTranspositionKey(
-    const NesSuperMarioBrosState& state, const SmbSearchEvaluatorSummary& evaluatorSummary) const
+    const NesSuperMarioBrosState& state,
+    const SmolnesRuntime::MemorySnapshot& memorySnapshot,
+    const SmbSearchEvaluatorSummary& evaluatorSummary) const
 {
     if (!options_.fallingTranspositionPruningEnabled) {
         return std::nullopt;
@@ -803,6 +830,7 @@ std::optional<SmbDfsSearch::FallingTranspositionKey> SmbDfsSearch::buildFallingT
         .playerYScreen = state.playerYScreen,
         .powerupState = static_cast<uint8_t>(state.powerupState),
         .world = state.world,
+        .ramBytes = buildFallingTranspositionRamBytes(memorySnapshot),
         .enemyPresent = state.enemyPresent,
         .secondEnemyPresent = state.secondEnemyPresent,
     };

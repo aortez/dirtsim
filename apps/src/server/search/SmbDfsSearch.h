@@ -8,6 +8,7 @@
 #include "server/api/SearchProgress.h"
 #include "server/search/SmbSearchCore.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -26,6 +27,7 @@ namespace Server::SearchSupport {
 struct SmbSearchRootFixture;
 
 constexpr uint8_t kDefaultFallingTranspositionPlayerYScreenThreshold = 192u;
+constexpr size_t kFallingTranspositionRamByteCount = 63u;
 
 enum class SmbDfsSearchCompletionReason : uint8_t {
     Completed = 0,
@@ -132,6 +134,7 @@ private:
         uint8_t playerYScreen = 0;
         uint8_t powerupState = 0;
         uint8_t world = 0;
+        std::array<uint8_t, kFallingTranspositionRamByteCount> ramBytes{};
         bool enemyPresent = false;
         bool secondEnemyPresent = false;
 
@@ -153,6 +156,7 @@ private:
     void completeWithTraceEvent(SmbDfsSearchTraceEventType eventType);
     std::optional<FallingTranspositionKey> buildFallingTranspositionKey(
         const NesSuperMarioBrosState& state,
+        const SmolnesRuntime::MemorySnapshot& memorySnapshot,
         const SmbSearchEvaluatorSummary& evaluatorSummary) const;
     bool isFallingTranspositionPruned(
         const FallingTranspositionKey& key,
