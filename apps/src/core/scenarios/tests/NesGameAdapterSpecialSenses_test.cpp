@@ -3,6 +3,7 @@
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesFlappyBirdEvaluator.h"
 #include "core/scenarios/nes/NesFlappyParatroopaRamExtractor.h"
+#include "core/scenarios/nes/NesSuperMarioBrosTilePosition.h"
 #include "core/scenarios/nes/NesTileSensoryBuilder.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
@@ -357,6 +358,67 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterBuildsTileSensoryInpu
     EXPECT_FLOAT_EQ(sensory.previousControlX, 1.0f);
     EXPECT_TRUE(sensory.previousA);
     EXPECT_FALSE(sensory.previousB);
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosTilePositionWrapsAbsoluteXAgainstTileScroll)
+{
+    NesSuperMarioBrosState state;
+    state.playerYScreen = 120u;
+
+    state.absoluteX = 0x0180u;
+    EXPECT_EQ(makeNesSuperMarioBrosPlayerTileScreenX(state, 0x0100u), 128);
+
+    state.absoluteX = 0x0208u;
+    EXPECT_EQ(makeNesSuperMarioBrosPlayerTileScreenX(state, 0x0188u), 128);
+
+    state.absoluteX = 0x0108u;
+    EXPECT_EQ(makeNesSuperMarioBrosPlayerTileScreenX(state, 0x0188u), -128);
+
+    EXPECT_EQ(
+        makeNesSuperMarioBrosPlayerTileScreenY(state),
+        120 - static_cast<int16_t>(NesTileFrame::TopCropPixels));
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterBuildsTilePositionFromTileScroll)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        1,
+        2,
+        0x02,
+        0x20,
+        25,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        0x01,
+        3,
+        1);
+
+    const NesGameAdapterFrameInput frameInput{
+        .advancedFrames = 400,
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .memorySnapshot = snapshot,
+    };
+    (void)adapter->evaluateFrame(frameInput);
+
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .lastGameState = std::nullopt,
+        .deltaTimeSeconds = 0.016,
+        .tileFrameScrollX = 0x01A0u,
+    };
+    const NesTileSensoryBuilderInput tileInput =
+        adapter->makeNesTileSensoryBuilderInput(sensoryInput);
+
+    EXPECT_EQ(tileInput.playerScreenX, 128);
+    EXPECT_EQ(tileInput.playerScreenY, 120 - static_cast<int16_t>(NesTileFrame::TopCropPixels));
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesLeftFacingFromRam)

@@ -15,10 +15,14 @@
 #include "core/scenarios/clock_scenario/DoorEntrySpawn.h"
 #include "core/scenarios/clock_scenario/DoorManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
+#include "core/scenarios/nes/NesPlayerRelativeTileFrame.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesTileDebugRenderer.h"
+#include "core/scenarios/nes/NesTileFrame.h"
 #include "core/scenarios/nes/NesTileRecurrentBrain.h"
 #include "core/scenarios/nes/NesTileSensoryBuilder.h"
+#include "core/scenarios/nes/NesTileTokenFrame.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
 #include <algorithm>
 #include <cmath>
@@ -677,6 +681,99 @@ const std::vector<OrganismId>* TrainingRunner::getOrganismGrid() const
     return nullptr;
 }
 
+Result<ScenarioVideoFrame, std::string> TrainingRunner::makeNesTileDebugScenarioVideoFrame(
+    NesTileDebugView view) const
+{
+    if (!isNesTileDebugViewValid(view)) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: Unknown NES tile debug view");
+    }
+
+    if (view == NesTileDebugView::NormalVideo) {
+        if (!nesScenarioVideoFrame_.has_value()) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug normal video requires a video frame");
+        }
+        return Result<ScenarioVideoFrame, std::string>::okay(nesScenarioVideoFrame_.value());
+    }
+
+    if (!nesDriver_) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: NES tile debug rendering requires a NES driver");
+    }
+
+    const auto ppuSnapshot = nesDriver_->copyRuntimePpuSnapshot();
+    if (!ppuSnapshot.has_value()) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: NES tile debug rendering requires a PPU snapshot");
+    }
+
+    const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
+    std::optional<NesTileTokenFrame> tokenFrame;
+    std::optional<NesPlayerRelativeTileFrame> relativeFrame;
+
+    const bool needsTokenFrame = view == NesTileDebugView::ScreenTokens
+        || view == NesTileDebugView::PlayerRelativeTokens || view == NesTileDebugView::Comparison;
+    const bool needsRelativeFrame =
+        view == NesTileDebugView::PlayerRelativeTokens || view == NesTileDebugView::Comparison;
+
+    if (needsTokenFrame) {
+        if (!nesTileTokenizer_) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a tile tokenizer");
+        }
+        if (nesTileTokenizer_->getMode() != NesTileTokenizer::Mode::Frozen) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a frozen tile tokenizer");
+        }
+
+        auto tokenFrameResult = makeNesTileTokenFrame(tileFrame, *nesTileTokenizer_);
+        if (tokenFrameResult.isError()) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: Failed to tokenize NES tile debug frame: "
+                + tokenFrameResult.errorValue());
+        }
+        tokenFrame = std::move(tokenFrameResult).value();
+    }
+
+    if (needsRelativeFrame) {
+        if (!nesGameAdapter_) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a game adapter");
+        }
+
+        const NesGameAdapterSensoryInput sensoryInput{
+            .controllerMask = nesControllerMask_,
+            .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
+            .lastGameState = nesLastGameState_,
+            .deltaTimeSeconds = TIMESTEP,
+            .tileFrameScrollX = tileFrame.scrollX,
+        };
+        const NesTileSensoryBuilderInput tileInput =
+            nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
+        relativeFrame = makeNesPlayerRelativeTileFrame(
+            tokenFrame.value(), tileInput.playerScreenX, tileInput.playerScreenY);
+    }
+
+    const NesTileDebugRenderInput renderInput{
+        .videoFrame =
+            nesScenarioVideoFrame_.has_value() ? &nesScenarioVideoFrame_.value() : nullptr,
+        .tileFrame = &tileFrame,
+        .tokenFrame = tokenFrame.has_value() ? &tokenFrame.value() : nullptr,
+        .relativeFrame = relativeFrame.has_value() ? &relativeFrame.value() : nullptr,
+    };
+    auto imageResult = makeNesTileDebugRenderImage(view, renderInput);
+    if (imageResult.isError()) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: Failed to render NES tile debug frame: " + imageResult.errorValue());
+    }
+
+    const uint64_t frameId =
+        nesScenarioVideoFrame_.has_value() ? nesScenarioVideoFrame_->frame_id : tileFrame.frameId;
+    return Result<ScenarioVideoFrame, std::string>::okay(
+        DirtSim::makeNesTileDebugScenarioVideoFrame(imageResult.value(), frameId));
+}
+
 const Timers* TrainingRunner::getTimers() const
 {
     if (world_) {
@@ -1050,16 +1147,18 @@ NesTileSensoryData TrainingRunner::makeNesTileSensoryData() const
     DIRTSIM_ASSERT(
         ppuSnapshot.has_value(), "TrainingRunner: NES tile sensory requires a PPU snapshot");
 
+    const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
     const NesGameAdapterSensoryInput sensoryInput{
         .controllerMask = nesControllerMask_,
         .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
         .lastGameState = nesLastGameState_,
         .deltaTimeSeconds = TIMESTEP,
+        .tileFrameScrollX = tileFrame.scrollX,
     };
     const NesTileSensoryBuilderInput tileInput =
         nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
     auto sensoryResult =
-        makeNesTileSensoryDataFromPpuSnapshot(ppuSnapshot.value(), *nesTileTokenizer_, tileInput);
+        makeNesTileSensoryDataFromTileFrame(tileFrame, *nesTileTokenizer_, tileInput);
     DIRTSIM_ASSERT(
         sensoryResult.isValue(),
         "TrainingRunner: Failed to build NES tile sensory data: " + sensoryResult.errorValue());

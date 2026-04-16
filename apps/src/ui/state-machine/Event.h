@@ -222,6 +222,7 @@ struct TrainingStreamConfigChangedEvent {
     bool bestPlaybackEnabled = false;
     int bestPlaybackIntervalMs = 16;
     std::optional<bool> nesControllerOverlayEnabled = std::nullopt;
+    NesTileDebugView nesTileDebugView = NesTileDebugView::NormalVideo;
     static constexpr const char* name() { return "TrainingStreamConfigChangedEvent"; }
 };
 

@@ -62,6 +62,7 @@ struct NesGameAdapterSensoryInput {
     const NesPaletteFrame* paletteFrame = nullptr;
     std::optional<uint8_t> lastGameState = std::nullopt;
     double deltaTimeSeconds = 0.0;
+    std::optional<uint16_t> tileFrameScrollX = std::nullopt;
 };
 
 /**

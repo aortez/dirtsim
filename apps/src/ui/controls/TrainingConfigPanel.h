@@ -2,6 +2,7 @@
 
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/scenarios/nes/NesTileDebugView.h"
 #include "lvgl/lvgl.h"
 #include <memory>
 
@@ -39,7 +40,8 @@ public:
         TrainingSpec& trainingSpec,
         int& streamIntervalMs,
         bool& bestPlaybackEnabled,
-        int& bestPlaybackIntervalMs);
+        int& bestPlaybackIntervalMs,
+        NesTileDebugView& nesTileDebugView);
     ~TrainingConfigPanel();
 
     void setEvolutionStarted(bool started);
@@ -47,6 +49,7 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void setNesTileDebugView(NesTileDebugView view);
     void showView(View view);
     void addSeedGenome(const GenomeId& genomeId);
 
@@ -66,6 +69,7 @@ private:
     int& streamIntervalMs_;
     bool& bestPlaybackEnabled_;
     int& bestPlaybackIntervalMs_;
+    NesTileDebugView& nesTileDebugView_;
 
     int collapsedWidth_ = 0;
     int expandedWidth_ = 0;
@@ -95,6 +99,7 @@ private:
     lv_obj_t* streamIntervalStepper_ = nullptr;
     lv_obj_t* bestPlaybackToggle_ = nullptr;
     lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
+    lv_obj_t* nesTileDebugViewDropdown_ = nullptr;
 
     std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
@@ -126,6 +131,7 @@ private:
     static void onStreamIntervalChanged(lv_event_t* e);
     static void onBestPlaybackToggled(lv_event_t* e);
     static void onBestPlaybackIntervalChanged(lv_event_t* e);
+    static void onNesTileDebugViewChanged(lv_event_t* e);
 };
 
 } // namespace Ui

@@ -71,8 +71,8 @@ player is on screen.
 The visible NES screen is 256x224 pixels = 32x28 tiles. The nametable stores tile IDs for
 each position. Each tile ID is resolved through the current CHR bank state to its 16-byte
 pattern, then hashed to produce a stable token (see Tile Tokenization below). Using the
-scroll registers (V, fine_x) and the player's screen position from RAM, visible screen
-tiles are re-indexed relative to the player:
+scroll registers (V, fine_x) and a game-adapter-provided player position in the same visible
+screen coordinate space, visible screen tiles are re-indexed relative to the player:
 
 ```
      Screen-space tokens, Mario at tile column 16, tile row 20
@@ -96,6 +96,11 @@ tiles are re-indexed relative to the player:
 Cells in the 63x55 relative grid that do not correspond to a visible screen tile map to a
 reserved "void" token (token 0). This is larger than the visible screen, but it preserves
 all visible tiles even if the player is at an edge or corner.
+
+For SMB specifically, the player-relative X anchor is derived from the player's absolute
+world X minus the tile frame's PPU-derived `scrollX`, wrapped across the 512-pixel nametable
+period. The raw SMB `playerXScreen` byte is page-local and can wrap while Mario remains
+visually centered, which would make the player-relative tile view slide and jump.
 
 ### Tile Tokenization
 
@@ -291,6 +296,13 @@ the 896 visible tile positions.
   `NesTileRecurrent`; other NES scenarios still default to the palette RNN v2 brain.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
+- Extracted a reusable `NesTileDebugRenderer` with normal-video, pattern-pixel,
+  screen-token, player-relative-token, and comparison views, plus unit tests for deterministic
+  colors, dimensions, RGB565 conversion, and missing-input failures.
+- Added SMB player tile-position derivation from absolute X and tile-frame scroll, then wired it
+  through training, live debug rendering, and the PNG diagnostic.
+- Added tests for SMB 512-pixel scroll wrapping and a ROM-gated regression proving frames 400 and
+  500 keep a stable player-relative X anchor.
 
 ### Current Diagnostic
 
@@ -313,12 +325,40 @@ It writes:
 /tmp/nes_smb_tile_probe_899.png
 ```
 
-Each PNG currently has four panels:
+Each PNG is generated through `NesTileDebugRenderer` and currently has four panels:
 
 - Normal RGB565 video frame.
 - Palette-independent grayscale background pattern pixels.
 - Screen-space tile-token rendering.
 - Expanded 63x55 player-relative tile-token rendering.
+
+### Live Training Visualization
+
+Training settings now include `UiTrainingConfig::nesTileDebugView`, persisted with the rest of
+the user settings. Both the idle training config panel and active training stream panel expose a
+`NES View` selector. The selector is sent through `TrainingStreamConfigChangedEvent` and persisted
+with `UserSettingsPatch`.
+
+Best playback keeps using the normal scenario video frame by default. When the selected view is a
+tile debug view, `Evolution::stepBestPlayback` asks `TrainingRunner` to build the selected debug
+`ScenarioVideoFrame` from the current NES PPU snapshot and broadcasts it through the existing
+`TrainingBestPlaybackFrame` path. Rendering failures are logged and fall back to the normal frame
+when one is available.
+
+Covered views:
+
+- Normal video.
+- Pattern pixels.
+- Screen-space tile tokens.
+- Player-relative tile tokens.
+- Four-panel comparison.
+
+Tests for this step:
+
+- UI state preserves and sends the selected NES tile debug view.
+- User settings backfill legacy configs and sanitize invalid debug-view enum values.
+- Server best-playback updates include the selected debug video frame for `NesTileRecurrent`.
+- Existing disabled PNG diagnostics keep using the same renderer as the live path.
 
 ### Next Step
 

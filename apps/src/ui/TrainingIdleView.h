@@ -60,6 +60,7 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void setNesTileDebugView(NesTileDebugView view);
     void setEvolutionStarted(bool started);
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);

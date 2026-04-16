@@ -133,6 +133,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     legacyJson.erase("treeGerminationScenarioConfig");
     legacyJson["nesSessionSettings"].erase("frameDelayMs");
     legacyJson["uiTraining"].erase("bestPlaybackIntervalMs");
+    legacyJson["uiTraining"].erase("nesTileDebugView");
     legacyJson["futureSetting"] = 123;
     legacyJson["clockScenarioConfig"]["futureClockToggle"] = true;
     legacyJson["uiTraining"]["futureOverlayMode"] = "on";
@@ -158,6 +159,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
     EXPECT_EQ(inMemory.uiTraining.streamIntervalMs, 24);
     EXPECT_EQ(inMemory.uiTraining.bestPlaybackIntervalMs, 16);
+    EXPECT_EQ(inMemory.uiTraining.nesTileDebugView, NesTileDebugView::NormalVideo);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.clockScenarioConfig.timezone, Config::ClockTimezone::Paris);
@@ -169,6 +171,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
     EXPECT_EQ(fromDisk.uiTraining.streamIntervalMs, 24);
     EXPECT_EQ(fromDisk.uiTraining.bestPlaybackIntervalMs, 16);
+    EXPECT_EQ(fromDisk.uiTraining.nesTileDebugView, NesTileDebugView::NormalVideo);
 
     const nlohmann::json canonicalJson = readUserSettingsJsonFromDisk(settingsPath);
     EXPECT_FALSE(canonicalJson.contains("futureSetting"));
@@ -181,6 +184,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_TRUE(canonicalJson.contains("treeGerminationScenarioConfig"));
     EXPECT_TRUE(canonicalJson["nesSessionSettings"].contains("frameDelayMs"));
     EXPECT_TRUE(canonicalJson["uiTraining"].contains("bestPlaybackIntervalMs"));
+    EXPECT_TRUE(canonicalJson["uiTraining"].contains("nesTileDebugView"));
 }
 
 TEST(UserSettingsTest, UserSettingsSetJsonRemainsStrictForMissingFields)
@@ -220,6 +224,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
         .warmStartFitnessFloorPercentile = 999.0,
     };
     requestedSettings.trainingResumePolicy = static_cast<TrainingResumePolicy>(99);
+    requestedSettings.uiTraining.nesTileDebugView = static_cast<NesTileDebugView>(255);
 
     Api::UserSettingsSet::Command command{ .settings = requestedSettings };
     Api::UserSettingsSet::Cwc cwc(command, [&](Api::UserSettingsSet::Response&& result) {
@@ -240,6 +245,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(response.value().settings.uiTraining.nesTileDebugView, NesTileDebugView::NormalVideo);
     EXPECT_EQ(response.value().settings.evolutionConfig.genomeArchiveMaxSize, 1000);
     EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.warmStartSeedPercent, 100.0);
     EXPECT_DOUBLE_EQ(
@@ -257,6 +263,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(fromDisk.uiTraining.nesTileDebugView, NesTileDebugView::NormalVideo);
     EXPECT_EQ(fromDisk.evolutionConfig.genomeArchiveMaxSize, 1000);
     EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.warmStartSeedPercent, 100.0);
     EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.warmStartFitnessFloorPercentile, 100.0);

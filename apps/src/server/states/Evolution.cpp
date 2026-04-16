@@ -2150,7 +2150,22 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         DIRTSIM_ASSERT(
             organismGrid != nullptr, "Evolution: Best playback runner missing organism grid");
 
-        const auto& videoFrame = bestPlayback_.runner->getScenarioVideoFrame();
+        std::optional<ScenarioVideoFrame> videoFrame =
+            bestPlayback_.runner->getScenarioVideoFrame();
+        if (bestPlayback_.runner->isNesScenario()
+            && uiTraining.nesTileDebugView != NesTileDebugView::NormalVideo) {
+            auto debugFrameResult = bestPlayback_.runner->makeNesTileDebugScenarioVideoFrame(
+                uiTraining.nesTileDebugView);
+            if (debugFrameResult.isValue()) {
+                videoFrame = std::move(debugFrameResult).value();
+            }
+            else {
+                LOG_WARN(
+                    State,
+                    "Evolution: Failed to render NES tile debug best playback frame: {}",
+                    debugFrameResult.errorValue());
+            }
+        }
         if (!bestPlayback_.runner->isNesScenario() || videoFrame.has_value()) {
             broadcastTrainingBestPlaybackFrame(
                 dsm,

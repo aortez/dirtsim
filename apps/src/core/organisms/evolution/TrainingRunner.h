@@ -40,6 +40,7 @@ class NesGameAdapter;
 class NesScenarioRuntime;
 class NesSmolnesScenarioDriver;
 class NesTileRecurrentBrain;
+enum class NesTileDebugView : uint8_t;
 struct NesTileSensoryData;
 class NesTileTokenizer;
 namespace Organism {
@@ -161,6 +162,8 @@ public:
     {
         return nesScenarioVideoFrame_;
     }
+    Result<ScenarioVideoFrame, std::string> makeNesTileDebugScenarioVideoFrame(
+        NesTileDebugView view) const;
     const WorldData* getWorldData() const;
     const std::vector<OrganismId>* getOrganismGrid() const;
     const Timers* getTimers() const;

@@ -767,6 +767,57 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     EXPECT_EQ(local.trainingSpec.population.front().brainKind, TrainingBrainKind::NesTileRecurrent);
 }
 
+TEST(StateTrainingTest, TrainingIdleStreamConfigUpdatePatchesNesTileDebugView)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getUserSettings(),
+    };
+    settingsOkay.settings.uiTraining.streamIntervalMs = 33;
+    settingsOkay.settings.uiTraining.bestPlaybackEnabled = true;
+    settingsOkay.settings.uiTraining.bestPlaybackIntervalMs = 44;
+    settingsOkay.settings.uiTraining.nesTileDebugView = NesTileDebugView::PlayerRelativeTokens;
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    TrainingIdle trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+    fixture.mockWebSocketService->clearSentCommands();
+
+    State::Any newState = trainingState.onEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = 33,
+            .bestPlaybackEnabled = true,
+            .bestPlaybackIntervalMs = 44,
+            .nesTileDebugView = NesTileDebugView::PlayerRelativeTokens,
+        },
+        *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingIdle>(newState.getVariant()));
+    auto& updatedState = std::get<TrainingIdle>(newState.getVariant());
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "UserSettingsPatch");
+    ASSERT_EQ(fixture.mockWebSocketService->sentEnvelopes().size(), 1u);
+    const auto sentPatch = Network::deserialize_payload<Api::UserSettingsPatch::Command>(
+        fixture.mockWebSocketService->sentEnvelopes().back().payload);
+    ASSERT_TRUE(sentPatch.uiTraining.has_value());
+    EXPECT_EQ(sentPatch.uiTraining->nesTileDebugView, NesTileDebugView::PlayerRelativeTokens);
+
+    const auto& local = fixture.stateMachine->getUserSettings().uiTraining;
+    EXPECT_EQ(local.streamIntervalMs, 33);
+    EXPECT_TRUE(local.bestPlaybackEnabled);
+    EXPECT_EQ(local.bestPlaybackIntervalMs, 44);
+    EXPECT_EQ(local.nesTileDebugView, NesTileDebugView::PlayerRelativeTokens);
+
+    updatedState.view_.reset();
+    fixture.stateMachine->uiManager_.reset();
+}
+
 TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)
 {
     TestStateMachineFixture fixture;
@@ -804,6 +855,63 @@ TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+}
+
+TEST(StateTrainingTest, TrainingActiveStreamConfigUpdatePatchesNesTileDebugView)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    Api::UserSettingsPatch::Okay settingsOkay{
+        .settings = fixture.stateMachine->getUserSettings(),
+    };
+    settingsOkay.settings.uiTraining.streamIntervalMs = 55;
+    settingsOkay.settings.uiTraining.bestPlaybackEnabled = true;
+    settingsOkay.settings.uiTraining.bestPlaybackIntervalMs = 66;
+    settingsOkay.settings.uiTraining.nesControllerOverlayEnabled = true;
+    settingsOkay.settings.uiTraining.nesTileDebugView = NesTileDebugView::Comparison;
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
+
+    TrainingActive trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+    fixture.mockWebSocketService->clearSentCommands();
+
+    State::Any newState = trainingState.onEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = 55,
+            .bestPlaybackEnabled = true,
+            .bestPlaybackIntervalMs = 66,
+            .nesControllerOverlayEnabled = true,
+            .nesTileDebugView = NesTileDebugView::Comparison,
+        },
+        *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(newState.getVariant()));
+    auto& updatedState = std::get<TrainingActive>(newState.getVariant());
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1u);
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "UserSettingsPatch");
+    ASSERT_EQ(fixture.mockWebSocketService->sentEnvelopes().size(), 1u);
+    const auto sentPatch = Network::deserialize_payload<Api::UserSettingsPatch::Command>(
+        fixture.mockWebSocketService->sentEnvelopes().back().payload);
+    ASSERT_TRUE(sentPatch.uiTraining.has_value());
+    EXPECT_EQ(sentPatch.uiTraining->nesTileDebugView, NesTileDebugView::Comparison);
+
+    const auto& local = fixture.stateMachine->getUserSettings().uiTraining;
+    EXPECT_EQ(local.streamIntervalMs, 55);
+    EXPECT_TRUE(local.bestPlaybackEnabled);
+    EXPECT_EQ(local.bestPlaybackIntervalMs, 66);
+    EXPECT_EQ(local.nesControllerOverlayEnabled, std::optional<bool>(true));
+    EXPECT_EQ(local.nesTileDebugView, NesTileDebugView::Comparison);
+
+    updatedState.view_.reset();
+    fixture.stateMachine->uiManager_.reset();
 }
 
 TEST(StateTrainingTest, TrainingActiveMutationControlsUpdateUsesLiveCommandAndPersistsSettings)

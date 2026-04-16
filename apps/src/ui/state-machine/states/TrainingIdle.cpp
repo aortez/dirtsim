@@ -340,11 +340,15 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
     if (evt.nesControllerOverlayEnabled.has_value()) {
         settings.uiTraining.nesControllerOverlayEnabled = evt.nesControllerOverlayEnabled;
     }
+    settings.uiTraining.nesTileDebugView = isNesTileDebugViewValid(evt.nesTileDebugView)
+        ? evt.nesTileDebugView
+        : NesTileDebugView::NormalVideo;
 
     DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
     view_->setStreamIntervalMs(settings.uiTraining.streamIntervalMs);
     view_->setBestPlaybackEnabled(settings.uiTraining.bestPlaybackEnabled);
     view_->setBestPlaybackIntervalMs(settings.uiTraining.bestPlaybackIntervalMs);
+    view_->setNesTileDebugView(settings.uiTraining.nesTileDebugView);
 
     Api::UserSettingsPatch::Command patchCmd{ .uiTraining = settings.uiTraining };
     sm.getUserSettingsManager().patchOrAssert(patchCmd, 2000);

@@ -4,6 +4,8 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/nes/NesPlayerRelativeTileFrame.h"
+#include "core/scenarios/nes/NesTileDebugView.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
 #include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/Event.h"
@@ -14,6 +16,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TimerStatsGet.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingResult.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
@@ -138,6 +141,19 @@ std::optional<Api::EvolutionProgress> latestEvolutionProgress(const MockWebSocke
         const auto envelope = Network::deserialize_envelope(it->data);
         if (envelope.message_type == Api::EvolutionProgress::name()) {
             return Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Api::TrainingBestPlaybackFrame> latestTrainingBestPlaybackFrame(
+    const MockWebSocketService& mockWs)
+{
+    for (auto it = mockWs.sentClientBinaries().rbegin(); it != mockWs.sentClientBinaries().rend();
+         ++it) {
+        const auto envelope = Network::deserialize_envelope(it->data);
+        if (envelope.message_type == Api::TrainingBestPlaybackFrame::name()) {
+            return Network::deserialize_payload<Api::TrainingBestPlaybackFrame>(envelope.payload);
         }
     }
     return std::nullopt;
@@ -1965,8 +1981,11 @@ TEST(StateEvolutionTest, NesTileBestPlaybackBootstrapsTokenizer)
     }
 
     TestStateMachineFixture fixture;
+    eventSubscribe(fixture, "events");
     fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackEnabled = true;
     fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackIntervalMs = 1;
+    fixture.stateMachine->getUserSettings().uiTraining.nesTileDebugView =
+        NesTileDebugView::PlayerRelativeTokens;
 
     Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
         makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
@@ -1991,17 +2010,31 @@ TEST(StateEvolutionTest, NesTileBestPlaybackBootstrapsTokenizer)
     evolutionState.bestPlayback_.generation = 0;
 
     bool sawTelemetry = false;
+    std::optional<Api::TrainingBestPlaybackFrame> debugFrame;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (std::chrono::steady_clock::now() < deadline && !sawTelemetry) {
+    while (std::chrono::steady_clock::now() < deadline
+           && (!sawTelemetry || !debugFrame.has_value()
+               || !debugFrame->scenarioVideoFrame.has_value())) {
         evolutionState.tick(*fixture.stateMachine);
         sawTelemetry = evolutionState.bestPlayback_.runner
             && evolutionState.bestPlayback_.runner->getNesLastControllerTelemetry().has_value();
-        if (!sawTelemetry) {
+        debugFrame = latestTrainingBestPlaybackFrame(*fixture.mockWebSocketService);
+        if (!sawTelemetry || !debugFrame.has_value()
+            || !debugFrame->scenarioVideoFrame.has_value()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
     ASSERT_TRUE(sawTelemetry);
+    ASSERT_TRUE(debugFrame.has_value());
+    ASSERT_TRUE(debugFrame->scenarioVideoFrame.has_value());
+    EXPECT_EQ(
+        debugFrame->scenarioVideoFrame->width,
+        NesPlayerRelativeTileFrame::RelativeTileColumns
+            * NesPlayerRelativeTileFrame::TileSizePixels);
+    EXPECT_EQ(
+        debugFrame->scenarioVideoFrame->height,
+        NesPlayerRelativeTileFrame::RelativeTileRows * NesPlayerRelativeTileFrame::TileSizePixels);
     ASSERT_NE(evolutionState.bestPlayback_.nesTileTokenizer, nullptr);
     EXPECT_EQ(
         evolutionState.bestPlayback_.nesTileTokenizer->getMode(), NesTileTokenizer::Mode::Frozen);

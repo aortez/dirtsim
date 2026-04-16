@@ -243,6 +243,11 @@ UserSettings sanitizeUserSettings(
         recordUpdate("uiTraining.bestPlaybackIntervalMs clamped to 1");
     }
 
+    if (!isNesTileDebugViewValid(settings.uiTraining.nesTileDebugView)) {
+        settings.uiTraining.nesTileDebugView = NesTileDebugView::NormalVideo;
+        recordUpdate("uiTraining.nesTileDebugView reset to NormalVideo");
+    }
+
     if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
         settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
         recordUpdate("trainingResumePolicy reset to WarmFromBest");

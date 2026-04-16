@@ -451,7 +451,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosResponseProbe.cpp
     src/core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.cpp
     src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosTilePosition.cpp
     src/core/scenarios/nes/NesPlayerRelativeTileFrame.cpp
+    src/core/scenarios/nes/NesTileDebugRenderer.cpp
     src/core/scenarios/nes/NesTileFrame.cpp
     src/core/scenarios/nes/NesTileRecurrentBrain.cpp
     src/core/scenarios/nes/NesTileSensoryBuilder.cpp
@@ -966,6 +968,7 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
     src/core/scenarios/tests/NesPlayerRelativeTileFrame_test.cpp
+    src/core/scenarios/tests/NesTileDebugRenderer_test.cpp
     src/core/scenarios/tests/NesTileFrame_test.cpp
     src/core/scenarios/tests/NesTileRecurrentBrain_test.cpp
     src/core/scenarios/tests/NesTileSensoryBuilder_test.cpp

@@ -4,6 +4,8 @@
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
+#include "core/scenarios/nes/NesSuperMarioBrosTilePosition.h"
+#include "core/scenarios/nes/NesTileDebugRenderer.h"
 #include "core/scenarios/nes/NesTileFrame.h"
 #include "core/scenarios/nes/NesTileTokenFrame.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
@@ -27,9 +29,14 @@ using namespace DirtSim;
 namespace {
 
 constexpr uint64_t kSetupScriptEndFrame = 300u;
-constexpr uint32_t kPanelGapPixels = 12u;
-constexpr uint16_t kSmbTopCropPixels = 8u;
 constexpr std::array<uint64_t, 5> kProbeFrames = { 300u, 400u, 500u, 700u, 899u };
+
+struct PlayerRelativeProbeSample {
+    uint16_t absoluteX = 0;
+    uint16_t scrollX = 0;
+    uint8_t rawPlayerXScreen = 0;
+    int16_t playerVisibleX = 0;
+};
 
 std::optional<std::filesystem::path> resolveNesSmbFixtureRomPath()
 {
@@ -70,148 +77,6 @@ uint8_t scriptedControllerMaskForFrame(uint64_t frameIndex)
     }
 
     return baselineControllerMaskForGameFrame(frameIndex - kSetupScriptEndFrame);
-}
-
-std::array<uint8_t, 4> rgb565ToRgba8888(uint16_t value)
-{
-    const uint8_t red5 = static_cast<uint8_t>((value >> 11) & 0x1Fu);
-    const uint8_t green6 = static_cast<uint8_t>((value >> 5) & 0x3Fu);
-    const uint8_t blue5 = static_cast<uint8_t>(value & 0x1Fu);
-
-    return {
-        static_cast<uint8_t>((red5 << 3) | (red5 >> 2)),
-        static_cast<uint8_t>((green6 << 2) | (green6 >> 4)),
-        static_cast<uint8_t>((blue5 << 3) | (blue5 >> 2)),
-        255u,
-    };
-}
-
-uint16_t readRgb565Pixel(const ScenarioVideoFrame& frame, size_t pixelIndex)
-{
-    const size_t offset = pixelIndex * 2u;
-    const uint8_t lo = std::to_integer<uint8_t>(frame.pixels[offset]);
-    const uint8_t hi = std::to_integer<uint8_t>(frame.pixels[offset + 1u]);
-    return static_cast<uint16_t>(lo | (static_cast<uint16_t>(hi) << 8u));
-}
-
-void setRgbaPixel(
-    std::vector<uint8_t>& rgba, uint32_t width, uint32_t x, uint32_t y, uint32_t color)
-{
-    const size_t offset = (static_cast<size_t>(y) * width + x) * 4u;
-    rgba[offset + 0u] = static_cast<uint8_t>((color >> 24u) & 0xFFu);
-    rgba[offset + 1u] = static_cast<uint8_t>((color >> 16u) & 0xFFu);
-    rgba[offset + 2u] = static_cast<uint8_t>((color >> 8u) & 0xFFu);
-    rgba[offset + 3u] = static_cast<uint8_t>(color & 0xFFu);
-}
-
-uint32_t tileTokenColor(NesTileTokenizer::TileToken token)
-{
-    if (token == NesTileTokenizer::VoidToken) {
-        return 0x000000FFu;
-    }
-
-    const uint32_t mixed = static_cast<uint32_t>(token) * 2654435761u;
-    const uint8_t red = static_cast<uint8_t>(64u + ((mixed >> 0u) & 0x7Fu));
-    const uint8_t green = static_cast<uint8_t>(64u + ((mixed >> 8u) & 0x7Fu));
-    const uint8_t blue = static_cast<uint8_t>(64u + ((mixed >> 16u) & 0x7Fu));
-    return (static_cast<uint32_t>(red) << 24u) | (static_cast<uint32_t>(green) << 16u)
-        | (static_cast<uint32_t>(blue) << 8u) | 255u;
-}
-
-template <size_t TokenCount>
-void drawTokenPanel(
-    std::vector<uint8_t>& rgba,
-    uint32_t imageWidth,
-    uint32_t panelX,
-    uint16_t tileColumns,
-    uint16_t tileRows,
-    const std::array<NesTileTokenizer::TileToken, TokenCount>& tokens)
-{
-    for (uint32_t gy = 0; gy < tileRows; ++gy) {
-        for (uint32_t gx = 0; gx < tileColumns; ++gx) {
-            const size_t cellIndex = static_cast<size_t>(gy) * tileColumns + gx;
-            const uint32_t color = tileTokenColor(tokens[cellIndex]);
-            for (uint32_t py = 0; py < NesPlayerRelativeTileFrame::TileSizePixels; ++py) {
-                for (uint32_t px = 0; px < NesPlayerRelativeTileFrame::TileSizePixels; ++px) {
-                    setRgbaPixel(
-                        rgba,
-                        imageWidth,
-                        panelX + gx * NesPlayerRelativeTileFrame::TileSizePixels + px,
-                        gy * NesPlayerRelativeTileFrame::TileSizePixels + py,
-                        color);
-                }
-            }
-        }
-    }
-}
-
-std::vector<uint8_t> makeComparisonImage(
-    const ScenarioVideoFrame& videoFrame,
-    const NesTileFrame& tileFrame,
-    const NesTileTokenFrame& tokenFrame,
-    const NesPlayerRelativeTileFrame& relativeFrame)
-{
-    const uint32_t panelWidth = NesTileFrame::VisibleWidthPixels;
-    const uint32_t panelHeight = NesTileFrame::VisibleHeightPixels;
-    const uint32_t relativePanelWidth = NesPlayerRelativeTileFrame::RelativeTileColumns
-        * NesPlayerRelativeTileFrame::TileSizePixels;
-    const uint32_t relativePanelHeight =
-        NesPlayerRelativeTileFrame::RelativeTileRows * NesPlayerRelativeTileFrame::TileSizePixels;
-    const uint32_t width = panelWidth * 3u + relativePanelWidth + kPanelGapPixels * 3u;
-    const uint32_t height = std::max(panelHeight, relativePanelHeight);
-    std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4u, 18u);
-
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            setRgbaPixel(rgba, width, x, y, 0x121212FFu);
-        }
-    }
-
-    const uint32_t patternPanelX = panelWidth + kPanelGapPixels;
-    const uint32_t tokenPanelX = patternPanelX + panelWidth + kPanelGapPixels;
-    const uint32_t relativePanelX = tokenPanelX + panelWidth + kPanelGapPixels;
-
-    for (uint32_t y = 0; y < panelHeight; ++y) {
-        const size_t rowBase = static_cast<size_t>(y) * panelWidth;
-        for (uint32_t x = 0; x < panelWidth; ++x) {
-            const size_t pixelIndex = rowBase + x;
-            const auto actual = rgb565ToRgba8888(readRgb565Pixel(videoFrame, pixelIndex));
-            setRgbaPixel(
-                rgba,
-                width,
-                x,
-                y,
-                (static_cast<uint32_t>(actual[0]) << 24u)
-                    | (static_cast<uint32_t>(actual[1]) << 16u)
-                    | (static_cast<uint32_t>(actual[2]) << 8u) | 255u);
-
-            const uint8_t shade = static_cast<uint8_t>(tileFrame.patternPixels[pixelIndex] * 85u);
-            setRgbaPixel(
-                rgba,
-                width,
-                patternPanelX + x,
-                y,
-                (static_cast<uint32_t>(shade) << 24u) | (static_cast<uint32_t>(shade) << 16u)
-                    | (static_cast<uint32_t>(shade) << 8u) | 255u);
-        }
-    }
-
-    drawTokenPanel(
-        rgba,
-        width,
-        tokenPanelX,
-        NesTileTokenFrame::VisibleTileColumns,
-        NesTileTokenFrame::VisibleTileRows,
-        tokenFrame.tokens);
-    drawTokenPanel(
-        rgba,
-        width,
-        relativePanelX,
-        NesPlayerRelativeTileFrame::RelativeTileColumns,
-        NesPlayerRelativeTileFrame::RelativeTileRows,
-        relativeFrame.tokens);
-
-    return rgba;
 }
 
 void pngWriteCallback(void* context, void* data, int size)
@@ -258,6 +123,70 @@ std::filesystem::path comparisonPathForFrame(uint64_t frameIndex)
 
 } // namespace
 
+TEST(NesSuperMarioBrosTileProbeTest, PlayerRelativeXStaysStableAcrossCenteredProbeFrames)
+{
+    const auto romPath = resolveNesSmbFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "Missing SMB ROM. Set DIRTSIM_NES_SMB_TEST_ROM_PATH or place "
+                        "testdata/roms/smb.nes.";
+    }
+
+    NesSmolnesScenarioDriver driver(Scenario::EnumType::NesSuperMarioBros);
+    Config::NesSuperMarioBros config = std::get<Config::NesSuperMarioBros>(
+        makeDefaultConfig(Scenario::EnumType::NesSuperMarioBros));
+    config.romId = "";
+    config.romPath = romPath->string();
+    config.requireSmolnesMapper = true;
+
+    ASSERT_FALSE(driver.setConfig(ScenarioConfig{ config }).isError());
+    ASSERT_FALSE(driver.setup().isError()) << driver.getRuntimeLastError();
+
+    NesSuperMarioBrosRamExtractor extractor;
+    Timers timers;
+    std::optional<PlayerRelativeProbeSample> frame400Sample;
+    std::optional<PlayerRelativeProbeSample> frame500Sample;
+    for (uint64_t frameIndex = 0; frameIndex <= 500u; ++frameIndex) {
+        const auto stepResult = driver.step(timers, scriptedControllerMaskForFrame(frameIndex));
+        if (frameIndex != 400u && frameIndex != 500u) {
+            continue;
+        }
+
+        const auto ppuSnapshot = driver.copyRuntimePpuSnapshot();
+        ASSERT_TRUE(ppuSnapshot.has_value()) << "Missing PPU snapshot at " << frameIndex;
+        ASSERT_TRUE(stepResult.memorySnapshot.has_value())
+            << "Missing memory snapshot at " << frameIndex;
+        const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
+        const NesSuperMarioBrosState smbState = extractor.extract(
+            stepResult.memorySnapshot.value(), frameIndex >= kSetupScriptEndFrame);
+        const PlayerRelativeProbeSample sample{
+            .absoluteX = smbState.absoluteX,
+            .scrollX = tileFrame.scrollX,
+            .rawPlayerXScreen = smbState.playerXScreen,
+            .playerVisibleX = makeNesSuperMarioBrosPlayerTileScreenX(smbState, tileFrame.scrollX),
+        };
+        if (frameIndex == 400u) {
+            frame400Sample = sample;
+        }
+        else {
+            frame500Sample = sample;
+        }
+    }
+
+    ASSERT_TRUE(frame400Sample.has_value());
+    ASSERT_TRUE(frame500Sample.has_value());
+    EXPECT_LE(
+        std::abs(
+            static_cast<int>(frame400Sample->playerVisibleX)
+            - static_cast<int>(frame500Sample->playerVisibleX)),
+        16)
+        << "frame 400 visibleX=" << frame400Sample->playerVisibleX
+        << " rawX=" << static_cast<int>(frame400Sample->rawPlayerXScreen)
+        << " absoluteX=" << frame400Sample->absoluteX << " scrollX=" << frame400Sample->scrollX
+        << "; frame 500 visibleX=" << frame500Sample->playerVisibleX
+        << " rawX=" << static_cast<int>(frame500Sample->rawPlayerXScreen)
+        << " absoluteX=" << frame500Sample->absoluteX << " scrollX=" << frame500Sample->scrollX;
+}
+
 TEST(NesSuperMarioBrosTileProbeTest, DISABLED_SavesTileComparisonPngs)
 {
     const auto romPath = resolveNesSmbFixtureRomPath();
@@ -296,25 +225,25 @@ TEST(NesSuperMarioBrosTileProbeTest, DISABLED_SavesTileComparisonPngs)
         ASSERT_TRUE(tokenFrameResult.isValue()) << tokenFrameResult.errorValue();
         const NesSuperMarioBrosState smbState = extractor.extract(
             stepResult.memorySnapshot.value(), frameIndex >= kSetupScriptEndFrame);
-        const int16_t playerVisibleX = static_cast<int16_t>(smbState.playerXScreen);
-        const int16_t playerVisibleY =
-            static_cast<int16_t>(smbState.playerYScreen) - static_cast<int16_t>(kSmbTopCropPixels);
+        const int16_t playerVisibleX =
+            makeNesSuperMarioBrosPlayerTileScreenX(smbState, tileFrame.scrollX);
+        const int16_t playerVisibleY = makeNesSuperMarioBrosPlayerTileScreenY(smbState);
         const NesPlayerRelativeTileFrame relativeFrame = makeNesPlayerRelativeTileFrame(
             tokenFrameResult.value(), playerVisibleX, playerVisibleY);
-        const std::vector<uint8_t> rgba = makeComparisonImage(
-            stepResult.scenarioVideoFrame.value(),
-            tileFrame,
-            tokenFrameResult.value(),
-            relativeFrame);
+        const auto imageResult = makeNesTileDebugRenderImage(
+            NesTileDebugView::Comparison,
+            NesTileDebugRenderInput{
+                .videoFrame = &stepResult.scenarioVideoFrame.value(),
+                .tileFrame = &tileFrame,
+                .tokenFrame = &tokenFrameResult.value(),
+                .relativeFrame = &relativeFrame,
+            });
+        ASSERT_TRUE(imageResult.isValue()) << imageResult.errorValue();
         const std::filesystem::path outputPath = comparisonPathForFrame(frameIndex);
         ASSERT_TRUE(writePng(
-            rgba,
-            NesTileFrame::VisibleWidthPixels * 3u
-                + NesPlayerRelativeTileFrame::RelativeTileColumns
-                    * NesPlayerRelativeTileFrame::TileSizePixels
-                + kPanelGapPixels * 3u,
-            NesPlayerRelativeTileFrame::RelativeTileRows
-                * NesPlayerRelativeTileFrame::TileSizePixels,
+            imageResult.value().rgba,
+            imageResult.value().width,
+            imageResult.value().height,
             outputPath))
             << "Failed to write " << outputPath;
         std::cout << "Wrote SMB tile probe: " << outputPath.string() << "\n";
