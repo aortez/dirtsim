@@ -1,5 +1,7 @@
 #include "core/scenarios/nes/NesTileFrame.h"
 
+#include "core/Timers.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -12,6 +14,27 @@ constexpr uint16_t kFullFrameWidthPixels = 256u;
 constexpr uint16_t kPatternBytesPerTile = 16u;
 constexpr uint16_t kTileSizePixels = 8u;
 constexpr uint16_t kTopCropPixels = NesTileFrame::TopCropPixels;
+
+class OptionalScopeTimer final {
+public:
+    OptionalScopeTimer(Timers* timers, const char* name) : timers_(timers), name_(name)
+    {
+        if (timers_ != nullptr) {
+            timers_->startTimer(name_);
+        }
+    }
+
+    ~OptionalScopeTimer()
+    {
+        if (timers_ != nullptr) {
+            timers_->stopTimer(name_);
+        }
+    }
+
+private:
+    Timers* timers_ = nullptr;
+    const char* name_ = nullptr;
+};
 
 size_t mirroredNametableOffset(uint16_t logicalOffset, uint8_t mirror)
 {
@@ -103,37 +126,69 @@ std::array<uint64_t, 256u> makeNesTileIdPatternHashes(const NesPpuSnapshot& snap
 
 NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot)
 {
-    NesTileFrame frame;
-    frame.frameId = snapshot.frameId;
-    frame.scrollX = scrollXFromV(snapshot);
-    frame.scrollY = scrollYFromV(snapshot);
+    return makeNesTileFrame(snapshot, NesTileFrameBuildOptions{});
+}
 
-    for (uint16_t y = 0; y < NesTileFrame::VisibleHeightPixels; ++y) {
-        const uint16_t fullY = static_cast<uint16_t>(y + kTopCropPixels);
-        const size_t rowBase = static_cast<size_t>(y) * NesTileFrame::VisibleWidthPixels;
-        for (uint16_t x = 0; x < NesTileFrame::VisibleWidthPixels; ++x) {
-            const uint8_t tileId =
-                readNametableTileIdAtWorldPixel(snapshot, frame.scrollX, frame.scrollY, x, fullY);
-            const uint16_t worldX = static_cast<uint16_t>((frame.scrollX + x) % 512u);
-            const uint16_t worldY = static_cast<uint16_t>((frame.scrollY + fullY) % 480u);
-            const uint8_t patternX = static_cast<uint8_t>(worldX % kTileSizePixels);
-            const uint8_t patternY = static_cast<uint8_t>(worldY % kTileSizePixels);
-            frame.patternPixels[rowBase + x] =
-                tilePatternPixel(snapshot, tileId, patternX, patternY);
+NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot, Timers* timers)
+{
+    return makeNesTileFrame(snapshot, NesTileFrameBuildOptions{}, timers);
+}
+
+NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot, NesTileFrameBuildOptions options)
+{
+    return makeNesTileFrame(snapshot, options, nullptr);
+}
+
+NesTileFrame makeNesTileFrame(
+    const NesPpuSnapshot& snapshot, NesTileFrameBuildOptions options, Timers* timers)
+{
+    NesTileFrame frame;
+    {
+        OptionalScopeTimer timer(timers, "nes_tile_frame_scroll_decode");
+        frame.frameId = snapshot.frameId;
+        frame.scrollX = scrollXFromV(snapshot);
+        frame.scrollY = scrollYFromV(snapshot);
+    }
+
+    if (options.includePatternPixels) {
+        OptionalScopeTimer timer(timers, "nes_tile_frame_pattern_pixels");
+        for (uint16_t y = 0; y < NesTileFrame::VisibleHeightPixels; ++y) {
+            const uint16_t fullY = static_cast<uint16_t>(y + kTopCropPixels);
+            const size_t rowBase = static_cast<size_t>(y) * NesTileFrame::VisibleWidthPixels;
+            for (uint16_t x = 0; x < NesTileFrame::VisibleWidthPixels; ++x) {
+                const uint8_t tileId = readNametableTileIdAtWorldPixel(
+                    snapshot, frame.scrollX, frame.scrollY, x, fullY);
+                const uint16_t worldX = static_cast<uint16_t>((frame.scrollX + x) % 512u);
+                const uint16_t worldY = static_cast<uint16_t>((frame.scrollY + fullY) % 480u);
+                const uint8_t patternX = static_cast<uint8_t>(worldX % kTileSizePixels);
+                const uint8_t patternY = static_cast<uint8_t>(worldY % kTileSizePixels);
+                frame.patternPixels[rowBase + x] =
+                    tilePatternPixel(snapshot, tileId, patternX, patternY);
+            }
         }
     }
 
-    for (uint16_t gy = 0; gy < NesTileFrame::VisibleTileRows; ++gy) {
-        for (uint16_t gx = 0; gx < NesTileFrame::VisibleTileColumns; ++gx) {
-            const uint16_t sampleX = static_cast<uint16_t>(gx * kTileSizePixels + 4u);
-            const uint16_t sampleY =
-                static_cast<uint16_t>(gy * kTileSizePixels + 4u + kTopCropPixels);
-            const uint8_t tileId = readNametableTileIdAtWorldPixel(
-                snapshot, frame.scrollX, frame.scrollY, sampleX, sampleY);
-            const size_t cellIndex =
-                static_cast<size_t>(gy) * NesTileFrame::VisibleTileColumns + gx;
-            frame.tileIds[cellIndex] = tileId;
-            frame.tilePatternHashes[cellIndex] = tilePatternHash(snapshot, tileId);
+    {
+        OptionalScopeTimer timer(timers, "nes_tile_frame_tile_ids");
+        for (uint16_t gy = 0; gy < NesTileFrame::VisibleTileRows; ++gy) {
+            for (uint16_t gx = 0; gx < NesTileFrame::VisibleTileColumns; ++gx) {
+                const uint16_t sampleX = static_cast<uint16_t>(gx * kTileSizePixels + 4u);
+                const uint16_t sampleY =
+                    static_cast<uint16_t>(gy * kTileSizePixels + 4u + kTopCropPixels);
+                const uint8_t tileId = readNametableTileIdAtWorldPixel(
+                    snapshot, frame.scrollX, frame.scrollY, sampleX, sampleY);
+                const size_t cellIndex =
+                    static_cast<size_t>(gy) * NesTileFrame::VisibleTileColumns + gx;
+                frame.tileIds[cellIndex] = tileId;
+            }
+        }
+    }
+
+    {
+        OptionalScopeTimer timer(timers, "nes_tile_frame_tile_hashes");
+        for (size_t cellIndex = 0; cellIndex < frame.tileIds.size(); ++cellIndex) {
+            frame.tilePatternHashes[cellIndex] =
+                tilePatternHash(snapshot, frame.tileIds[cellIndex]);
         }
     }
 

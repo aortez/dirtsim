@@ -615,6 +615,10 @@ TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokeniz
     EXPECT_GT(timers->getCallCount("nes_tile_controller_infer_total"), 0u);
     EXPECT_GT(timers->getCallCount("nes_tile_sensory_total"), 0u);
     EXPECT_GT(timers->getCallCount("nes_tile_frame_extract"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_scroll_decode"), 0u);
+    EXPECT_EQ(timers->getCallCount("nes_tile_frame_pattern_pixels"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_tile_ids"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_tile_hashes"), 0u);
     EXPECT_GT(timers->getCallCount("nes_tile_build_sensory"), 0u);
     EXPECT_GT(timers->getCallCount("nes_tile_brain_infer"), 0u);
 }

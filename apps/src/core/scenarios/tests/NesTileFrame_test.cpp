@@ -1,5 +1,7 @@
 #include "core/scenarios/nes/NesTileFrame.h"
 
+#include "core/Timers.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -82,4 +84,62 @@ TEST(NesTileFrameTest, HashesMatchForDifferentTileIdsWithSamePattern)
     EXPECT_EQ(
         frame.tilePatternHashes[tileCellIndex(0u, 0u)],
         frame.tilePatternHashes[tileCellIndex(1u, 0u)]);
+}
+
+TEST(NesTileFrameTest, InstrumentedExtractionMatchesUninstrumentedFrame)
+{
+    NesPpuSnapshot snapshot;
+    snapshot.frameId = 12u;
+    snapshot.fineX = 3u;
+    snapshot.mirror = 2u;
+    setSolidTilePattern(snapshot, 1u, 1u);
+    setSolidTilePattern(snapshot, 2u, 2u);
+    snapshot.vram[32u] = 1u;
+    snapshot.vram[33u] = 2u;
+
+    Timers timers;
+    const NesTileFrame baseline = makeNesTileFrame(snapshot);
+    const NesTileFrame instrumented = makeNesTileFrame(snapshot, &timers);
+
+    EXPECT_EQ(instrumented.frameId, baseline.frameId);
+    EXPECT_EQ(instrumented.scrollX, baseline.scrollX);
+    EXPECT_EQ(instrumented.scrollY, baseline.scrollY);
+    EXPECT_EQ(instrumented.patternPixels, baseline.patternPixels);
+    EXPECT_EQ(instrumented.tileIds, baseline.tileIds);
+    EXPECT_EQ(instrumented.tilePatternHashes, baseline.tilePatternHashes);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_scroll_decode"), 1u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_pattern_pixels"), 1u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_tile_ids"), 1u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_tile_hashes"), 1u);
+}
+
+TEST(NesTileFrameTest, OptionalPatternPixelsSkipsOnlyPatternPanelData)
+{
+    NesPpuSnapshot snapshot;
+    snapshot.frameId = 18u;
+    snapshot.fineX = 3u;
+    snapshot.mirror = 2u;
+    setSolidTilePattern(snapshot, 1u, 1u);
+    setSolidTilePattern(snapshot, 2u, 2u);
+    snapshot.vram[32u] = 1u;
+    snapshot.vram[33u] = 2u;
+
+    Timers timers;
+    const NesTileFrame fullFrame = makeNesTileFrame(snapshot);
+    const NesTileFrame tileOnlyFrame = makeNesTileFrame(
+        snapshot, NesTileFrameBuildOptions{ .includePatternPixels = false }, &timers);
+    const std::array<uint8_t, NesTileFrame::VisibleWidthPixels * NesTileFrame::VisibleHeightPixels>
+        emptyPatternPixels{};
+
+    EXPECT_EQ(tileOnlyFrame.frameId, fullFrame.frameId);
+    EXPECT_EQ(tileOnlyFrame.scrollX, fullFrame.scrollX);
+    EXPECT_EQ(tileOnlyFrame.scrollY, fullFrame.scrollY);
+    EXPECT_EQ(tileOnlyFrame.tileIds, fullFrame.tileIds);
+    EXPECT_EQ(tileOnlyFrame.tilePatternHashes, fullFrame.tilePatternHashes);
+    EXPECT_EQ(tileOnlyFrame.patternPixels, emptyPatternPixels);
+    EXPECT_NE(fullFrame.patternPixels, emptyPatternPixels);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_scroll_decode"), 1u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_pattern_pixels"), 0u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_tile_ids"), 1u);
+    EXPECT_EQ(timers.getCallCount("nes_tile_frame_tile_hashes"), 1u);
 }

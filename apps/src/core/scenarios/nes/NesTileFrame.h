@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 
+class Timers;
+
 namespace DirtSim {
 
 struct NesTileFrame {
@@ -22,7 +24,15 @@ struct NesTileFrame {
     std::array<uint8_t, VisibleTileColumns * VisibleTileRows> tileIds{};
 };
 
+struct NesTileFrameBuildOptions {
+    bool includePatternPixels = true;
+};
+
 std::array<uint64_t, 256u> makeNesTileIdPatternHashes(const NesPpuSnapshot& snapshot);
 NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot);
+NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot, NesTileFrameBuildOptions options);
+NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot, Timers* timers);
+NesTileFrame makeNesTileFrame(
+    const NesPpuSnapshot& snapshot, NesTileFrameBuildOptions options, Timers* timers);
 
 } // namespace DirtSim

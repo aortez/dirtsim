@@ -1155,7 +1155,8 @@ NesTileSensoryData TrainingRunner::makeNesTileSensoryData()
 
     const NesTileFrame tileFrame = [this, &ppuSnapshot]() {
         ScopeTimer timer(nesTimers_, "nes_tile_frame_extract");
-        return makeNesTileFrame(ppuSnapshot.value());
+        const NesTileFrameBuildOptions options{ .includePatternPixels = false };
+        return makeNesTileFrame(ppuSnapshot.value(), options, &nesTimers_);
     }();
     const NesTileSensoryBuilderInput tileInput = [this, &tileFrame]() {
         ScopeTimer timer(nesTimers_, "nes_tile_adapter_input");
