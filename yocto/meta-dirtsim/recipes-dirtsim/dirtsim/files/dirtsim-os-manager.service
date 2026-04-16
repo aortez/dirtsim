@@ -1,5 +1,6 @@
 [Unit]
 Description=DirtSim OS Manager
+Requires=dirtsim-config-setup.service
 After=dirtsim-config-setup.service
 
 [Service]

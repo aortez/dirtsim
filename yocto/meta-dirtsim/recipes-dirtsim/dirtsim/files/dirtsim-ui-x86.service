@@ -1,7 +1,8 @@
 [Unit]
 Description=DirtSim Simulation UI
 Wants=dirtsim-audio.service dirtsim-server.service
-After=systemd-user-sessions.service
+Requires=dirtsim-config-setup.service
+After=dirtsim-config-setup.service systemd-user-sessions.service
 
 [Service]
 Type=simple

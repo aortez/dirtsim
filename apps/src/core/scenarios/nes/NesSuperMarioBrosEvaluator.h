@@ -63,6 +63,13 @@ struct NesSuperMarioBrosEvaluatorOutput {
 class NesSuperMarioBrosEvaluator {
 public:
     void reset();
+    void restoreProgress(
+        uint32_t bestStageIndex,
+        uint16_t bestAbsoluteX,
+        double distanceRewardTotal,
+        double levelClearRewardTotal,
+        uint64_t gameplayFrames,
+        uint64_t gameplayFramesSinceProgress);
     NesSuperMarioBrosEvaluatorOutput evaluate(const NesSuperMarioBrosEvaluatorInput& input);
 
 private:

@@ -34,6 +34,41 @@ const char* completionReasonText(Api::SearchCompletionReason reason)
     return "Error.";
 }
 
+const char* searchProgressEventText(Api::SearchProgressEvent event)
+{
+    switch (event) {
+        case Api::SearchProgressEvent::Unknown:
+            return "Unknown";
+        case Api::SearchProgressEvent::RootInitialized:
+            return "Root";
+        case Api::SearchProgressEvent::ExpandedAlive:
+            return "Expanded";
+        case Api::SearchProgressEvent::Backtracked:
+            return "Backtracked";
+        case Api::SearchProgressEvent::PrunedDead:
+            return "Pruned dead";
+        case Api::SearchProgressEvent::PrunedStalled:
+            return "Pruned stalled";
+        case Api::SearchProgressEvent::PrunedVelocityStuck:
+            return "Pruned velocity";
+        case Api::SearchProgressEvent::PrunedBelowScreen:
+            return "Pruned below";
+        case Api::SearchProgressEvent::CompletedBudgetExceeded:
+            return "Budget hit";
+        case Api::SearchProgressEvent::CompletedExhausted:
+            return "Exhausted";
+        case Api::SearchProgressEvent::CompletedMilestoneReached:
+            return "Milestone";
+        case Api::SearchProgressEvent::Stopped:
+            return "Stopped";
+        case Api::SearchProgressEvent::Error:
+            return "Error";
+    }
+
+    DIRTSIM_ASSERT(false, "Unhandled SearchProgressEvent");
+    return "Unknown";
+}
+
 } // namespace
 
 void SearchActive::onEnter(StateMachine& sm)
@@ -171,10 +206,16 @@ void SearchActive::updateBodyText()
     else {
         text = progress_.paused ? "Paused." : "Running.";
     }
-    text += "\nElapsed frames: ";
-    text += std::to_string(progress_.elapsedFrames);
+    text += "\nSearched nodes: ";
+    text += std::to_string(progress_.searchedNodeCount);
+    text += "\nCurrent frame: ";
+    text += std::to_string(progress_.currentGameplayFrame);
     text += "\nBest frontier: ";
     text += std::to_string(progress_.bestFrontier);
+    text += "\nGround jump sorts: ";
+    text += std::to_string(progress_.groundedVerticalJumpPriorityActionCount);
+    text += "\nLast event: ";
+    text += searchProgressEventText(progress_.lastSearchEvent);
 
     if (completedSearch_.has_value() && !completedSearch_->errorMessage.empty()) {
         text += "\n\nError:\n";

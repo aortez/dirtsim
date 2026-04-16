@@ -6,6 +6,7 @@
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
+#include "external/stb/stb_image_write.h"
 
 #include <algorithm>
 #include <array>
@@ -131,7 +132,7 @@ std::array<uint8_t, 3> rgb565ToRgb888(uint16_t value)
     return { red8, green8, blue8 };
 }
 
-bool writeScenarioFramePpm(const ScenarioVideoFrame& frame, const std::filesystem::path& path)
+bool writeScenarioFramePng(const ScenarioVideoFrame& frame, const std::filesystem::path& path)
 {
     if (frame.width == 0 || frame.height == 0) {
         return false;
@@ -143,25 +144,27 @@ bool writeScenarioFramePpm(const ScenarioVideoFrame& frame, const std::filesyste
         return false;
     }
 
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream.is_open()) {
-        return false;
-    }
-
-    stream << "P6\n" << frame.width << " " << frame.height << "\n255\n";
-
     const size_t pixelCount = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
+    std::vector<uint8_t> rgb888(pixelCount * 3u);
     for (size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex) {
         const std::optional<uint16_t> rgb565 = readRgb565Pixel(frame, pixelIndex);
         if (!rgb565.has_value()) {
             return false;
         }
         const std::array<uint8_t, 3> rgb = rgb565ToRgb888(rgb565.value());
-        stream.write(
-            reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
+        const size_t rgbOffset = pixelIndex * 3u;
+        rgb888[rgbOffset + 0u] = rgb[0];
+        rgb888[rgbOffset + 1u] = rgb[1];
+        rgb888[rgbOffset + 2u] = rgb[2];
     }
-
-    return stream.good();
+    return stbi_write_png(
+               path.string().c_str(),
+               static_cast<int>(frame.width),
+               static_cast<int>(frame.height),
+               3,
+               rgb888.data(),
+               static_cast<int>(frame.width * 3u))
+        != 0;
 }
 
 uint16_t decodeAbsoluteX(const std::vector<uint8_t>& cpuRam)
@@ -235,29 +238,29 @@ std::filesystem::path screenshotPathForFrame(ProbeScriptType probeScriptType, ui
     switch (probeScriptType) {
         case ProbeScriptType::Baseline:
             return std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_frame_" + std::to_string(frameIndex) + ".ppm");
+                / ("nes_smb_frame_" + std::to_string(frameIndex) + ".png");
         case ProbeScriptType::EnemyValidation:
             return std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_enemy_frame_" + std::to_string(frameIndex) + ".ppm");
+                / ("nes_smb_enemy_frame_" + std::to_string(frameIndex) + ".png");
         case ProbeScriptType::LeftMovement:
             return std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_left_frame_" + std::to_string(frameIndex) + ".ppm");
+                / ("nes_smb_left_frame_" + std::to_string(frameIndex) + ".png");
         case ProbeScriptType::StandingJump:
             return std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_standing_jump_frame_" + std::to_string(frameIndex) + ".ppm");
+                / ("nes_smb_standing_jump_frame_" + std::to_string(frameIndex) + ".png");
         case ProbeScriptType::LifeLoss:
             return std::filesystem::path(::testing::TempDir())
-                / ("nes_smb_life_loss_frame_" + std::to_string(frameIndex) + ".ppm");
+                / ("nes_smb_life_loss_frame_" + std::to_string(frameIndex) + ".png");
     }
 
     return std::filesystem::path(::testing::TempDir())
-        / ("nes_smb_frame_" + std::to_string(frameIndex) + ".ppm");
+        / ("nes_smb_frame_" + std::to_string(frameIndex) + ".png");
 }
 
 void clearProbeScreenshots(ProbeScriptType probeScriptType)
 {
     const std::string prefix = screenshotPathForFrame(probeScriptType, 0u).filename().string();
-    const size_t frameMarkerPos = prefix.find("0.ppm");
+    const size_t frameMarkerPos = prefix.find("0.png");
     const std::string filenamePrefix =
         frameMarkerPos == std::string::npos ? prefix : prefix.substr(0u, frameMarkerPos);
 
@@ -268,7 +271,7 @@ void clearProbeScreenshots(ProbeScriptType probeScriptType)
         }
 
         const std::string filename = entry.path().filename().string();
-        if (filename.rfind(filenamePrefix, 0) != 0 || entry.path().extension() != ".ppm") {
+        if (filename.rfind(filenamePrefix, 0) != 0 || entry.path().extension() != ".png") {
             continue;
         }
 
@@ -447,7 +450,7 @@ std::vector<CapturedFrame> captureSmbProbeFrames(
             if (stepResult.scenarioVideoFrame.has_value()) {
                 const std::filesystem::path screenshotPath =
                     screenshotPathForFrame(probeScriptType, frameIndex);
-                if (writeScenarioFramePpm(stepResult.scenarioVideoFrame.value(), screenshotPath)) {
+                if (writeScenarioFramePng(stepResult.scenarioVideoFrame.value(), screenshotPath)) {
                     std::cout << "Wrote SMB screenshot: " << screenshotPath.string() << "\n";
                 }
             }

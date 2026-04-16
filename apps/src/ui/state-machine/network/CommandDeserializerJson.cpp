@@ -25,6 +25,7 @@
 #include "ui/state-machine/api/RenderModeSelect.h"
 #include "ui/state-machine/api/ScreenGrab.h"
 #include "ui/state-machine/api/SearchPauseSet.h"
+#include "ui/state-machine/api/SearchSettingsSet.h"
 #include "ui/state-machine/api/SearchStart.h"
 #include "ui/state-machine/api/SearchStop.h"
 #include "ui/state-machine/api/SimPause.h"
@@ -181,6 +182,10 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         else if (commandName == UiApi::SearchPauseSet::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::SearchPauseSet::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::SearchSettingsSet::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::SearchSettingsSet::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::SearchStart::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::SearchStart::Command::fromJson(cmd));

@@ -8,18 +8,19 @@ namespace DirtSim {
 namespace Server {
 namespace State {
 
-void broadcastExecutionRender(StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
+void broadcastSearchRender(
+    StateMachine& dsm, const WorldData& worldData, const std::optional<ScenarioVideoFrame>& frame)
 {
     static const std::vector<OrganismId> emptyOrganismGrid{};
     const auto scenarioId = Scenario::EnumType::NesSuperMarioBros;
     const auto scenarioConfig = makeDefaultConfig(scenarioId);
     dsm.broadcastRenderMessage(
-        execution.getWorldData(),
-        emptyOrganismGrid,
-        scenarioId,
-        scenarioConfig,
-        std::nullopt,
-        execution.getScenarioVideoFrame());
+        worldData, emptyOrganismGrid, scenarioId, scenarioConfig, std::nullopt, frame);
+}
+
+void broadcastExecutionRender(StateMachine& dsm, const SearchSupport::SmbPlanExecution& execution)
+{
+    broadcastSearchRender(dsm, execution.getWorldData(), execution.getScenarioVideoFrame());
 }
 
 } // namespace State

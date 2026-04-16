@@ -117,6 +117,9 @@ make test-slow-physics
 # Run local-only diagnostic, calibration, and probe tests
 make test-diagnostic
 
+# Run local SMB ROM-dependent search tests
+make test-smb
+
 # Download/update the MIT-licensed NES ROM fixture used by Flappy NES tests
 make fetch-nes-test-rom
 
@@ -127,7 +130,7 @@ make test ARGS='--gtest_filter=StateIdle*'
 make test-asan
 ```
 
-`make test` and `make test-slow` are the CI lanes. `make test-slow` is the umbrella over the CI slow subgroups, including `make test-slow-physics`. `make test-diagnostic` is intentionally local-only and includes probe/calibration/performance coverage that may require extra local fixtures such as `testdata/roms/smb.nes` or `DIRTSIM_NES_SMB_TEST_ROM_PATH`.
+`make test` and `make test-slow` are the CI lanes. `make test-slow` is the umbrella over the CI slow subgroups, including `make test-slow-physics`. `make test-smb` is the local SMB search lane and requires `testdata/roms/smb.nes` or `DIRTSIM_NES_SMB_TEST_ROM_PATH`. `make test-diagnostic` is intentionally local-only and includes probe/calibration/performance coverage that may require extra local fixtures such as `testdata/roms/smb.nes` or `DIRTSIM_NES_SMB_TEST_ROM_PATH`.
 
 ## CLI Tool
 

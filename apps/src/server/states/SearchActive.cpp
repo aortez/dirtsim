@@ -22,18 +22,18 @@ void broadcastSearchProgress(StateMachine& dsm, const Api::SearchProgress& progr
 }
 
 Api::SearchCompletionReason mapCompletionReason(
-    const std::optional<SearchSupport::SmbPlanExecutionCompletionReason>& reason)
+    const std::optional<SearchSupport::SmbDfsSearchCompletionReason>& reason)
 {
-    switch (reason.value_or(SearchSupport::SmbPlanExecutionCompletionReason::Error)) {
-        case SearchSupport::SmbPlanExecutionCompletionReason::Completed:
+    switch (reason.value_or(SearchSupport::SmbDfsSearchCompletionReason::Error)) {
+        case SearchSupport::SmbDfsSearchCompletionReason::Completed:
             return Api::SearchCompletionReason::Completed;
-        case SearchSupport::SmbPlanExecutionCompletionReason::Stopped:
+        case SearchSupport::SmbDfsSearchCompletionReason::Stopped:
             return Api::SearchCompletionReason::Stopped;
-        case SearchSupport::SmbPlanExecutionCompletionReason::Error:
+        case SearchSupport::SmbDfsSearchCompletionReason::Error:
             return Api::SearchCompletionReason::Error;
     }
 
-    DIRTSIM_ASSERT(false, "Unhandled SmbPlanExecutionCompletionReason");
+    DIRTSIM_ASSERT(false, "Unhandled SmbDfsSearchCompletionReason");
     return Api::SearchCompletionReason::Error;
 }
 
@@ -42,13 +42,13 @@ Api::SearchCompletionReason mapCompletionReason(
 void SearchActive::onEnter(StateMachine& dsm)
 {
     LOG_INFO(State, "SearchActive: Entered");
-    dsm.updateCachedWorldData(execution.getWorldData());
+    dsm.updateCachedWorldData(search.getWorldData());
     renderBroadcasted_ = false;
-    if (execution.hasRenderableFrame()) {
-        broadcastExecutionRender(dsm, execution);
+    if (search.hasRenderableFrame()) {
+        broadcastSearchRender(dsm, search.getWorldData(), search.getScenarioVideoFrame());
         renderBroadcasted_ = true;
     }
-    broadcastSearchProgress(dsm, execution.getProgress());
+    broadcastSearchProgress(dsm, search.getProgress());
     lastProgressBroadcastTime_ = std::chrono::steady_clock::now();
 }
 
@@ -59,17 +59,17 @@ void SearchActive::onExit(StateMachine& /*dsm*/)
 
 std::optional<Any> SearchActive::tick(StateMachine& dsm)
 {
-    const auto tickResult = execution.tick();
-    if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
-        dsm.updateCachedWorldData(execution.getWorldData());
-        broadcastExecutionRender(dsm, execution);
+    const auto tickResult = search.tick();
+    if (search.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.renderChanged)) {
+        dsm.updateCachedWorldData(search.getWorldData());
+        broadcastSearchRender(dsm, search.getWorldData(), search.getScenarioVideoFrame());
         renderBroadcasted_ = true;
     }
 
     const auto now = std::chrono::steady_clock::now();
-    if (tickResult.frameAdvanced || now - lastProgressBroadcastTime_ >= kProgressBroadcastInterval
-        || tickResult.completed) {
-        broadcastSearchProgress(dsm, execution.getProgress());
+    if (tickResult.frameAdvanced || tickResult.renderChanged
+        || now - lastProgressBroadcastTime_ >= kProgressBroadcastInterval || tickResult.completed) {
+        broadcastSearchProgress(dsm, search.getProgress());
         lastProgressBroadcastTime_ = now;
     }
 
@@ -81,22 +81,21 @@ std::optional<Any> SearchActive::tick(StateMachine& dsm)
         LOG_ERROR(State, "SearchActive: {}", tickResult.error.value());
     }
 
-    auto completionReason = mapCompletionReason(execution.getCompletionReason());
-    std::string completionErrorMessage =
-        execution.getCompletionErrorMessage().value_or(std::string{});
+    auto completionReason = mapCompletionReason(search.getCompletionReason());
+    std::string completionErrorMessage = search.getCompletionErrorMessage().value_or(std::string{});
     std::optional<Api::PlanSummary> savedSummary = std::nullopt;
 
-    if (execution.hasPersistablePlan()) {
-        auto storeResult = dsm.getPlanRepository().store(execution.getPlan());
+    if (search.hasPersistablePlan()) {
+        auto storeResult = dsm.getPlanRepository().store(search.getPlan());
         if (storeResult.isError()) {
             LOG_ERROR(State, "SearchActive: Failed to store plan: {}", storeResult.errorValue());
             completionReason = Api::SearchCompletionReason::Error;
             completionErrorMessage = "Failed to store plan: " + storeResult.errorValue();
         }
         else {
-            savedSummary = execution.getPlan().summary;
+            savedSummary = search.getPlan().summary;
             const Api::PlanSaved saved{
-                .summary = execution.getPlan().summary,
+                .summary = search.getPlan().summary,
             };
             dsm.broadcastEventData(Api::PlanSaved::name(), Network::serialize_payload(saved));
         }
@@ -119,13 +118,13 @@ Any SearchActive::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
 Any SearchActive::onEvent(const Api::SearchPauseSet::Cwc& cwc, StateMachine& dsm)
 {
-    execution.pauseSet(cwc.command.paused);
+    search.pauseSet(cwc.command.paused);
 
     Api::SearchPauseSet::Okay response{
-        .paused = execution.isPaused(),
+        .paused = search.isPaused(),
     };
     cwc.sendResponse(Api::SearchPauseSet::Response::okay(std::move(response)));
-    broadcastSearchProgress(dsm, execution.getProgress());
+    broadcastSearchProgress(dsm, search.getProgress());
     lastProgressBroadcastTime_ = std::chrono::steady_clock::now();
     return std::move(*this);
 }
@@ -133,7 +132,7 @@ Any SearchActive::onEvent(const Api::SearchPauseSet::Cwc& cwc, StateMachine& dsm
 Any SearchActive::onEvent(const Api::SearchProgressGet::Cwc& cwc, StateMachine& /*dsm*/)
 {
     Api::SearchProgressGet::Okay response{
-        .progress = execution.getProgress(),
+        .progress = search.getProgress(),
     };
     cwc.sendResponse(Api::SearchProgressGet::Response::okay(std::move(response)));
     return std::move(*this);
@@ -141,7 +140,7 @@ Any SearchActive::onEvent(const Api::SearchProgressGet::Cwc& cwc, StateMachine& 
 
 Any SearchActive::onEvent(const Api::SearchStop::Cwc& cwc, StateMachine& /*dsm*/)
 {
-    execution.stop();
+    search.stop();
     cwc.sendResponse(Api::SearchStop::Response::okay(Api::SearchStop::Okay{ .stopped = true }));
     return std::move(*this);
 }

@@ -79,8 +79,9 @@ MAIN_BINARY := dirtsim
 FAST_TEST_EXCLUDES := CacheCorrectnessTest.CachedAndNonCachedProduceIdenticalResults:DuckNeuralNetRecurrentBrainV2Test.RandomGenomesProduceCommandDiversity:DuckHealthTest.Calibration*:CalibrationDrops/*
 SLOW_TEST_FILTER := CacheCorrectnessTest.CachedAndNonCachedProduceIdenticalResults
 DIAGNOSTIC_TEST_FILTER := DiagonalWaterLevelingTest.*:DuckNeuralNetRecurrentBrainV2Test.RandomGenomesProduceCommandDiversity:TreeNeuralNetworkTest.*:NesSuperMarioBrosRamProbeTest.*:SmolnesPpuPerformance.*:DuckHealthTest.Calibration*:CalibrationDrops/*:TrainingRunnerTest.TreeScenarioBrainHarness
+SMB_TEST_FILTER := SmbDfsSearchTest.*:SmbSearchHarnessTest.*:NesSmolnesScenarioDriverTest.RuntimeSavestateLoadRestoresExactSmbReplayPath
 
-.PHONY: all clean debug release asan build-tests build-tests-slow build-tests-slow-physics build-tests-diagnostic fetch-nes-test-rom test test-slow test-slow-core test-slow-physics test-diagnostic test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
+.PHONY: all clean debug release asan build-tests build-tests-slow build-tests-slow-physics build-tests-diagnostic fetch-nes-test-rom test test-smb test-slow test-slow-core test-slow-physics test-diagnostic test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
 
 all: release
 
@@ -137,6 +138,16 @@ test: build-tests
 	@$(MAKE) fetch-nes-test-rom
 	@echo "Running tests..."
 	@DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='-$(FAST_TEST_EXCLUDES)' $(ARGS)
+
+test-smb: build-tests
+	@SMB_ROM_PATH="$${DIRTSIM_NES_SMB_TEST_ROM_PATH:-$(NES_SMB_TEST_ROM_PATH)}"; \
+	if [ ! -f "$$SMB_ROM_PATH" ]; then \
+		echo "Error: SMB test ROM not found at $$SMB_ROM_PATH."; \
+		echo "Set DIRTSIM_NES_SMB_TEST_ROM_PATH or place smb.nes at $(NES_SMB_TEST_ROM_PATH)."; \
+		exit 1; \
+	fi; \
+	echo "Running SMB ROM-dependent tests..."; \
+	DIRTSIM_NES_TEST_ROM_PATH="$(NES_TEST_ROM_PATH)" DIRTSIM_NES_SMB_TEST_ROM_PATH="$$SMB_ROM_PATH" ./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_filter='$(SMB_TEST_FILTER)' $(ARGS)
 
 fetch-nes-test-rom:
 	@echo "Preparing NES test ROM..."
@@ -277,6 +288,7 @@ help:
 	@echo "  build-tests-diagnostic - Build diagnostic test binary"
 	@echo "  fetch-nes-test-rom - Download MIT-licensed NES ROM fixture for tests"
 	@echo "  test           - Build debug and run unit tests (fast)"
+	@echo "  test-smb       - Run local SMB ROM-dependent search tests"
 	@echo "  test-slow      - Run all CI-covered slow tests"
 	@echo "  test-slow-core - Run non-physics CI slow tests"
 	@echo "  test-slow-physics - Run CI slow physics regression tests"

@@ -70,6 +70,26 @@ void NesSuperMarioBrosEvaluator::reset()
     levelClearRewardTotal_ = 0.0;
 }
 
+void NesSuperMarioBrosEvaluator::restoreProgress(
+    uint32_t bestStageIndex,
+    uint16_t bestAbsoluteX,
+    double distanceRewardTotal,
+    double levelClearRewardTotal,
+    uint64_t gameplayFrames,
+    uint64_t gameplayFramesSinceProgress)
+{
+    reset();
+    hasBestProgress_ = true;
+    gameplayFrameCount_ = gameplayFrames;
+    lastProgressFrame_ = gameplayFrames >= gameplayFramesSinceProgress
+        ? (gameplayFrames - gameplayFramesSinceProgress)
+        : 0u;
+    bestStageIndex_ = bestStageIndex;
+    bestAbsoluteX_ = bestAbsoluteX;
+    distanceRewardTotal_ = distanceRewardTotal;
+    levelClearRewardTotal_ = levelClearRewardTotal;
+}
+
 NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
     const NesSuperMarioBrosEvaluatorInput& input)
 {
