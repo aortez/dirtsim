@@ -25,6 +25,8 @@ namespace Server::SearchSupport {
 
 struct SmbSearchRootFixture;
 
+constexpr uint8_t kDefaultFallingTranspositionPlayerYScreenThreshold = 192u;
+
 enum class SmbDfsSearchCompletionReason : uint8_t {
     Completed = 0,
     Stopped = 1,
@@ -37,6 +39,8 @@ struct SmbDfsSearchOptions {
     bool velocityPruningEnabled = true;
     bool belowScreenPruningEnabled = true;
     bool fallingTranspositionPruningEnabled = true;
+    uint8_t fallingTranspositionPlayerYScreenThreshold =
+        kDefaultFallingTranspositionPlayerYScreenThreshold;
     bool groundedVerticalJumpPrioritizationEnabled = true;
     std::optional<uint64_t> stopAfterBestFrontier = std::nullopt;
 };

@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -44,6 +46,30 @@ struct NodePathStats {
 };
 
 using NodePathStatsMap = std::unordered_map<size_t, NodePathStats>;
+
+std::vector<uint32_t> parseUint32ListEnv(
+    const char* variableName, const std::vector<uint32_t>& defaultValues)
+{
+    const char* rawValue = std::getenv(variableName);
+    if (rawValue == nullptr || rawValue[0] == '\0') {
+        return defaultValues;
+    }
+
+    std::vector<uint32_t> values;
+    std::stringstream stream(rawValue);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        std::stringstream tokenStream(token);
+        uint32_t value = 0u;
+        tokenStream >> value;
+        if (tokenStream.fail()) {
+            return defaultValues;
+        }
+        values.push_back(value);
+    }
+
+    return values.empty() ? defaultValues : values;
+}
 
 // PNG screenshot helpers (from NesSuperMarioBrosRamProbe_test.cpp).
 
@@ -430,6 +456,25 @@ struct WindowStats {
     size_t prunedTranspositionCount = 0;
 };
 
+struct TraceEventStats {
+    size_t backtrackedCount = 0u;
+    size_t expandedAliveCount = 0u;
+    size_t prunedDeadCount = 0u;
+    size_t prunedStalledCount = 0u;
+    size_t prunedVelocityStuckCount = 0u;
+    size_t prunedBelowScreenCount = 0u;
+    size_t prunedBelowScreenAtBestFrontierCount = 0u;
+    size_t prunedBelowScreenAtBestFrontierFreshProgressCount = 0u;
+    size_t prunedBelowScreenFreshProgressCount = 0u;
+    size_t prunedTranspositionCount = 0u;
+    size_t prunedTranspositionAtBestFrontierCount = 0u;
+    uint64_t maxFramesSinceProgress = 0u;
+    uint64_t maxGameplayFrame = 0u;
+    uint64_t prunedBelowScreenMaxFramesSinceProgress = 0u;
+    std::optional<SmbDfsSearchTraceEntry> firstBelowScreenPrune = std::nullopt;
+    std::optional<SmbDfsSearchTraceEntry> firstTranspositionPrune = std::nullopt;
+};
+
 WindowStats computeWindowStats(
     const std::vector<SmbDfsSearchTraceEntry>& trace, uint64_t minFrontier, uint64_t maxFrontier)
 {
@@ -460,6 +505,72 @@ WindowStats computeWindowStats(
                 break;
             case SmbDfsSearchTraceEventType::PrunedTransposition:
                 stats.prunedTranspositionCount++;
+                break;
+            case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
+            case SmbDfsSearchTraceEventType::CompletedExhausted:
+            case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
+            case SmbDfsSearchTraceEventType::Error:
+            case SmbDfsSearchTraceEventType::RootInitialized:
+            case SmbDfsSearchTraceEventType::Stopped:
+                break;
+        }
+    }
+
+    return stats;
+}
+
+TraceEventStats computeTraceEventStats(
+    const std::vector<SmbDfsSearchTraceEntry>& trace, uint64_t bestFrontier)
+{
+    TraceEventStats stats;
+    for (const auto& entry : trace) {
+        if (isCreationEvent(entry.eventType)) {
+            stats.maxFramesSinceProgress =
+                std::max(stats.maxFramesSinceProgress, entry.framesSinceProgress);
+            stats.maxGameplayFrame = std::max(stats.maxGameplayFrame, entry.gameplayFrame);
+        }
+
+        switch (entry.eventType) {
+            case SmbDfsSearchTraceEventType::Backtracked:
+                stats.backtrackedCount++;
+                break;
+            case SmbDfsSearchTraceEventType::ExpandedAlive:
+                stats.expandedAliveCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedDead:
+                stats.prunedDeadCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedStalled:
+                stats.prunedStalledCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
+                stats.prunedVelocityStuckCount++;
+                break;
+            case SmbDfsSearchTraceEventType::PrunedBelowScreen:
+                stats.prunedBelowScreenCount++;
+                stats.prunedBelowScreenMaxFramesSinceProgress = std::max(
+                    stats.prunedBelowScreenMaxFramesSinceProgress, entry.framesSinceProgress);
+                if (entry.framesSinceProgress == 0u) {
+                    stats.prunedBelowScreenFreshProgressCount++;
+                }
+                if (entry.frontier == bestFrontier) {
+                    stats.prunedBelowScreenAtBestFrontierCount++;
+                    if (entry.framesSinceProgress == 0u) {
+                        stats.prunedBelowScreenAtBestFrontierFreshProgressCount++;
+                    }
+                }
+                if (!stats.firstBelowScreenPrune.has_value()) {
+                    stats.firstBelowScreenPrune = entry;
+                }
+                break;
+            case SmbDfsSearchTraceEventType::PrunedTransposition:
+                stats.prunedTranspositionCount++;
+                if (entry.frontier == bestFrontier) {
+                    stats.prunedTranspositionAtBestFrontierCount++;
+                }
+                if (!stats.firstTranspositionPrune.has_value()) {
+                    stats.firstTranspositionPrune = entry;
+                }
                 break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -1912,6 +2023,90 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitSearch)
     const auto bestLeafScreenshot = screenshotDir / "dfs_pit_best_leaf.png";
     writeScreenshotIfAvailable(
         search.getScenarioVideoFrame(), bestLeafScreenshot, "Pit best leaf screenshot");
+}
+
+TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitTranspositionThresholdSweep)
+{
+    REQUIRE_SMB_ROM_OR_SKIP();
+
+    const std::vector<uint32_t> budgetValues =
+        parseUint32ListEnv("SMB_DFS_PIT_SWEEP_BUDGETS", { 10'000u });
+    const std::vector<uint32_t> thresholdValues =
+        parseUint32ListEnv("SMB_DFS_PIT_SWEEP_THRESHOLDS", { 216u, 208u, 200u, 192u });
+
+    printDiagnosticProgress("Capturing FlatGroundSanity fixture");
+    SmbSearchHarness harness;
+    const auto fixtureResult = harness.captureFixture(SmbSearchRootFixtureId::FlatGroundSanity);
+    ASSERT_FALSE(fixtureResult.isError()) << fixtureResult.errorValue();
+
+    std::cout << "budget,threshold,searched,trace,bestFrontier,planFrames,expanded,prunedDead,"
+                 "prunedBelowScreen,prunedTransposition,prunedVelocityStuck,backtracked,"
+                 "belowAtBestFrontier,belowAtBestFrontierFreshProgress,belowFreshProgress,"
+                 "belowMaxFramesSinceProgress,transpositionAtBestFrontier,"
+                 "maxGameplayFrame,maxFramesSinceProgress,firstTranspositionFrame,"
+                 "firstTranspositionFrontier,firstTranspositionFramesSinceProgress,"
+                 "firstBelowScreenFrame,firstBelowScreenFrontier,elapsedMs\n";
+    for (const uint32_t budget : budgetValues) {
+        for (const uint32_t thresholdValue : thresholdValues) {
+            ASSERT_LE(thresholdValue, 255u);
+
+            const uint8_t threshold = static_cast<uint8_t>(thresholdValue);
+            SmbDfsSearch search(
+                SmbDfsSearchOptions{
+                    .maxSearchedNodeCount = budget,
+                    .stallFrameLimit = 120u,
+                    .velocityPruningEnabled = true,
+                    .belowScreenPruningEnabled = true,
+                    .fallingTranspositionPruningEnabled = true,
+                    .fallingTranspositionPlayerYScreenThreshold = threshold,
+                });
+            const auto startResult = search.startFromFixture(fixtureResult.value());
+            ASSERT_FALSE(startResult.isError()) << startResult.errorValue();
+
+            const auto startTime = std::chrono::steady_clock::now();
+            const auto runResult = runSearchToCompletion(search, static_cast<size_t>(budget) * 3u);
+            const auto endTime = std::chrono::steady_clock::now();
+            ASSERT_FALSE(runResult.isError()) << runResult.errorValue();
+
+            const TraceEventStats stats =
+                computeTraceEventStats(search.getTrace(), search.getProgress().bestFrontier);
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+            const uint64_t firstTranspositionFrame = stats.firstTranspositionPrune.has_value()
+                ? stats.firstTranspositionPrune->gameplayFrame
+                : 0u;
+            const uint64_t firstTranspositionFrontier = stats.firstTranspositionPrune.has_value()
+                ? stats.firstTranspositionPrune->frontier
+                : 0u;
+            const uint64_t firstTranspositionFramesSinceProgress =
+                stats.firstTranspositionPrune.has_value()
+                ? stats.firstTranspositionPrune->framesSinceProgress
+                : 0u;
+            const uint64_t firstBelowScreenFrame = stats.firstBelowScreenPrune.has_value()
+                ? stats.firstBelowScreenPrune->gameplayFrame
+                : 0u;
+            const uint64_t firstBelowScreenFrontier = stats.firstBelowScreenPrune.has_value()
+                ? stats.firstBelowScreenPrune->frontier
+                : 0u;
+
+            std::cout << budget << "," << static_cast<uint32_t>(threshold) << ","
+                      << search.getProgress().searchedNodeCount << "," << search.getTrace().size()
+                      << "," << search.getProgress().bestFrontier << ","
+                      << search.getPlan().frames.size() << "," << stats.expandedAliveCount << ","
+                      << stats.prunedDeadCount << "," << stats.prunedBelowScreenCount << ","
+                      << stats.prunedTranspositionCount << "," << stats.prunedVelocityStuckCount
+                      << "," << stats.backtrackedCount << ","
+                      << stats.prunedBelowScreenAtBestFrontierCount << ","
+                      << stats.prunedBelowScreenAtBestFrontierFreshProgressCount << ","
+                      << stats.prunedBelowScreenFreshProgressCount << ","
+                      << stats.prunedBelowScreenMaxFramesSinceProgress << ","
+                      << stats.prunedTranspositionAtBestFrontierCount << ","
+                      << stats.maxGameplayFrame << "," << stats.maxFramesSinceProgress << ","
+                      << firstTranspositionFrame << "," << firstTranspositionFrontier << ","
+                      << firstTranspositionFramesSinceProgress << "," << firstBelowScreenFrame
+                      << "," << firstBelowScreenFrontier << "," << elapsedMs << "\n";
+        }
+    }
 }
 
 TEST(SmbDfsSearchTest, DISABLED_ReportFirstPipeSearch)

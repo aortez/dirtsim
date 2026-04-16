@@ -17,6 +17,31 @@ enum class SmbLifeState : uint8_t {
     Dead = 2,
 };
 
+enum class SmbPlayerState : uint8_t {
+    LeftmostOfScreen = 0x00,
+    ClimbingVine = 0x01,
+    EnteringReversedLPipe = 0x02,
+    GoingDownPipe = 0x03,
+    Autowalk = 0x04,
+    AutowalkAlt = 0x05,
+    PlayerDies = 0x06,
+    EnteringArea = 0x07,
+    Normal = 0x08,
+    Growing = 0x09,
+    Shrinking = 0x0A,
+    Dying = 0x0B,
+    BecomingFire = 0x0C,
+    Unknown = 0xFF,
+};
+
+enum class SmbFloatState : uint8_t {
+    GroundedOrOther = 0x00,
+    Jumping = 0x01,
+    WalkedOffLedge = 0x02,
+    SlidingFlagpole = 0x03,
+    Unknown = 0xFF,
+};
+
 enum class SmbPowerupState : uint8_t {
     Small = 0,
     Big = 1,
@@ -26,6 +51,8 @@ enum class SmbPowerupState : uint8_t {
 struct NesSuperMarioBrosState {
     SmbPhase phase = SmbPhase::NonGameplay;
     SmbLifeState lifeState = SmbLifeState::Alive;
+    SmbPlayerState playerState = SmbPlayerState::Unknown;
+    SmbFloatState floatState = SmbFloatState::Unknown;
     SmbPowerupState powerupState = SmbPowerupState::Small;
     bool airborne = false;
     bool enemyPresent = false;

@@ -20,8 +20,6 @@ namespace {
 
 constexpr uint32_t kLevelsPerWorld = 4u;
 constexpr uint8_t kBelowScreenPrunePlayerYScreenThreshold = 224u;
-constexpr uint8_t kFallingTranspositionPlayerYScreenThreshold =
-    kBelowScreenPrunePlayerYScreenThreshold - 8u;
 constexpr uint8_t kVelocityPruneConsecutiveFrameThreshold = 2u;
 constexpr double kVelocityPruneHorizontalSpeedEpsilon = 0.05;
 
@@ -784,7 +782,7 @@ std::optional<SmbDfsSearch::FallingTranspositionKey> SmbDfsSearch::buildFallingT
     if (!state.airborne || state.verticalSpeedNormalized < 0.0) {
         return std::nullopt;
     }
-    if (state.playerYScreen < kFallingTranspositionPlayerYScreenThreshold) {
+    if (state.playerYScreen < options_.fallingTranspositionPlayerYScreenThreshold) {
         return std::nullopt;
     }
     if (evaluatorSummary.gameplayFramesSinceProgress == 0u) {

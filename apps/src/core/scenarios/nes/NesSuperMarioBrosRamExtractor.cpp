@@ -40,9 +40,6 @@ constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
 };
 
 constexpr uint8_t kGameEngineGameplay = 1;
-constexpr uint8_t kPlayerStateDeathAnimation = 0x0B;
-constexpr uint8_t kPlayerStateReloadScreen = 0x00;
-constexpr uint8_t kPlayerStatePlayerDies = 0x06;
 
 uint16_t decodeAbsoluteX(uint8_t playerXPage, uint8_t playerXScreen)
 {
@@ -66,19 +63,47 @@ float decodeFacingX(uint8_t rawFacingDirection)
     }
 }
 
-SmbLifeState decodeLifeState(uint8_t playerState)
+SmbFloatState decodeFloatState(uint8_t playerFloatState)
+{
+    switch (playerFloatState) {
+        case 0x00u:
+            return SmbFloatState::GroundedOrOther;
+        case 0x01u:
+            return SmbFloatState::Jumping;
+        case 0x02u:
+            return SmbFloatState::WalkedOffLedge;
+        case 0x03u:
+            return SmbFloatState::SlidingFlagpole;
+        default:
+            return SmbFloatState::Unknown;
+    }
+}
+
+SmbLifeState decodeLifeState(SmbPlayerState playerState)
 {
     // 0x000E is a broad player-mode register. For the coarse life-state model we only treat the
     // explicit death lifecycle states as non-alive.
     switch (playerState) {
-        case kPlayerStatePlayerDies:
-        case kPlayerStateDeathAnimation:
-            return SmbLifeState::Dying;
-        case kPlayerStateReloadScreen:
+        case SmbPlayerState::LeftmostOfScreen:
             return SmbLifeState::Dead;
-        default:
+        case SmbPlayerState::ClimbingVine:
+        case SmbPlayerState::EnteringReversedLPipe:
+        case SmbPlayerState::GoingDownPipe:
+        case SmbPlayerState::Autowalk:
+        case SmbPlayerState::AutowalkAlt:
+        case SmbPlayerState::EnteringArea:
+        case SmbPlayerState::Normal:
+        case SmbPlayerState::Growing:
+        case SmbPlayerState::Shrinking:
+        case SmbPlayerState::BecomingFire:
+        case SmbPlayerState::Unknown:
             return SmbLifeState::Alive;
+        case SmbPlayerState::PlayerDies:
+        case SmbPlayerState::Dying:
+            return SmbLifeState::Dying;
     }
+
+    return SmbLifeState::Alive;
 }
 
 SmbPhase decodePhase(uint8_t gameEngine, bool setupComplete)
@@ -96,6 +121,40 @@ SmbPowerupState decodePowerupState(uint8_t powerupState)
         return SmbPowerupState::Big;
     }
     return SmbPowerupState::Small;
+}
+
+SmbPlayerState decodePlayerState(uint8_t playerState)
+{
+    switch (playerState) {
+        case 0x00u:
+            return SmbPlayerState::LeftmostOfScreen;
+        case 0x01u:
+            return SmbPlayerState::ClimbingVine;
+        case 0x02u:
+            return SmbPlayerState::EnteringReversedLPipe;
+        case 0x03u:
+            return SmbPlayerState::GoingDownPipe;
+        case 0x04u:
+            return SmbPlayerState::Autowalk;
+        case 0x05u:
+            return SmbPlayerState::AutowalkAlt;
+        case 0x06u:
+            return SmbPlayerState::PlayerDies;
+        case 0x07u:
+            return SmbPlayerState::EnteringArea;
+        case 0x08u:
+            return SmbPlayerState::Normal;
+        case 0x09u:
+            return SmbPlayerState::Growing;
+        case 0x0Au:
+            return SmbPlayerState::Shrinking;
+        case 0x0Bu:
+            return SmbPlayerState::Dying;
+        case 0x0Cu:
+            return SmbPlayerState::BecomingFire;
+        default:
+            return SmbPlayerState::Unknown;
+    }
 }
 
 double decodeVerticalSpeedNormalized(uint8_t verticalSpeed)
@@ -130,9 +189,10 @@ DecodedEnemy decodeEnemy(
     };
 }
 
-bool isAirborne(uint8_t playerFloatState)
+bool isAirborne(SmbFloatState playerFloatState)
 {
-    return playerFloatState == 0x01u || playerFloatState == 0x02u;
+    return playerFloatState == SmbFloatState::Jumping
+        || playerFloatState == SmbFloatState::WalkedOffLedge;
 }
 
 } // namespace
@@ -140,8 +200,9 @@ bool isAirborne(uint8_t playerFloatState)
 NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     const SmolnesRuntime::MemorySnapshot& snapshot, bool setupComplete) const
 {
-    const uint8_t playerState = snapshot.cpuRam.at(kPlayerStateAddr);
-    const uint8_t playerFloatState = snapshot.cpuRam.at(kPlayerFloatStateAddr);
+    const SmbPlayerState playerState = decodePlayerState(snapshot.cpuRam.at(kPlayerStateAddr));
+    const SmbFloatState playerFloatState =
+        decodeFloatState(snapshot.cpuRam.at(kPlayerFloatStateAddr));
     const uint16_t playerAbsoluteX = decodeAbsoluteX(
         snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
     const uint8_t playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
@@ -149,6 +210,8 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     NesSuperMarioBrosState output;
     output.phase = decodePhase(snapshot.cpuRam.at(kGameEngineSubroutineAddr), setupComplete);
     output.lifeState = decodeLifeState(playerState);
+    output.playerState = playerState;
+    output.floatState = playerFloatState;
     output.powerupState = decodePowerupState(snapshot.cpuRam.at(kPowerupStateAddr));
     output.airborne = isAirborne(playerFloatState);
     output.facingX = decodeFacingX(snapshot.cpuRam.at(kFacingDirectionAddr));
