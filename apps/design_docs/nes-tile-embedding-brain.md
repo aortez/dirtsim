@@ -254,11 +254,15 @@ the 896 visible tile positions.
   scalar/controller/RAM inputs without carrying the legacy palette histogram grid.
 - Extracted a shared `ControllerOutput` type so the existing palette RNN and the planned
   NES tile RNN can return the same controller-shaped output.
+- Added standalone `NesTileRecurrentBrain`, which consumes `NesTileSensoryData`, uses a
+  learned tile-embedding segment, and returns shared `ControllerOutput`.
 - Added focused unit tests for tile extraction, deterministic tokenization, token-frame
   conversion, lossless player-relative remapping, NES tile sensory construction, and NES tile
   sensory scalar/controller fields.
 - Added adapter-level tests proving SMB RAM-derived player position and scalar fields can feed
   the tile sensory builder.
+- Added focused unit tests for NES tile brain genome layout, random genome sizing,
+  compatibility checks, embedding lookup, and deterministic controller output.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 
@@ -292,13 +296,13 @@ Each PNG currently has four panels:
 
 ### Next Step
 
-Add the NES-only recurrent tile brain that consumes `NesTileSensoryData`. This keeps
-non-NES scenarios on the existing `DuckSensoryData` and `DuckNeuralNetRecurrentBrainV2`
-path while allowing NES scenarios to use tile-specific inputs and genome layouts.
+Register and wire the NES-only recurrent tile brain so NES training can select it explicitly.
+This keeps non-NES scenarios on the existing `DuckSensoryData` and
+`DuckNeuralNetRecurrentBrainV2` path while allowing NES scenarios to use tile-specific inputs
+and genome layouts.
 
 Planned pieces:
 
-- Add a NES-only recurrent tile brain variant with an embedding-table genome segment.
 - Register the new brain kind separately in `TrainingBrainRegistry`.
 - Wire NES training to select the NES tile brain explicitly, without changing the existing
   palette RNN v2 brain.
@@ -306,15 +310,12 @@ Planned pieces:
 
 ### Tests For Next Step
 
-- Genome layout reports the expected named segments and total size.
-- Random genome generation exactly matches the layout size.
-- Incompatible genome sizes fail compatibility checks.
-- Token embedding lookup maps token 0 to the void embedding and non-zero tokens to their
-  expected embedding rows.
-- A hand-authored tiny genome produces deterministic controller outputs from a synthetic
-  NES tile observation.
 - NES training registry can construct the new brain kind without affecting existing brain
   kinds.
+- TrainingRunner can instantiate the tile brain for NES scenario-driven evaluation.
+- Tile-brain NES inference builds `NesTileSensoryData` from the latest PPU snapshot and adapter
+  builder input, then maps shared `ControllerOutput` to controller buttons.
+- Existing palette RNN v2 NES tests continue to pass unchanged.
 
 ### Open Decisions
 
