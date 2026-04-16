@@ -35,6 +35,29 @@ uint64_t encodeCurrentFrontier(const NesSuperMarioBrosState& state)
     return encodeSmbFrontier(stageIndex, state.absoluteX);
 }
 
+SmbSearchHorizontalDirection getHorizontalDirection(const NesSuperMarioBrosState& state)
+{
+    if (state.movementX > 0.0f) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.movementX < 0.0f) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    if (state.horizontalSpeedNormalized > 0.0) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.horizontalSpeedNormalized < 0.0) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    if (state.facingX > 0.0f) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.facingX < 0.0f) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    return SmbSearchHorizontalDirection::None;
+}
+
 std::vector<PlayerControlFrame> makeRootPrefixFrames(uint64_t gameplayFrameCount)
 {
     return std::vector<PlayerControlFrame>(
@@ -392,6 +415,7 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             const SmbSearchActionOrdering actionOrdering = buildDfsActionOrder(
                 state.airborne,
                 state.verticalSpeedNormalized,
+                getHorizontalDirection(state),
                 action,
                 options_.groundedVerticalJumpPrioritizationEnabled);
             dfsStack_.push_back(
@@ -582,7 +606,11 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
             .nodeIndex = 0u,
             .nextActionIndex = 0,
             .actionOrdering = buildDfsActionOrder(
-                false, 0.0, std::nullopt, options_.groundedVerticalJumpPrioritizationEnabled),
+                false,
+                0.0,
+                SmbSearchHorizontalDirection::None,
+                std::nullopt,
+                options_.groundedVerticalJumpPrioritizationEnabled),
         });
 
     bestLeafIndex_ = 0u;

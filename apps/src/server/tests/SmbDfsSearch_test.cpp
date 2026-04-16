@@ -2487,8 +2487,8 @@ TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
 
 TEST(SmbDfsSearchTest, GroundedVerticalJumpPrioritizationMovesJumpActionsFirst)
 {
-    const SmbSearchActionOrdering enabledOrder =
-        buildDfsActionOrder(false, 0.03125, SmbSearchLegalAction::RightRun, true);
+    const SmbSearchActionOrdering enabledOrder = buildDfsActionOrder(
+        false, 0.03125, SmbSearchHorizontalDirection::Right, SmbSearchLegalAction::RightRun, true);
 
     EXPECT_TRUE(enabledOrder.groundedVerticalJumpPriorityApplied);
     EXPECT_EQ(enabledOrder.groundedVerticalJumpPriorityActionCount, 6u);
@@ -2501,15 +2501,19 @@ TEST(SmbDfsSearchTest, GroundedVerticalJumpPrioritizationMovesJumpActionsFirst)
     EXPECT_EQ(enabledOrder.actions[5], SmbSearchLegalAction::DuckLeftJumpRun);
     EXPECT_EQ(enabledOrder.actions[6], SmbSearchLegalAction::RightRun);
 
-    const SmbSearchActionOrdering disabledOrder =
-        buildDfsActionOrder(false, 0.03125, SmbSearchLegalAction::RightRun, false);
+    const SmbSearchActionOrdering disabledOrder = buildDfsActionOrder(
+        false, 0.03125, SmbSearchHorizontalDirection::Right, SmbSearchLegalAction::RightRun, false);
     EXPECT_FALSE(disabledOrder.groundedVerticalJumpPriorityApplied);
     EXPECT_EQ(disabledOrder.groundedVerticalJumpPriorityActionCount, 0u);
     ASSERT_GT(disabledOrder.count, 0u);
     EXPECT_EQ(disabledOrder.actions[0], SmbSearchLegalAction::RightRun);
 
-    const SmbSearchActionOrdering descendingAirborneOrder =
-        buildDfsActionOrder(true, 0.03125, SmbSearchLegalAction::RightJumpRun, true);
+    const SmbSearchActionOrdering descendingAirborneOrder = buildDfsActionOrder(
+        true,
+        0.03125,
+        SmbSearchHorizontalDirection::None,
+        SmbSearchLegalAction::RightJumpRun,
+        true);
     EXPECT_FALSE(descendingAirborneOrder.groundedVerticalJumpPriorityApplied);
     EXPECT_EQ(descendingAirborneOrder.groundedVerticalJumpPriorityActionCount, 0u);
     ASSERT_EQ(descendingAirborneOrder.count, 5u);
@@ -2518,4 +2522,31 @@ TEST(SmbDfsSearchTest, GroundedVerticalJumpPrioritizationMovesJumpActionsFirst)
     EXPECT_EQ(descendingAirborneOrder.actions[2], SmbSearchLegalAction::Neutral);
     EXPECT_EQ(descendingAirborneOrder.actions[3], SmbSearchLegalAction::LeftRun);
     EXPECT_EQ(descendingAirborneOrder.actions[4], SmbSearchLegalAction::Duck);
+}
+
+TEST(SmbDfsSearchTest, DescendingAirborneOrderAddsOneLateDirectionalJumpRescue)
+{
+    const SmbSearchActionOrdering rightOrder = buildDfsActionOrder(
+        true,
+        0.03125,
+        SmbSearchHorizontalDirection::Right,
+        SmbSearchLegalAction::RightJumpRun,
+        true);
+    ASSERT_EQ(rightOrder.count, 6u);
+    EXPECT_EQ(rightOrder.actions[0], SmbSearchLegalAction::RightRun);
+    EXPECT_EQ(rightOrder.actions[1], SmbSearchLegalAction::Right);
+    EXPECT_EQ(rightOrder.actions[2], SmbSearchLegalAction::Neutral);
+    EXPECT_EQ(rightOrder.actions[3], SmbSearchLegalAction::LeftRun);
+    EXPECT_EQ(rightOrder.actions[4], SmbSearchLegalAction::Duck);
+    EXPECT_EQ(rightOrder.actions[5], SmbSearchLegalAction::RightJumpRun);
+
+    const SmbSearchActionOrdering leftOrder = buildDfsActionOrder(
+        true, 0.03125, SmbSearchHorizontalDirection::Left, SmbSearchLegalAction::LeftRun, true);
+    ASSERT_EQ(leftOrder.count, 6u);
+    EXPECT_EQ(leftOrder.actions[0], SmbSearchLegalAction::LeftRun);
+    EXPECT_EQ(leftOrder.actions[1], SmbSearchLegalAction::RightRun);
+    EXPECT_EQ(leftOrder.actions[2], SmbSearchLegalAction::Right);
+    EXPECT_EQ(leftOrder.actions[3], SmbSearchLegalAction::Neutral);
+    EXPECT_EQ(leftOrder.actions[4], SmbSearchLegalAction::Duck);
+    EXPECT_EQ(leftOrder.actions[5], SmbSearchLegalAction::LeftJumpRun);
 }

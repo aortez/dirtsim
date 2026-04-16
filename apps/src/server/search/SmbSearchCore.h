@@ -33,6 +33,12 @@ enum class SmbSearchLegalAction : uint8_t {
     DuckLeftJumpRun = 10,
 };
 
+enum class SmbSearchHorizontalDirection : uint8_t {
+    None = 0,
+    Left = 1,
+    Right = 2,
+};
+
 constexpr size_t kSmbSearchLegalActionCount = 11;
 using SmbSearchActionOrder = std::array<SmbSearchLegalAction, kSmbSearchLegalActionCount>;
 
@@ -70,6 +76,7 @@ struct SmbSearchNode {
 SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
+    SmbSearchHorizontalDirection horizontalDirection,
     std::optional<SmbSearchLegalAction> actionFromParent,
     bool groundedVerticalJumpPrioritizationEnabled);
 bool isSmbGameplayFrame(
