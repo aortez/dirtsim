@@ -240,6 +240,8 @@ the 896 visible tile positions.
 - Added `NesTileFrame`, which extracts visible 32x28 background tile IDs, pattern hashes,
   and grayscale pattern pixels.
 - Added `NesTileTokenizer`, which maps stable tile-pattern hashes to bounded token IDs.
+- Extended `NesTileTokenizer` with deterministic vocabulary builds and frozen-mode failures
+  so token IDs can remain stable for learned embedding rows.
 - Added `NesTileTokenFrame`, which converts a screen-space tile frame into screen-space
   tile tokens using a persistent tokenizer.
 - Added `NesPlayerRelativeTileFrame`, which maps the visible 32x28 token frame into a
@@ -248,8 +250,9 @@ the 896 visible tile positions.
   scalar/controller/RAM inputs without carrying the legacy palette histogram grid.
 - Extracted a shared `ControllerOutput` type so the existing palette RNN and the planned
   NES tile RNN can return the same controller-shaped output.
-- Added focused unit tests for tile extraction, tokenization, token-frame conversion,
-  lossless player-relative remapping, and NES tile sensory scalar/controller fields.
+- Added focused unit tests for tile extraction, deterministic tokenization, token-frame
+  conversion, lossless player-relative remapping, and NES tile sensory scalar/controller
+  fields.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 

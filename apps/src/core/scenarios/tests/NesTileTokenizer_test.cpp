@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -58,6 +59,61 @@ TEST(NesTileTokenizerTest, DistinctHashesGetDistinctTokens)
     EXPECT_NE(secondTokenResult.value(), thirdTokenResult.value());
 }
 
+TEST(NesTileTokenizerTest, BuildVocabularyAssignsTokensBySortedHash)
+{
+    NesTileTokenizer tokenizer;
+
+    const auto buildResult = tokenizer.buildVocabulary(
+        std::vector<NesTileTokenizer::TilePatternHash>{
+            30u,
+            10u,
+            20u,
+        });
+
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    EXPECT_EQ(buildResult.value(), 3u);
+    EXPECT_EQ(tokenizer.getMode(), NesTileTokenizer::Mode::Learning);
+    EXPECT_EQ(tokenizer.getMappedHashCount(), 3u);
+    EXPECT_EQ(tokenizer.tokenForHash(10u).value(), 1u);
+    EXPECT_EQ(tokenizer.tokenForHash(20u).value(), 2u);
+    EXPECT_EQ(tokenizer.tokenForHash(30u).value(), 3u);
+}
+
+TEST(NesTileTokenizerTest, BuildVocabularyIsIndependentOfInputOrder)
+{
+    NesTileTokenizer firstTokenizer;
+    NesTileTokenizer secondTokenizer;
+
+    const auto firstBuildResult = firstTokenizer.buildVocabulary(
+        std::vector<NesTileTokenizer::TilePatternHash>{ 30u, 10u, 20u });
+    const auto secondBuildResult = secondTokenizer.buildVocabulary(
+        std::vector<NesTileTokenizer::TilePatternHash>{ 20u, 30u, 10u });
+
+    ASSERT_TRUE(firstBuildResult.isValue()) << firstBuildResult.errorValue();
+    ASSERT_TRUE(secondBuildResult.isValue()) << secondBuildResult.errorValue();
+    EXPECT_EQ(firstTokenizer.tokenForHash(10u).value(), secondTokenizer.tokenForHash(10u).value());
+    EXPECT_EQ(firstTokenizer.tokenForHash(20u).value(), secondTokenizer.tokenForHash(20u).value());
+    EXPECT_EQ(firstTokenizer.tokenForHash(30u).value(), secondTokenizer.tokenForHash(30u).value());
+}
+
+TEST(NesTileTokenizerTest, BuildVocabularyCollapsesDuplicateHashes)
+{
+    NesTileTokenizer tokenizer;
+
+    const auto buildResult = tokenizer.buildVocabulary(
+        std::vector<NesTileTokenizer::TilePatternHash>{
+            20u,
+            10u,
+            20u,
+            10u,
+        });
+
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    EXPECT_EQ(buildResult.value(), 2u);
+    EXPECT_EQ(tokenizer.tokenForHash(10u).value(), 1u);
+    EXPECT_EQ(tokenizer.tokenForHash(20u).value(), 2u);
+}
+
 TEST(NesTileTokenizerTest, ResetClearsMapping)
 {
     NesTileTokenizer tokenizer;
@@ -71,6 +127,7 @@ TEST(NesTileTokenizerTest, ResetClearsMapping)
     ASSERT_TRUE(secondTokenResult.isValue()) << secondTokenResult.errorValue();
     EXPECT_EQ(firstTokenResult.value(), 1u);
     EXPECT_EQ(secondTokenResult.value(), 1u);
+    EXPECT_EQ(tokenizer.getMode(), NesTileTokenizer::Mode::Learning);
     EXPECT_EQ(tokenizer.getMappedHashCount(), 1u);
 }
 
@@ -107,6 +164,40 @@ TEST(NesTileTokenizerTest, OverflowIsExplicit)
 
     ASSERT_TRUE(overflowResult.isError());
     EXPECT_NE(overflowResult.errorValue().find("vocabulary exhausted"), std::string::npos);
+}
+
+TEST(NesTileTokenizerTest, BuildVocabularyOverflowIsExplicit)
+{
+    NesTileTokenizer tokenizer(4u);
+
+    const auto buildResult = tokenizer.buildVocabulary(
+        std::vector<NesTileTokenizer::TilePatternHash>{
+            10u,
+            20u,
+            30u,
+            40u,
+        });
+
+    ASSERT_TRUE(buildResult.isError());
+    EXPECT_NE(buildResult.errorValue().find("vocabulary exhausted"), std::string::npos);
+    EXPECT_EQ(tokenizer.getMappedHashCount(), 0u);
+}
+
+TEST(NesTileTokenizerTest, FrozenTokenizerRejectsUnknownHash)
+{
+    NesTileTokenizer tokenizer;
+    const auto buildResult =
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u, 20u });
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    tokenizer.freeze();
+
+    const auto knownTokenResult = tokenizer.tokenForHash(20u);
+    const auto unknownTokenResult = tokenizer.tokenForHash(30u);
+
+    ASSERT_TRUE(knownTokenResult.isValue()) << knownTokenResult.errorValue();
+    EXPECT_EQ(knownTokenResult.value(), 2u);
+    ASSERT_TRUE(unknownTokenResult.isError());
+    EXPECT_NE(unknownTokenResult.errorValue().find("Frozen vocabulary missing"), std::string::npos);
 }
 
 TEST(NesTileTokenizerTest, TileIdTokenRemapCollapsesEquivalentPatterns)

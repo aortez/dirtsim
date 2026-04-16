@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <string>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -46,6 +47,29 @@ TEST(NesTileTokenFrameTest, BuildsTokenFrameAndPreservesMetadata)
     EXPECT_NE(tokenFrame.tokens[0u], NesTileTokenizer::VoidToken);
 }
 
+TEST(NesTileTokenFrameTest, FrozenVocabularyUsesDeterministicTokenIds)
+{
+    NesTileTokenizer tokenizer;
+    const auto buildResult =
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 30u, 10u, 20u });
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    tokenizer.freeze();
+
+    NesTileFrame tileFrame = makeTileFrame(44u, 12u, 96u, 20u);
+    tileFrame.tilePatternHashes[0u] = 30u;
+    tileFrame.tilePatternHashes[1u] = 10u;
+    tileFrame.tilePatternHashes[2u] = 30u;
+
+    const auto tokenFrameResult = makeNesTileTokenFrame(tileFrame, tokenizer);
+
+    ASSERT_TRUE(tokenFrameResult.isValue()) << tokenFrameResult.errorValue();
+    const NesTileTokenFrame& tokenFrame = tokenFrameResult.value();
+    EXPECT_EQ(tokenFrame.tokens[0u], 3u);
+    EXPECT_EQ(tokenFrame.tokens[1u], 1u);
+    EXPECT_EQ(tokenFrame.tokens[2u], 3u);
+    EXPECT_EQ(tokenFrame.tokens[3u], 2u);
+}
+
 TEST(NesTileTokenFrameTest, ReappearingHashesKeepStableTokensAcrossFrames)
 {
     NesTileTokenizer tokenizer;
@@ -62,6 +86,24 @@ TEST(NesTileTokenFrameTest, ReappearingHashesKeepStableTokensAcrossFrames)
     ASSERT_TRUE(secondTokenFrameResult.isValue()) << secondTokenFrameResult.errorValue();
     EXPECT_EQ(secondTokenFrameResult.value().tokens[5u], stableToken);
     EXPECT_NE(secondTokenFrameResult.value().tokens[0u], stableToken);
+}
+
+TEST(NesTileTokenFrameTest, FrozenTokenizerUnknownHashPropagatesAsError)
+{
+    NesTileTokenizer tokenizer;
+    const auto buildResult =
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u });
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    tokenizer.freeze();
+
+    NesTileFrame tileFrame = makeTileFrame(1u, 0u, 0u, 10u);
+    tileFrame.tilePatternHashes[2u] = 20u;
+
+    const auto tokenFrameResult = makeNesTileTokenFrame(tileFrame, tokenizer);
+
+    ASSERT_TRUE(tokenFrameResult.isError());
+    EXPECT_NE(tokenFrameResult.errorValue().find("cell 2"), std::string::npos);
+    EXPECT_NE(tokenFrameResult.errorValue().find("Frozen vocabulary missing"), std::string::npos);
 }
 
 TEST(NesTileTokenFrameTest, TokenizerOverflowPropagatesAsError)

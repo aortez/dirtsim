@@ -2,13 +2,57 @@
 
 #include "core/Assert.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace DirtSim {
 
 NesTileTokenizer::NesTileTokenizer(TileToken vocabSize) : vocabSize_(vocabSize)
 {
     DIRTSIM_ASSERT(vocabSize_ > VoidToken + 1u, "NesTileTokenizer: vocabSize must be at least 2");
+}
+
+Result<size_t, std::string> NesTileTokenizer::buildVocabulary(
+    const TileIdPatternHashTable& tilePatternHashes)
+{
+    return buildVocabulary(
+        std::vector<TilePatternHash>(tilePatternHashes.begin(), tilePatternHashes.end()));
+}
+
+Result<size_t, std::string> NesTileTokenizer::buildVocabulary(
+    std::vector<TilePatternHash> tilePatternHashes)
+{
+    std::sort(tilePatternHashes.begin(), tilePatternHashes.end());
+    tilePatternHashes.erase(
+        std::unique(tilePatternHashes.begin(), tilePatternHashes.end()), tilePatternHashes.end());
+
+    if (tilePatternHashes.size() >= static_cast<size_t>(vocabSize_)) {
+        return Result<size_t, std::string>::error(
+            "NesTileTokenizer: Tile token vocabulary exhausted while building "
+            + std::to_string(tilePatternHashes.size()) + " unique patterns with vocab size "
+            + std::to_string(vocabSize_));
+    }
+
+    std::unordered_map<TilePatternHash, TileToken> hashToToken;
+    hashToToken.reserve(tilePatternHashes.size());
+
+    TileToken nextToken = VoidToken + 1u;
+    for (const TilePatternHash hash : tilePatternHashes) {
+        hashToToken.emplace(hash, nextToken);
+        ++nextToken;
+    }
+
+    hashToToken_ = std::move(hashToToken);
+    nextToken_ = nextToken;
+    mode_ = Mode::Learning;
+    return Result<size_t, std::string>::okay(hashToToken_.size());
+}
+
+void NesTileTokenizer::freeze()
+{
+    mode_ = Mode::Frozen;
 }
 
 Result<NesTileTokenizer::TileIdTokenRemap, std::string> NesTileTokenizer::tileIdTokenRemapBuild(
@@ -42,6 +86,12 @@ Result<NesTileTokenizer::TileToken, std::string> NesTileTokenizer::tokenForHash(
         return Result<TileToken, std::string>::okay(it->second);
     }
 
+    if (mode_ == Mode::Frozen) {
+        return Result<TileToken, std::string>::error(
+            "NesTileTokenizer: Frozen vocabulary missing tile pattern hash "
+            + std::to_string(patternHash.value()));
+    }
+
     if (nextToken_ >= vocabSize_) {
         return Result<TileToken, std::string>::error(
             "NesTileTokenizer: Tile token vocabulary exhausted after "
@@ -58,6 +108,7 @@ Result<NesTileTokenizer::TileToken, std::string> NesTileTokenizer::tokenForHash(
 void NesTileTokenizer::reset()
 {
     hashToToken_.clear();
+    mode_ = Mode::Learning;
     nextToken_ = VoidToken + 1u;
 }
 
