@@ -12,6 +12,25 @@
 
 namespace DirtSim {
 
+std::string defaultTrainingBrainKind(OrganismType organismType, Scenario::EnumType scenarioId)
+{
+    switch (organismType) {
+        case OrganismType::TREE:
+            return TrainingBrainKind::NeuralNet;
+        case OrganismType::DUCK:
+            return TrainingBrainKind::DuckNeuralNetRecurrentV2;
+        case OrganismType::NES_DUCK:
+            if (scenarioId == Scenario::EnumType::NesSuperMarioBros) {
+                return TrainingBrainKind::NesTileRecurrent;
+            }
+            return TrainingBrainKind::DuckNeuralNetRecurrentV2;
+        case OrganismType::GOOSE:
+            return TrainingBrainKind::Random;
+        default:
+            return TrainingBrainKind::Random;
+    }
+}
+
 void TrainingBrainRegistry::registerBrain(
     OrganismType organismType,
     const std::string& brainKind,

@@ -654,6 +654,61 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     fixture.stateMachine->uiManager_.reset();
 }
 
+TEST(StateTrainingTest, StartEvolutionSendsExplicitNesTileBrainPopulation)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+
+    TrainingIdle trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+
+    StartEvolutionButtonClickedEvent evt;
+    evt.evolution.populationSize = 4;
+    evt.evolution.maxGenerations = 1;
+    evt.mutation.perturbationsPerOffspring = 120;
+    evt.mutation.resetsPerOffspring = 2;
+    evt.mutation.sigma = 0.1;
+    evt.training.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    evt.training.organismType = OrganismType::NES_DUCK;
+    evt.training.population.push_back(
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::NesTileRecurrent,
+            .brainVariant = std::nullopt,
+            .count = 4,
+            .seedGenomes = {},
+            .randomCount = 4,
+        });
+
+    State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    auto* activeState = std::get_if<TrainingActive>(&result.getVariant());
+    ASSERT_NE(activeState, nullptr);
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_GE(sentCommands.size(), 2u);
+    EXPECT_EQ(sentCommands[0], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[1], "EvolutionStart");
+
+    const auto sentStartCommand = Network::deserialize_payload<Api::EvolutionStart::Command>(
+        fixture.mockWebSocketService->sentEnvelopes()[1].payload);
+    EXPECT_EQ(sentStartCommand.scenarioId, Scenario::EnumType::NesSuperMarioBros);
+    EXPECT_EQ(sentStartCommand.organismType, OrganismType::NES_DUCK);
+    ASSERT_EQ(sentStartCommand.population.size(), 1u);
+    EXPECT_EQ(sentStartCommand.population.front().brainKind, TrainingBrainKind::NesTileRecurrent);
+    EXPECT_EQ(sentStartCommand.population.front().count, 4);
+    EXPECT_EQ(sentStartCommand.population.front().randomCount, 4);
+
+    trainingState.view_.reset();
+    fixture.stateMachine->uiManager_.reset();
+}
+
 TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
 {
     TestStateMachineFixture fixture;
@@ -668,6 +723,15 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     settingsOkay.settings.mutationConfig.sigma = 0.123;
     settingsOkay.settings.trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     settingsOkay.settings.trainingSpec.organismType = OrganismType::NES_DUCK;
+    settingsOkay.settings.trainingSpec.population = {
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::NesTileRecurrent,
+            .brainVariant = std::nullopt,
+            .count = 37,
+            .seedGenomes = {},
+            .randomCount = 37,
+        },
+    };
 
     fixture.mockWebSocketService->expectSuccess<Api::UserSettingsPatch::Command>(settingsOkay);
 
@@ -699,6 +763,8 @@ TEST(StateTrainingTest, TrainingIdleConfigUpdatePatchesUserSettings)
     EXPECT_DOUBLE_EQ(local.mutationConfig.sigma, settingsOkay.settings.mutationConfig.sigma);
     EXPECT_EQ(local.trainingSpec.scenarioId, settingsOkay.settings.trainingSpec.scenarioId);
     EXPECT_EQ(local.trainingSpec.organismType, settingsOkay.settings.trainingSpec.organismType);
+    ASSERT_EQ(local.trainingSpec.population.size(), 1u);
+    EXPECT_EQ(local.trainingSpec.population.front().brainKind, TrainingBrainKind::NesTileRecurrent);
 }
 
 TEST(StateTrainingTest, TrainingActiveConfigUpdatePatchesUserSettings)

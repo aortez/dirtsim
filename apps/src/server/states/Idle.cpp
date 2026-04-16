@@ -355,19 +355,23 @@ std::optional<ApiError> validateTrainingConfig(
 
         switch (outSpec.organismType) {
             case OrganismType::TREE:
-                defaultSpec.brainKind = TrainingBrainKind::NeuralNet;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
-                defaultSpec.brainKind = TrainingBrainKind::Random;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 break;
             default:
                 return ApiError("Unsupported organismType for training");

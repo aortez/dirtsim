@@ -22,6 +22,7 @@ struct NesTileFrame {
     std::array<uint8_t, VisibleTileColumns * VisibleTileRows> tileIds{};
 };
 
+std::array<uint64_t, 256u> makeNesTileIdPatternHashes(const NesPpuSnapshot& snapshot);
 NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot);
 
 } // namespace DirtSim

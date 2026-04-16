@@ -1,6 +1,7 @@
 #include "core/scenarios/nes/NesTileVocabularyBuilder.h"
 
 #include "core/scenarios/nes/NesTileFrame.h"
+#include "core/scenarios/nes/NesTileTokenFrame.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,11 @@ void setSolidTilePattern(NesPpuSnapshot& snapshot, uint8_t tileId, uint8_t color
 size_t visibleTileCount()
 {
     return static_cast<size_t>(NesTileFrame::VisibleTileColumns) * NesTileFrame::VisibleTileRows;
+}
+
+size_t snapshotTileSampleCount()
+{
+    return visibleTileCount() + 256u;
 }
 
 } // namespace
@@ -91,9 +97,32 @@ TEST(NesTileVocabularyBuilderTest, BuildsFromPpuSnapshot)
     const auto buildResult = builder.buildFrozenTokenizer(tokenizer);
 
     ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
-    EXPECT_EQ(buildResult.value().sampledTileCount, visibleTileCount());
+    EXPECT_EQ(buildResult.value().sampledTileCount, snapshotTileSampleCount());
     EXPECT_EQ(buildResult.value().uniquePatternCount, 2u);
     EXPECT_EQ(tokenizer.getMode(), NesTileTokenizer::Mode::Frozen);
+}
+
+TEST(NesTileVocabularyBuilderTest, SnapshotVocabularyCoversTilesBeforeTheyBecomeVisible)
+{
+    NesPpuSnapshot snapshot;
+    snapshot.mirror = 2u;
+    setSolidTilePattern(snapshot, 1u, 1u);
+    setSolidTilePattern(snapshot, 7u, 2u);
+    snapshot.vram[32u] = 1u;
+
+    NesTileVocabularyBuilder builder;
+    builder.addSnapshot(snapshot);
+
+    auto tokenizerResult = builder.buildFrozenTokenizer();
+    ASSERT_TRUE(tokenizerResult.isValue()) << tokenizerResult.errorValue();
+
+    NesPpuSnapshot laterSnapshot = snapshot;
+    laterSnapshot.vram[33u] = 7u;
+    const NesTileFrame laterFrame = makeNesTileFrame(laterSnapshot);
+    const auto tokenFrameResult = makeNesTileTokenFrame(laterFrame, tokenizerResult.value());
+
+    ASSERT_TRUE(tokenFrameResult.isValue()) << tokenFrameResult.errorValue();
+    EXPECT_NE(tokenFrameResult.value().tokens[1u], NesTileTokenizer::VoidToken);
 }
 
 TEST(NesTileVocabularyBuilderTest, OverflowFailsClearly)

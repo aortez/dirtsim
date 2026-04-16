@@ -272,6 +272,8 @@ the 896 visible tile positions.
   snapshot exists, while still failing loudly on tokenizer misconfiguration.
 - Added `NesTileVocabularyBuilder`, which builds and freezes deterministic tile tokenizers from
   sampled `NesTileFrame` or `NesPpuSnapshot` data.
+- Extended PPU-snapshot vocabulary sampling to include the full current 256-entry background
+  pattern table, so a valid tile can become visible later without crashing a frozen tokenizer.
 - Wired `EvaluationExecutor` to bootstrap one shared frozen tile tokenizer for queued
   `NesTileRecurrent` generation and robustness evaluations, then pass it into each
   `TrainingRunner`.
@@ -283,6 +285,10 @@ the 896 visible tile positions.
   runners, and to rebuild it after scenario config changes.
 - Added a ROM-gated state test proving NES tile best playback advances through `Evolution::tick`
   with a frozen tokenizer.
+- Made `NesTileRecurrent` selectable for NES training while keeping the palette RNN v2 brain
+  available for comparison.
+- Added an SMB-specific default so empty-population SMB NES training starts with
+  `NesTileRecurrent`; other NES scenarios still default to the palette RNN v2 brain.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 
@@ -316,24 +322,24 @@ Each PNG currently has four panels:
 
 ### Next Step
 
-Make `NesTileRecurrent` selectable through the normal NES training setup. The evaluator and
-best-playback paths can now run tile-brain requests, but the UI/state setup still defaults NES
-training to the palette RNN v2 path.
+Run short SMB training sessions with the tile brain as the default, then compare behavior against
+the palette RNN v2 path.
 
 Planned pieces:
 
-- Expose `NesTileRecurrent` as a NES brain choice while keeping the palette RNN v2 path available
-  for comparison.
+- Use idle auto-start or the training UI to launch SMB tile-brain runs without hand-written
+  `EvolutionStart` commands.
+- Capture training progress, best playback, and diagnostic PNGs for early runs.
 - Keep brain input/output metadata reusable so future NES brain variants can share controller
   outputs and typed sensory containers where appropriate.
 - Preserve the existing palette RNN v2 path for comparison runs.
 
 ### Tests For Next Step
 
-- NES training setup can select `NesTileRecurrent` and generate evaluation requests with matching
-  genomes.
-- Palette RNN v2 remains selectable and does not create a tile tokenizer.
-- Existing palette RNN v2 NES tests continue to pass unchanged.
+- SMB tile-brain training starts from the normal UI/server path and reaches at least one completed
+  evaluation.
+- Best playback advances for the best SMB tile-brain candidate after training.
+- Existing palette RNN v2 NES tests continue to pass unchanged as the comparison path.
 
 ### Open Decisions
 

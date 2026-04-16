@@ -92,6 +92,15 @@ uint16_t scrollYFromV(const NesPpuSnapshot& snapshot)
 
 } // namespace
 
+std::array<uint64_t, 256u> makeNesTileIdPatternHashes(const NesPpuSnapshot& snapshot)
+{
+    std::array<uint64_t, 256u> tilePatternHashes{};
+    for (size_t tileId = 0; tileId < tilePatternHashes.size(); ++tileId) {
+        tilePatternHashes[tileId] = tilePatternHash(snapshot, static_cast<uint8_t>(tileId));
+    }
+    return tilePatternHashes;
+}
+
 NesTileFrame makeNesTileFrame(const NesPpuSnapshot& snapshot)
 {
     NesTileFrame frame;

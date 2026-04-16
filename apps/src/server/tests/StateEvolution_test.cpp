@@ -272,6 +272,74 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyO
     EXPECT_EQ(population.randomCount, 3);
 }
 
+TEST(StateEvolutionTest, EvolutionStartDefaultsToNesTileRecurrentBrainForNesSuperMarioBros)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const PopulationSpec& population = evolution.trainingSpec.population.front();
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::NesTileRecurrent);
+    EXPECT_EQ(population.count, 3);
+    EXPECT_EQ(population.randomCount, 3);
+}
+
+TEST(StateEvolutionTest, EvolutionStartPreservesExplicitDuckRecurrentBrainForNesSuperMarioBros)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+    cmd.population.push_back(
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+            .brainVariant = std::nullopt,
+            .count = 3,
+            .seedGenomes = {},
+            .randomCount = 3,
+        });
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const PopulationSpec& population = evolution.trainingSpec.population.front();
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
+    EXPECT_EQ(population.count, 3);
+    EXPECT_EQ(population.randomCount, 3);
+}
+
 TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForDuckClockScenario)
 {
     TestStateMachineFixture fixture;

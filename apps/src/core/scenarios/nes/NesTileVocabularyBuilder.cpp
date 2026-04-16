@@ -12,6 +12,9 @@ void NesTileVocabularyBuilder::addFrame(const NesTileFrame& frame)
 
 void NesTileVocabularyBuilder::addSnapshot(const NesPpuSnapshot& snapshot)
 {
+    const auto tileIdPatternHashes = makeNesTileIdPatternHashes(snapshot);
+    tilePatternHashes_.insert(
+        tilePatternHashes_.end(), tileIdPatternHashes.begin(), tileIdPatternHashes.end());
     addFrame(makeNesTileFrame(snapshot));
 }
 
