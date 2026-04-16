@@ -1092,6 +1092,16 @@ uint8_t TrainingRunner::inferNesControllerMask()
     }
 
     if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent && nesTileBrain_) {
+        DIRTSIM_ASSERT(
+            nesTileTokenizer_ != nullptr,
+            "TrainingRunner: NES tile sensory requires a tile tokenizer");
+        DIRTSIM_ASSERT(
+            nesTileTokenizer_->getMode() == NesTileTokenizer::Mode::Frozen,
+            "TrainingRunner: NES tile sensory requires a frozen tile tokenizer");
+        if (nesDriver_ && nesDriver_->getRuntimeRenderedFrameCount() == 0
+            && !nesDriver_->copyRuntimePpuSnapshot().has_value()) {
+            return 0;
+        }
         const NesTileSensoryData sensory = makeNesTileSensoryData();
         const ControllerOutput output = nesTileBrain_->inferControllerOutput(sensory);
         const uint8_t mask = nesControllerMaskFromOutput(output);

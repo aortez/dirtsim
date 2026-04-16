@@ -21,12 +21,16 @@
 #include "core/scenarios/clock_scenario/ObstacleManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
+#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
+#include "core/scenarios/nes/NesTileVocabularyBuilder.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <memory>
 #include <random>
 
 namespace DirtSim {
@@ -545,6 +549,72 @@ TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerFailsLoudlyWithoutTokenizer)
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     EXPECT_DEATH({ static_cast<void>(runner.step(1)); }, ".*");
     ::testing::FLAGS_gtest_death_test_style = previousDeathTestStyle;
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokenizer)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    NesSmolnesScenarioDriver bootstrapDriver(Scenario::EnumType::NesFlappyParatroopa);
+    const auto setupResult = bootstrapDriver.setup();
+    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
+    Timers bootstrapTimers;
+    const auto bootstrapStep = bootstrapDriver.step(bootstrapTimers, 0u);
+    ASSERT_GT(bootstrapStep.advancedFrames, 0u);
+    const auto ppuSnapshot = bootstrapDriver.copyRuntimePpuSnapshot();
+    ASSERT_TRUE(ppuSnapshot.has_value());
+
+    auto tokenizer = std::make_shared<NesTileTokenizer>();
+    NesTileVocabularyBuilder vocabularyBuilder;
+    vocabularyBuilder.addSnapshot(ppuSnapshot.value());
+    const auto vocabularyResult = vocabularyBuilder.buildFrozenTokenizer(*tokenizer);
+    ASSERT_TRUE(vocabularyResult.isValue()) << vocabularyResult.errorValue();
+    ASSERT_GT(vocabularyResult.value().uniquePatternCount, 0u);
+    EXPECT_EQ(tokenizer->getMode(), NesTileTokenizer::Mode::Frozen);
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesTileTokenizer = tokenizer,
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while (!runner.getNesLastControllerTelemetry().has_value()
+           && (status = runner.step(1)).state == TrainingRunner::State::Running) {
+        ++steps;
+        ASSERT_LT(steps, 10) << "Bootstrapped tile runner should produce telemetry promptly";
+    }
+
+    EXPECT_EQ(status.state, TrainingRunner::State::Running);
+    EXPECT_GT(status.nesFramesSurvived, 0u);
+    ASSERT_TRUE(runner.getNesLastControllerTelemetry().has_value());
+    const NesControllerTelemetry& telemetry = runner.getNesLastControllerTelemetry().value();
+    EXPECT_TRUE(std::isfinite(telemetry.xRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.yRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.aRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.bRaw));
 }
 
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)

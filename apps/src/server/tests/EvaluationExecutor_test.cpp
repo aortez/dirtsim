@@ -4,6 +4,7 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/nes/NesTileRecurrentBrain.h"
 #include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/evolution/EvaluationExecutor.h"
 #include "server/evolution/FitnessModelBundle.h"
@@ -587,4 +588,77 @@ TEST(EvaluationExecutorTest, NesVisibleEvaluationProducesNonEmptyVideoFrame)
             return b == std::byte{ 0 };
         });
     EXPECT_FALSE(allZero) << "ScenarioVideoFrame pixels are all zero (RGBA output not working).";
+}
+
+TEST(EvaluationExecutorTest, NesTileVisibleEvaluationBootstrapsTokenizer)
+{
+    const auto romPath = DirtSim::Test::resolveFlappyRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing for NES tile visible evaluation test.";
+    }
+
+    TestStateMachineFixture fixture;
+
+    TrainingSpec trainingSpec;
+    trainingSpec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    trainingSpec.organismType = OrganismType::NES_DUCK;
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NesTileRecurrent;
+    population.count = 1;
+    population.randomCount = 1;
+    trainingSpec.population.push_back(population);
+
+    EvaluationExecutor executor =
+        makeExecutor(trainingSpec, fixture.stateMachine->getGenomeRepository());
+    const EvolutionConfig evolutionConfig = makeEvolutionConfig(1, 0.25);
+
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
+
+    std::mt19937 rng(43);
+    const std::vector<EvaluationRequest> requests{
+        EvaluationRequest{
+            .taskType = EvaluationTaskType::GenerationEval,
+            .index = 0,
+            .individual =
+                EvaluationIndividual{
+                    .brainKind = TrainingBrainKind::NesTileRecurrent,
+                    .brainVariant = std::nullopt,
+                    .scenarioId = Scenario::EnumType::NesFlappyParatroopa,
+                    .genome = NesTileRecurrentBrain::randomGenome(rng),
+                },
+        },
+    };
+
+    executor.start(1);
+    executor.generationBatchSubmit(requests, evolutionConfig, ScenarioConfig{ nesConfig });
+
+    bool sawTileBrainFrame = false;
+    bool completed = false;
+    std::optional<uint64_t> lastFrameId = std::nullopt;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline && !sawTileBrainFrame && !completed) {
+        const auto tick = executor.visibleTick(std::chrono::steady_clock::now(), 0);
+        completed = !tick.completed.empty();
+        if (tick.frame.has_value() && tick.frame->scenarioVideoFrame.has_value()) {
+            lastFrameId = tick.frame->scenarioVideoFrame->frame_id;
+            if (tick.frame->nesControllerTelemetry.has_value()) {
+                sawTileBrainFrame = true;
+                break;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    ASSERT_TRUE(sawTileBrainFrame)
+        << "NES tile visible evaluation did not produce a telemetry frame before completion. "
+        << "completed=" << completed << ", last frame_id=" << lastFrameId.value_or(0);
+    ASSERT_TRUE(executor.hasVisibleEvaluation());
+
+    const auto configError = executor.scenarioConfigOverrideSet(
+        ScenarioConfig{ nesConfig }, Scenario::EnumType::NesFlappyParatroopa);
+    ASSERT_TRUE(configError.has_value());
+    EXPECT_NE(configError->find("Active NES tile evaluations"), std::string::npos);
 }
