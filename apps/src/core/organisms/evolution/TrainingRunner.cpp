@@ -17,6 +17,9 @@
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesTileRecurrentBrain.h"
+#include "core/scenarios/nes/NesTileSensoryBuilder.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -96,6 +99,33 @@ std::string buildNesCommandSignature(uint8_t controllerMask)
     }
 
     return signature;
+}
+
+uint8_t nesControllerMaskFromOutput(const ControllerOutput& output)
+{
+    uint8_t mask = 0;
+    if (output.a) {
+        mask |= NesPolicyLayout::ButtonA;
+    }
+    if (output.b) {
+        mask |= NesPolicyLayout::ButtonB;
+    }
+
+    if (output.x <= -kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonLeft;
+    }
+    else if (output.x >= kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonRight;
+    }
+
+    if (output.y <= -kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonUp;
+    }
+    else if (output.y >= kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonDown;
+    }
+
+    return mask;
 }
 
 Vector2i findSpawnCell(World& world)
@@ -188,6 +218,7 @@ TrainingRunner::TrainingRunner(
       maxTime_(evolutionConfig.maxSimulationTime),
       brainRegistry_(runnerConfig.brainRegistry),
       nesGameAdapterRegistry_(runnerConfig.nesGameAdapterRegistry),
+      nesTileTokenizer_(runnerConfig.nesTileTokenizer),
       duckClockSpawnLeftFirst_(runnerConfig.duckClockSpawnLeftFirst),
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
@@ -283,6 +314,7 @@ TrainingRunner::TrainingRunner(
     nesPaletteFrame_.reset();
     nesFitnessDetails_ = std::monostate{};
     nesDuckBrainV2_.reset();
+    nesTileBrain_.reset();
     nesLastControllerOutput_.reset();
     nesLastControllerTelemetry_.reset();
     nesLastDebugState_.reset();
@@ -293,6 +325,12 @@ TrainingRunner::TrainingRunner(
                 "TrainingRunner: NES duck recurrent V2 controller requires a genome");
             nesDuckBrainV2_ =
                 std::make_unique<DuckNeuralNetRecurrentBrainV2>(individual_.genome.value());
+        }
+        else if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent) {
+            DIRTSIM_ASSERT(
+                individual_.genome.has_value(),
+                "TrainingRunner: NES tile recurrent controller requires a genome");
+            nesTileBrain_ = std::make_unique<NesTileRecurrentBrain>(individual_.genome.value());
         }
     }
 
@@ -997,36 +1035,41 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
     return nesGameAdapter_->makeDuckSensoryData(sensoryInput);
 }
 
+NesTileSensoryData TrainingRunner::makeNesTileSensoryData() const
+{
+    DIRTSIM_ASSERT(
+        nesGameAdapter_ != nullptr, "TrainingRunner: NES tile sensory requires a game adapter");
+    DIRTSIM_ASSERT(nesDriver_ != nullptr, "TrainingRunner: NES tile sensory requires a NES driver");
+    DIRTSIM_ASSERT(
+        nesTileTokenizer_ != nullptr, "TrainingRunner: NES tile sensory requires a tile tokenizer");
+    DIRTSIM_ASSERT(
+        nesTileTokenizer_->getMode() == NesTileTokenizer::Mode::Frozen,
+        "TrainingRunner: NES tile sensory requires a frozen tile tokenizer");
+
+    const auto ppuSnapshot = nesDriver_->copyRuntimePpuSnapshot();
+    DIRTSIM_ASSERT(
+        ppuSnapshot.has_value(), "TrainingRunner: NES tile sensory requires a PPU snapshot");
+
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = nesControllerMask_,
+        .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
+        .lastGameState = nesLastGameState_,
+        .deltaTimeSeconds = TIMESTEP,
+    };
+    const NesTileSensoryBuilderInput tileInput =
+        nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
+    auto sensoryResult =
+        makeNesTileSensoryDataFromPpuSnapshot(ppuSnapshot.value(), *nesTileTokenizer_, tileInput);
+    DIRTSIM_ASSERT(
+        sensoryResult.isValue(),
+        "TrainingRunner: Failed to build NES tile sensory data: " + sensoryResult.errorValue());
+    return sensoryResult.value();
+}
+
 uint8_t TrainingRunner::inferNesControllerMask()
 {
     nesLastControllerTelemetry_.reset();
-    const DuckSensoryData sensory = makeNesDuckSensoryData();
-    uint8_t mask = 0;
-    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
-        && nesDuckBrainV2_) {
-        const ControllerOutput output = nesDuckBrainV2_->inferControllerOutput(sensory);
-
-        if (output.a) {
-            mask |= NesPolicyLayout::ButtonA;
-        }
-        if (output.b) {
-            mask |= NesPolicyLayout::ButtonB;
-        }
-
-        if (output.x <= -kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonLeft;
-        }
-        else if (output.x >= kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonRight;
-        }
-
-        if (output.y <= -kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonUp;
-        }
-        else if (output.y >= kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonDown;
-        }
-
+    const auto recordTelemetry = [this](const ControllerOutput& output, uint8_t mask) {
         nesLastControllerTelemetry_ = NesControllerTelemetry{
             .aRaw = output.aRaw,
             .bRaw = output.bRaw,
@@ -1037,6 +1080,22 @@ uint8_t TrainingRunner::inferNesControllerMask()
             .controllerSource = NesGameAdapterControllerSource::InferredPolicy,
             .controllerSourceFrameIndex = std::nullopt,
         };
+    };
+
+    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
+        && nesDuckBrainV2_) {
+        const DuckSensoryData sensory = makeNesDuckSensoryData();
+        const ControllerOutput output = nesDuckBrainV2_->inferControllerOutput(sensory);
+        const uint8_t mask = nesControllerMaskFromOutput(output);
+        recordTelemetry(output, mask);
+        return mask;
+    }
+
+    if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent && nesTileBrain_) {
+        const NesTileSensoryData sensory = makeNesTileSensoryData();
+        const ControllerOutput output = nesTileBrain_->inferControllerOutput(sensory);
+        const uint8_t mask = nesControllerMaskFromOutput(output);
+        recordTelemetry(output, mask);
         return mask;
     }
 

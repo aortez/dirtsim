@@ -263,6 +263,11 @@ the 896 visible tile positions.
   the tile sensory builder.
 - Added focused unit tests for NES tile brain genome layout, random genome sizing,
   compatibility checks, embedding lookup, and deterministic controller output.
+- Registered `NesTileRecurrent` as a NES-only scenario-driven training brain.
+- Wired `TrainingRunner` to construct the NES tile recurrent brain and map its shared
+  `ControllerOutput` to NES controller bits.
+- Added the NES tile sensory inference path, which builds `NesTileSensoryData` from the latest
+  PPU snapshot and fails loudly unless a frozen tile tokenizer is supplied.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 
@@ -296,25 +301,26 @@ Each PNG currently has four panels:
 
 ### Next Step
 
-Register and wire the NES-only recurrent tile brain so NES training can select it explicitly.
-This keeps non-NES scenarios on the existing `DuckSensoryData` and
-`DuckNeuralNetRecurrentBrainV2` path while allowing NES scenarios to use tile-specific inputs
-and genome layouts.
+Add a training/evaluation vocabulary bootstrap step. The tile brain now requires a frozen
+tokenizer at inference time, but callers still need a deterministic way to build that tokenizer
+before running a NES tile-brain evaluation.
 
 Planned pieces:
 
-- Register the new brain kind separately in `TrainingBrainRegistry`.
-- Wire NES training to select the NES tile brain explicitly, without changing the existing
-  palette RNN v2 brain.
-- Keep the palette RNN v2 path available for comparison runs and for non-NES scenarios.
+- Introduce a reusable NES tile vocabulary builder that samples one or more NES PPU snapshots and
+  populates `NesTileTokenizer` deterministically.
+- Freeze the tokenizer before passing it into `TrainingRunner`.
+- Keep tokenizer ownership outside `TrainingRunner` so a training run can reuse the same token IDs
+  across all individuals and generations.
+- Preserve the existing palette RNN v2 path for comparison runs.
 
 ### Tests For Next Step
 
-- NES training registry can construct the new brain kind without affecting existing brain
-  kinds.
-- TrainingRunner can instantiate the tile brain for NES scenario-driven evaluation.
-- Tile-brain NES inference builds `NesTileSensoryData` from the latest PPU snapshot and adapter
-  builder input, then maps shared `ControllerOutput` to controller buttons.
+- Vocabulary bootstrap assigns deterministic token IDs from equivalent snapshot samples.
+- Vocabulary bootstrap freezes the tokenizer before it is used for tile-brain inference.
+- Tile-brain NES evaluation with a frozen tokenizer advances at least one real NES frame and
+  records inferred-controller telemetry.
+- Missing or unfrozen tokenizer configuration fails loudly before silent fallback can occur.
 - Existing palette RNN v2 NES tests continue to pass unchanged.
 
 ### Open Decisions

@@ -433,6 +433,29 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
     EXPECT_TRUE(entry->isGenomeCompatible(genome));
 }
 
+TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesTileRecurrentEntry)
+{
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
+    EXPECT_TRUE(entry->requiresGenome);
+    EXPECT_TRUE(entry->allowsMutation);
+    ASSERT_TRUE(entry->createRandomGenome);
+    ASSERT_TRUE(entry->isGenomeCompatible);
+    ASSERT_TRUE(entry->getGenomeLayout);
+
+    const Genome genome = entry->createRandomGenome(rng_);
+    const GenomeLayout layout = entry->getGenomeLayout();
+
+    EXPECT_TRUE(entry->isGenomeCompatible(genome));
+    EXPECT_EQ(genome.weights.size(), static_cast<size_t>(layout.totalSize()));
+    EXPECT_NE(
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, ""),
+        nullptr);
+}
+
 TEST_F(TrainingRunnerTest, TrainingBrainRegistryDoesNotIncludeLegacyDuckNeuralNetEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
@@ -464,6 +487,64 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
     EXPECT_EQ(runner.getOrganism(), nullptr);
     EXPECT_EQ(status.nesFramesSurvived, 0u);
     EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerConstructsWithoutSpawningOrganism)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    const auto status = runner.step(0);
+
+    EXPECT_EQ(runner.getOrganism(), nullptr);
+    EXPECT_EQ(status.nesFramesSurvived, 0u);
+    EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerFailsLoudlyWithoutTokenizer)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const std::string previousDeathTestStyle = ::testing::FLAGS_gtest_death_test_style;
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_DEATH({ static_cast<void>(runner.step(1)); }, ".*");
+    ::testing::FLAGS_gtest_death_test_style = previousDeathTestStyle;
 }
 
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)

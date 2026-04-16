@@ -8,6 +8,7 @@
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
+#include "core/scenarios/nes/NesTileRecurrentBrain.h"
 
 namespace DirtSim {
 
@@ -230,6 +231,24 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     return DuckNeuralNetRecurrentBrainV2::isGenomeCompatible(genome);
                 },
             .getGenomeLayout = []() { return DuckNeuralNetRecurrentBrainV2::getGenomeLayout(); },
+        });
+
+    registry.registerBrain(
+        OrganismType::NES_DUCK,
+        TrainingBrainKind::NesTileRecurrent,
+        "",
+        BrainRegistryEntry{
+            .controlMode = BrainRegistryEntry::ControlMode::ScenarioDriven,
+            .requiresGenome = true,
+            .allowsMutation = true,
+            .spawn = nullptr,
+            .createRandomGenome =
+                [](std::mt19937& rng) { return NesTileRecurrentBrain::randomGenome(rng); },
+            .isGenomeCompatible =
+                [](const Genome& genome) {
+                    return NesTileRecurrentBrain::isGenomeCompatible(genome);
+                },
+            .getGenomeLayout = []() { return NesTileRecurrentBrain::getGenomeLayout(); },
         });
 
     return registry;
