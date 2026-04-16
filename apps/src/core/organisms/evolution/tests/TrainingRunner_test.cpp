@@ -237,6 +237,15 @@ public:
         return sensory;
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     int* controllerCallCount_ = nullptr;
     int* evaluateCallCount_ = nullptr;
@@ -285,6 +294,15 @@ public:
         sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
         sensory.delta_time_seconds = input.deltaTimeSeconds;
         return sensory;
+    }
+
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
     }
 
 private:
@@ -339,6 +357,15 @@ public:
         sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
         sensory.delta_time_seconds = input.deltaTimeSeconds;
         return sensory;
+    }
+
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
     }
 };
 

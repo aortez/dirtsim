@@ -246,13 +246,19 @@ the 896 visible tile positions.
   tile tokens using a persistent tokenizer.
 - Added `NesPlayerRelativeTileFrame`, which maps the visible 32x28 token frame into a
   lossless 63x55 player-relative token frame.
+- Added `NesTileSensoryBuilder`, which composes tile extraction, deterministic tokenization,
+  player-relative remapping, controller feedback, and scalar fields into `NesTileSensoryData`.
+- Added a `NesGameAdapter` tile-sensory input seam so game-specific RAM-derived player
+  position and scalar fields can be reused by tile observations.
 - Added `NesTileSensoryData`, a NES-only sensory container that carries tile visuals and
   scalar/controller/RAM inputs without carrying the legacy palette histogram grid.
 - Extracted a shared `ControllerOutput` type so the existing palette RNN and the planned
   NES tile RNN can return the same controller-shaped output.
 - Added focused unit tests for tile extraction, deterministic tokenization, token-frame
-  conversion, lossless player-relative remapping, and NES tile sensory scalar/controller
-  fields.
+  conversion, lossless player-relative remapping, NES tile sensory construction, and NES tile
+  sensory scalar/controller fields.
+- Added adapter-level tests proving SMB RAM-derived player position and scalar fields can feed
+  the tile sensory builder.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 

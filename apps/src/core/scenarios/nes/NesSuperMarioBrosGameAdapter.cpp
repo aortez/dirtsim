@@ -16,6 +16,9 @@ namespace {
 
 constexpr double kNesFrameHeight = 240.0;
 constexpr double kNesFrameWidth = 256.0;
+constexpr int16_t kSmbDefaultTilePlayerScreenX = 128;
+constexpr int16_t kSmbDefaultTilePlayerScreenY =
+    120 - static_cast<int16_t>(NesTileFrame::TopCropPixels);
 
 double normalizeSmb(double value, double maxValue)
 {
@@ -82,6 +85,8 @@ public:
         cachedFacingX_ = 0.0f;
         evaluator_.reset();
         cachedSpecialSenses_.fill(0.0);
+        cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
         setupFailureLogged_ = false;
     }
 
@@ -112,6 +117,8 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
 
         NesGameAdapterFrameOutput output;
         if (!input.memorySnapshot.has_value()) {
@@ -160,6 +167,10 @@ public:
                 normalizeViewCoordinate(static_cast<double>(state.playerXScreen), kNesFrameWidth);
             cachedSelfViewY_ =
                 normalizeViewCoordinate(static_cast<double>(state.playerYScreen), kNesFrameHeight);
+            cachedTilePlayerScreenX_ = static_cast<int16_t>(state.playerXScreen);
+            cachedTilePlayerScreenY_ = static_cast<int16_t>(
+                static_cast<int16_t>(state.playerYScreen)
+                - static_cast<int16_t>(NesTileFrame::TopCropPixels));
         }
 
         const NesSuperMarioBrosEvaluatorInput evaluatorInput{
@@ -186,6 +197,21 @@ public:
             input.controllerMask);
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .playerScreenX = cachedTilePlayerScreenX_,
+            .playerScreenY = cachedTilePlayerScreenY_,
+            .facingX = cachedFacingX_,
+            .selfViewX = cachedSelfViewX_,
+            .selfViewY = cachedSelfViewY_,
+            .controllerMask = input.controllerMask,
+            .specialSenses = cachedSpecialSenses_,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     NesPaletteClusterer paletteClusterer_;
     NesSuperMarioBrosRamExtractor extractor_;
@@ -195,6 +221,8 @@ private:
     float cachedFacingX_ = 0.0f;
     float cachedSelfViewX_ = 0.5f;
     float cachedSelfViewY_ = 0.5f;
+    int16_t cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+    int16_t cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
     bool setupFailureLogged_ = false;
 };
 

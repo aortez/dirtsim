@@ -13,6 +13,9 @@ namespace {
 constexpr float kFlappyBirdCenterXPx = 64.0f;
 constexpr float kFlappyFrameHeightPx = 240.0f;
 constexpr float kFlappyFrameWidthPx = 256.0f;
+constexpr int16_t kFlappyDefaultTilePlayerScreenX = 128;
+constexpr int16_t kFlappyDefaultTilePlayerScreenY =
+    120 - static_cast<int16_t>(NesTileFrame::TopCropPixels);
 constexpr uint8_t kNesStateTitle = 0;
 constexpr uint8_t kNesStateWaiting = 1;
 constexpr uint8_t kNesStateGameOver = 7;
@@ -80,6 +83,8 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTilePlayerScreenX_ = kFlappyDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kFlappyDefaultTilePlayerScreenY;
     }
 
     NesGameAdapterControllerOutput resolveControllerMask(
@@ -122,6 +127,8 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTilePlayerScreenX_ = kFlappyDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kFlappyDefaultTilePlayerScreenY;
 
         NesGameAdapterFrameOutput output;
         if (!extractor_.has_value() || !evaluator_.has_value() || !extractor_->isSupported()) {
@@ -143,8 +150,12 @@ public:
             evaluator_->evaluate(evaluatorInput.value());
         cachedSpecialSenses_ = makeFlappySpecialSenses(evaluation.features);
         cachedSelfViewX_ = normalizeViewCoordinate(kFlappyBirdCenterXPx, kFlappyFrameWidthPx);
-        cachedSelfViewY_ = normalizeViewCoordinate(
-            computeFlappyBirdCenterYPx(evaluatorInput->state), kFlappyFrameHeightPx);
+        const float birdCenterYPx = computeFlappyBirdCenterYPx(evaluatorInput->state);
+        cachedSelfViewY_ = normalizeViewCoordinate(birdCenterYPx, kFlappyFrameHeightPx);
+        cachedTilePlayerScreenX_ = static_cast<int16_t>(kFlappyBirdCenterXPx);
+        cachedTilePlayerScreenY_ = static_cast<int16_t>(
+            static_cast<int16_t>(birdCenterYPx)
+            - static_cast<int16_t>(NesTileFrame::TopCropPixels));
         output.done = evaluation.done;
         output.gameState = evaluation.gameState;
         output.rewardDelta = evaluation.rewardDelta;
@@ -164,6 +175,21 @@ public:
             input.controllerMask);
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .playerScreenX = cachedTilePlayerScreenX_,
+            .playerScreenY = cachedTilePlayerScreenY_,
+            .facingX = 0.0f,
+            .selfViewX = cachedSelfViewX_,
+            .selfViewY = cachedSelfViewY_,
+            .controllerMask = input.controllerMask,
+            .specialSenses = cachedSpecialSenses_,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     std::optional<NesFlappyParatroopaRamExtractor> extractor_ = std::nullopt;
     std::optional<NesFlappyBirdEvaluator> evaluator_ = std::nullopt;
@@ -173,6 +199,8 @@ private:
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
     float cachedSelfViewX_ = 0.5f;
     float cachedSelfViewY_ = 0.5f;
+    int16_t cachedTilePlayerScreenX_ = kFlappyDefaultTilePlayerScreenX;
+    int16_t cachedTilePlayerScreenY_ = kFlappyDefaultTilePlayerScreenY;
 };
 
 } // namespace

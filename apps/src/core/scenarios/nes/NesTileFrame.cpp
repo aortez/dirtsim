@@ -11,7 +11,7 @@ constexpr uint16_t kFullFrameHeightPixels = 240u;
 constexpr uint16_t kFullFrameWidthPixels = 256u;
 constexpr uint16_t kPatternBytesPerTile = 16u;
 constexpr uint16_t kTileSizePixels = 8u;
-constexpr uint16_t kTopCropPixels = 8u;
+constexpr uint16_t kTopCropPixels = NesTileFrame::TopCropPixels;
 
 size_t mirroredNametableOffset(uint16_t logicalOffset, uint8_t mirror)
 {

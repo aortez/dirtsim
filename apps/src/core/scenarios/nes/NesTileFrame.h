@@ -8,6 +8,7 @@
 namespace DirtSim {
 
 struct NesTileFrame {
+    static constexpr uint16_t TopCropPixels = 8u;
     static constexpr uint16_t VisibleHeightPixels = 224u;
     static constexpr uint16_t VisibleTileColumns = 32u;
     static constexpr uint16_t VisibleTileRows = 28u;

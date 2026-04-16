@@ -3,11 +3,14 @@
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesFlappyBirdEvaluator.h"
 #include "core/scenarios/nes/NesFlappyParatroopaRamExtractor.h"
+#include "core/scenarios/nes/NesTileSensoryBuilder.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <algorithm>
 #include <array>
 #include <gtest/gtest.h>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -116,6 +119,16 @@ void setEnemySlot(
     snapshot.cpuRam[kEnemyXPageAddrs[slot]] = xPage;
     snapshot.cpuRam[kEnemyXScreenAddrs[slot]] = xScreen;
     snapshot.cpuRam[kEnemyYScreenAddrs[slot]] = yScreen;
+}
+
+size_t relativeTileIndex(uint16_t column, uint16_t row)
+{
+    return static_cast<size_t>(row) * NesPlayerRelativeTileFrame::RelativeTileColumns + column;
+}
+
+size_t screenTileIndex(uint16_t column, uint16_t row)
+{
+    return static_cast<size_t>(row) * NesTileFrame::VisibleTileColumns + column;
 }
 } // namespace
 
@@ -268,6 +281,82 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     for (int i = 18; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         EXPECT_EQ(sensory.special_senses[i], 0.0) << "slot " << i << " should be zero";
     }
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterBuildsTileSensoryInput)
+{
+    std::unique_ptr<NesGameAdapter> adapter = createNesSuperMarioBrosGameAdapter();
+    ASSERT_NE(adapter, nullptr);
+    adapter->reset("smb");
+
+    SmolnesRuntime::MemorySnapshot snapshot = makeSmbSnapshot(
+        1,
+        2,
+        0x03,
+        0x80,
+        25,
+        static_cast<uint8_t>(static_cast<int8_t>(-40)),
+        120,
+        2,
+        0x08,
+        0x01,
+        3,
+        1);
+    snapshot.cpuRam[kSmbFacingDirectionAddr] = 1u;
+    snapshot.cpuRam[kSmbMovementDirectionAddr] = 1u;
+
+    const NesGameAdapterFrameInput frameInput{
+        .advancedFrames = 400,
+        .controllerMask = 0,
+        .paletteFrame = nullptr,
+        .memorySnapshot = snapshot,
+    };
+    (void)adapter->evaluateFrame(frameInput);
+
+    const uint8_t controllerMask = NesPolicyLayout::ButtonRight | NesPolicyLayout::ButtonA;
+    const NesGameAdapterSensoryInput sensoryInput{
+        .controllerMask = controllerMask,
+        .paletteFrame = nullptr,
+        .lastGameState = std::nullopt,
+        .deltaTimeSeconds = 0.016,
+    };
+    const NesTileSensoryBuilderInput tileInput =
+        adapter->makeNesTileSensoryBuilderInput(sensoryInput);
+
+    EXPECT_EQ(tileInput.playerScreenX, 128);
+    EXPECT_EQ(tileInput.playerScreenY, 120 - static_cast<int16_t>(NesTileFrame::TopCropPixels));
+    EXPECT_FLOAT_EQ(tileInput.facingX, 1.0f);
+    EXPECT_NEAR(tileInput.selfViewX, 128.0 / 256.0, 1e-6);
+    EXPECT_NEAR(tileInput.selfViewY, 120.0 / 240.0, 1e-6);
+    EXPECT_EQ(tileInput.controllerMask, controllerMask);
+    EXPECT_NEAR(tileInput.specialSenses[0], (1.0 * 4.0 + 2.0) / 32.0, 1e-6);
+    EXPECT_NEAR(tileInput.specialSenses[17], 1.0, 1e-6);
+    EXPECT_DOUBLE_EQ(tileInput.deltaTimeSeconds, 0.016);
+
+    NesTileTokenizer tokenizer;
+    const auto buildResult =
+        tokenizer.buildVocabulary(std::vector<NesTileTokenizer::TilePatternHash>{ 10u, 20u });
+    ASSERT_TRUE(buildResult.isValue()) << buildResult.errorValue();
+    tokenizer.freeze();
+
+    NesTileFrame tileFrame;
+    tileFrame.tilePatternHashes.fill(20u);
+    tileFrame.tilePatternHashes[screenTileIndex(16u, 14u)] = 10u;
+
+    const auto sensoryResult = makeNesTileSensoryDataFromTileFrame(tileFrame, tokenizer, tileInput);
+
+    ASSERT_TRUE(sensoryResult.isValue()) << sensoryResult.errorValue();
+    const NesTileSensoryData& sensory = sensoryResult.value();
+    EXPECT_EQ(sensory.tileFrame.playerTileColumn, 16);
+    EXPECT_EQ(sensory.tileFrame.playerTileRow, 14);
+    EXPECT_EQ(
+        sensory.tileFrame.tokens[relativeTileIndex(
+            NesPlayerRelativeTileFrame::AnchorTileColumn,
+            NesPlayerRelativeTileFrame::AnchorTileRow)],
+        1u);
+    EXPECT_FLOAT_EQ(sensory.previousControlX, 1.0f);
+    EXPECT_TRUE(sensory.previousA);
+    EXPECT_FALSE(sensory.previousB);
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesLeftFacingFromRam)

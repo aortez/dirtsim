@@ -5,6 +5,7 @@
 #include "core/scenarios/nes/NesControllerTelemetry.h"
 #include "core/scenarios/nes/NesFitnessDetails.h"
 #include "core/scenarios/nes/NesPaletteFrame.h"
+#include "core/scenarios/nes/NesTileSensoryBuilder.h"
 #include "core/scenarios/nes/SmolnesRuntime.h"
 
 #include <array>
@@ -75,6 +76,8 @@ public:
         const NesGameAdapterControllerInput& input) = 0;
     virtual NesGameAdapterFrameOutput evaluateFrame(const NesGameAdapterFrameInput& input) = 0;
     virtual DuckSensoryData makeDuckSensoryData(const NesGameAdapterSensoryInput& input) const = 0;
+    virtual NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const = 0;
 };
 
 std::unique_ptr<NesGameAdapter> createNesFlappyParatroopaGameAdapter();

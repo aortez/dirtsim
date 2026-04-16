@@ -8,6 +8,9 @@
 namespace DirtSim {
 
 namespace {
+constexpr int16_t kDefaultTilePlayerScreenX = 128;
+constexpr int16_t kDefaultTilePlayerScreenY =
+    120 - static_cast<int16_t>(NesTileFrame::TopCropPixels);
 constexpr uint64_t kSetupScriptEndFrame = 1200;
 constexpr size_t kPlayerADamagesAddr = 0x48;
 constexpr size_t kPlayerBDamagesAddr = 0x49;
@@ -51,6 +54,8 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTilePlayerScreenX_ = kDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kDefaultTilePlayerScreenY;
     }
 
     NesGameAdapterControllerOutput resolveControllerMask(
@@ -78,6 +83,8 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTilePlayerScreenX_ = kDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kDefaultTilePlayerScreenY;
 
         NesGameAdapterFrameOutput output;
         output.rewardDelta += static_cast<double>(input.advancedFrames);
@@ -163,6 +170,21 @@ public:
             input.controllerMask);
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .playerScreenX = cachedTilePlayerScreenX_,
+            .playerScreenY = cachedTilePlayerScreenY_,
+            .facingX = 0.0f,
+            .selfViewX = cachedSelfViewX_,
+            .selfViewY = cachedSelfViewY_,
+            .controllerMask = input.controllerMask,
+            .specialSenses = cachedSpecialSenses_,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     static constexpr double kDamageReward = 1.0;
     static constexpr double kStockReward = 600.0;
@@ -191,6 +213,8 @@ private:
     std::array<double, DuckSensoryData::SPECIAL_SENSE_COUNT> cachedSpecialSenses_{};
     float cachedSelfViewX_ = 0.5f;
     float cachedSelfViewY_ = 0.5f;
+    int16_t cachedTilePlayerScreenX_ = kDefaultTilePlayerScreenX;
+    int16_t cachedTilePlayerScreenY_ = kDefaultTilePlayerScreenY;
 };
 
 } // namespace
