@@ -628,7 +628,16 @@ void applyScenarioConfigUpdatesToActiveState(
                     }
                 }
 
-                if (state.bestPlayback_.runner && state.bestPlayback_.individual.has_value()
+                if (state.bestPlayback_.individual.has_value()
+                    && state.bestPlayback_.individual.value().scenarioId
+                        == state.trainingSpec.scenarioId
+                    && state.bestPlayback_.individual.value().brainKind
+                        == TrainingBrainKind::NesTileRecurrent) {
+                    state.bestPlayback_.clearRunner();
+                    state.bestPlayback_.nesTileTokenizer.reset();
+                }
+                else if (
+                    state.bestPlayback_.runner && state.bestPlayback_.individual.has_value()
                     && state.bestPlayback_.individual.value().scenarioId
                         == state.trainingSpec.scenarioId) {
                     const auto result = state.bestPlayback_.runner->setScenarioConfig(*config);

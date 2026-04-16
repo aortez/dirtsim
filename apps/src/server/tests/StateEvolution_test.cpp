@@ -4,6 +4,8 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
+#include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/Event.h"
 #include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionMutationControlsSet.h"
@@ -56,6 +58,20 @@ TrainingSpec makeTrainingSpec(int populationSize)
     spec.organismType = OrganismType::TREE;
     spec.population.push_back(population);
 
+    return spec;
+}
+
+TrainingSpec makeNesTileTrainingSpec(int populationSize)
+{
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NesTileRecurrent;
+    population.count = populationSize;
+    population.randomCount = populationSize;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+    spec.population.push_back(population);
     return spec;
 }
 
@@ -1871,6 +1887,56 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     ASSERT_TRUE(sawStateAdvance)
         << "Expected polling tick() to eventually drain completed work or advance the generation";
     EXPECT_TRUE(evolutionState.currentEval >= 1 || evolutionState.generation >= 1);
+}
+
+TEST(StateEvolutionTest, NesTileBestPlaybackBootstrapsTokenizer)
+{
+    const auto romPath = DirtSim::Test::resolveFlappyRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing for NES tile best playback test.";
+    }
+
+    TestStateMachineFixture fixture;
+    fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackEnabled = true;
+    fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackIntervalMs = 1;
+
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 100;
+    evolutionState.evolutionConfig.maxSimulationTime = 60.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.scenarioConfigOverride_ = ScenarioConfig{ nesConfig };
+    evolutionState.trainingSpec = makeNesTileTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    EvolutionWorkerGuard guard{ .evolution = &evolutionState,
+                                .stateMachine = fixture.stateMachine.get() };
+    ASSERT_EQ(evolutionState.population.size(), 1u);
+
+    evolutionState.bestPlayback_.individual = evolutionState.population.front();
+    evolutionState.bestPlayback_.fitness = 1.0;
+    evolutionState.bestPlayback_.generation = 0;
+
+    bool sawTelemetry = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline && !sawTelemetry) {
+        evolutionState.tick(*fixture.stateMachine);
+        sawTelemetry = evolutionState.bestPlayback_.runner
+            && evolutionState.bestPlayback_.runner->getNesLastControllerTelemetry().has_value();
+        if (!sawTelemetry) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    ASSERT_TRUE(sawTelemetry);
+    ASSERT_NE(evolutionState.bestPlayback_.nesTileTokenizer, nullptr);
+    EXPECT_EQ(
+        evolutionState.bestPlayback_.nesTileTokenizer->getMode(), NesTileTokenizer::Mode::Frozen);
 }
 
 /**

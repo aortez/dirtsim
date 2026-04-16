@@ -277,6 +277,12 @@ the 896 visible tile positions.
   `TrainingRunner`.
 - Added a ROM-gated executor test proving the tile brain advances through the normal visible
   evaluation path without manual tokenizer injection.
+- Extracted `NesTileTokenizerBootstrapper` so tokenizer bootstrap can be reused outside the
+  executor.
+- Wired best playback to bootstrap or reuse a frozen tile tokenizer for `NesTileRecurrent`
+  runners, and to rebuild it after scenario config changes.
+- Added a ROM-gated state test proving NES tile best playback advances through `Evolution::tick`
+  with a frozen tokenizer.
 - Added a disabled SMB diagnostic test that writes PNG comparisons for normal pixels,
   grayscale pattern pixels, screen-space tokens, and player-relative tokens.
 
@@ -310,16 +316,14 @@ Each PNG currently has four panels:
 
 ### Next Step
 
-Make `NesTileRecurrent` selectable and playable through the normal NES training state. The executor
-can now run tile-brain evaluation requests, but the state/UI path and best-playback path still need
-to construct tile-brain requests and supply compatible tokenizer bootstrap.
+Make `NesTileRecurrent` selectable through the normal NES training setup. The evaluator and
+best-playback paths can now run tile-brain requests, but the UI/state setup still defaults NES
+training to the palette RNN v2 path.
 
 Planned pieces:
 
 - Expose `NesTileRecurrent` as a NES brain choice while keeping the palette RNN v2 path available
   for comparison.
-- Ensure best-playback runners for tile-brain genomes bootstrap or reuse a frozen tokenizer before
-  constructing `TrainingRunner`.
 - Keep brain input/output metadata reusable so future NES brain variants can share controller
   outputs and typed sensory containers where appropriate.
 - Preserve the existing palette RNN v2 path for comparison runs.
@@ -328,8 +332,6 @@ Planned pieces:
 
 - NES training setup can select `NesTileRecurrent` and generate evaluation requests with matching
   genomes.
-- Best playback for a saved tile-brain NES genome advances at least one real NES frame with a
-  frozen tokenizer.
 - Palette RNN v2 remains selectable and does not create a tile tokenizer.
 - Existing palette RNN v2 NES tests continue to pass unchanged.
 

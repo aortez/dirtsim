@@ -37,6 +37,7 @@
 
 namespace DirtSim {
 class GenomeRepository;
+class NesTileTokenizer;
 namespace Server {
 namespace State {
 
@@ -139,6 +140,7 @@ struct Evolution {
 
     struct BestPlaybackState {
         std::optional<Individual> individual;
+        std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr;
         std::unique_ptr<TrainingRunner> runner;
         double fitness = 0.0;
         int generation = 0;

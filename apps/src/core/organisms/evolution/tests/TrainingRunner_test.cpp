@@ -21,9 +21,8 @@
 #include "core/scenarios/clock_scenario/ObstacleManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
-#include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
-#include "core/scenarios/nes/NesTileVocabularyBuilder.h"
+#include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -561,22 +560,16 @@ TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokeniz
 
     config_.maxSimulationTime = 1.0;
 
-    NesSmolnesScenarioDriver bootstrapDriver(Scenario::EnumType::NesFlappyParatroopa);
-    const auto setupResult = bootstrapDriver.setup();
-    ASSERT_TRUE(setupResult.isValue()) << setupResult.errorValue();
-    Timers bootstrapTimers;
-    const auto bootstrapStep = bootstrapDriver.step(bootstrapTimers, 0u);
-    ASSERT_GT(bootstrapStep.advancedFrames, 0u);
-    const auto ppuSnapshot = bootstrapDriver.copyRuntimePpuSnapshot();
-    ASSERT_TRUE(ppuSnapshot.has_value());
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
 
-    auto tokenizer = std::make_shared<NesTileTokenizer>();
-    NesTileVocabularyBuilder vocabularyBuilder;
-    vocabularyBuilder.addSnapshot(ppuSnapshot.value());
-    const auto vocabularyResult = vocabularyBuilder.buildFrozenTokenizer(*tokenizer);
-    ASSERT_TRUE(vocabularyResult.isValue()) << vocabularyResult.errorValue();
-    ASSERT_GT(vocabularyResult.value().uniquePatternCount, 0u);
-    EXPECT_EQ(tokenizer->getMode(), NesTileTokenizer::Mode::Frozen);
+    auto tokenizerResult = NesTileTokenizerBootstrapper::build(
+        Scenario::EnumType::NesFlappyParatroopa, ScenarioConfig{ nesConfig });
+    ASSERT_TRUE(tokenizerResult.isValue()) << tokenizerResult.errorValue();
+    ASSERT_NE(tokenizerResult.value(), nullptr);
+    EXPECT_EQ(tokenizerResult.value()->getMode(), NesTileTokenizer::Mode::Frozen);
 
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
@@ -595,7 +588,8 @@ TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokeniz
 
     TrainingRunner::Config runnerConfig{
         .brainRegistry = TrainingBrainRegistry::createDefault(),
-        .nesTileTokenizer = tokenizer,
+        .nesTileTokenizer = tokenizerResult.value(),
+        .scenarioConfigOverride = ScenarioConfig{ nesConfig },
     };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 

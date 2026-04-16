@@ -15,6 +15,7 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionMutationControlsSet.h"
 #include "server/api/EvolutionPauseSet.h"
@@ -435,6 +436,11 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
     return runner;
 }
 
+bool requiresNesTileTokenizer(const Evolution::Individual& individual)
+{
+    return individual.brainKind == TrainingBrainKind::NesTileRecurrent;
+}
+
 EvolutionSupport::EvaluationIndividual makeEvaluationIndividual(
     const Evolution::Individual& individual)
 {
@@ -576,6 +582,7 @@ GenomeRepository::StoreByHashResult storeManagedGenome(
 void Evolution::BestPlaybackState::reset()
 {
     individual.reset();
+    nesTileTokenizer.reset();
     runner.reset();
     fitness = 0.0;
     generation = 0;
@@ -2057,6 +2064,7 @@ void Evolution::setBestPlaybackSource(const Individual& individual, double fitne
 {
     bestPlayback_.individual = individual;
     bestPlayback_.individual->parentFitness.reset();
+    bestPlayback_.nesTileTokenizer.reset();
     bestPlayback_.fitness = fitness;
     bestPlayback_.generation = generation;
     bestPlayback_.duckNextPrimarySpawnLeftFirst = true;
@@ -2077,8 +2085,23 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
     }
 
     const auto startRunner = [&](std::optional<bool> spawnSideOverride) {
+        if (requiresNesTileTokenizer(bestPlayback_.individual.value())
+            && !bestPlayback_.nesTileTokenizer) {
+            auto tokenizerResult = NesTileTokenizerBootstrapper::build(
+                bestPlayback_.individual->scenarioId, scenarioConfigOverride_);
+            if (tokenizerResult.isError()) {
+                LOG_WARN(
+                    State,
+                    "Evolution: Failed to bootstrap NES tile tokenizer for best playback: {}",
+                    tokenizerResult.errorValue());
+                return;
+            }
+            bestPlayback_.nesTileTokenizer = std::move(tokenizerResult).value();
+        }
+
         const TrainingRunner::Config runnerConfig{
             .brainRegistry = brainRegistry_,
+            .nesTileTokenizer = bestPlayback_.nesTileTokenizer,
             .duckClockSpawnLeftFirst = spawnSideOverride,
             .duckClockSpawnRngSeed = std::nullopt,
             .scenarioConfigOverride = scenarioConfigOverride_,
@@ -2100,6 +2123,9 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         bestPlayback_.duckPrimarySpawnLeftFirst = primarySpawnSide.value_or(true);
         bestPlayback_.duckSecondPassActive = false;
         startRunner(primarySpawnSide);
+        if (!bestPlayback_.runner) {
+            return;
+        }
     }
 
     // Advance the sim at real-time pace: one step per TIMESTEP of wall-clock time.
