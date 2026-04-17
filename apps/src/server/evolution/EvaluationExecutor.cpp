@@ -7,6 +7,8 @@
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingRunner.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
+#include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +16,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -26,6 +29,36 @@ constexpr size_t kTopCommandSignatureLimit = 20;
 bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioId)
 {
     return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
+}
+
+bool requiresNesTileTokenizer(const EvaluationIndividual& individual)
+{
+    return individual.brainKind == TrainingBrainKind::NesTileRecurrent;
+}
+
+std::shared_ptr<NesTileTokenizer> resolveNesTileTokenizerForQueuedRequest(
+    const EvaluationRequest& request,
+    const std::optional<ScenarioConfig>& scenarioConfigOverride,
+    std::shared_ptr<NesTileTokenizer>& sharedNesTileTokenizer,
+    std::optional<Scenario::EnumType>& sharedNesTileScenarioId)
+{
+    if (!requiresNesTileTokenizer(request.individual)) {
+        return nullptr;
+    }
+
+    if (sharedNesTileTokenizer) {
+        DIRTSIM_ASSERT(
+            sharedNesTileScenarioId == request.individual.scenarioId,
+            "EvaluationExecutor: NES tile tokenizer cannot be shared across scenarios");
+        return sharedNesTileTokenizer;
+    }
+
+    auto tokenizerResult =
+        NesTileTokenizerBootstrapper::build(request.individual.scenarioId, scenarioConfigOverride);
+    DIRTSIM_ASSERT(tokenizerResult.isValue(), tokenizerResult.errorValue());
+    sharedNesTileTokenizer = std::move(tokenizerResult).value();
+    sharedNesTileScenarioId = request.individual.scenarioId;
+    return sharedNesTileTokenizer;
 }
 
 LightMode resolveVisibleLightMode(OrganismType organismType)
@@ -168,6 +201,7 @@ struct EvaluationPassResult {
 struct QueuedEvaluation {
     EvaluationRequest request;
     EvolutionConfig evolutionConfig;
+    std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr;
     std::optional<ScenarioConfig> scenarioConfigOverride = std::nullopt;
 };
 
@@ -248,6 +282,7 @@ std::optional<EvaluationPassResult> runEvaluationPass(
     GenomeRepository& genomeRepository,
     const TrainingBrainRegistry& brainRegistry,
     const std::optional<ScenarioConfig>& scenarioConfigOverride,
+    const std::shared_ptr<NesTileTokenizer>& nesTileTokenizer,
     std::optional<bool> duckClockSpawnLeftFirst,
     const FitnessModelBundle& fitnessModel,
     bool includeGenerationDetails,
@@ -259,6 +294,7 @@ std::optional<EvaluationPassResult> runEvaluationPass(
 {
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = brainRegistry,
+        .nesTileTokenizer = nesTileTokenizer,
         .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
         .duckClockSpawnRngSeed = std::nullopt,
         .nesRgbaOutputEnabled = visibleHandle != nullptr,
@@ -612,6 +648,7 @@ std::optional<CompletedEvaluation> runEvaluationTask(
         *impl.config.genomeRepository,
         impl.config.brainRegistry,
         initialQueued.scenarioConfigOverride,
+        initialQueued.nesTileTokenizer,
         primarySpawnSide,
         impl.config.fitnessModel,
         includeGenerationDetails,
@@ -648,6 +685,7 @@ std::optional<CompletedEvaluation> runEvaluationTask(
             *impl.config.genomeRepository,
             impl.config.brainRegistry,
             passQueued.scenarioConfigOverride,
+            passQueued.nesTileTokenizer,
             spawnSide,
             impl.config.fitnessModel,
             includeGenerationDetails,
@@ -673,11 +711,13 @@ std::optional<CompletedEvaluation> runEvaluationTask(
 QueuedEvaluation queuedEvaluationMake(
     const EvaluationRequest& request,
     const EvolutionConfig& evolutionConfig,
-    const std::optional<ScenarioConfig>& scenarioConfigOverride)
+    const std::optional<ScenarioConfig>& scenarioConfigOverride,
+    std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr)
 {
     return QueuedEvaluation{
         .request = request,
         .evolutionConfig = evolutionConfig,
+        .nesTileTokenizer = std::move(nesTileTokenizer),
         .scenarioConfigOverride = scenarioConfigOverride,
     };
 }
@@ -812,13 +852,25 @@ void EvaluationExecutor::generationBatchSubmit(
             "EvaluationExecutor: generation batch submission requires no active preview task");
     }
 
+    std::vector<QueuedEvaluation> queuedEvaluations;
+    queuedEvaluations.reserve(requests.size());
+    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer = impl_->config.nesTileTokenizer;
+    std::optional<Scenario::EnumType> sharedNesTileScenarioId = sharedNesTileTokenizer
+        ? std::optional<Scenario::EnumType>(impl_->config.trainingSpec.scenarioId)
+        : std::nullopt;
+    for (const auto& request : requests) {
+        auto nesTileTokenizer = resolveNesTileTokenizerForQueuedRequest(
+            request, scenarioConfigOverride, sharedNesTileTokenizer, sharedNesTileScenarioId);
+        queuedEvaluations.push_back(queuedEvaluationMake(
+            request, evolutionConfig, scenarioConfigOverride, std::move(nesTileTokenizer)));
+    }
+
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
         impl_->taskQueue.clear();
 
-        for (const auto& request : requests) {
-            impl_->taskQueue.push_back(
-                queuedEvaluationMake(request, evolutionConfig, scenarioConfigOverride));
+        for (auto& queued : queuedEvaluations) {
+            impl_->taskQueue.push_back(std::move(queued));
         }
     }
 
@@ -840,13 +892,25 @@ void EvaluationExecutor::robustnessPassSubmit(
 
     const int resolvedEvalCount = std::max(0, targetEvalCount);
 
+    std::vector<QueuedEvaluation> queuedEvaluations;
+    queuedEvaluations.reserve(static_cast<size_t>(resolvedEvalCount));
+    std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer = impl_->config.nesTileTokenizer;
+    std::optional<Scenario::EnumType> sharedNesTileScenarioId = sharedNesTileTokenizer
+        ? std::optional<Scenario::EnumType>(impl_->config.trainingSpec.scenarioId)
+        : std::nullopt;
+    for (int sampleOrdinal = 1; sampleOrdinal <= resolvedEvalCount; ++sampleOrdinal) {
+        EvaluationRequest sampleRequest = request;
+        sampleRequest.robustSampleOrdinal = sampleOrdinal;
+        auto nesTileTokenizer = resolveNesTileTokenizerForQueuedRequest(
+            sampleRequest, scenarioConfigOverride, sharedNesTileTokenizer, sharedNesTileScenarioId);
+        queuedEvaluations.push_back(queuedEvaluationMake(
+            sampleRequest, evolutionConfig, scenarioConfigOverride, std::move(nesTileTokenizer)));
+    }
+
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
-        for (int sampleOrdinal = 1; sampleOrdinal <= resolvedEvalCount; ++sampleOrdinal) {
-            EvaluationRequest sampleRequest = request;
-            sampleRequest.robustSampleOrdinal = sampleOrdinal;
-            impl_->taskQueue.push_back(
-                queuedEvaluationMake(sampleRequest, evolutionConfig, scenarioConfigOverride));
+        for (auto& queued : queuedEvaluations) {
+            impl_->taskQueue.push_back(std::move(queued));
         }
     }
 
@@ -863,9 +927,28 @@ std::optional<std::string> EvaluationExecutor::scenarioConfigOverrideSet(
 {
     {
         std::lock_guard<std::mutex> lock(impl_->taskMutex);
+        std::shared_ptr<NesTileTokenizer> sharedNesTileTokenizer = nullptr;
+        const bool needsNesTileTokenizer = std::any_of(
+            impl_->taskQueue.begin(), impl_->taskQueue.end(), [scenarioId](const auto& queued) {
+                return queued.request.individual.scenarioId == scenarioId
+                    && requiresNesTileTokenizer(queued.request.individual);
+            });
+        if (needsNesTileTokenizer) {
+            auto tokenizerResult =
+                NesTileTokenizerBootstrapper::build(scenarioId, scenarioConfigOverride);
+            if (tokenizerResult.isError()) {
+                return tokenizerResult.errorValue();
+            }
+            sharedNesTileTokenizer = std::move(tokenizerResult).value();
+            impl_->config.nesTileTokenizer = sharedNesTileTokenizer;
+        }
+
         for (auto& queued : impl_->taskQueue) {
             if (queued.request.individual.scenarioId == scenarioId) {
                 queued.scenarioConfigOverride = scenarioConfigOverride;
+                queued.nesTileTokenizer = requiresNesTileTokenizer(queued.request.individual)
+                    ? sharedNesTileTokenizer
+                    : nullptr;
             }
         }
     }
@@ -883,6 +966,9 @@ std::optional<std::string> EvaluationExecutor::scenarioConfigOverrideSet(
     std::lock_guard<std::mutex> lock(activeHandle->mutex);
     if (activeHandle->queued.request.individual.scenarioId != scenarioId) {
         return std::nullopt;
+    }
+    if (requiresNesTileTokenizer(activeHandle->queued.request.individual)) {
+        return "EvaluationExecutor: Active NES tile evaluations cannot change scenario config";
     }
 
     activeHandle->queued.scenarioConfigOverride = scenarioConfigOverride;

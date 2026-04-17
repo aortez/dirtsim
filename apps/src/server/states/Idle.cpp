@@ -9,6 +9,8 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/nes/NesTileBrainMetadata.h"
+#include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 #include "server/PlanRepository.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
@@ -55,10 +57,15 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
 
 bool isWarmGenomeCompatibleForPopulation(
     const GenomeMetadata& metadata,
+    Scenario::EnumType scenarioId,
     OrganismType organismType,
     const PopulationSpec& populationSpec,
     GenomePoolId genomePoolId)
 {
+    if (metadata.scenarioId != scenarioId) {
+        return false;
+    }
+
     if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
         return false;
     }
@@ -76,6 +83,46 @@ bool isWarmGenomeCompatibleForPopulation(
     }
 
     return true;
+}
+
+bool isNesTilePopulation(const PopulationSpec& populationSpec)
+{
+    return populationSpec.brainKind == TrainingBrainKind::NesTileRecurrent;
+}
+
+std::optional<ApiError> ensureNesTileCompatibilityMetadata(
+    Scenario::EnumType scenarioId,
+    const std::optional<ScenarioConfig>& scenarioConfigOverride,
+    std::optional<NesTileBrainCompatibilityMetadata>& expected)
+{
+    if (expected.has_value()) {
+        return std::nullopt;
+    }
+
+    auto tokenizerResult = NesTileTokenizerBootstrapper::build(scenarioId, scenarioConfigOverride);
+    if (tokenizerResult.isError()) {
+        return ApiError(
+            "Failed to build current NES tile compatibility metadata: "
+            + tokenizerResult.errorValue());
+    }
+
+    expected = makeNesTileBrainCompatibilityMetadata(*tokenizerResult.value());
+    return std::nullopt;
+}
+
+std::optional<std::string> validateNesTileWarmSeedMetadata(
+    const GenomeMetadata& metadata, const NesTileBrainCompatibilityMetadata& expected)
+{
+    if (!metadata.nesTileBrainCompatibility.has_value()) {
+        return std::nullopt;
+    }
+
+    const auto validation = validateNesTileBrainCompatibilityMetadata(
+        metadata.nesTileBrainCompatibility.value(), expected);
+    if (validation.isError()) {
+        return validation.errorValue();
+    }
+    return std::nullopt;
 }
 
 struct WarmSeedCandidate {
@@ -336,6 +383,7 @@ std::optional<ApiError> validateTrainingConfig(
     const Api::EvolutionStart::Command& command,
     ScenarioRegistry& registry,
     GenomeRepository& repo,
+    const std::optional<ScenarioConfig>& scenarioConfigOverride,
     TrainingSpec& outSpec,
     int& outPopulationSize,
     int& outWarmSeedInjectedCount)
@@ -355,19 +403,23 @@ std::optional<ApiError> validateTrainingConfig(
 
         switch (outSpec.organismType) {
             case OrganismType::TREE:
-                defaultSpec.brainKind = TrainingBrainKind::NeuralNet;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::NES_DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
-                defaultSpec.brainKind = TrainingBrainKind::Random;
+                defaultSpec.brainKind =
+                    defaultTrainingBrainKind(outSpec.organismType, outSpec.scenarioId);
                 break;
             default:
                 return ApiError("Unsupported organismType for training");
@@ -399,6 +451,7 @@ std::optional<ApiError> validateTrainingConfig(
     const int warmStartMinRobustEvalCount =
         resolveWarmStartMinRobustEvalCount(command, *scenarioMetadata);
     std::mt19937 warmSeedSamplingRng(std::random_device{}());
+    std::optional<NesTileBrainCompatibilityMetadata> expectedNesTileCompatibility;
     if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
         warmSeedCandidates = collectWarmSeedCandidates(repo, warmStartMinRobustEvalCount);
     }
@@ -435,10 +488,31 @@ std::optional<ApiError> validateTrainingConfig(
                     for (const auto& candidate : warmSeedCandidates) {
                         if (!isWarmGenomeCompatibleForPopulation(
                                 candidate.metadata,
+                                outSpec.scenarioId,
                                 outSpec.organismType,
                                 spec,
                                 scenarioMetadata->genomePoolId)) {
                             continue;
+                        }
+                        if (isNesTilePopulation(spec)
+                            && candidate.metadata.nesTileBrainCompatibility.has_value()) {
+                            if (auto error = ensureNesTileCompatibilityMetadata(
+                                    outSpec.scenarioId,
+                                    scenarioConfigOverride,
+                                    expectedNesTileCompatibility);
+                                error.has_value()) {
+                                return error.value();
+                            }
+                            const auto mismatch = validateNesTileWarmSeedMetadata(
+                                candidate.metadata, expectedNesTileCompatibility.value());
+                            if (mismatch.has_value()) {
+                                LOG_WARN(
+                                    State,
+                                    "Skipping incompatible NES tile warm seed {}: {}",
+                                    candidate.id.toShortString(),
+                                    mismatch.value());
+                                continue;
+                            }
                         }
                         if (std::find(
                                 spec.seedGenomes.begin(), spec.seedGenomes.end(), candidate.id)
@@ -516,6 +590,35 @@ std::optional<ApiError> validateTrainingConfig(
                 if (!repo.exists(id)) {
                     return ApiError("Seed genome not found: " + id.toShortString());
                 }
+                auto metadata = repo.getMetadata(id);
+                if (!metadata.has_value()) {
+                    return ApiError("Seed genome metadata not found: " + id.toShortString());
+                }
+                if (!isWarmGenomeCompatibleForPopulation(
+                        metadata.value(),
+                        outSpec.scenarioId,
+                        outSpec.organismType,
+                        spec,
+                        scenarioMetadata->genomePoolId)) {
+                    return ApiError(
+                        "Seed genome metadata incompatible with population: " + id.toShortString());
+                }
+                if (isNesTilePopulation(spec) && metadata->nesTileBrainCompatibility.has_value()) {
+                    if (auto error = ensureNesTileCompatibilityMetadata(
+                            outSpec.scenarioId,
+                            scenarioConfigOverride,
+                            expectedNesTileCompatibility);
+                        error.has_value()) {
+                        return error.value();
+                    }
+                    const auto mismatch = validateNesTileWarmSeedMetadata(
+                        metadata.value(), expectedNesTileCompatibility.value());
+                    if (mismatch.has_value()) {
+                        return ApiError(
+                            "Seed genome NES tile compatibility mismatch for " + id.toShortString()
+                            + ": " + mismatch.value());
+                    }
+                }
                 if (entry->isGenomeCompatible) {
                     auto genome = repo.get(id);
                     if (!genome.has_value()) {
@@ -588,6 +691,7 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
         cwc.command,
         dsm.getScenarioRegistry(),
         dsm.getGenomeRepository(),
+        std::nullopt,
         trainingSpec,
         populationSize,
         warmSeedInjectedCount);

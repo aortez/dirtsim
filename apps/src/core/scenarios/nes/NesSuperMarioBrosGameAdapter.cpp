@@ -6,9 +6,11 @@
 #include "core/scenarios/nes/NesSuperMarioBrosEvaluator.h"
 #include "core/scenarios/nes/NesSuperMarioBrosRamExtractor.h"
 #include "core/scenarios/nes/NesSuperMarioBrosSetupPolicy.h"
+#include "core/scenarios/nes/NesSuperMarioBrosTilePosition.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 namespace DirtSim {
 
@@ -16,6 +18,9 @@ namespace {
 
 constexpr double kNesFrameHeight = 240.0;
 constexpr double kNesFrameWidth = 256.0;
+constexpr int16_t kSmbDefaultTilePlayerScreenX = 128;
+constexpr int16_t kSmbDefaultTilePlayerScreenY =
+    120 - static_cast<int16_t>(NesTileFrame::TopCropPixels);
 
 double normalizeSmb(double value, double maxValue)
 {
@@ -82,6 +87,9 @@ public:
         cachedFacingX_ = 0.0f;
         evaluator_.reset();
         cachedSpecialSenses_.fill(0.0);
+        cachedTileGameplayState_ = std::nullopt;
+        cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
         setupFailureLogged_ = false;
     }
 
@@ -112,6 +120,9 @@ public:
         cachedSpecialSenses_.fill(0.0);
         cachedSelfViewX_ = 0.5f;
         cachedSelfViewY_ = 0.5f;
+        cachedTileGameplayState_ = std::nullopt;
+        cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+        cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
 
         NesGameAdapterFrameOutput output;
         if (!input.memorySnapshot.has_value()) {
@@ -160,6 +171,9 @@ public:
                 normalizeViewCoordinate(static_cast<double>(state.playerXScreen), kNesFrameWidth);
             cachedSelfViewY_ =
                 normalizeViewCoordinate(static_cast<double>(state.playerYScreen), kNesFrameHeight);
+            cachedTileGameplayState_ = state;
+            cachedTilePlayerScreenX_ = static_cast<int16_t>(state.playerXScreen);
+            cachedTilePlayerScreenY_ = makeNesSuperMarioBrosPlayerTileScreenY(state);
         }
 
         const NesSuperMarioBrosEvaluatorInput evaluatorInput{
@@ -186,6 +200,32 @@ public:
             input.controllerMask);
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        int16_t playerScreenX = cachedTilePlayerScreenX_;
+        int16_t playerScreenY = cachedTilePlayerScreenY_;
+        if (cachedTileGameplayState_.has_value()) {
+            playerScreenY =
+                makeNesSuperMarioBrosPlayerTileScreenY(cachedTileGameplayState_.value());
+            if (input.tileFrameScrollX.has_value()) {
+                playerScreenX = makeNesSuperMarioBrosPlayerTileScreenX(
+                    cachedTileGameplayState_.value(), input.tileFrameScrollX.value());
+            }
+        }
+
+        return NesTileSensoryBuilderInput{
+            .playerScreenX = playerScreenX,
+            .playerScreenY = playerScreenY,
+            .facingX = cachedFacingX_,
+            .selfViewX = cachedSelfViewX_,
+            .selfViewY = cachedSelfViewY_,
+            .controllerMask = input.controllerMask,
+            .specialSenses = cachedSpecialSenses_,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     NesPaletteClusterer paletteClusterer_;
     NesSuperMarioBrosRamExtractor extractor_;
@@ -195,6 +235,9 @@ private:
     float cachedFacingX_ = 0.0f;
     float cachedSelfViewX_ = 0.5f;
     float cachedSelfViewY_ = 0.5f;
+    std::optional<NesSuperMarioBrosState> cachedTileGameplayState_ = std::nullopt;
+    int16_t cachedTilePlayerScreenX_ = kSmbDefaultTilePlayerScreenX;
+    int16_t cachedTilePlayerScreenY_ = kSmbDefaultTilePlayerScreenY;
     bool setupFailureLogged_ = false;
 };
 

@@ -21,12 +21,15 @@
 #include "core/scenarios/clock_scenario/ObstacleManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
 #include "core/scenarios/nes/NesGameAdapterRegistry.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
+#include "core/scenarios/nes/NesTileTokenizerBootstrapper.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <memory>
 #include <random>
 
 namespace DirtSim {
@@ -237,6 +240,15 @@ public:
         return sensory;
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     int* controllerCallCount_ = nullptr;
     int* evaluateCallCount_ = nullptr;
@@ -285,6 +297,15 @@ public:
         sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
         sensory.delta_time_seconds = input.deltaTimeSeconds;
         return sensory;
+    }
+
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
     }
 
 private:
@@ -339,6 +360,15 @@ public:
         sensory.position = { DuckSensoryData::GRID_SIZE / 2, DuckSensoryData::GRID_SIZE / 2 };
         sensory.delta_time_seconds = input.deltaTimeSeconds;
         return sensory;
+    }
+
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
     }
 };
 
@@ -406,6 +436,29 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesScenarioDrivenEntry)
     EXPECT_TRUE(entry->isGenomeCompatible(genome));
 }
 
+TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesTileRecurrentEntry)
+{
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
+    EXPECT_TRUE(entry->requiresGenome);
+    EXPECT_TRUE(entry->allowsMutation);
+    ASSERT_TRUE(entry->createRandomGenome);
+    ASSERT_TRUE(entry->isGenomeCompatible);
+    ASSERT_TRUE(entry->getGenomeLayout);
+
+    const Genome genome = entry->createRandomGenome(rng_);
+    const GenomeLayout layout = entry->getGenomeLayout();
+
+    EXPECT_TRUE(entry->isGenomeCompatible(genome));
+    EXPECT_EQ(genome.weights.size(), static_cast<size_t>(layout.totalSize()));
+    EXPECT_NE(
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::DuckNeuralNetRecurrentV2, ""),
+        nullptr);
+}
+
 TEST_F(TrainingRunnerTest, TrainingBrainRegistryDoesNotIncludeLegacyDuckNeuralNetEntry)
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
@@ -437,6 +490,137 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
     EXPECT_EQ(runner.getOrganism(), nullptr);
     EXPECT_EQ(status.nesFramesSurvived, 0u);
     EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerConstructsWithoutSpawningOrganism)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    const auto status = runner.step(0);
+
+    EXPECT_EQ(runner.getOrganism(), nullptr);
+    EXPECT_EQ(status.nesFramesSurvived, 0u);
+    EXPECT_DOUBLE_EQ(status.nesRewardTotal, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerFailsLoudlyWithoutTokenizer)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const std::string previousDeathTestStyle = ::testing::FLAGS_gtest_death_test_style;
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_DEATH({ static_cast<void>(runner.step(1)); }, ".*");
+    ::testing::FLAGS_gtest_death_test_style = previousDeathTestStyle;
+}
+
+TEST_F(TrainingRunnerTest, NesTileRecurrentRunnerAdvancesWithBootstrappedTokenizer)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    config_.maxSimulationTime = 1.0;
+
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
+
+    auto tokenizerResult = NesTileTokenizerBootstrapper::build(
+        Scenario::EnumType::NesFlappyParatroopa, ScenarioConfig{ nesConfig });
+    ASSERT_TRUE(tokenizerResult.isValue()) << tokenizerResult.errorValue();
+    ASSERT_NE(tokenizerResult.value(), nullptr);
+    EXPECT_EQ(tokenizerResult.value()->getMode(), NesTileTokenizer::Mode::Frozen);
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const BrainRegistryEntry* entry =
+        registry.find(OrganismType::NES_DUCK, TrainingBrainKind::NesTileRecurrent, "");
+    ASSERT_NE(entry, nullptr);
+    ASSERT_TRUE(entry->createRandomGenome);
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NesTileRecurrent;
+    individual.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    individual.genome = entry->createRandomGenome(rng_);
+
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = TrainingBrainRegistry::createDefault(),
+        .nesTileTokenizer = tokenizerResult.value(),
+        .scenarioConfigOverride = ScenarioConfig{ nesConfig },
+    };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    TrainingRunner::Status status;
+    int steps = 0;
+    while (!runner.getNesLastControllerTelemetry().has_value()
+           && (status = runner.step(1)).state == TrainingRunner::State::Running) {
+        ++steps;
+        ASSERT_LT(steps, 10) << "Bootstrapped tile runner should produce telemetry promptly";
+    }
+
+    EXPECT_EQ(status.state, TrainingRunner::State::Running);
+    EXPECT_GT(status.nesFramesSurvived, 0u);
+    ASSERT_TRUE(runner.getNesLastControllerTelemetry().has_value());
+    const NesControllerTelemetry& telemetry = runner.getNesLastControllerTelemetry().value();
+    EXPECT_TRUE(std::isfinite(telemetry.xRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.yRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.aRaw));
+    EXPECT_TRUE(std::isfinite(telemetry.bRaw));
+
+    const Timers* timers = runner.getTimers();
+    ASSERT_NE(timers, nullptr);
+    EXPECT_GT(timers->getCallCount("nes_tile_controller_infer_total"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_sensory_total"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_extract"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_scroll_decode"), 0u);
+    EXPECT_EQ(timers->getCallCount("nes_tile_frame_pattern_pixels"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_tile_ids"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_frame_tile_hashes"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_build_sensory"), 0u);
+    EXPECT_GT(timers->getCallCount("nes_tile_brain_infer"), 0u);
 }
 
 TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerTerminatesBeforeInfiniteLoop)

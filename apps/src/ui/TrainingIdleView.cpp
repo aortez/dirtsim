@@ -220,7 +220,8 @@ void TrainingIdleView::createTrainingConfigPanel()
         userSettings_.trainingSpec,
         userSettings_.uiTraining.streamIntervalMs,
         userSettings_.uiTraining.bestPlaybackEnabled,
-        userSettings_.uiTraining.bestPlaybackIntervalMs);
+        userSettings_.uiTraining.bestPlaybackIntervalMs,
+        userSettings_.uiTraining.nesTileDebugView);
     LOG_INFO(Controls, "TrainingIdleView: Created Training config panel");
 }
 
@@ -288,6 +289,15 @@ void TrainingIdleView::setBestPlaybackIntervalMs(int value)
     if (trainingConfigPanel_) {
         trainingConfigPanel_->setBestPlaybackIntervalMs(
             userSettings_.uiTraining.bestPlaybackIntervalMs);
+    }
+}
+
+void TrainingIdleView::setNesTileDebugView(NesTileDebugView view)
+{
+    userSettings_.uiTraining.nesTileDebugView =
+        isNesTileDebugViewValid(view) ? view : NesTileDebugView::NormalVideo;
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setNesTileDebugView(userSettings_.uiTraining.nesTileDebugView);
     }
 }
 
@@ -360,16 +370,11 @@ void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId)
         PopulationSpec spec;
         switch (userSettings_.trainingSpec.organismType) {
             case OrganismType::TREE:
-                spec.brainKind = TrainingBrainKind::NeuralNet;
-                break;
             case OrganismType::DUCK:
-                spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
-                break;
             case OrganismType::NES_DUCK:
-                spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
-                break;
             case OrganismType::GOOSE:
-                spec.brainKind = TrainingBrainKind::Random;
+                spec.brainKind = defaultTrainingBrainKind(
+                    userSettings_.trainingSpec.organismType, userSettings_.trainingSpec.scenarioId);
                 break;
             default:
                 spec.brainKind = TrainingBrainKind::Random;

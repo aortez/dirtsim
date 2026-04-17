@@ -39,6 +39,10 @@ class GenomeRepository;
 class NesGameAdapter;
 class NesScenarioRuntime;
 class NesSmolnesScenarioDriver;
+class NesTileRecurrentBrain;
+enum class NesTileDebugView : uint8_t;
+struct NesTileSensoryData;
+class NesTileTokenizer;
 namespace Organism {
 class Body;
 }
@@ -118,6 +122,7 @@ public:
     struct Config {
         TrainingBrainRegistry brainRegistry;
         NesGameAdapterRegistry nesGameAdapterRegistry = NesGameAdapterRegistry::createDefault();
+        std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr;
         std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
         FrameTraceSink frameTraceSink = nullptr;
@@ -157,6 +162,8 @@ public:
     {
         return nesScenarioVideoFrame_;
     }
+    Result<ScenarioVideoFrame, std::string> makeNesTileDebugScenarioVideoFrame(
+        NesTileDebugView view) const;
     const WorldData* getWorldData() const;
     const std::vector<OrganismId>* getOrganismGrid() const;
     const Timers* getTimers() const;
@@ -197,6 +204,7 @@ private:
     void resolveBrainEntry();
     NesFrameTrace runScenarioDrivenStep();
     DuckSensoryData makeNesDuckSensoryData() const;
+    NesTileSensoryData makeNesTileSensoryData();
     uint8_t inferNesControllerMask();
     std::optional<DuckEvaluationArtifacts> buildDuckEvaluationArtifacts(const Duck& duck) const;
     void snapshotDuckEvaluationArtifacts();
@@ -226,6 +234,7 @@ private:
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;
     NesGameAdapterRegistry nesGameAdapterRegistry_;
+    std::shared_ptr<NesTileTokenizer> nesTileTokenizer_ = nullptr;
     std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
     std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
@@ -240,6 +249,7 @@ private:
     uint8_t nesControllerMask_ = 0;
     std::optional<NesPaletteFrame> nesPaletteFrame_ = std::nullopt;
     std::unique_ptr<DuckNeuralNetRecurrentBrainV2> nesDuckBrainV2_;
+    std::unique_ptr<NesTileRecurrentBrain> nesTileBrain_;
     std::optional<NesGameAdapterControllerOutput> nesLastControllerOutput_ = std::nullopt;
     std::optional<NesControllerTelemetry> nesLastControllerTelemetry_ = std::nullopt;
     std::optional<NesGameAdapterDebugState> nesLastDebugState_ = std::nullopt;

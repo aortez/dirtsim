@@ -92,6 +92,7 @@ public:
     void setStreamIntervalMs(int value);
     void setBestPlaybackEnabled(bool enabled);
     void setBestPlaybackIntervalMs(int value);
+    void setNesTileDebugView(NesTileDebugView view);
     void setMutationControls(
         const MutationConfig& mutationConfig,
         const EvolutionConfig& evolutionConfig,
@@ -148,6 +149,7 @@ private:
     static void onStreamIntervalChanged(lv_event_t* e);
     static void onBestPlaybackToggled(lv_event_t* e);
     static void onBestPlaybackIntervalChanged(lv_event_t* e);
+    static void onNesTileDebugViewChanged(lv_event_t* e);
     static void onMutationControlModeChanged(lv_event_t* e);
     static void onMutationControlsClicked(lv_event_t* e);
     static void onMutationPerturbationsChanged(lv_event_t* e);
@@ -207,6 +209,7 @@ private:
     lv_obj_t* streamIntervalStepper_ = nullptr;
     lv_obj_t* bestPlaybackToggle_ = nullptr;
     lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
+    lv_obj_t* nesTileDebugViewDropdown_ = nullptr;
     lv_obj_t* mutationControlsButton_ = nullptr;
     lv_obj_t* mutationControlsOverlay_ = nullptr;
     lv_obj_t* mutationControlsOverlayContent_ = nullptr;

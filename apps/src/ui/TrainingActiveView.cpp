@@ -1263,6 +1263,7 @@ void TrainingActiveView::destroyUI()
     streamIntervalStepper_ = nullptr;
     bestPlaybackToggle_ = nullptr;
     bestPlaybackIntervalStepper_ = nullptr;
+    nesTileDebugViewDropdown_ = nullptr;
     mutationControlsButton_ = nullptr;
     mutationControlsOverlay_ = nullptr;
     mutationControlsOverlayContent_ = nullptr;
@@ -1568,6 +1569,16 @@ void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
             lv_obj_set_style_opa(bestPlaybackIntervalStepper_, LV_OPA_50, 0);
         }
     }
+    if (nesTileDebugViewDropdown_) {
+        if (enabled) {
+            lv_obj_clear_state(nesTileDebugViewDropdown_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(nesTileDebugViewDropdown_, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_state(nesTileDebugViewDropdown_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(nesTileDebugViewDropdown_, LV_OPA_50, 0);
+        }
+    }
 
     if (!enabled) {
         bestNesControllerTelemetry_.reset();
@@ -1588,6 +1599,17 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
     if (bestPlaybackIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
             bestPlaybackIntervalStepper_, userSettings_.uiTraining.bestPlaybackIntervalMs);
+    }
+}
+
+void TrainingActiveView::setNesTileDebugView(NesTileDebugView view)
+{
+    userSettings_.uiTraining.nesTileDebugView =
+        isNesTileDebugViewValid(view) ? view : NesTileDebugView::NormalVideo;
+    if (nesTileDebugViewDropdown_) {
+        LVGLBuilder::ActionDropdownBuilder::setSelected(
+            nesTileDebugViewDropdown_,
+            nesTileDebugViewIndex(userSettings_.uiTraining.nesTileDebugView));
     }
 }
 
@@ -2688,6 +2710,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesTileDebugView(userSettings_.uiTraining.nesTileDebugView);
     setMutationControls(
         userSettings_.mutationConfig, userSettings_.evolutionConfig, mutationControlMode_);
     setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
@@ -2862,6 +2885,15 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
             .callback(onBestPlaybackIntervalChanged, this)
             .buildOrLog();
 
+    nesTileDebugViewDropdown_ =
+        LVGLBuilder::actionDropdown(streamPanel_)
+            .label("NES View")
+            .options(nesTileDebugViewOptions())
+            .selected(nesTileDebugViewIndex(userSettings_.uiTraining.nesTileDebugView))
+            .width(LV_PCT(100))
+            .callback(onNesTileDebugViewChanged, this)
+            .buildOrLog();
+
     scenarioControlsButton_ = LVGLBuilder::actionButton(streamPanel_)
                                   .text("Scenario Controls")
                                   .icon(LV_SYMBOL_RIGHT)
@@ -2951,6 +2983,7 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     updateScenarioButtonState();
     setBestPlaybackEnabled(userSettings_.uiTraining.bestPlaybackEnabled);
     setBestPlaybackIntervalMs(userSettings_.uiTraining.bestPlaybackIntervalMs);
+    setNesTileDebugView(userSettings_.uiTraining.nesTileDebugView);
     setMutationControls(
         userSettings_.mutationConfig, userSettings_.evolutionConfig, mutationControlMode_);
     setNesControllerOverlayEnabled(isNesControllerOverlayEnabled(userSettings_));
@@ -2972,6 +3005,7 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
             .nesControllerOverlayEnabled =
                 self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+            .nesTileDebugView = self->userSettings_.uiTraining.nesTileDebugView,
         });
 }
 
@@ -2991,6 +3025,7 @@ void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
             .nesControllerOverlayEnabled =
                 self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+            .nesTileDebugView = self->userSettings_.uiTraining.nesTileDebugView,
         });
 }
 
@@ -3011,6 +3046,27 @@ void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
             .nesControllerOverlayEnabled =
                 self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+            .nesTileDebugView = self->userSettings_.uiTraining.nesTileDebugView,
+        });
+}
+
+void TrainingActiveView::onNesTileDebugViewChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->nesTileDebugViewDropdown_) {
+        return;
+    }
+
+    self->setNesTileDebugView(nesTileDebugViewFromIndex(
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->nesTileDebugViewDropdown_)));
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->userSettings_.uiTraining.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
+            .nesControllerOverlayEnabled =
+                self->userSettings_.uiTraining.nesControllerOverlayEnabled,
+            .nesTileDebugView = self->userSettings_.uiTraining.nesTileDebugView,
         });
 }
 
@@ -3123,6 +3179,7 @@ void TrainingActiveView::onNesControllerOverlayToggled(lv_event_t* e)
             .bestPlaybackEnabled = self->userSettings_.uiTraining.bestPlaybackEnabled,
             .bestPlaybackIntervalMs = self->userSettings_.uiTraining.bestPlaybackIntervalMs,
             .nesControllerOverlayEnabled = enabled,
+            .nesTileDebugView = self->userSettings_.uiTraining.nesTileDebugView,
         });
 }
 

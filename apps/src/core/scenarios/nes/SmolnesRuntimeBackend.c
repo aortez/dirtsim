@@ -32,6 +32,7 @@ struct SmolnesRuntimeHandle {
     bool hasLatestFrame;
     bool hasLatestPaletteFrame;
     bool hasMemorySnapshot;
+    bool hasPpuSnapshot;
     bool healthy;
     bool stopRequested;
     bool threadJoinable;
@@ -110,12 +111,20 @@ struct SmolnesRuntimeHandle {
     uint8_t latestFrameController1State;
     uint64_t nextController1SequenceId;
     uint8_t cpuRamSnapshot[SMOLNES_RUNTIME_CPU_RAM_BYTES];
+    uint8_t chrSnapshot[SMOLNES_RUNTIME_PPU_CHR_BYTES];
     uint8_t latestFrame[SMOLNES_RUNTIME_FRAME_BYTES];
     uint8_t latestPaletteFrame[SMOLNES_RUNTIME_PALETTE_FRAME_BYTES];
+    uint8_t oamSnapshot[SMOLNES_RUNTIME_PPU_OAM_BYTES];
     uint8_t prgRamSnapshot[SMOLNES_RUNTIME_PRG_RAM_BYTES];
+    uint8_t vramSnapshot[SMOLNES_RUNTIME_PPU_VRAM_BYTES];
     uint8_t rendererStub;
     uint8_t textureStub;
     uint8_t windowStub;
+    uint16_t ppuVSnapshot;
+    uint8_t ppuFineXSnapshot;
+    uint8_t ppuMirrorSnapshot;
+    uint8_t ppuCtrlSnapshot;
+    uint8_t ppuMaskSnapshot;
 
     SmolnesApuSnapshot apuSnapshot;
     bool hasApuSnapshot;
@@ -392,8 +401,7 @@ static void flushPerInstructionAccumulatorsLocked(SmolnesRuntimeHandle* runtime)
     runtime->runtimeThreadPpuVisibleBgOnlyScalarPixels += gPpuVisibleBgOnlyScalarPixels;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedPixels += gPpuVisibleBgOnlyBatchedPixels;
     runtime->runtimeThreadPpuVisibleBgOnlyBatchedCalls += gPpuVisibleBgOnlyBatchedCalls;
-    runtime->runtimeThreadDeferredPpuFlushPpuRegisterCalls +=
-        gDeferredPpuFlushPpuRegisterCalls;
+    runtime->runtimeThreadDeferredPpuFlushPpuRegisterCalls += gDeferredPpuFlushPpuRegisterCalls;
     runtime->runtimeThreadDeferredPpuFlushPpuRegisterDots += gDeferredPpuFlushPpuRegisterDots;
     for (size_t registerIndex = 0; registerIndex < 8; ++registerIndex) {
         runtime->runtimeThreadDeferredPpuFlushPpuRegisterReadCalls[registerIndex] +=
@@ -411,8 +419,7 @@ static void flushPerInstructionAccumulatorsLocked(SmolnesRuntimeHandle* runtime)
     runtime->runtimeThreadDeferredPpuFlushMapperWriteDots += gDeferredPpuFlushMapperWriteDots;
     runtime->runtimeThreadDeferredPpuFlushDot256BoundaryCalls +=
         gDeferredPpuFlushDot256BoundaryCalls;
-    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryDots +=
-        gDeferredPpuFlushDot256BoundaryDots;
+    runtime->runtimeThreadDeferredPpuFlushDot256BoundaryDots += gDeferredPpuFlushDot256BoundaryDots;
     runtime->runtimeThreadPpuSpriteEvalMs += gPpuSpriteEvalAccumMs;
     runtime->runtimeThreadPpuSpriteEvalCalls += gPpuSpriteEvalAccumCalls;
     runtime->runtimeThreadPpuPostVisibleMs += gPpuPostVisibleAccumMs;
@@ -751,7 +758,8 @@ void smolnesRuntimeWrappedFrameExecutionBegin(void)
         runtime->latchedController1State = runtime->pendingController1State;
         runtime->latchedController1ObservedTimestampNs =
             runtime->pendingController1ObservedTimestampNs;
-        runtime->latchedController1RequestTimestampNs = runtime->pendingController1RequestTimestampNs;
+        runtime->latchedController1RequestTimestampNs =
+            runtime->pendingController1RequestTimestampNs;
         runtime->latchedController1SequenceId = runtime->pendingController1SequenceId;
         runtime->latchedController1AppliedFrameId =
             (runtime->latchedController1SequenceId == 0) ? 0 : (runtime->renderedFrames + 1);
@@ -934,10 +942,7 @@ void smolnesRuntimeWrappedPpuPhaseClear(void)
 }
 
 void smolnesRuntimeWrappedPpuVisibleBgOnlyStats(
-    uint16_t spanPixels,
-    uint16_t scalarPixels,
-    uint16_t batchedPixels,
-    uint16_t batchedCalls)
+    uint16_t spanPixels, uint16_t scalarPixels, uint16_t batchedPixels, uint16_t batchedCalls)
 {
     if (!gDetailedTimingEnabled) {
         return;
@@ -1187,9 +1192,9 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_DEFERRED_PPU_SAMPLE smolnesRuntimeWrappedDeferredPpuSample
 #define SMOLNES_DEFERRED_PPU_STEP_BEGIN smolnesRuntimeWrappedDeferredPpuStepBegin
 #define SMOLNES_DEFERRED_PPU_STEP_END smolnesRuntimeWrappedDeferredPpuStepEnd
-#define SMOLNES_DEFERRED_PPU_FLUSH_REASON(reason, dots)                                       \
+#define SMOLNES_DEFERRED_PPU_FLUSH_REASON(reason, dots) \
     smolnesRuntimeWrappedDeferredPpuFlushReason((reason), (dots))
-#define SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(reg, is_write, dots)                   \
+#define SMOLNES_DEFERRED_PPU_FLUSH_PPU_REGISTER_ACCESS(reg, is_write, dots) \
     smolnesRuntimeWrappedDeferredPpuFlushPpuRegisterAccess((reg), (is_write), (dots))
 #define SMOLNES_DEFERRED_PPU_FLUSH_REASON_PPU_REGISTER_ACCESS 1u
 #define SMOLNES_DEFERRED_PPU_FLUSH_REASON_OAM_DMA 2u
@@ -1197,14 +1202,14 @@ int smolnesRuntimeWrappedPollEvent(SDL_Event* event)
 #define SMOLNES_DEFERRED_PPU_FLUSH_REASON_DOT_256_BOUNDARY 4u
 #define SMOLNES_PPU_PHASE_SET smolnesRuntimeWrappedPpuPhaseSet
 #define SMOLNES_PPU_PHASE_CLEAR smolnesRuntimeWrappedPpuPhaseClear
-#define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)                                              \
-    do {                                                                                     \
-        if (gPpuStepActive) {                                                                \
-            smolnesRuntimeWrappedPpuPhaseSet(phase);                                         \
-        }                                                                                    \
+#define SMOLNES_PPU_PHASE_SET_IF_ACTIVE(phase)       \
+    do {                                             \
+        if (gPpuStepActive) {                        \
+            smolnesRuntimeWrappedPpuPhaseSet(phase); \
+        }                                            \
     } while (0)
 #define SMOLNES_PPU_VISIBLE_BG_ONLY_STATS(span_pixels, scalar_pixels, batched_pixels, batch_count) \
-    smolnesRuntimeWrappedPpuVisibleBgOnlyStats(                                                  \
+    smolnesRuntimeWrappedPpuVisibleBgOnlyStats(                                                    \
         (span_pixels), (scalar_pixels), (batched_pixels), (batch_count))
 #define SMOLNES_FRAME_SUBMIT_BEGIN smolnesRuntimeWrappedFrameSubmitBegin
 #define SMOLNES_FRAME_SUBMIT_END smolnesRuntimeWrappedFrameSubmitEnd
@@ -1228,15 +1233,15 @@ static void smolnesRuntimeWrappedApuClock(uint32_t cycles)
     smolnesApuClock(&gApuState, cycles);
 }
 
-#define SMOLNES_PIXEL_OUTPUT(offset, color, palette) \
-    do { \
-        if (gPixelOutputEnabled) { \
+#define SMOLNES_PIXEL_OUTPUT(offset, color, palette)                      \
+    do {                                                                  \
+        if (gPixelOutputEnabled) {                                        \
             uint8_t pi_ = palette_ram[(color) ? (palette) | (color) : 0]; \
-            frame_buffer_palette[offset] = pi_; \
-            if (gRgbaOutputEnabled) { \
-                frame_buffer[offset] = nes_palette_rgb565[pi_]; \
-            } \
-        } \
+            frame_buffer_palette[offset] = pi_;                           \
+            if (gRgbaOutputEnabled) {                                     \
+                frame_buffer[offset] = nes_palette_rgb565[pi_];           \
+            }                                                             \
+        }                                                                 \
     } while (0)
 #define SMOLNES_APU_CLOCK_BEGIN smolnesRuntimeWrappedApuClockBegin
 #define SMOLNES_APU_CLOCK_END smolnesRuntimeWrappedApuClockEnd
@@ -1657,6 +1662,17 @@ static void refreshMemorySnapshotLocked(SmolnesRuntimeHandle* runtime)
     const double snapshotStartMs = monotonicNowMs();
     memcpy(runtime->cpuRamSnapshot, ram, SMOLNES_RUNTIME_CPU_RAM_BYTES);
     memcpy(runtime->prgRamSnapshot, prgram, SMOLNES_RUNTIME_PRG_RAM_BYTES);
+    memcpy(runtime->oamSnapshot, oam, SMOLNES_RUNTIME_PPU_OAM_BYTES);
+    memcpy(runtime->vramSnapshot, vram, SMOLNES_RUNTIME_PPU_VRAM_BYTES);
+    runtime->ppuVSnapshot = V;
+    runtime->ppuFineXSnapshot = fine_x;
+    runtime->ppuMirrorSnapshot = mirror;
+    runtime->ppuCtrlSnapshot = ppuctrl;
+    runtime->ppuMaskSnapshot = ppumask;
+    for (uint16_t addr = 0; addr < SMOLNES_RUNTIME_PPU_CHR_BYTES; ++addr) {
+        runtime->chrSnapshot[addr] = *get_chr_byte(addr);
+    }
+    runtime->hasPpuSnapshot = true;
 
     // Copy APU snapshot and samples.
     smolnesApuGetSnapshot(&gApuState, &runtime->apuSnapshot);
@@ -1763,6 +1779,7 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     runtime->hasLatestFrame = false;
     runtime->hasLatestPaletteFrame = false;
     runtime->hasMemorySnapshot = false;
+    runtime->hasPpuSnapshot = false;
     runtime->runFramesWaitMs = 0.0;
     runtime->runFramesWaitCalls = 0;
     runtime->runtimeThreadIdleWaitMs = 0.0;
@@ -1827,8 +1844,16 @@ bool smolnesRuntimeStart(SmolnesRuntimeHandle* runtime, const char* romPath)
     memset(runtime->latestFrame, 0, sizeof(runtime->latestFrame));
     memset(runtime->latestPaletteFrame, 0, sizeof(runtime->latestPaletteFrame));
     memset(runtime->cpuRamSnapshot, 0, sizeof(runtime->cpuRamSnapshot));
+    memset(runtime->chrSnapshot, 0, sizeof(runtime->chrSnapshot));
+    memset(runtime->oamSnapshot, 0, sizeof(runtime->oamSnapshot));
     memset(runtime->prgRamSnapshot, 0, sizeof(runtime->prgRamSnapshot));
+    memset(runtime->vramSnapshot, 0, sizeof(runtime->vramSnapshot));
     memset(&runtime->apuSnapshot, 0, sizeof(runtime->apuSnapshot));
+    runtime->ppuVSnapshot = 0;
+    runtime->ppuFineXSnapshot = 0;
+    runtime->ppuMirrorSnapshot = 0;
+    runtime->ppuCtrlSnapshot = 0;
+    runtime->ppuMaskSnapshot = 0;
     runtime->hasApuSnapshot = false;
     memset(runtime->apuSampleBuffer, 0, sizeof(runtime->apuSampleBuffer));
     runtime->apuSampleBufferCount = 0;
@@ -2123,6 +2148,34 @@ bool smolnesRuntimeCopyMemorySnapshot(
     return true;
 }
 
+bool smolnesRuntimeCopyPpuSnapshot(
+    const SmolnesRuntimeHandle* runtime, SmolnesRuntimePpuSnapshot* snapshotOut)
+{
+    if (runtime == NULL || snapshotOut == NULL) {
+        return false;
+    }
+
+    SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
+    pthread_mutex_lock(&mutableRuntime->runtimeMutex);
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasPpuSnapshot) {
+        pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+        return false;
+    }
+
+    snapshotOut->frame_id = mutableRuntime->latestFrameId;
+    snapshotOut->v = mutableRuntime->ppuVSnapshot;
+    snapshotOut->fine_x = mutableRuntime->ppuFineXSnapshot;
+    snapshotOut->mirror = mutableRuntime->ppuMirrorSnapshot;
+    snapshotOut->ppuctrl = mutableRuntime->ppuCtrlSnapshot;
+    snapshotOut->ppumask = mutableRuntime->ppuMaskSnapshot;
+    memcpy(snapshotOut->chr, mutableRuntime->chrSnapshot, SMOLNES_RUNTIME_PPU_CHR_BYTES);
+    memcpy(snapshotOut->oam, mutableRuntime->oamSnapshot, SMOLNES_RUNTIME_PPU_OAM_BYTES);
+    memcpy(snapshotOut->vram, mutableRuntime->vramSnapshot, SMOLNES_RUNTIME_PPU_VRAM_BYTES);
+    pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
+    return true;
+}
+
 bool smolnesRuntimeCopyPrgRam(
     const SmolnesRuntimeHandle* runtime, uint8_t* buffer, uint32_t bufferSize)
 {
@@ -2290,8 +2343,9 @@ bool smolnesRuntimeCopyLiveSnapshot(
 
     SmolnesRuntimeHandle* mutableRuntime = (SmolnesRuntimeHandle*)runtime;
     pthread_mutex_lock(&mutableRuntime->runtimeMutex);
-    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy || !mutableRuntime->hasLatestFrame
-        || !mutableRuntime->hasLatestPaletteFrame || !mutableRuntime->hasMemorySnapshot) {
+    if (!mutableRuntime->threadRunning || !mutableRuntime->healthy
+        || !mutableRuntime->hasLatestFrame || !mutableRuntime->hasLatestPaletteFrame
+        || !mutableRuntime->hasMemorySnapshot) {
         pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
         return false;
     }
@@ -2312,7 +2366,8 @@ bool smolnesRuntimeCopyLiveSnapshot(
         mutableRuntime->latestFrameController1LatchTimestampNs;
     controllerSnapshotOut->controller1_request_timestamp_ns =
         mutableRuntime->latestFrameController1RequestTimestampNs;
-    controllerSnapshotOut->controller1_sequence_id = mutableRuntime->latestFrameController1SequenceId;
+    controllerSnapshotOut->controller1_sequence_id =
+        mutableRuntime->latestFrameController1SequenceId;
     controllerSnapshotOut->controller1_state = mutableRuntime->latestFrameController1State;
     pthread_mutex_unlock(&mutableRuntime->runtimeMutex);
     return true;

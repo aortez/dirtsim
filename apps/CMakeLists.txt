@@ -454,6 +454,18 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/nes/NesSuperMarioBrosResponseProbe.cpp
     src/core/scenarios/nes/NesSuperMarioBrosResponseTelemetry.cpp
     src/core/scenarios/nes/NesSuperMarioBrosSetupPolicy.cpp
+    src/core/scenarios/nes/NesSuperMarioBrosTilePosition.cpp
+    src/core/scenarios/nes/NesPlayerRelativeTileFrame.cpp
+    src/core/scenarios/nes/NesTileBrainMetadata.cpp
+    src/core/scenarios/nes/NesTileDebugRenderer.cpp
+    src/core/scenarios/nes/NesTileFrame.cpp
+    src/core/scenarios/nes/NesTileRecurrentBrain.cpp
+    src/core/scenarios/nes/NesTileSensoryBuilder.cpp
+    src/core/scenarios/nes/NesTileSensoryData.cpp
+    src/core/scenarios/nes/NesTileTokenFrame.cpp
+    src/core/scenarios/nes/NesTileTokenizerBootstrapper.cpp
+    src/core/scenarios/nes/NesTileTokenizer.cpp
+    src/core/scenarios/nes/NesTileVocabularyBuilder.cpp
     src/core/scenarios/nes/NesPaletteClusterer.cpp
     src/core/scenarios/nes/NesRamProbe.cpp
     src/core/scenarios/nes/NesRomValidation.cpp
@@ -963,6 +975,16 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/NesGameAdapterRegistry_test.cpp
     src/core/scenarios/tests/NesGameAdapterSpecialSenses_test.cpp
     src/core/scenarios/tests/NesPaletteClusterer_test.cpp
+    src/core/scenarios/tests/NesPlayerRelativeTileFrame_test.cpp
+    src/core/scenarios/tests/NesTileDebugRenderer_test.cpp
+    src/core/scenarios/tests/NesTileFrame_test.cpp
+    src/core/scenarios/tests/NesTileRecurrentBrain_test.cpp
+    src/core/scenarios/tests/NesTileSensoryBuilder_test.cpp
+    src/core/scenarios/tests/NesTileSensoryData_test.cpp
+    src/core/scenarios/tests/NesTileTokenFrame_test.cpp
+    src/core/scenarios/tests/NesTileTokenizerBootstrapper_test.cpp
+    src/core/scenarios/tests/NesTileTokenizer_test.cpp
+    src/core/scenarios/tests/NesTileVocabularyBuilder_test.cpp
     src/core/scenarios/tests/NesRamProbe_test.cpp
     src/core/scenarios/tests/NesSmolnesScenarioDriver_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosEvaluator_test.cpp
@@ -1071,6 +1093,7 @@ target_compile_options(dirtsim-tests-slow-physics PRIVATE ${DIRTSIM_WARNINGS})
 add_executable(dirtsim-tests-diagnostic
     src/tests/DiagonalWaterLeveling_test.cpp
     src/core/scenarios/tests/NesSuperMarioBrosRamProbe_test.cpp
+    src/core/scenarios/tests/NesSuperMarioBrosTileProbe_test.cpp
     src/core/scenarios/tests/SmolnesPpuPerformance_test.cpp
     src/core/organisms/tests/DuckHealth_test.cpp
     src/core/organisms/tests/DuckNeuralNetRecurrentBrainV2_test.cpp

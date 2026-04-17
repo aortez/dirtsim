@@ -8,6 +8,7 @@
 #include "core/scenarios/RainingConfig.h"
 #include "core/scenarios/SandboxConfig.h"
 #include "core/scenarios/TreeGerminationConfig.h"
+#include "core/scenarios/nes/NesTileDebugView.h"
 #include <cstdint>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
@@ -26,8 +27,9 @@ struct UiTrainingConfig {
     bool bestPlaybackEnabled = false;
     int bestPlaybackIntervalMs = 16;
     std::optional<bool> nesControllerOverlayEnabled = std::nullopt;
+    NesTileDebugView nesTileDebugView = NesTileDebugView::NormalVideo;
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 struct NesSessionSettings {

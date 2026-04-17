@@ -91,6 +91,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .brainKind = std::nullopt,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
 
         const auto result =
@@ -154,6 +156,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .brainKind = std::nullopt,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
 
         const auto result =
@@ -264,6 +268,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .brainKind = std::nullopt,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
+                .genomePoolId = GenomePoolId::DirtSim,
+                .nesTileBrainCompatibility = std::nullopt,
             };
 
             const auto result =
@@ -322,6 +328,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .brainKind = std::nullopt,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
+                .genomePoolId = GenomePoolId::DirtSim,
+                .nesTileBrainCompatibility = std::nullopt,
             };
 
             const auto result =

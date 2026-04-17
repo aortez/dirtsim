@@ -4,6 +4,7 @@
 #include "core/ScenarioId.h"
 #include "core/UUID.h"
 #include "core/organisms/OrganismType.h"
+#include "core/scenarios/nes/NesTileBrainMetadata.h"
 
 #include <cstdint>
 #include <nlohmann/json_fwd.hpp>
@@ -37,8 +38,9 @@ struct GenomeMetadata {
     std::optional<std::string> brainVariant;
     std::optional<UUID> trainingSessionId;
     GenomePoolId genomePoolId = GenomePoolId::DirtSim;
+    std::optional<NesTileBrainCompatibilityMetadata> nesTileBrainCompatibility;
 
-    using serialize = zpp::bits::members<14>;
+    using serialize = zpp::bits::members<15>;
 };
 
 void to_json(nlohmann::json& j, const GenomeMetadata& meta);

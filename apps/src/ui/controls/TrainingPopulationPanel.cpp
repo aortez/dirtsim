@@ -48,6 +48,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
         case OrganismType::NES_DUCK:
             return {
                 { TrainingBrainKind::DuckNeuralNetRecurrentV2, true },
+                { TrainingBrainKind::NesTileRecurrent, true },
             };
         case OrganismType::GOOSE:
             return {
@@ -813,7 +814,7 @@ void TrainingPopulationPanel::applySpecUpdates()
 }
 
 TrainingPopulationPanel::BrainOption TrainingPopulationPanel::resolveBrainOptionForScenario(
-    Scenario::EnumType /*scenarioId*/) const
+    Scenario::EnumType scenarioId) const
 {
     if (brainOptions_.empty()) {
         return {
@@ -821,6 +822,16 @@ TrainingPopulationPanel::BrainOption TrainingPopulationPanel::resolveBrainOption
             .requiresGenome = false,
         };
     }
+
+    const std::string defaultKind = defaultTrainingBrainKind(selectedOrganism_, scenarioId);
+    auto defaultIt =
+        std::find_if(brainOptions_.begin(), brainOptions_.end(), [&](const BrainOption& opt) {
+            return opt.kind == defaultKind;
+        });
+    if (defaultIt != brainOptions_.end()) {
+        return *defaultIt;
+    }
+
     return brainOptions_.front();
 }
 
@@ -837,13 +848,14 @@ void TrainingPopulationPanel::setBrainOptionsForOrganism(OrganismType organismTy
     auto it = std::find_if(brainOptions_.begin(), brainOptions_.end(), [&](const BrainOption& opt) {
         return opt.kind == brainKind_;
     });
-    if (it != brainOptions_.end()) {
+    if (!trainingSpec_.population.empty() && it != brainOptions_.end()) {
         brainKind_ = it->kind;
         brainRequiresGenome_ = it->requiresGenome;
     }
     else {
-        brainKind_ = brainOptions_.front().kind;
-        brainRequiresGenome_ = brainOptions_.front().requiresGenome;
+        const BrainOption option = resolveBrainOptionForScenario(selectedScenario_);
+        brainKind_ = option.kind;
+        brainRequiresGenome_ = option.requiresGenome;
     }
 
     rebuildBrainListButtons();
@@ -1387,6 +1399,11 @@ void TrainingPopulationPanel::onScenarioSelected(lv_event_t* e)
         return;
     }
     self->selectedScenario_ = selected;
+    if (self->trainingSpec_.population.empty()) {
+        const BrainOption option = self->resolveBrainOptionForScenario(self->selectedScenario_);
+        self->brainKind_ = option.kind;
+        self->brainRequiresGenome_ = option.requiresGenome;
+    }
     self->applySpecUpdates();
     self->syncUiFromState();
     self->setOrganismListVisible(false);
@@ -1406,9 +1423,9 @@ void TrainingPopulationPanel::onOrganismSelected(lv_event_t* e)
     self->selectedOrganism_ = it->second;
     self->selectedScenario_ =
         self->coerceScenarioToOrganism(self->selectedScenario_, self->selectedOrganism_);
-    self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->trainingSpec_.population.clear();
     self->populationTotal_ = 0;
+    self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->applySpecUpdates();
     self->syncUiFromState();
     self->setOrganismListVisible(false);

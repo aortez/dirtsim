@@ -262,6 +262,11 @@ UserSettings sanitizeUserSettings(
         recordUpdate("uiTraining.bestPlaybackIntervalMs clamped to 1");
     }
 
+    if (!isNesTileDebugViewValid(settings.uiTraining.nesTileDebugView)) {
+        settings.uiTraining.nesTileDebugView = NesTileDebugView::NormalVideo;
+        recordUpdate("uiTraining.nesTileDebugView reset to NormalVideo");
+    }
+
     if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
         settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
         recordUpdate("trainingResumePolicy reset to WarmFromBest");
@@ -647,7 +652,16 @@ void applyScenarioConfigUpdatesToActiveState(
                     }
                 }
 
-                if (state.bestPlayback_.runner && state.bestPlayback_.individual.has_value()
+                if (state.bestPlayback_.individual.has_value()
+                    && state.bestPlayback_.individual.value().scenarioId
+                        == state.trainingSpec.scenarioId
+                    && state.bestPlayback_.individual.value().brainKind
+                        == TrainingBrainKind::NesTileRecurrent) {
+                    state.bestPlayback_.clearRunner();
+                    state.bestPlayback_.nesTileTokenizer.reset();
+                }
+                else if (
+                    state.bestPlayback_.runner && state.bestPlayback_.individual.has_value()
                     && state.bestPlayback_.individual.value().scenarioId
                         == state.trainingSpec.scenarioId) {
                     const auto result = state.bestPlayback_.runner->setScenarioConfig(*config);
@@ -1678,6 +1692,8 @@ void StateMachine::handleEvent(const Event& event)
                 .brainKind = std::nullopt,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
+                .genomePoolId = GenomePoolId::DirtSim,
+                .nesTileBrainCompatibility = std::nullopt,
             });
 
         repo.store(cwc.command.id, genome, meta);

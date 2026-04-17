@@ -37,6 +37,7 @@
 
 namespace DirtSim {
 class GenomeRepository;
+class NesTileTokenizer;
 namespace Server {
 namespace State {
 
@@ -115,6 +116,8 @@ struct Evolution {
 
     std::optional<ScenarioConfig> scenarioConfigOverride_ = std::nullopt;
     std::unique_ptr<EvolutionSupport::EvaluationExecutor> executor_;
+    std::shared_ptr<NesTileTokenizer> nesTileTokenizer_ = nullptr;
+    std::optional<NesTileBrainCompatibilityMetadata> nesTileBrainCompatibility_ = std::nullopt;
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
@@ -139,6 +142,7 @@ struct Evolution {
 
     struct BestPlaybackState {
         std::optional<Individual> individual;
+        std::shared_ptr<NesTileTokenizer> nesTileTokenizer = nullptr;
         std::unique_ptr<TrainingRunner> runner;
         double fitness = 0.0;
         int generation = 0;

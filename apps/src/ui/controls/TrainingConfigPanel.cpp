@@ -32,7 +32,8 @@ TrainingConfigPanel::TrainingConfigPanel(
     TrainingSpec& trainingSpec,
     int& streamIntervalMs,
     bool& bestPlaybackEnabled,
-    int& bestPlaybackIntervalMs)
+    int& bestPlaybackIntervalMs,
+    NesTileDebugView& nesTileDebugView)
     : container_(container),
       eventSink_(eventSink),
       uiServices_(uiServices),
@@ -44,7 +45,8 @@ TrainingConfigPanel::TrainingConfigPanel(
       trainingSpec_(trainingSpec),
       streamIntervalMs_(streamIntervalMs),
       bestPlaybackEnabled_(bestPlaybackEnabled),
-      bestPlaybackIntervalMs_(bestPlaybackIntervalMs)
+      bestPlaybackIntervalMs_(bestPlaybackIntervalMs),
+      nesTileDebugView_(nesTileDebugView)
 {
     collapsedWidth_ = ExpandablePanel::DefaultWidth;
     const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
@@ -126,6 +128,15 @@ void TrainingConfigPanel::setBestPlaybackIntervalMs(int value)
     if (bestPlaybackIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(
             bestPlaybackIntervalStepper_, bestPlaybackIntervalMs_);
+    }
+}
+
+void TrainingConfigPanel::setNesTileDebugView(NesTileDebugView view)
+{
+    nesTileDebugView_ = isNesTileDebugViewValid(view) ? view : NesTileDebugView::NormalVideo;
+    if (nesTileDebugViewDropdown_) {
+        LVGLBuilder::ActionDropdownBuilder::setSelected(
+            nesTileDebugViewDropdown_, nesTileDebugViewIndex(nesTileDebugView_));
     }
 }
 
@@ -439,6 +450,14 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                                        .callback(onBestPlaybackIntervalChanged, this)
                                        .buildOrLog();
 
+    nesTileDebugViewDropdown_ = LVGLBuilder::actionDropdown(parent)
+                                    .label("NES View")
+                                    .options(nesTileDebugViewOptions())
+                                    .selected(nesTileDebugViewIndex(nesTileDebugView_))
+                                    .width(LV_PCT(95))
+                                    .callback(onNesTileDebugViewChanged, this)
+                                    .buildOrLog();
+
     statusLabel_ = lv_label_create(parent);
     lv_label_set_text(statusLabel_, "");
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(kStatusReadyColor), 0);
@@ -517,6 +536,7 @@ void TrainingConfigPanel::updateControlsEnabled()
     setEnabled(streamIntervalStepper_, true);
     setEnabled(bestPlaybackToggle_, true);
     setEnabled(bestPlaybackIntervalStepper_, bestPlaybackEnabled_);
+    setEnabled(nesTileDebugViewDropdown_, bestPlaybackEnabled_);
 
     if (enabled) {
         setEnabled(mutationPerturbationsStepper_, true);
@@ -743,6 +763,7 @@ void TrainingConfigPanel::onStreamIntervalChanged(lv_event_t* e)
             .intervalMs = value,
             .bestPlaybackEnabled = self->bestPlaybackEnabled_,
             .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+            .nesTileDebugView = self->nesTileDebugView_,
         });
 }
 
@@ -759,6 +780,7 @@ void TrainingConfigPanel::onBestPlaybackToggled(lv_event_t* e)
             .intervalMs = self->streamIntervalMs_,
             .bestPlaybackEnabled = self->bestPlaybackEnabled_,
             .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+            .nesTileDebugView = self->nesTileDebugView_,
         });
 }
 
@@ -775,6 +797,23 @@ void TrainingConfigPanel::onBestPlaybackIntervalChanged(lv_event_t* e)
             .intervalMs = self->streamIntervalMs_,
             .bestPlaybackEnabled = self->bestPlaybackEnabled_,
             .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+            .nesTileDebugView = self->nesTileDebugView_,
+        });
+}
+
+void TrainingConfigPanel::onNesTileDebugViewChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->nesTileDebugViewDropdown_) return;
+
+    self->nesTileDebugView_ = nesTileDebugViewFromIndex(
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->nesTileDebugViewDropdown_));
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->streamIntervalMs_,
+            .bestPlaybackEnabled = self->bestPlaybackEnabled_,
+            .bestPlaybackIntervalMs = self->bestPlaybackIntervalMs_,
+            .nesTileDebugView = self->nesTileDebugView_,
         });
 }
 

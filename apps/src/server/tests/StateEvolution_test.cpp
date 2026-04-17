@@ -4,6 +4,10 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/nes/NesPlayerRelativeTileFrame.h"
+#include "core/scenarios/nes/NesTileDebugView.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
+#include "core/scenarios/tests/NesTestRomPath.h"
 #include "server/Event.h"
 #include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionMutationControlsSet.h"
@@ -12,6 +16,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TimerStatsGet.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingResult.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
@@ -59,6 +64,20 @@ TrainingSpec makeTrainingSpec(int populationSize)
     return spec;
 }
 
+TrainingSpec makeNesTileTrainingSpec(int populationSize)
+{
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NesTileRecurrent;
+    population.count = populationSize;
+    population.randomCount = populationSize;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
+    spec.organismType = OrganismType::NES_DUCK;
+    spec.population.push_back(population);
+    return spec;
+}
+
 GenomeMetadata makeManagedGenomeMetadata(
     const std::string& name,
     double fitness,
@@ -81,6 +100,7 @@ GenomeMetadata makeManagedGenomeMetadata(
         .brainVariant = std::nullopt,
         .trainingSessionId = UUID::generate(),
         .genomePoolId = genomePoolId,
+        .nesTileBrainCompatibility = std::nullopt,
     };
 }
 
@@ -122,6 +142,19 @@ std::optional<Api::EvolutionProgress> latestEvolutionProgress(const MockWebSocke
         const auto envelope = Network::deserialize_envelope(it->data);
         if (envelope.message_type == Api::EvolutionProgress::name()) {
             return Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Api::TrainingBestPlaybackFrame> latestTrainingBestPlaybackFrame(
+    const MockWebSocketService& mockWs)
+{
+    for (auto it = mockWs.sentClientBinaries().rbegin(); it != mockWs.sentClientBinaries().rend();
+         ++it) {
+        const auto envelope = Network::deserialize_envelope(it->data);
+        if (envelope.message_type == Api::TrainingBestPlaybackFrame::name()) {
+            return Network::deserialize_payload<Api::TrainingBestPlaybackFrame>(envelope.payload);
         }
     }
     return std::nullopt;
@@ -238,6 +271,74 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToDuckRecurrentBrainForNesFlappyO
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::NesFlappyParatroopa;
     cmd.organismType = OrganismType::NES_DUCK;
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const PopulationSpec& population = evolution.trainingSpec.population.front();
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::DuckNeuralNetRecurrentV2);
+    EXPECT_EQ(population.count, 3);
+    EXPECT_EQ(population.randomCount, 3);
+}
+
+TEST(StateEvolutionTest, EvolutionStartDefaultsToNesTileRecurrentBrainForNesSuperMarioBros)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const PopulationSpec& population = evolution.trainingSpec.population.front();
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::NesTileRecurrent);
+    EXPECT_EQ(population.count, 3);
+    EXPECT_EQ(population.randomCount, 3);
+}
+
+TEST(StateEvolutionTest, EvolutionStartPreservesExplicitDuckRecurrentBrainForNesSuperMarioBros)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::NesSuperMarioBros;
+    cmd.organismType = OrganismType::NES_DUCK;
+    cmd.population.push_back(
+        PopulationSpec{
+            .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
+            .brainVariant = std::nullopt,
+            .count = 3,
+            .seedGenomes = {},
+            .randomCount = 3,
+        });
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
         capturedResponse = std::move(response);
@@ -432,6 +533,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(bestId, bestGenome, bestMetadata);
     repo.markAsBest(bestId);
@@ -491,6 +594,8 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(bestId, bestGenome, bestMetadata);
     repo.markAsBest(bestId);
@@ -554,6 +659,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
             .brainKind = TrainingBrainKind::NeuralNet,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     };
 
@@ -637,6 +744,8 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeSkipsIncompatibleGenomeLayouts)
             .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     };
 
@@ -703,6 +812,7 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeUsesSingleEvalSeedsForDetermini
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
         .genomePoolId = GenomePoolId::Smb,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(smbBestId, makeDuckRecurrentV2Genome(0.5f), smbBestMetadata);
 
@@ -1417,6 +1527,8 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
     repo.markAsBest(seedId);
@@ -1546,6 +1658,8 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
 
@@ -1634,6 +1748,8 @@ TEST(StateEvolutionTest, AdaptiveBudgetedMutationTracksPhaseAndKeepsPopulationSi
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = std::nullopt,
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
 
@@ -1871,6 +1987,73 @@ TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     ASSERT_TRUE(sawStateAdvance)
         << "Expected polling tick() to eventually drain completed work or advance the generation";
     EXPECT_TRUE(evolutionState.currentEval >= 1 || evolutionState.generation >= 1);
+}
+
+TEST(StateEvolutionTest, NesTileBestPlaybackBootstrapsTokenizer)
+{
+    const auto romPath = DirtSim::Test::resolveFlappyRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing for NES tile best playback test.";
+    }
+
+    TestStateMachineFixture fixture;
+    eventSubscribe(fixture, "events");
+    fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackEnabled = true;
+    fixture.stateMachine->getUserSettings().uiTraining.bestPlaybackIntervalMs = 1;
+    fixture.stateMachine->getUserSettings().uiTraining.nesTileDebugView =
+        NesTileDebugView::PlayerRelativeTokens;
+
+    Config::NesFlappyParatroopa nesConfig = std::get<Config::NesFlappyParatroopa>(
+        makeDefaultConfig(Scenario::EnumType::NesFlappyParatroopa));
+    nesConfig.romPath = romPath.value().string();
+    nesConfig.requireSmolnesMapper = true;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 100;
+    evolutionState.evolutionConfig.maxSimulationTime = 60.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.scenarioConfigOverride_ = ScenarioConfig{ nesConfig };
+    evolutionState.trainingSpec = makeNesTileTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+    EvolutionWorkerGuard guard{ .evolution = &evolutionState,
+                                .stateMachine = fixture.stateMachine.get() };
+    ASSERT_EQ(evolutionState.population.size(), 1u);
+
+    evolutionState.bestPlayback_.individual = evolutionState.population.front();
+    evolutionState.bestPlayback_.fitness = 1.0;
+    evolutionState.bestPlayback_.generation = 0;
+
+    bool sawTelemetry = false;
+    std::optional<Api::TrainingBestPlaybackFrame> debugFrame;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline
+           && (!sawTelemetry || !debugFrame.has_value()
+               || !debugFrame->scenarioVideoFrame.has_value())) {
+        evolutionState.tick(*fixture.stateMachine);
+        sawTelemetry = evolutionState.bestPlayback_.runner
+            && evolutionState.bestPlayback_.runner->getNesLastControllerTelemetry().has_value();
+        debugFrame = latestTrainingBestPlaybackFrame(*fixture.mockWebSocketService);
+        if (!sawTelemetry || !debugFrame.has_value()
+            || !debugFrame->scenarioVideoFrame.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    ASSERT_TRUE(sawTelemetry);
+    ASSERT_TRUE(debugFrame.has_value());
+    ASSERT_TRUE(debugFrame->scenarioVideoFrame.has_value());
+    EXPECT_EQ(
+        debugFrame->scenarioVideoFrame->width,
+        NesPlayerRelativeTileFrame::RelativeTileColumns
+            * NesPlayerRelativeTileFrame::TileSizePixels);
+    EXPECT_EQ(
+        debugFrame->scenarioVideoFrame->height,
+        NesPlayerRelativeTileFrame::RelativeTileRows * NesPlayerRelativeTileFrame::TileSizePixels);
+    ASSERT_NE(evolutionState.bestPlayback_.nesTileTokenizer, nullptr);
+    EXPECT_EQ(
+        evolutionState.bestPlayback_.nesTileTokenizer->getMode(), NesTileTokenizer::Mode::Frozen);
 }
 
 /**

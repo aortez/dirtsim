@@ -603,6 +603,8 @@ TEST(TrainingRunnerTraceHarnessTest, ResolveConfiguredGenomeSelectionLoadsReposi
                 .brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2,
                 .brainVariant = std::nullopt,
                 .trainingSessionId = std::nullopt,
+                .genomePoolId = GenomePoolId::Smb,
+                .nesTileBrainCompatibility = std::nullopt,
             });
     }
 

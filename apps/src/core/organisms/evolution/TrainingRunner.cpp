@@ -4,6 +4,7 @@
 #include "GenomeRepository.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/ScopeTimer.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/Duck.h"
@@ -15,8 +16,15 @@
 #include "core/scenarios/clock_scenario/DoorEntrySpawn.h"
 #include "core/scenarios/clock_scenario/DoorManager.h"
 #include "core/scenarios/nes/NesGameAdapter.h"
+#include "core/scenarios/nes/NesPlayerRelativeTileFrame.h"
 #include "core/scenarios/nes/NesScenarioRuntime.h"
 #include "core/scenarios/nes/NesSmolnesScenarioDriver.h"
+#include "core/scenarios/nes/NesTileDebugRenderer.h"
+#include "core/scenarios/nes/NesTileFrame.h"
+#include "core/scenarios/nes/NesTileRecurrentBrain.h"
+#include "core/scenarios/nes/NesTileSensoryBuilder.h"
+#include "core/scenarios/nes/NesTileTokenFrame.h"
+#include "core/scenarios/nes/NesTileTokenizer.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -96,6 +104,33 @@ std::string buildNesCommandSignature(uint8_t controllerMask)
     }
 
     return signature;
+}
+
+uint8_t nesControllerMaskFromOutput(const ControllerOutput& output)
+{
+    uint8_t mask = 0;
+    if (output.a) {
+        mask |= NesPolicyLayout::ButtonA;
+    }
+    if (output.b) {
+        mask |= NesPolicyLayout::ButtonB;
+    }
+
+    if (output.x <= -kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonLeft;
+    }
+    else if (output.x >= kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonRight;
+    }
+
+    if (output.y <= -kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonUp;
+    }
+    else if (output.y >= kNesDuckMoveThreshold) {
+        mask |= NesPolicyLayout::ButtonDown;
+    }
+
+    return mask;
 }
 
 Vector2i findSpawnCell(World& world)
@@ -188,6 +223,7 @@ TrainingRunner::TrainingRunner(
       maxTime_(evolutionConfig.maxSimulationTime),
       brainRegistry_(runnerConfig.brainRegistry),
       nesGameAdapterRegistry_(runnerConfig.nesGameAdapterRegistry),
+      nesTileTokenizer_(runnerConfig.nesTileTokenizer),
       duckClockSpawnLeftFirst_(runnerConfig.duckClockSpawnLeftFirst),
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
@@ -283,6 +319,7 @@ TrainingRunner::TrainingRunner(
     nesPaletteFrame_.reset();
     nesFitnessDetails_ = std::monostate{};
     nesDuckBrainV2_.reset();
+    nesTileBrain_.reset();
     nesLastControllerOutput_.reset();
     nesLastControllerTelemetry_.reset();
     nesLastDebugState_.reset();
@@ -293,6 +330,12 @@ TrainingRunner::TrainingRunner(
                 "TrainingRunner: NES duck recurrent V2 controller requires a genome");
             nesDuckBrainV2_ =
                 std::make_unique<DuckNeuralNetRecurrentBrainV2>(individual_.genome.value());
+        }
+        else if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent) {
+            DIRTSIM_ASSERT(
+                individual_.genome.has_value(),
+                "TrainingRunner: NES tile recurrent controller requires a genome");
+            nesTileBrain_ = std::make_unique<NesTileRecurrentBrain>(individual_.genome.value());
         }
     }
 
@@ -637,6 +680,99 @@ const std::vector<OrganismId>* TrainingRunner::getOrganismGrid() const
         return &kEmpty;
     }
     return nullptr;
+}
+
+Result<ScenarioVideoFrame, std::string> TrainingRunner::makeNesTileDebugScenarioVideoFrame(
+    NesTileDebugView view) const
+{
+    if (!isNesTileDebugViewValid(view)) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: Unknown NES tile debug view");
+    }
+
+    if (view == NesTileDebugView::NormalVideo) {
+        if (!nesScenarioVideoFrame_.has_value()) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug normal video requires a video frame");
+        }
+        return Result<ScenarioVideoFrame, std::string>::okay(nesScenarioVideoFrame_.value());
+    }
+
+    if (!nesDriver_) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: NES tile debug rendering requires a NES driver");
+    }
+
+    const auto ppuSnapshot = nesDriver_->copyRuntimePpuSnapshot();
+    if (!ppuSnapshot.has_value()) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: NES tile debug rendering requires a PPU snapshot");
+    }
+
+    const NesTileFrame tileFrame = makeNesTileFrame(ppuSnapshot.value());
+    std::optional<NesTileTokenFrame> tokenFrame;
+    std::optional<NesPlayerRelativeTileFrame> relativeFrame;
+
+    const bool needsTokenFrame = view == NesTileDebugView::ScreenTokens
+        || view == NesTileDebugView::PlayerRelativeTokens || view == NesTileDebugView::Comparison;
+    const bool needsRelativeFrame =
+        view == NesTileDebugView::PlayerRelativeTokens || view == NesTileDebugView::Comparison;
+
+    if (needsTokenFrame) {
+        if (!nesTileTokenizer_) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a tile tokenizer");
+        }
+        if (nesTileTokenizer_->getMode() != NesTileTokenizer::Mode::Frozen) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a frozen tile tokenizer");
+        }
+
+        auto tokenFrameResult = makeNesTileTokenFrame(tileFrame, *nesTileTokenizer_);
+        if (tokenFrameResult.isError()) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: Failed to tokenize NES tile debug frame: "
+                + tokenFrameResult.errorValue());
+        }
+        tokenFrame = std::move(tokenFrameResult).value();
+    }
+
+    if (needsRelativeFrame) {
+        if (!nesGameAdapter_) {
+            return Result<ScenarioVideoFrame, std::string>::error(
+                "TrainingRunner: NES tile debug rendering requires a game adapter");
+        }
+
+        const NesGameAdapterSensoryInput sensoryInput{
+            .controllerMask = nesControllerMask_,
+            .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
+            .lastGameState = nesLastGameState_,
+            .deltaTimeSeconds = TIMESTEP,
+            .tileFrameScrollX = tileFrame.scrollX,
+        };
+        const NesTileSensoryBuilderInput tileInput =
+            nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
+        relativeFrame = makeNesPlayerRelativeTileFrame(
+            tokenFrame.value(), tileInput.playerScreenX, tileInput.playerScreenY);
+    }
+
+    const NesTileDebugRenderInput renderInput{
+        .videoFrame =
+            nesScenarioVideoFrame_.has_value() ? &nesScenarioVideoFrame_.value() : nullptr,
+        .tileFrame = &tileFrame,
+        .tokenFrame = tokenFrame.has_value() ? &tokenFrame.value() : nullptr,
+        .relativeFrame = relativeFrame.has_value() ? &relativeFrame.value() : nullptr,
+    };
+    auto imageResult = makeNesTileDebugRenderImage(view, renderInput);
+    if (imageResult.isError()) {
+        return Result<ScenarioVideoFrame, std::string>::error(
+            "TrainingRunner: Failed to render NES tile debug frame: " + imageResult.errorValue());
+    }
+
+    const uint64_t frameId =
+        nesScenarioVideoFrame_.has_value() ? nesScenarioVideoFrame_->frame_id : tileFrame.frameId;
+    return Result<ScenarioVideoFrame, std::string>::okay(
+        DirtSim::makeNesTileDebugScenarioVideoFrame(imageResult.value(), frameId));
 }
 
 const Timers* TrainingRunner::getTimers() const
@@ -997,37 +1133,56 @@ DuckSensoryData TrainingRunner::makeNesDuckSensoryData() const
     return nesGameAdapter_->makeDuckSensoryData(sensoryInput);
 }
 
+NesTileSensoryData TrainingRunner::makeNesTileSensoryData()
+{
+    ScopeTimer totalTimer(nesTimers_, "nes_tile_sensory_total");
+
+    DIRTSIM_ASSERT(
+        nesGameAdapter_ != nullptr, "TrainingRunner: NES tile sensory requires a game adapter");
+    DIRTSIM_ASSERT(nesDriver_ != nullptr, "TrainingRunner: NES tile sensory requires a NES driver");
+    DIRTSIM_ASSERT(
+        nesTileTokenizer_ != nullptr, "TrainingRunner: NES tile sensory requires a tile tokenizer");
+    DIRTSIM_ASSERT(
+        nesTileTokenizer_->getMode() == NesTileTokenizer::Mode::Frozen,
+        "TrainingRunner: NES tile sensory requires a frozen tile tokenizer");
+
+    const auto ppuSnapshot = [this]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_copy_ppu_snapshot");
+        return nesDriver_->copyRuntimePpuSnapshot();
+    }();
+    DIRTSIM_ASSERT(
+        ppuSnapshot.has_value(), "TrainingRunner: NES tile sensory requires a PPU snapshot");
+
+    const NesTileFrame tileFrame = [this, &ppuSnapshot]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_frame_extract");
+        const NesTileFrameBuildOptions options{ .includePatternPixels = false };
+        return makeNesTileFrame(ppuSnapshot.value(), options, &nesTimers_);
+    }();
+    const NesTileSensoryBuilderInput tileInput = [this, &tileFrame]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_adapter_input");
+        const NesGameAdapterSensoryInput sensoryInput{
+            .controllerMask = nesControllerMask_,
+            .paletteFrame = nesPaletteFrame_.has_value() ? &nesPaletteFrame_.value() : nullptr,
+            .lastGameState = nesLastGameState_,
+            .deltaTimeSeconds = TIMESTEP,
+            .tileFrameScrollX = tileFrame.scrollX,
+        };
+        return nesGameAdapter_->makeNesTileSensoryBuilderInput(sensoryInput);
+    }();
+    auto sensoryResult = [this, &tileFrame, &tileInput]() {
+        ScopeTimer timer(nesTimers_, "nes_tile_build_sensory");
+        return makeNesTileSensoryDataFromTileFrame(tileFrame, *nesTileTokenizer_, tileInput);
+    }();
+    DIRTSIM_ASSERT(
+        sensoryResult.isValue(),
+        "TrainingRunner: Failed to build NES tile sensory data: " + sensoryResult.errorValue());
+    return sensoryResult.value();
+}
+
 uint8_t TrainingRunner::inferNesControllerMask()
 {
     nesLastControllerTelemetry_.reset();
-    const DuckSensoryData sensory = makeNesDuckSensoryData();
-    uint8_t mask = 0;
-    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
-        && nesDuckBrainV2_) {
-        const DuckNeuralNetRecurrentBrainV2::ControllerOutput output =
-            nesDuckBrainV2_->inferControllerOutput(sensory);
-
-        if (output.a) {
-            mask |= NesPolicyLayout::ButtonA;
-        }
-        if (output.b) {
-            mask |= NesPolicyLayout::ButtonB;
-        }
-
-        if (output.x <= -kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonLeft;
-        }
-        else if (output.x >= kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonRight;
-        }
-
-        if (output.y <= -kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonUp;
-        }
-        else if (output.y >= kNesDuckMoveThreshold) {
-            mask |= NesPolicyLayout::ButtonDown;
-        }
-
+    const auto recordTelemetry = [this](const ControllerOutput& output, uint8_t mask) {
         nesLastControllerTelemetry_ = NesControllerTelemetry{
             .aRaw = output.aRaw,
             .bRaw = output.bRaw,
@@ -1038,6 +1193,37 @@ uint8_t TrainingRunner::inferNesControllerMask()
             .controllerSource = NesGameAdapterControllerSource::InferredPolicy,
             .controllerSourceFrameIndex = std::nullopt,
         };
+    };
+
+    if (individual_.brain.brainKind == TrainingBrainKind::DuckNeuralNetRecurrentV2
+        && nesDuckBrainV2_) {
+        ScopeTimer timer(nesTimers_, "nes_palette_controller_infer_total");
+        const DuckSensoryData sensory = makeNesDuckSensoryData();
+        const ControllerOutput output = nesDuckBrainV2_->inferControllerOutput(sensory);
+        const uint8_t mask = nesControllerMaskFromOutput(output);
+        recordTelemetry(output, mask);
+        return mask;
+    }
+
+    if (individual_.brain.brainKind == TrainingBrainKind::NesTileRecurrent && nesTileBrain_) {
+        ScopeTimer timer(nesTimers_, "nes_tile_controller_infer_total");
+        DIRTSIM_ASSERT(
+            nesTileTokenizer_ != nullptr,
+            "TrainingRunner: NES tile sensory requires a tile tokenizer");
+        DIRTSIM_ASSERT(
+            nesTileTokenizer_->getMode() == NesTileTokenizer::Mode::Frozen,
+            "TrainingRunner: NES tile sensory requires a frozen tile tokenizer");
+        if (nesDriver_ && nesDriver_->getRuntimeRenderedFrameCount() == 0
+            && !nesDriver_->copyRuntimePpuSnapshot().has_value()) {
+            return 0;
+        }
+        const NesTileSensoryData sensory = makeNesTileSensoryData();
+        const ControllerOutput output = [this, &sensory]() {
+            ScopeTimer brainTimer(nesTimers_, "nes_tile_brain_infer");
+            return nesTileBrain_->inferControllerOutput(sensory);
+        }();
+        const uint8_t mask = nesControllerMaskFromOutput(output);
+        recordTelemetry(output, mask);
         return mask;
     }
 

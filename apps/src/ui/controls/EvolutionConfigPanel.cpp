@@ -363,16 +363,10 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
         PopulationSpec entry;
         switch (spec.organismType) {
             case OrganismType::TREE:
-                entry.brainKind = TrainingBrainKind::NeuralNet;
-                break;
             case OrganismType::DUCK:
-                entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
-                break;
             case OrganismType::NES_DUCK:
-                entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrentV2;
-                break;
             case OrganismType::GOOSE:
-                entry.brainKind = TrainingBrainKind::Random;
+                entry.brainKind = defaultTrainingBrainKind(spec.organismType, spec.scenarioId);
                 break;
             default:
                 entry.brainKind = TrainingBrainKind::Random;

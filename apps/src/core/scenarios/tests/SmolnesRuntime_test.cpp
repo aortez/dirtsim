@@ -261,3 +261,25 @@ TEST(SmolnesRuntimeTest, SpriteMaskDisablesSpritePixelsAndSpriteZeroHit)
     EXPECT_TRUE(spritesEnabled.sawSpritePalette);
     EXPECT_EQ(spritesEnabled.spriteHitResult, 1u);
 }
+
+TEST(SmolnesRuntimeTest, CopyPpuSnapshotProvidesChrAndNametableState)
+{
+    const std::filesystem::path romPath = writeSpriteMaskTestRom("smolnes_ppu_snapshot", true);
+
+    SmolnesRuntime runtime;
+    ASSERT_TRUE(runtime.start(romPath.string())) << runtime.getLastError();
+    runtime.setApuEnabled(false);
+    ASSERT_TRUE(runtime.runFrames(3u, 2000u)) << runtime.getLastError();
+
+    const auto snapshot = runtime.copyPpuSnapshot();
+    runtime.stop();
+
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_GT(snapshot->frameId, 0u);
+    EXPECT_EQ(snapshot->chr.size(), NesPpuSnapshot::ChrBytes);
+    EXPECT_EQ(snapshot->oam.size(), NesPpuSnapshot::OamBytes);
+    EXPECT_EQ(snapshot->vram.size(), NesPpuSnapshot::VramBytes);
+    EXPECT_TRUE(std::any_of(snapshot->chr.begin(), snapshot->chr.end(), [](uint8_t value) {
+        return value != 0u;
+    }));
+}

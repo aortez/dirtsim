@@ -36,6 +36,15 @@ public:
         return sensory;
     }
 
+    NesTileSensoryBuilderInput makeNesTileSensoryBuilderInput(
+        const NesGameAdapterSensoryInput& input) const override
+    {
+        return NesTileSensoryBuilderInput{
+            .controllerMask = input.controllerMask,
+            .deltaTimeSeconds = input.deltaTimeSeconds,
+        };
+    }
+
 private:
     int* resolveCalls_ = nullptr;
 };

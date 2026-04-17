@@ -36,6 +36,8 @@ UnsavedTrainingResult::Candidate makeCandidate(double fitness, double weightValu
         .brainKind = TrainingBrainKind::NeuralNet,
         .brainVariant = std::nullopt,
         .trainingSessionId = UUID::generate(),
+        .genomePoolId = GenomePoolId::DirtSim,
+        .nesTileBrainCompatibility = std::nullopt,
     };
     candidate.brainKind = TrainingBrainKind::NeuralNet;
     candidate.fitness = fitness;

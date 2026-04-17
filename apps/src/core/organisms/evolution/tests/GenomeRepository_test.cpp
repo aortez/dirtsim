@@ -35,6 +35,8 @@ protected:
             .brainKind = std::nullopt,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     }
 
@@ -273,6 +275,38 @@ TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashKeepsPeakRobustFitnessWithoutSam
     EXPECT_TRUE(metadata->robustFitnessSamples.empty());
 }
 
+TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashSeparatesNesTileCompatibilityMetadata)
+{
+    const auto genome = createTestGenome(0.91);
+    auto firstMeta = createTestMetadata("tile_a", 1.0);
+    firstMeta.organismType = OrganismType::NES_DUCK;
+    firstMeta.brainKind = "NesTileRecurrent";
+    firstMeta.nesTileBrainCompatibility = NesTileBrainCompatibilityMetadata{
+        .schemaVersion = NesTileBrainCompatibilityMetadata::CurrentSchemaVersion,
+        .tileVocabularySize = 512,
+        .tileEmbeddingDim = 4,
+        .relativeTileColumns = 63,
+        .relativeTileRows = 55,
+        .scalarInputSize = 44,
+        .h1Size = 64,
+        .h2Size = 32,
+        .outputSize = 4,
+        .voidTokenId = 0,
+        .tokenizerVocabularyHash = "first",
+    };
+    auto secondMeta = firstMeta;
+    secondMeta.name = "tile_b";
+    secondMeta.nesTileBrainCompatibility->tokenizerVocabularyHash = "second";
+
+    const auto first = repo.storeOrUpdateByHash(genome, firstMeta);
+    const auto second = repo.storeOrUpdateByHash(genome, secondMeta);
+
+    EXPECT_EQ(repo.count(), 2u);
+    EXPECT_TRUE(first.inserted);
+    EXPECT_TRUE(second.inserted);
+    EXPECT_NE(first.id, second.id);
+}
+
 TEST_F(GenomeRepositoryTest, PruneManagedByFitnessKeepsBestId)
 {
     const GenomeId idLow = UUID::generate();
@@ -489,6 +523,8 @@ protected:
             .brainKind = std::nullopt,
             .brainVariant = std::nullopt,
             .trainingSessionId = std::nullopt,
+            .genomePoolId = GenomePoolId::DirtSim,
+            .nesTileBrainCompatibility = std::nullopt,
         };
     }
 };
@@ -510,6 +546,19 @@ TEST_F(GenomeRepositoryPersistenceTest, GenomePersistsAcrossReopen)
     GenomeId id = UUID::generate();
     auto genome = createTestGenome(0.42f);
     auto meta = createTestMetadata("persistent_genome", 3.14);
+    meta.nesTileBrainCompatibility = NesTileBrainCompatibilityMetadata{
+        .schemaVersion = NesTileBrainCompatibilityMetadata::CurrentSchemaVersion,
+        .tileVocabularySize = 512,
+        .tileEmbeddingDim = 4,
+        .relativeTileColumns = 63,
+        .relativeTileRows = 55,
+        .scalarInputSize = 44,
+        .h1Size = 64,
+        .h2Size = 32,
+        .outputSize = 4,
+        .voidTokenId = 0,
+        .tokenizerVocabularyHash = "persistent-hash",
+    };
 
     // Store in first instance.
     {
@@ -538,6 +587,9 @@ TEST_F(GenomeRepositoryPersistenceTest, GenomePersistsAcrossReopen)
         EXPECT_DOUBLE_EQ(retrievedMeta->fitness, 3.14);
         EXPECT_EQ(retrievedMeta->generation, 42);
         EXPECT_EQ(retrievedMeta->notes, "test notes");
+        ASSERT_TRUE(retrievedMeta->nesTileBrainCompatibility.has_value());
+        EXPECT_EQ(
+            retrievedMeta->nesTileBrainCompatibility->tokenizerVocabularyHash, "persistent-hash");
     }
 }
 

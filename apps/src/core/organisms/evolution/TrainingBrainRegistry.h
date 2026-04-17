@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GenomeLayout.h"
+#include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 
@@ -21,7 +22,10 @@ inline constexpr const char* Random = "Random";
 inline constexpr const char* WallBouncing = "WallBouncing";
 inline constexpr const char* DuckBrain2 = "DuckBrain2";
 inline constexpr const char* DuckNeuralNetRecurrentV2 = "DuckNeuralNetRecurrentV2";
+inline constexpr const char* NesTileRecurrent = "NesTileRecurrent";
 } // namespace TrainingBrainKind
+
+std::string defaultTrainingBrainKind(OrganismType organismType, Scenario::EnumType scenarioId);
 
 struct BrainRegistryKey {
     OrganismType organismType = OrganismType::TREE;
