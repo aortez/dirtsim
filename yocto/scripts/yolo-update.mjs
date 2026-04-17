@@ -89,14 +89,35 @@ const NES_ROM_FIXTURE_DIR = join(APPS_DIR, 'testdata/roms');
 const NES_ROM_REMOTE_DIR = '/data/dirtsim/testdata/roms';
 const FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS = 45000;
 
-// Systemd service files to install/update on x86 targets during fast deploy.
-// x86 targets do not get their rootfs replaced, so service file changes need to be copied explicitly.
-const X86_SYSTEMD_SERVICES = [
-  { file: 'dirtsim-audio.service', name: 'dirtsim-audio.service' },
-  { file: 'dirtsim-config-setup-x86.service', name: 'dirtsim-config-setup.service' },
-  { file: 'dirtsim-os-manager.service', name: 'dirtsim-os-manager.service' },
-  { file: 'dirtsim-server.service', name: 'dirtsim-server.service' },
-  { file: 'dirtsim-ui-x86.service', name: 'dirtsim-ui.service' },
+// Systemd service files to install/update during fast deploy.
+const FAST_DEPLOY_SYSTEMD_SERVICES_BY_ARCH = {
+  aarch64: [
+    { file: 'dirtsim-audio.service', name: 'dirtsim-audio.service' },
+    { file: 'dirtsim-config-setup.service', name: 'dirtsim-config-setup.service' },
+    { file: 'dirtsim-os-manager.service', name: 'dirtsim-os-manager.service' },
+    { file: 'dirtsim-server.service', name: 'dirtsim-server.service' },
+    { file: 'dirtsim-ui.service', name: 'dirtsim-ui.service' },
+  ],
+  x86_64: [
+    { file: 'dirtsim-audio.service', name: 'dirtsim-audio.service' },
+    { file: 'dirtsim-config-setup-x86.service', name: 'dirtsim-config-setup.service' },
+    { file: 'dirtsim-os-manager.service', name: 'dirtsim-os-manager.service' },
+    { file: 'dirtsim-server.service', name: 'dirtsim-server.service' },
+    { file: 'dirtsim-ui-x86.service', name: 'dirtsim-ui.service' },
+  ],
+};
+
+const FAST_DEPLOY_SUPPORT_FILES = [
+  {
+    file: 'dirtsim-config-setup.sh',
+    remotePath: '/usr/bin/dirtsim-config-setup.sh',
+    mode: '755',
+  },
+  {
+    file: 'dirtsim-os-manager-logging-config.json',
+    remotePath: '/etc/dirtsim/dirtsim-os-manager-logging-config.json',
+    mode: '644',
+  },
 ];
 
 // Remote target configuration (defaults).
@@ -827,12 +848,14 @@ async function fastDeploy(
     info(`Would stage files in ${remoteStageDir}`);
   }
 
-  // Deploy x86 systemd service files (x86 targets don't get full rootfs updates).
+  // Deploy systemd service files so fast deploys pick up service ordering changes.
   const systemdInstallCmds = [];
-  if (targetArch === 'x86_64') {
+  const supportInstallCmds = [];
+  const serviceFiles = FAST_DEPLOY_SYSTEMD_SERVICES_BY_ARCH[targetArch] || [];
+  if (serviceFiles.length > 0) {
     banner('Deploying systemd services...', consola);
 
-    for (const svc of X86_SYSTEMD_SERVICES) {
+    for (const svc of serviceFiles) {
       const localPath = join(SERVICE_FILES_DIR, svc.file);
       if (!existsSync(localPath)) {
         warn(`Service file not found: ${localPath}`);
@@ -840,14 +863,14 @@ async function fastDeploy(
       }
 
       info(`${svc.name}`);
+      systemdInstallCmds.push(`sudo cp ${remoteStageDir}/${svc.name} /etc/systemd/system/${svc.name}`);
+      systemdInstallCmds.push(`sudo chmod 644 /etc/systemd/system/${svc.name}`);
       if (!dryRun) {
         try {
           execSync(
             `scp ${buildScpOptions()} "${localPath}" "${remoteTarget}:${remoteStageDir}/${svc.name}"`,
             { stdio: 'pipe' },
           );
-          systemdInstallCmds.push(`sudo cp ${remoteStageDir}/${svc.name} /etc/systemd/system/${svc.name}`);
-          systemdInstallCmds.push(`sudo chmod 644 /etc/systemd/system/${svc.name}`);
           success(`${svc.name} transferred`);
         } catch (err) {
           error(`Failed to transfer ${svc.name}`);
@@ -864,6 +887,47 @@ async function fastDeploy(
     } else {
       info('No systemd services to deploy');
     }
+  } else {
+    info(`No fast-deploy systemd service set for target architecture: ${targetArch || 'unknown'}`);
+  }
+
+  // Deploy support files used by those units and rerun setup before apps start.
+  banner('Deploying service support files...', consola);
+  for (const supportFile of FAST_DEPLOY_SUPPORT_FILES) {
+    const localPath = join(SERVICE_FILES_DIR, supportFile.file);
+    if (!existsSync(localPath)) {
+      warn(`Support file not found: ${localPath}`);
+      continue;
+    }
+
+    const stageName = basename(supportFile.remotePath);
+    const remoteDir = dirname(supportFile.remotePath);
+    info(`${supportFile.file} → ${supportFile.remotePath}`);
+    supportInstallCmds.push(`sudo mkdir -p ${shellQuote(remoteDir)}`);
+    supportInstallCmds.push(
+      `sudo cp ${shellQuote(`${remoteStageDir}/${stageName}`)} ${shellQuote(supportFile.remotePath)}`,
+    );
+    supportInstallCmds.push(`sudo chmod ${supportFile.mode} ${shellQuote(supportFile.remotePath)}`);
+    if (!dryRun) {
+      try {
+        execSync(
+          `scp ${buildScpOptions()} "${localPath}" "${remoteTarget}:${remoteStageDir}/${stageName}"`,
+          { stdio: 'pipe' },
+        );
+        success(`${supportFile.file} transferred`);
+      } catch (err) {
+        error(`Failed to transfer ${supportFile.file}`);
+        error(err.message);
+        process.exit(1);
+      }
+    } else {
+      info(`Would scp ${localPath} to ${remoteTarget}:${supportFile.remotePath}`);
+    }
+  }
+
+  if (supportInstallCmds.length > 0) {
+    supportInstallCmds.push('(sudo systemctl reset-failed dirtsim-config-setup.service || true)');
+    supportInstallCmds.push('sudo systemctl restart dirtsim-config-setup.service');
   }
 
   // Strip and transfer binaries.
@@ -916,15 +980,15 @@ async function fastDeploy(
     const fileName = basename(asset.local);
     const remoteDir = dirname(asset.remote);
     info(`${fileName} → ${asset.remote}`);
+    assetInstallCmds.push(`sudo mkdir -p ${shellQuote(remoteDir)}`);
+    assetInstallCmds.push(
+      `sudo cp ${shellQuote(`${remoteStageDir}/${fileName}`)} ${shellQuote(asset.remote)}`,
+    );
     if (!dryRun) {
       try {
         execSync(
           `scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:${remoteStageDir}/${fileName}"`,
           { stdio: 'pipe' },
-        );
-        assetInstallCmds.push(`sudo mkdir -p ${shellQuote(remoteDir)}`);
-        assetInstallCmds.push(
-          `sudo cp ${shellQuote(`${remoteStageDir}/${fileName}`)} ${shellQuote(asset.remote)}`,
         );
         success(`${fileName} transferred`);
       } catch (err) {
@@ -957,16 +1021,16 @@ async function fastDeploy(
     romInstallCmds.push(`sudo mkdir -p ${shellQuote(NES_ROM_REMOTE_DIR)}`);
     for (const rom of romFixtures) {
       info(`${rom.name} → ${rom.remote}`);
+      romInstallCmds.push(
+        `sudo cp ${shellQuote(`${remoteStageDir}/${rom.name}`)} ${shellQuote(rom.remote)}`,
+      );
+      romInstallCmds.push(`sudo chown dirtsim:dirtsim ${shellQuote(rom.remote)}`);
       if (!dryRun) {
         try {
           execSync(
             `scp ${buildScpOptions()} "${rom.local}" "${remoteTarget}:${remoteStageDir}/${rom.name}"`,
             { stdio: 'pipe' },
           );
-          romInstallCmds.push(
-            `sudo cp ${shellQuote(`${remoteStageDir}/${rom.name}`)} ${shellQuote(rom.remote)}`,
-          );
-          romInstallCmds.push(`sudo chown dirtsim:dirtsim ${shellQuote(rom.remote)}`);
           success(`${rom.name} transferred`);
         } catch (err) {
           error(`Failed to transfer ${rom.name}`);
@@ -985,10 +1049,9 @@ async function fastDeploy(
   const serviceNames = binaries.map(b => b.service).filter(s => s).join(' ');
   const copyCommands = binaries.map(b => `sudo cp ${remoteStageDir}/${b.name} ${b.remotePath}`).join(' && ');
 
-  const remoteCmd = `sudo systemctl stop ${serviceNames} && ${copyCommands} && sudo systemctl start ${serviceNames}`;
-
   // Delete old binaries before copying to avoid "no space" errors when rootfs is tight.
   const deleteCommands = binaries.map(b => `sudo rm -f ${b.remotePath}`).join(' && ');
+  const serviceSetupInstallCmds = [...systemdInstallCmds, ...supportInstallCmds];
 
   if (!dryRun) {
     try {
@@ -1016,9 +1079,9 @@ async function fastDeploy(
         execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${romInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
       }
 
-      if (systemdInstallCmds.length > 0) {
-        info('Installing systemd services...');
-        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${systemdInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
+      if (serviceSetupInstallCmds.length > 0) {
+        info('Installing service files and setup assets...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${serviceSetupInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
       }
 
       info('Starting services...');
@@ -1031,10 +1094,17 @@ async function fastDeploy(
       process.exit(1);
     }
   } else {
-    if (wipeGenomeDb) {
-      info(`Would run on Pi after service stop: ${buildDatabaseWipeCommand()}`);
-    }
-    info(`Would run on Pi: ${deleteCommands} && ${remoteCmd}`);
+    const dryRunRemoteCommands = [
+      `sudo systemctl stop ${serviceNames}`,
+      ...(wipeGenomeDb ? [buildDatabaseWipeCommand()] : []),
+      deleteCommands,
+      copyCommands,
+      ...assetInstallCmds,
+      ...romInstallCmds,
+      ...serviceSetupInstallCmds,
+      `sudo systemctl start ${serviceNames}`,
+    ].filter(command => command.length > 0);
+    info(`Would run on Pi: ${dryRunRemoteCommands.join(' && ')}`);
   }
 
   if (!dryRun) {

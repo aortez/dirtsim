@@ -14,6 +14,7 @@ future work.
 - Action And Segment Representation
 - Planner Families
 - Objectives, State Evaluation, And Search-Control Heuristics
+- Move Ordering Heuristics
 - Automatic Landmarks And Segment Discovery
 - Geometry And Terrain Extraction
 - Context-Conditioned Action Libraries
@@ -38,6 +39,11 @@ future work.
   level markup.
 - The current NN is not yet proven beyond 1-1, which makes it more natural to treat as optional
   support than as a required core component for the first round of design exploration.
+- The current DFS implementation can make early progress through goomba and pipe obstacles, but the
+  first pit exposes a search-control problem: DFS can spend budget enumerating equivalent late-fall
+  tails before it backs up far enough to try a useful ledge jump.
+- Detailed JSONL traces plus replay screenshots have been the most useful diagnostic tool so far
+  because they show the concrete action/state sequence that the tree actually expanded.
 
 ## State Representation And Transpositions
 
@@ -163,7 +169,8 @@ future work.
 
 ### Search-Control Heuristic Options
 
-- `Action ordering.` Expand the most sensible actions first.
+- `Action ordering.` Expand the most sensible actions first. See the Move Ordering Heuristics
+  section for detailed options.
 - `Branch suppression.` Limit branching on safe flat ground.
 - `Hazard-triggered branching.` Increase branching near pits, enemy clusters, transitions, and
   hotspots.
@@ -174,6 +181,31 @@ future work.
 - `Novelty or diversity bonus.` Intentionally keep some structurally different candidates alive.
 - `Optimistic bounds.` Use a rough upper bound on future progress to stop exploring hopeless
   states.
+
+### Currently Implemented Search-Control Heuristics
+
+- `Stall pruning.` Prune branches once `framesSinceProgress` reaches the configured limit.
+- `Velocity-stuck pruning.` Prune obstacle/wall states where Mario is grounded, not advancing, and
+  has near-zero horizontal speed for consecutive frames.
+- `Below-screen pruning.` Prune alive-but-doomed SMB states once Mario falls below a screen-space
+  Y threshold, before the game reports full death.
+
+## Move Ordering Heuristics
+
+### Currently Implemented Ordering Heuristics
+
+- Continuity. Try the parent action first to preserve multi-frame maneuvers such as held jumps and
+  sustained runs.
+- Descending-airborne pruning. While airborne and descending, drop jump-button variants from the
+  move list and keep only directional/run variants.
+- Grounded vertical jump priority. When SMB reports grounded but vertical motion is still present,
+  move jump-button variants before continuity and the default ordering. This biases the search
+  toward recovery jumps around ledge and pit-transition states.
+
+### Near-Term Candidates From First-Pit Diagnostics
+
+- `Falling-state transpositions or dominance.` Collapse repeated descending states that are
+  equivalent or dominated under a coarse `(x, y, vx, vy, airborne)` feature key.
 
 ## Automatic Landmarks And Segment Discovery
 
@@ -475,6 +507,7 @@ The major topic buckets gathered so far are:
 - action representation and segment structure
 - planner families, including graph search, beam search, MCTS, RHEA, CEM, and MPPI
 - objectives, evaluation functions, and search-control heuristics
+- move ordering heuristics, including state-specific bias, continuity, and per-node ordering
 - automatic landmarks, especially failure-cluster and motion-context landmarks
 - geometry and terrain extraction with minimal manual labeling
 - context-conditioned action libraries

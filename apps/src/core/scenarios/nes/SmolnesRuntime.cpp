@@ -257,6 +257,25 @@ std::optional<SmolnesRuntime::MemorySnapshot> SmolnesRuntime::copyMemorySnapshot
     return snapshot;
 }
 
+std::optional<SmolnesRuntime::Savestate> SmolnesRuntime::copySavestate() const
+{
+    if (runtimeHandle_ == nullptr) {
+        return std::nullopt;
+    }
+
+    Savestate savestate{};
+    const uint32_t savestateSize = smolnesRuntimeGetSavestateSize();
+    savestate.bytes.resize(savestateSize);
+    if (!smolnesRuntimeCopySavestate(
+            runtimeHandle_,
+            reinterpret_cast<uint8_t*>(savestate.bytes.data()),
+            savestateSize,
+            &savestate.frameId)) {
+        return std::nullopt;
+    }
+    return savestate;
+}
+
 std::optional<SmolnesRuntime::ApuSnapshot> SmolnesRuntime::copyApuSnapshot() const
 {
     if (runtimeHandle_ == nullptr) {
@@ -299,6 +318,19 @@ uint32_t SmolnesRuntime::copyApuSamples(float* buffer, uint32_t maxSamples) cons
     uint32_t samplesOut = 0;
     smolnesRuntimeCopyApuSamples(runtimeHandle_, buffer, maxSamples, &samplesOut);
     return samplesOut;
+}
+
+bool SmolnesRuntime::loadSavestate(const Savestate& savestate, uint32_t timeoutMs)
+{
+    if (runtimeHandle_ == nullptr || savestate.bytes.empty()) {
+        return false;
+    }
+
+    return smolnesRuntimeLoadSavestate(
+        runtimeHandle_,
+        reinterpret_cast<const uint8_t*>(savestate.bytes.data()),
+        static_cast<uint32_t>(savestate.bytes.size()),
+        timeoutMs);
 }
 
 void SmolnesRuntime::setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata)

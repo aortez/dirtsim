@@ -403,6 +403,14 @@ std::optional<NesPpuSnapshot> NesSmolnesScenarioDriver::copyRuntimePpuSnapshot()
     return runtime_->copyPpuSnapshot();
 }
 
+std::optional<SmolnesRuntime::Savestate> NesSmolnesScenarioDriver::copyRuntimeSavestate() const
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return std::nullopt;
+    }
+    return runtime_->copySavestate();
+}
+
 std::optional<SmolnesRuntime::ProfilingSnapshot> NesSmolnesScenarioDriver::
     copyRuntimeProfilingSnapshot() const
 {
@@ -434,6 +442,15 @@ uint32_t NesSmolnesScenarioDriver::copyRuntimeApuSamples(float* buffer, uint32_t
         return 0;
     }
     return runtime_->copyApuSamples(buffer, maxSamples);
+}
+
+bool NesSmolnesScenarioDriver::loadRuntimeSavestate(
+    const SmolnesRuntime::Savestate& savestate, uint32_t timeoutMs)
+{
+    if (!runtime_ || !runtime_->isRunning() || !runtime_->isHealthy()) {
+        return false;
+    }
+    return runtime_->loadSavestate(savestate, timeoutMs);
 }
 
 std::string NesSmolnesScenarioDriver::getRuntimeResolvedRomId() const

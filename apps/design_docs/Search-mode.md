@@ -2,7 +2,11 @@
 
 ## Status
 
-Draft implementation planning document.
+Living implementation planning document.
+
+Phase 1 is implemented. Phase 2 has an SMB1 DFS implementation in progress, with the
+current investigation focused on why the search reaches the first pit but does not yet
+find a stable way past it.
 
 This document describes how to add a first-class search workflow to DirtSim without overloading the existing training workflow. 
 
@@ -150,6 +154,13 @@ later: choose scenario and for non-nes scenarios, choose organism type.
 
 The active search screen should visually resemble the current training active shell, but its language and metrics must be search-specific rather than evolution-specific.
 
+During Phase 2, `SearchActive` renders the node currently being expanded by the live search.
+This view is intended to reflect the actual traversal, so backtracking and branch changes may be
+visible. The initial implementation may emit a render update for every searched frame. Later
+phases may decouple render cadence from search cadence and throttle visual updates to a
+configurable interval without changing the underlying search behavior. Saved-plan replay remains a
+separate `PlanPlayback` workflow rather than a continuous overlay during active search.
+
 #### Completion Behavior
 
 - auto-store search session results
@@ -214,20 +225,17 @@ PlanPlayback
 ## Execution Model
 
 - `search runner` evaluates the active search policy and produces progress and a candidate plan
-- `playback runner` replays the current best candidate for the UI
-
-This mirrors an existing training pattern where the active UI shows a live best playback rather than every raw evaluation.
+- `search runner` also emits the currently rendered search state for `SearchActive`
+- `playback runner` replays a saved plan during `PlanPlayback`
 
 Phase 1 implementation:
 
 - one search session
-- one best-playback runner
 - one stream of search progress
 - `SearchStart` is empty for Phase 1
 - Search uses the same scenario initialization path and SMB evaluator path as training
 - the Phase 1 search policy is fixed: emit `PlayerControlFrame{ .xAxis = 127 }` for every frame
 - each advanced gameplay frame appends one frame to the candidate `Plan`
-- best playback is enabled by default
 - stop conditions match SMB training: end on life loss, or after 1800 gameplay frames without frontier improvement
 - on completion, save one `Plan` and return to `SearchIdle`
 
@@ -258,12 +266,18 @@ Re-use NES evaluation from training.  The evaluation state can follow the search
 
 Search must not assume an NES-specific model.
 
+Phase 2 ships with an SMB-specific adapter and runner behind the general Search workflow.
+The tree search structure is intended to remain general even though the initial legal actions,
+fixtures, and rendering path are SMB-specific.
+
 Non-NES scenarios will have an associated `OrganismType`, such as duck, tree, or goose.
 
 ## Search Capability Discovery
 
-API:
-- `SearchScenariosGet` returns vector<Scenario::EnumType> scenarios;
+Scenario discovery is deferred.
+
+Phase 1 and Phase 2 do not add a dedicated search-catalog or search-scenarios API.
+The initial Search workflow is launched against the currently supported Search target.
 
 ## Proposed Data Model
 
@@ -323,10 +337,10 @@ struct Plan {
 
 ### UI -> Server Commands
 
-- `SearchCatalogGet`
 - `SearchStart`
 - `SearchPauseSet`
 - `SearchStop`
+- `SearchProgressGet`
 - `PlanList`
 - `PlanGet`
 - `PlanDelete`
@@ -358,15 +372,26 @@ struct PlanPlaybackStart {
 ### Server -> UI Broadcasts
 
 - `SearchProgress`
-- `SearchBestSnapshot`
-- `SearchBestPlaybackFrame`
 - `PlanSaved` (completion)
+- `SearchCompleted`
 - `PlanPlaybackStopped`
 
 Phase 1 shapes:
 
 ```cpp
 using PlanSaved = PlanSummary;
+
+enum class SearchCompletionReason {
+    Completed,
+    Stopped,
+    Error,
+};
+
+struct SearchCompleted {
+    SearchCompletionReason reason = SearchCompletionReason::Completed;
+    std::optional<PlanSummary> summary = std::nullopt;
+    std::string errorMessage;
+};
 
 enum class PlanPlaybackStopReason {
     Stopped,
@@ -389,6 +414,7 @@ Phase 1 repository shape:
 - `PlanGet` returns `Plan`
 - `PlanDelete` deletes by `PlanId`
 - `PlanSaved` broadcasts `PlanSummary`
+- `SearchCompleted` broadcasts terminal search status and the saved summary when available
 - `PlanPlaybackStopped` broadcasts the played `PlanId` and whether playback was stopped or completed
 
 ## Phased Rollout
@@ -425,9 +451,64 @@ Phase 1 functional tests:
 - `canPauseSearch`
   start Search, pause it, verify `SearchProgress.paused == true`, verify `elapsedFrames` stops advancing while paused, then resume and verify progress continues
 
+
 ### Phase 2: Basic Search implementation.
 
-Needs planning
+Replace the Phase 1 hold-right runner with a real frame-by-frame SMB searcher.
+
+- Search operates over a gameplay tree, with one gameplay frame per node.
+- Each node stores the runtime savestate needed to continue searching from that node, plus the evaluator summary,
+parent link, and action-from-parent.
+- Phase 2 uses deterministic depth-first traversal with backtracking.
+- At each node, legal actions are tried in a deterministic per-node order. The ordering can depend on the parent
+action and the current SMB motion state.
+- When an action produces a live child, search descends into that child.
+- When an action produces a terminal, dead, or unrecoverable child, that child is pruned immediately.
+- When all legal actions from a node have been exhausted, search backtracks to the parent and tries the next legal
+action there.
+- A live branch may also be pruned when it hits a configurable `framesSinceProgress` stall limit, gets stuck with
+no horizontal velocity against an obstacle, or falls below a configurable screen-space threshold.
+- The current best `Plan` is reconstructed by walking parent links from the best leaf seen so far back to the root.
+- Surviving branches are compared primarily by frontier progress, with evaluation score used as a secondary signal.
+- Phase 2 intentionally does not introduce checkpoints, segments, or user-facing search-depth controls.
+- Search remains deterministic for a fixed root state and fixed option set.
+- Phase 2 continues to support `NesSuperMarioBros` only.
+
+Search completion for Phase 2 distinguishes between finding progress and exhausting the search:
+
+- the user stops the search
+- no live branches remain
+- an implementation-defined global search budget is exhausted
+- a target milestone is reached, such as getting past the first goomba or another fixture-defined progress target
+
+Phase 2 debugging support:
+
+- emit a search trace that records node id, parent id, depth, action, frontier, evaluation score,
+`framesSinceProgress`, motion-priority metadata, and prune or completion reason
+- use simple SMB1 roots such as flat ground, first goomba, first pipe, and first pit as repeatable debug entry points
+- ensure the same root and settings produce the same trace and the same selected best plan
+- write diagnostic JSONL traces and PNG screenshots from disabled tests when investigating search-tree behavior
+
+Success criteria:
+
+- Search can branch and backtrack from stored savestates.
+- Search can discover at least one non-trivial plan from an early SMB1 root.
+- Search can get past the first goomba from a repeatable early SMB1 debug root.
+- Search produces a deterministic trace for the same root and settings.
+- The best leaf can be reconstructed into a saved `Plan` and replayed through existing plan playback.
+- The debug trace is sufficient to explain why branches were expanded, pruned, or selected as best.
+
+Current implementation status:
+
+- DFS search, savestate backtracking, deterministic traces, saved-plan reconstruction, and `PlanPlayback` replay
+from boot are implemented.
+- The current SMB search can get past the first goomba and early pipe with the implemented action-ordering and
+pruning heuristics.
+- The current hotspot is the first pit. The search reaches the pit quickly, and below-screen pruning prevents
+continuing to search far off-screen alive-but-doomed states.
+- The first-pit diagnostic trace shows that DFS can still spend budget enumerating equivalent late-fall tails before
+it backtracks far enough to try a useful jump near the ledge.
+- Likely next work is falling-state transposition or dominance pruning.
 
 ### Phase 3: Generalize to support Clock Scenario and Duck
 

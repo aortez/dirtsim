@@ -5,6 +5,8 @@
 # Usage: ./hooks/install-hooks.sh
 #
 
+set -euo pipefail
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 
 if [ -z "$REPO_ROOT" ]; then
@@ -13,19 +15,31 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 
 HOOKS_DIR="$REPO_ROOT/.git/hooks"
-TEMPLATE_DIR="$REPO_ROOT/apps/hooks"
 
 echo "Installing git hooks..."
 
-# Install pre-commit hook.
-if [ -f "$HOOKS_DIR/pre-commit" ] && [ ! -L "$HOOKS_DIR/pre-commit" ]; then
-    echo "Warning: Existing pre-commit hook found (not a symlink)"
-    echo "Backing up to pre-commit.backup"
-    mv "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit.backup"
-fi
+install_hook() {
+    local hook_name="$1"
+    local hook_path="$HOOKS_DIR/$hook_name"
+    local template_path="$REPO_ROOT/apps/hooks/$hook_name"
 
-ln -sf ../../apps/hooks/pre-commit "$HOOKS_DIR/pre-commit"
-echo "✅ pre-commit hook installed"
+    if [ ! -f "$template_path" ]; then
+        echo "Error: Hook template missing: $template_path"
+        exit 1
+    fi
+
+    if [ -f "$hook_path" ] && [ ! -L "$hook_path" ]; then
+        echo "Warning: Existing $hook_name hook found (not a symlink)"
+        echo "Backing up to $hook_name.backup"
+        mv "$hook_path" "$hook_path.backup"
+    fi
+
+    ln -sf "../../apps/hooks/$hook_name" "$hook_path"
+    echo "$hook_name hook installed"
+}
+
+install_hook pre-commit
+install_hook pre-push
 
 echo ""
 echo "Git hooks installed successfully!"
@@ -35,6 +49,10 @@ echo "  1. Format C++ code with clang-format"
 echo "  2. Lint JavaScript with ESLint"
 echo "  3. Run unit and integration tests"
 echo ""
+echo "The pre-push hook will:"
+echo "  1. Run SMB ROM-dependent tests when SMB search files changed"
+echo ""
 echo "Skip options:"
-echo "  SKIP_TESTS=1 git commit  - Skip tests only"
-echo "  SKIP_LINT=1 git commit   - Skip JS linting only"
+echo "  SKIP_TESTS=1 git commit      - Skip pre-commit tests only"
+echo "  SKIP_LINT=1 git commit       - Skip JS linting only"
+echo "  SKIP_SMB_TESTS=1 git push    - Skip SMB pre-push tests only"

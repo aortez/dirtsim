@@ -6,9 +6,11 @@
 #include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace DirtSim {
 
@@ -23,6 +25,11 @@ public:
         uint64_t frameId = 0;
         std::array<uint8_t, SMOLNES_RUNTIME_CPU_RAM_BYTES> cpuRam{};
         std::array<uint8_t, SMOLNES_RUNTIME_PRG_RAM_BYTES> prgRam{};
+    };
+
+    struct Savestate {
+        uint64_t frameId = 0;
+        std::vector<std::byte> bytes;
     };
 
     struct ProfilingSnapshot {
@@ -143,9 +150,11 @@ public:
     };
 
     virtual std::optional<MemorySnapshot> copyMemorySnapshot() const;
+    virtual std::optional<Savestate> copySavestate() const;
     virtual std::optional<ProfilingSnapshot> copyProfilingSnapshot() const;
     virtual std::optional<ApuSnapshot> copyApuSnapshot() const;
     virtual uint32_t copyApuSamples(float* buffer, uint32_t maxSamples) const;
+    virtual bool loadSavestate(const Savestate& savestate, uint32_t timeoutMs);
     virtual void setApuSampleCallback(SmolnesApuSampleCallback callback, void* userdata);
     virtual void setApuEnabled(bool enabled);
     virtual void setDetailedTimingEnabled(bool enabled);

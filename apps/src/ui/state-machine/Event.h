@@ -30,6 +30,7 @@
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
 #include "api/SearchPauseSet.h"
+#include "api/SearchSettingsSet.h"
 #include "api/SearchStart.h"
 #include "api/SearchStop.h"
 #include "api/SimPause.h"
@@ -406,6 +407,7 @@ using Event = std::variant<
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,
     DirtSim::UiApi::SearchPauseSet::Cwc,
+    DirtSim::UiApi::SearchSettingsSet::Cwc,
     DirtSim::UiApi::SearchStart::Cwc,
     DirtSim::UiApi::SearchStop::Cwc,
     DirtSim::UiApi::SimPause::Cwc,
