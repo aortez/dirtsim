@@ -303,6 +303,8 @@ the 896 visible tile positions.
   through training, live debug rendering, and the PNG diagnostic.
 - Added tests for SMB 512-pixel scroll wrapping and a ROM-gated regression proving frames 400 and
   500 keep a stable player-relative X anchor.
+- Added SMB sub-tile phase senses in existing `special_senses` slots 18-21, preserving the tile
+  brain genome layout while exposing `absoluteX` and `playerYScreen` modulo 8 and 16.
 
 ### Current Diagnostic
 

@@ -3,6 +3,7 @@
 #include "core/organisms/evolution/NesPolicyLayout.h"
 #include "core/scenarios/nes/NesFlappyBirdEvaluator.h"
 #include "core/scenarios/nes/NesFlappyParatroopaRamExtractor.h"
+#include "core/scenarios/nes/NesSuperMarioBrosSpecialSenses.h"
 #include "core/scenarios/nes/NesSuperMarioBrosTilePosition.h"
 #include "core/scenarios/nes/NesTileSensoryBuilder.h"
 #include "core/scenarios/nes/NesTileTokenizer.h"
@@ -258,30 +259,56 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterExposesCuratedSpecial
     const uint16_t absoluteX = (static_cast<uint16_t>(0x03) << 8) | 0x80;
 
     EXPECT_NEAR(sensory.facing_x, 1.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[0], (1.0 * 4.0 + 2.0) / 32.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[1], static_cast<double>(absoluteX) / 4096.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[2], 1.0 * 25.0 / 40.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[3], -40.0 / 128.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[4], 1.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[5], 1.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[6], 120.0 / 240.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[7], 3.0 / 9.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[8], 128.0 / 255.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[9], 16.0 / 255.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[10], -10.0 / 240.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[11], -48.0 / 255.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[12], -20.0 / 240.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[13], 1.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[14], 1.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[15], 1.0 / 7.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[16], 2.0 / 3.0, 1e-6);
-    EXPECT_NEAR(sensory.special_senses[17], 1.0, 1e-6);
+    EXPECT_NEAR(
+        sensory.special_senses[SmbSpecialSenseIndex::StageProgress],
+        (1.0 * 4.0 + 2.0) / 32.0,
+        1e-6);
+    EXPECT_NEAR(
+        sensory.special_senses[SmbSpecialSenseIndex::AbsoluteX],
+        static_cast<double>(absoluteX) / 4096.0,
+        1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::HorizontalSpeed], 25.0 / 40.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::VerticalSpeed], -40.0 / 128.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::Powerup], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::Airborne], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::PlayerYScreen], 120.0 / 240.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::Lives], 3.0 / 9.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::PlayerXScreen], 128.0 / 255.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::NearestEnemyDx], 16.0 / 255.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::NearestEnemyDy], -10.0 / 240.0, 1e-6);
+    EXPECT_NEAR(
+        sensory.special_senses[SmbSpecialSenseIndex::SecondNearestEnemyDx], -48.0 / 255.0, 1e-6);
+    EXPECT_NEAR(
+        sensory.special_senses[SmbSpecialSenseIndex::SecondNearestEnemyDy], -20.0 / 240.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::EnemyPresent], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::SecondEnemyPresent], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::World], 1.0 / 7.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::Level], 2.0 / 3.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::MovementX], 1.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::AbsoluteXTilePhase8], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::PlayerYTilePhase8], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::AbsoluteXTilePhase16], 0.0, 1e-6);
+    EXPECT_NEAR(sensory.special_senses[SmbSpecialSenseIndex::PlayerYTilePhase16], 8.0 / 15.0, 1e-6);
     EXPECT_NEAR(sensory.self_view_x, 128.0 / 256.0, 1e-6);
     EXPECT_NEAR(sensory.self_view_y, 120.0 / 240.0, 1e-6);
 
-    for (int i = 18; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
+    for (int i = 22; i < DuckSensoryData::SPECIAL_SENSE_COUNT; ++i) {
         EXPECT_EQ(sensory.special_senses[i], 0.0) << "slot " << i << " should be zero";
     }
+}
+
+TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosSpecialSensesExposeSubTilePhase)
+{
+    NesSuperMarioBrosState state;
+    state.absoluteX = 0x012Du;
+    state.playerYScreen = 123u;
+
+    const SmbSpecialSenses senses = makeNesSuperMarioBrosSpecialSenses(state);
+
+    EXPECT_NEAR(senses[SmbSpecialSenseIndex::AbsoluteXTilePhase8], 5.0 / 7.0, 1e-6);
+    EXPECT_NEAR(senses[SmbSpecialSenseIndex::PlayerYTilePhase8], 3.0 / 7.0, 1e-6);
+    EXPECT_NEAR(senses[SmbSpecialSenseIndex::AbsoluteXTilePhase16], 13.0 / 15.0, 1e-6);
+    EXPECT_NEAR(senses[SmbSpecialSenseIndex::PlayerYTilePhase16], 11.0 / 15.0, 1e-6);
 }
 
 TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterBuildsTileSensoryInput)
@@ -330,8 +357,13 @@ TEST(NesGameAdapterSpecialSensesTest, SuperMarioBrosAdapterBuildsTileSensoryInpu
     EXPECT_NEAR(tileInput.selfViewX, 128.0 / 256.0, 1e-6);
     EXPECT_NEAR(tileInput.selfViewY, 120.0 / 240.0, 1e-6);
     EXPECT_EQ(tileInput.controllerMask, controllerMask);
-    EXPECT_NEAR(tileInput.specialSenses[0], (1.0 * 4.0 + 2.0) / 32.0, 1e-6);
-    EXPECT_NEAR(tileInput.specialSenses[17], 1.0, 1e-6);
+    EXPECT_NEAR(
+        tileInput.specialSenses[SmbSpecialSenseIndex::StageProgress],
+        (1.0 * 4.0 + 2.0) / 32.0,
+        1e-6);
+    EXPECT_NEAR(tileInput.specialSenses[SmbSpecialSenseIndex::MovementX], 1.0, 1e-6);
+    EXPECT_NEAR(
+        tileInput.specialSenses[SmbSpecialSenseIndex::PlayerYTilePhase16], 8.0 / 15.0, 1e-6);
     EXPECT_DOUBLE_EQ(tileInput.deltaTimeSeconds, 0.016);
 
     NesTileTokenizer tokenizer;
