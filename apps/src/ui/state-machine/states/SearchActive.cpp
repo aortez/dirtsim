@@ -55,6 +55,8 @@ const char* searchProgressEventText(Api::SearchProgressEvent event)
             return "Pruned below";
         case Api::SearchProgressEvent::PrunedTransposition:
             return "Pruned transposition";
+        case Api::SearchProgressEvent::PrunedNonGameplay:
+            return "Pruned mode";
         case Api::SearchProgressEvent::CompletedBudgetExceeded:
             return "Budget hit";
         case Api::SearchProgressEvent::CompletedExhausted:

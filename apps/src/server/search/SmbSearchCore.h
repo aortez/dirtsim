@@ -54,6 +54,7 @@ struct SmbSearchEvaluatorSummary {
     uint64_t gameplayFrames = 0;
     uint64_t gameplayFramesSinceProgress = 0;
     double distanceRewardTotal = 0.0;
+    SmbEpisodeEndReason endReason = SmbEpisodeEndReason::None;
     double evaluationScore = 0.0;
     double levelClearRewardTotal = 0.0;
     std::optional<uint8_t> gameState = std::nullopt;

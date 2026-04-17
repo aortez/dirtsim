@@ -75,6 +75,8 @@ const char* smbEndReasonText(SmbEpisodeEndReason endReason)
             return "life_lost";
         case SmbEpisodeEndReason::NoProgressTimeout:
             return "no_progress_timeout";
+        case SmbEpisodeEndReason::FellBelowScreen:
+            return "fell_below_screen";
     }
 
     return "unknown";

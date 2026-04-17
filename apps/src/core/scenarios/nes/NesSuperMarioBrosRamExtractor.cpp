@@ -39,8 +39,6 @@ constexpr std::array<size_t, kEnemySlotCount> kEnemyYScreenAddrs = {
     0x00CF, 0x00D0, 0x00D1, 0x00D2, 0x00D3
 };
 
-constexpr uint8_t kGameEngineGameplay = 1;
-
 uint16_t decodeAbsoluteX(uint8_t playerXPage, uint8_t playerXScreen)
 {
     return (static_cast<uint16_t>(playerXPage) << 8) | static_cast<uint16_t>(playerXScreen);
@@ -60,6 +58,22 @@ float decodeFacingX(uint8_t rawFacingDirection)
             return -1.0f;
         default:
             return 0.0f;
+    }
+}
+
+SmbGameMode decodeGameMode(uint8_t gameEngine)
+{
+    switch (gameEngine) {
+        case 0x00u:
+            return SmbGameMode::StartDemo;
+        case 0x01u:
+            return SmbGameMode::Normal;
+        case 0x02u:
+            return SmbGameMode::EndCurrentWorld;
+        case 0x03u:
+            return SmbGameMode::EndGame;
+        default:
+            return SmbGameMode::Unknown;
     }
 }
 
@@ -106,10 +120,10 @@ SmbLifeState decodeLifeState(SmbPlayerState playerState)
     return SmbLifeState::Alive;
 }
 
-SmbPhase decodePhase(uint8_t gameEngine, bool setupComplete)
+SmbPhase decodePhase(SmbGameMode gameMode, bool setupComplete)
 {
-    return setupComplete && gameEngine == kGameEngineGameplay ? SmbPhase::Gameplay
-                                                              : SmbPhase::NonGameplay;
+    return setupComplete && gameMode == SmbGameMode::Normal ? SmbPhase::Gameplay
+                                                            : SmbPhase::NonGameplay;
 }
 
 SmbPowerupState decodePowerupState(uint8_t powerupState)
@@ -203,12 +217,14 @@ NesSuperMarioBrosState NesSuperMarioBrosRamExtractor::extract(
     const SmbPlayerState playerState = decodePlayerState(snapshot.cpuRam.at(kPlayerStateAddr));
     const SmbFloatState playerFloatState =
         decodeFloatState(snapshot.cpuRam.at(kPlayerFloatStateAddr));
+    const SmbGameMode gameMode = decodeGameMode(snapshot.cpuRam.at(kGameEngineSubroutineAddr));
     const uint16_t playerAbsoluteX = decodeAbsoluteX(
         snapshot.cpuRam.at(kPlayerXPageAddr), snapshot.cpuRam.at(kPlayerXScreenAddr));
     const uint8_t playerYScreen = snapshot.cpuRam.at(kPlayerYScreenAddr);
 
     NesSuperMarioBrosState output;
-    output.phase = decodePhase(snapshot.cpuRam.at(kGameEngineSubroutineAddr), setupComplete);
+    output.phase = decodePhase(gameMode, setupComplete);
+    output.gameMode = gameMode;
     output.lifeState = decodeLifeState(playerState);
     output.playerState = playerState;
     output.floatState = playerFloatState;

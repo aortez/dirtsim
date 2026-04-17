@@ -99,6 +99,7 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.gameMode, SmbGameMode::Normal);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
     EXPECT_EQ(state.playerState, SmbPlayerState::Normal);
     EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
@@ -134,6 +135,7 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractUsesFloatStateForAirborne)
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.gameMode, SmbGameMode::Normal);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
     EXPECT_EQ(state.playerState, SmbPlayerState::Normal);
     EXPECT_EQ(state.floatState, SmbFloatState::Jumping);
@@ -155,6 +157,31 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesFacingAndMovementDirection
 
     EXPECT_FLOAT_EQ(state.facingX, 1.0f);
     EXPECT_FLOAT_EQ(state.movementX, -1.0f);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameModes)
+{
+    NesSuperMarioBrosRamExtractor extractor;
+
+    const NesSuperMarioBrosState demo =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 0), true);
+    EXPECT_EQ(demo.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(demo.gameMode, SmbGameMode::StartDemo);
+
+    const NesSuperMarioBrosState levelEnd =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 2), true);
+    EXPECT_EQ(levelEnd.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(levelEnd.gameMode, SmbGameMode::EndCurrentWorld);
+
+    const NesSuperMarioBrosState endGame =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 3), true);
+    EXPECT_EQ(endGame.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(endGame.gameMode, SmbGameMode::EndGame);
+
+    const NesSuperMarioBrosState unknown = extractor.extract(
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 0xFE), true);
+    EXPECT_EQ(unknown.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(unknown.gameMode, SmbGameMode::Unknown);
 }
 
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)

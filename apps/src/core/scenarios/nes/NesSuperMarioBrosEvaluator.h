@@ -11,6 +11,14 @@ enum class SmbPhase : uint8_t {
     Gameplay = 1,
 };
 
+enum class SmbGameMode : uint8_t {
+    StartDemo = 0x00,
+    Normal = 0x01,
+    EndCurrentWorld = 0x02,
+    EndGame = 0x03,
+    Unknown = 0xFF,
+};
+
 enum class SmbLifeState : uint8_t {
     Alive = 0,
     Dying = 1,
@@ -50,6 +58,7 @@ enum class SmbPowerupState : uint8_t {
 
 struct NesSuperMarioBrosState {
     SmbPhase phase = SmbPhase::NonGameplay;
+    SmbGameMode gameMode = SmbGameMode::Unknown;
     SmbLifeState lifeState = SmbLifeState::Alive;
     SmbPlayerState playerState = SmbPlayerState::Unknown;
     SmbFloatState floatState = SmbFloatState::Unknown;
@@ -100,6 +109,7 @@ public:
     NesSuperMarioBrosEvaluatorOutput evaluate(const NesSuperMarioBrosEvaluatorInput& input);
 
 private:
+    static constexpr uint8_t kBelowScreenTerminalPlayerYScreenThreshold = 224u;
     static constexpr double kDistanceReward = 0.5;
     static constexpr double kLevelClearReward = 1000.0;
     static constexpr uint64_t kNoProgressTimeoutFrames = 1800;

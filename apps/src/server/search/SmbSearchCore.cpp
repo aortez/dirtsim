@@ -193,6 +193,7 @@ SmbSearchEvaluatorSummary buildSmbSearchEvaluatorSummary(
 
     summary.bestFrontier = encodeSmbFrontier(*snapshot);
     summary.distanceRewardTotal = snapshot->distanceRewardTotal;
+    summary.endReason = snapshot->endReason;
     summary.evaluationScore = snapshot->totalReward;
     summary.gameplayFrames = snapshot->gameplayFrames;
     summary.gameplayFramesSinceProgress = snapshot->framesSinceProgress;

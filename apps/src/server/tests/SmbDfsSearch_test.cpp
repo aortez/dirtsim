@@ -18,6 +18,7 @@
 #include <fstream>
 #include <functional>
 #include <gtest/gtest.h>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -25,6 +26,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 using namespace DirtSim::Server::SearchSupport;
 using DirtSim::NesSuperMarioBrosRamExtractor;
@@ -138,6 +140,7 @@ bool isCreationEvent(SmbDfsSearchTraceEventType eventType)
         case SmbDfsSearchTraceEventType::PrunedVelocityStuck:
         case SmbDfsSearchTraceEventType::PrunedBelowScreen:
         case SmbDfsSearchTraceEventType::PrunedTransposition:
+        case SmbDfsSearchTraceEventType::PrunedNonGameplay:
         case SmbDfsSearchTraceEventType::RootInitialized:
             return true;
         case SmbDfsSearchTraceEventType::Backtracked:
@@ -177,10 +180,28 @@ std::string toString(SmbDfsSearchTraceEventType eventType)
             return "PrunedBelowScreen";
         case SmbDfsSearchTraceEventType::PrunedTransposition:
             return "PrunedTransposition";
+        case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+            return "PrunedNonGameplay";
         case SmbDfsSearchTraceEventType::RootInitialized:
             return "RootInitialized";
         case SmbDfsSearchTraceEventType::Stopped:
             return "Stopped";
+    }
+
+    return "Unknown";
+}
+
+std::string toString(SmbDfsClosedLossBlockReason blockReason)
+{
+    switch (blockReason) {
+        case SmbDfsClosedLossBlockReason::None:
+            return "None";
+        case SmbDfsClosedLossBlockReason::FreshProgress:
+            return "FreshProgress";
+        case SmbDfsClosedLossBlockReason::NonGameplay:
+            return "NonGameplay";
+        case SmbDfsClosedLossBlockReason::ChildNotClosedLoss:
+            return "ChildNotClosedLoss";
     }
 
     return "Unknown";
@@ -454,11 +475,22 @@ struct WindowStats {
     size_t prunedVelocityStuckCount = 0;
     size_t prunedBelowScreenCount = 0;
     size_t prunedTranspositionCount = 0;
+    size_t prunedNonGameplayCount = 0;
 };
 
 struct TraceEventStats {
     size_t backtrackedCount = 0u;
+    size_t backtrackedClosedLossCount = 0u;
+    size_t backtrackedClosedLossFreshProgressCount = 0u;
+    size_t backtrackedNotClosedLossCount = 0u;
+    size_t backtrackedBlockedChildNotClosedLossCount = 0u;
+    size_t backtrackedBlockedFreshProgressCount = 0u;
+    size_t backtrackedBlockedNonGameplayCount = 0u;
     size_t expandedAliveCount = 0u;
+    size_t openClosedLossCandidateCount = 0u;
+    size_t openClosedLossCandidateFreshProgressCount = 0u;
+    size_t openExpandedAliveCount = 0u;
+    size_t openFreshProgressCount = 0u;
     size_t prunedDeadCount = 0u;
     size_t prunedStalledCount = 0u;
     size_t prunedVelocityStuckCount = 0u;
@@ -468,6 +500,15 @@ struct TraceEventStats {
     size_t prunedBelowScreenFreshProgressCount = 0u;
     size_t prunedTranspositionCount = 0u;
     size_t prunedTranspositionAtBestFrontierCount = 0u;
+    size_t prunedTranspositionFreshProgressCount = 0u;
+    size_t prunedNonGameplayCount = 0u;
+    size_t approximateTranspositionAtBestFrontierCount = 0u;
+    size_t approximateTranspositionCount = 0u;
+    size_t approximateTranspositionFreshProgressCount = 0u;
+    size_t approximateTranspositionWithoutExactCount = 0u;
+    std::array<size_t, kClosedLossTranspositionRamByteCount>
+        approximateTranspositionWithoutExactRamDiffCounts{};
+    size_t approximateTranspositionWithoutExactRamDiffTotal = 0u;
     uint64_t maxFramesSinceProgress = 0u;
     uint64_t maxGameplayFrame = 0u;
     uint64_t prunedBelowScreenMaxFramesSinceProgress = 0u;
@@ -506,6 +547,9 @@ WindowStats computeWindowStats(
             case SmbDfsSearchTraceEventType::PrunedTransposition:
                 stats.prunedTranspositionCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+                stats.prunedNonGameplayCount++;
+                break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
             case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
@@ -523,19 +567,65 @@ TraceEventStats computeTraceEventStats(
     const std::vector<SmbDfsSearchTraceEntry>& trace, uint64_t bestFrontier)
 {
     TraceEventStats stats;
+    std::unordered_map<size_t, SmbDfsSearchTraceEntry> expandedAliveEntries;
+    std::unordered_set<size_t> backtrackedNodes;
     for (const auto& entry : trace) {
         if (isCreationEvent(entry.eventType)) {
             stats.maxFramesSinceProgress =
                 std::max(stats.maxFramesSinceProgress, entry.framesSinceProgress);
             stats.maxGameplayFrame = std::max(stats.maxGameplayFrame, entry.gameplayFrame);
+            if (entry.closedLossApproximateTranspositionPruned) {
+                stats.approximateTranspositionCount++;
+                if (entry.eventType != SmbDfsSearchTraceEventType::PrunedTransposition) {
+                    stats.approximateTranspositionWithoutExactCount++;
+                    stats.approximateTranspositionWithoutExactRamDiffTotal +=
+                        entry.closedLossApproximateTranspositionRamDiffCount;
+                    for (size_t i = 0u; i < entry.closedLossApproximateTranspositionRamDiffs.size();
+                         ++i) {
+                        if (entry.closedLossApproximateTranspositionRamDiffs[i]) {
+                            stats.approximateTranspositionWithoutExactRamDiffCounts[i]++;
+                        }
+                    }
+                }
+                if (entry.framesSinceProgress == 0u) {
+                    stats.approximateTranspositionFreshProgressCount++;
+                }
+                if (entry.frontier == bestFrontier) {
+                    stats.approximateTranspositionAtBestFrontierCount++;
+                }
+            }
         }
 
         switch (entry.eventType) {
             case SmbDfsSearchTraceEventType::Backtracked:
                 stats.backtrackedCount++;
+                backtrackedNodes.insert(entry.nodeIndex);
+                if (entry.closedLossProven) {
+                    stats.backtrackedClosedLossCount++;
+                    if (entry.framesSinceProgress == 0u) {
+                        stats.backtrackedClosedLossFreshProgressCount++;
+                    }
+                    break;
+                }
+
+                stats.backtrackedNotClosedLossCount++;
+                switch (entry.closedLossBlockReason) {
+                    case SmbDfsClosedLossBlockReason::None:
+                        break;
+                    case SmbDfsClosedLossBlockReason::ChildNotClosedLoss:
+                        stats.backtrackedBlockedChildNotClosedLossCount++;
+                        break;
+                    case SmbDfsClosedLossBlockReason::FreshProgress:
+                        stats.backtrackedBlockedFreshProgressCount++;
+                        break;
+                    case SmbDfsClosedLossBlockReason::NonGameplay:
+                        stats.backtrackedBlockedNonGameplayCount++;
+                        break;
+                }
                 break;
             case SmbDfsSearchTraceEventType::ExpandedAlive:
                 stats.expandedAliveCount++;
+                expandedAliveEntries.emplace(entry.nodeIndex, entry);
                 break;
             case SmbDfsSearchTraceEventType::PrunedDead:
                 stats.prunedDeadCount++;
@@ -565,12 +655,18 @@ TraceEventStats computeTraceEventStats(
                 break;
             case SmbDfsSearchTraceEventType::PrunedTransposition:
                 stats.prunedTranspositionCount++;
+                if (entry.framesSinceProgress == 0u) {
+                    stats.prunedTranspositionFreshProgressCount++;
+                }
                 if (entry.frontier == bestFrontier) {
                     stats.prunedTranspositionAtBestFrontierCount++;
                 }
                 if (!stats.firstTranspositionPrune.has_value()) {
                     stats.firstTranspositionPrune = entry;
                 }
+                break;
+            case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+                stats.prunedNonGameplayCount++;
                 break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -582,7 +678,64 @@ TraceEventStats computeTraceEventStats(
         }
     }
 
+    for (const auto& [nodeIndex, entry] : expandedAliveEntries) {
+        if (backtrackedNodes.contains(nodeIndex)) {
+            continue;
+        }
+
+        stats.openExpandedAliveCount++;
+        if (entry.closedLossCandidate) {
+            stats.openClosedLossCandidateCount++;
+            if (entry.framesSinceProgress == 0u) {
+                stats.openClosedLossCandidateFreshProgressCount++;
+            }
+        }
+        else if (entry.closedLossBlockReason == SmbDfsClosedLossBlockReason::FreshProgress) {
+            stats.openFreshProgressCount++;
+        }
+    }
+
     return stats;
+}
+
+std::string formatRamDiffHistogram(
+    const std::array<size_t, kClosedLossTranspositionRamByteCount>& ramDiffCounts,
+    size_t maxPrintedEntries)
+{
+    std::vector<std::pair<size_t, size_t>> entries;
+    entries.reserve(ramDiffCounts.size());
+    for (size_t i = 0u; i < ramDiffCounts.size(); ++i) {
+        if (ramDiffCounts[i] == 0u) {
+            continue;
+        }
+
+        entries.emplace_back(i, ramDiffCounts[i]);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return kClosedLossTranspositionRamByteAddrs[lhs.first]
+            < kClosedLossTranspositionRamByteAddrs[rhs.first];
+    });
+
+    if (entries.size() > maxPrintedEntries) {
+        entries.resize(maxPrintedEntries);
+    }
+
+    std::ostringstream stream;
+    for (size_t i = 0u; i < entries.size(); ++i) {
+        if (i > 0u) {
+            stream << "|";
+        }
+
+        stream << "0x" << std::uppercase << std::hex << std::setw(4) << std::setfill('0')
+               << kClosedLossTranspositionRamByteAddrs[entries[i].first] << std::dec
+               << std::setfill(' ') << ":" << entries[i].second;
+    }
+
+    return stream.str();
 }
 
 Result<SmbSearchReplayResult, std::string> replayHoldRight(
@@ -685,6 +838,13 @@ bool writeTraceJsonl(
             { "action",
               entry.action.has_value() ? nlohmann::json(toString(entry.action.value()))
                                        : nlohmann::json(nullptr) },
+            { "closedLossBlockReason", toString(entry.closedLossBlockReason) },
+            { "closedLossApproximateTranspositionPruned",
+              entry.closedLossApproximateTranspositionPruned },
+            { "closedLossApproximateTranspositionRamDiffCount",
+              entry.closedLossApproximateTranspositionRamDiffCount },
+            { "closedLossCandidate", entry.closedLossCandidate },
+            { "closedLossProven", entry.closedLossProven },
             { "creationEvent", isCreationEvent(entry.eventType) },
             { "evaluationScore", entry.evaluationScore },
             { "eventType", toString(entry.eventType) },
@@ -877,6 +1037,13 @@ nlohmann::json makeTraceEntryJson(size_t traceIndex, const SmbDfsSearchTraceEntr
           entry.action.has_value() ? nlohmann::json(toString(entry.action.value()))
                                    : nlohmann::json(nullptr) },
         { "bestFrontier", entry.frontier },
+        { "closedLossBlockReason", toString(entry.closedLossBlockReason) },
+        { "closedLossApproximateTranspositionPruned",
+          entry.closedLossApproximateTranspositionPruned },
+        { "closedLossApproximateTranspositionRamDiffCount",
+          entry.closedLossApproximateTranspositionRamDiffCount },
+        { "closedLossCandidate", entry.closedLossCandidate },
+        { "closedLossProven", entry.closedLossProven },
         { "eventType", toString(entry.eventType) },
         { "framesSinceProgress", entry.framesSinceProgress },
         { "frontierAbsoluteX", decodeSmbAbsoluteX(entry.frontier) },
@@ -1028,6 +1195,7 @@ std::string buildDivergenceHistogramReport(
         size_t prunedVelocityStuckCount = 0u;
         size_t prunedBelowScreenCount = 0u;
         size_t prunedTranspositionCount = 0u;
+        size_t prunedNonGameplayCount = 0u;
         size_t survivingCount = 0u;
         uint64_t bestFrontier = 0u;
     };
@@ -1068,6 +1236,9 @@ std::string buildDivergenceHistogramReport(
             case SmbDfsSearchTraceEventType::PrunedTransposition:
                 bucket.prunedTranspositionCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+                bucket.prunedNonGameplayCount++;
+                break;
             case SmbDfsSearchTraceEventType::Backtracked:
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
@@ -1088,7 +1259,8 @@ std::string buildDivergenceHistogramReport(
                << " prunedStalled=" << bucket.prunedStalledCount
                << " prunedVelocityStuck=" << bucket.prunedVelocityStuckCount
                << " prunedBelowScreen=" << bucket.prunedBelowScreenCount
-               << " prunedTransposition=" << bucket.prunedTranspositionCount << "\n";
+               << " prunedTransposition=" << bucket.prunedTranspositionCount
+               << " prunedNonGameplay=" << bucket.prunedNonGameplayCount << "\n";
     }
 
     return stream.str();
@@ -1280,12 +1452,14 @@ Result<std::optional<ReplayStallInfo>, std::string> findFirstReplayStall(
 
 void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
 {
+    TraceEventStats stats = computeTraceEventStats(trace, 0u);
     size_t expandedCount = 0u;
     size_t prunedDeadCount = 0u;
     size_t prunedStalledCount = 0u;
     size_t prunedVelocityStuckCount = 0u;
     size_t prunedBelowScreenCount = 0u;
     size_t prunedTranspositionCount = 0u;
+    size_t prunedNonGameplayCount = 0u;
     size_t backtrackedCount = 0u;
     size_t groundedVerticalJumpPriorityActionCount = 0u;
     for (const auto& entry : trace) {
@@ -1315,6 +1489,9 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
             case SmbDfsSearchTraceEventType::PrunedTransposition:
                 prunedTranspositionCount++;
                 break;
+            case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+                prunedNonGameplayCount++;
+                break;
             case SmbDfsSearchTraceEventType::CompletedBudgetExceeded:
             case SmbDfsSearchTraceEventType::CompletedExhausted:
             case SmbDfsSearchTraceEventType::CompletedMilestoneReached:
@@ -1330,8 +1507,24 @@ void printTraceSummary(const std::vector<SmbDfsSearchTraceEntry>& trace)
               << " prunedVelocityStuck=" << prunedVelocityStuckCount
               << " prunedBelowScreen=" << prunedBelowScreenCount
               << " prunedTransposition=" << prunedTranspositionCount
+              << " prunedNonGameplay=" << prunedNonGameplayCount
               << " groundedVerticalJumpPriorityAction=" << groundedVerticalJumpPriorityActionCount
-              << " backtracked=" << backtrackedCount << "\n";
+              << " backtracked=" << backtrackedCount
+              << " backtrackedClosedLoss=" << stats.backtrackedClosedLossCount
+              << " backtrackedClosedLossFreshProgress="
+              << stats.backtrackedClosedLossFreshProgressCount
+              << " backtrackedNotClosedLoss=" << stats.backtrackedNotClosedLossCount
+              << " blockedFreshProgress=" << stats.backtrackedBlockedFreshProgressCount
+              << " blockedNonGameplay=" << stats.backtrackedBlockedNonGameplayCount
+              << " blockedChildNotClosedLoss=" << stats.backtrackedBlockedChildNotClosedLossCount
+              << " openExpanded=" << stats.openExpandedAliveCount
+              << " openClosedLossCandidates=" << stats.openClosedLossCandidateCount
+              << " openClosedLossCandidateFreshProgress="
+              << stats.openClosedLossCandidateFreshProgressCount
+              << " approximateTransposition=" << stats.approximateTranspositionCount
+              << " approximateTranspositionWithoutExact="
+              << stats.approximateTranspositionWithoutExactCount
+              << " openFreshProgress=" << stats.openFreshProgressCount << "\n";
 }
 
 Result<std::monostate, std::string> runSearchToCompletion(
@@ -1437,6 +1630,18 @@ void expectTraceEq(const SmbDfsSearchTraceEntry& actual, const SmbDfsSearchTrace
     EXPECT_EQ(actual.framesSinceProgress, expected.framesSinceProgress);
     EXPECT_EQ(
         actual.groundedVerticalJumpPriorityAction, expected.groundedVerticalJumpPriorityAction);
+    EXPECT_EQ(actual.closedLossCandidate, expected.closedLossCandidate);
+    EXPECT_EQ(actual.closedLossProven, expected.closedLossProven);
+    EXPECT_EQ(
+        actual.closedLossApproximateTranspositionPruned,
+        expected.closedLossApproximateTranspositionPruned);
+    EXPECT_EQ(
+        actual.closedLossApproximateTranspositionRamDiffCount,
+        expected.closedLossApproximateTranspositionRamDiffCount);
+    EXPECT_EQ(
+        actual.closedLossApproximateTranspositionRamDiffs,
+        expected.closedLossApproximateTranspositionRamDiffs);
+    EXPECT_EQ(actual.closedLossBlockReason, expected.closedLossBlockReason);
 }
 
 void expectPlanFramesEq(
@@ -1682,7 +1887,8 @@ TEST(SmbDfsSearchTest, PrunesAndBacktracksHazardBranches)
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedStalled
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedVelocityStuck
                 || entry.eventType == SmbDfsSearchTraceEventType::PrunedBelowScreen
-                || entry.eventType == SmbDfsSearchTraceEventType::PrunedTransposition;
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedTransposition
+                || entry.eventType == SmbDfsSearchTraceEventType::PrunedNonGameplay;
             sawBacktrack |= entry.eventType == SmbDfsSearchTraceEventType::Backtracked;
         }
 
@@ -1790,6 +1996,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
     size_t prunedStalledCount = 0;
     size_t prunedBelowScreenCount = 0;
     size_t prunedTranspositionCount = 0;
+    size_t prunedNonGameplayCount = 0;
     size_t backtrackedCount = 0;
     for (const auto& entry : search.getTrace()) {
         if (entry.eventType == SmbDfsSearchTraceEventType::ExpandedAlive) {
@@ -1810,6 +2017,9 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
         else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedTransposition) {
             prunedTranspositionCount++;
         }
+        else if (entry.eventType == SmbDfsSearchTraceEventType::PrunedNonGameplay) {
+            prunedNonGameplayCount++;
+        }
         else if (entry.eventType == SmbDfsSearchTraceEventType::Backtracked) {
             backtrackedCount++;
         }
@@ -1818,6 +2028,7 @@ TEST(SmbDfsSearchTest, FindsPlanToFirstGap)
               << " prunedStalled=" << prunedStalledCount
               << " prunedBelowScreen=" << prunedBelowScreenCount
               << " prunedTransposition=" << prunedTranspositionCount
+              << " prunedNonGameplay=" << prunedNonGameplayCount
               << " backtracked=" << backtrackedCount << "\n";
 
     ASSERT_TRUE(search.hasPersistablePlan());
@@ -2041,8 +2252,16 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitTranspositionThresholdSweep)
 
     std::cout << "budget,threshold,searched,trace,bestFrontier,planFrames,expanded,prunedDead,"
                  "prunedBelowScreen,prunedTransposition,prunedVelocityStuck,backtracked,"
+                 "backtrackedClosedLoss,backtrackedClosedLossFreshProgress,"
+                 "backtrackedNotClosedLoss,blockedFreshProgress,blockedNonGameplay,"
+                 "blockedChildNotClosedLoss,openExpanded,openClosedLossCandidates,"
+                 "openClosedLossCandidateFreshProgress,openFreshProgress,"
                  "belowAtBestFrontier,belowAtBestFrontierFreshProgress,belowFreshProgress,"
                  "belowMaxFramesSinceProgress,transpositionAtBestFrontier,"
+                 "transpositionFreshProgress,approxTransposition,"
+                 "approxTranspositionWithoutExact,approxTranspositionFreshProgress,"
+                 "approxTranspositionAtBestFrontier,"
+                 "approxWithoutExactRamDiffTotal,approxWithoutExactRamDiffTop,"
                  "maxGameplayFrame,maxFramesSinceProgress,firstTranspositionFrame,"
                  "firstTranspositionFrontier,firstTranspositionFramesSinceProgress,"
                  "firstBelowScreenFrame,firstBelowScreenFrontier,elapsedMs\n";
@@ -2088,6 +2307,8 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitTranspositionThresholdSweep)
             const uint64_t firstBelowScreenFrontier = stats.firstBelowScreenPrune.has_value()
                 ? stats.firstBelowScreenPrune->frontier
                 : 0u;
+            const std::string approximateRamDiffTop = formatRamDiffHistogram(
+                stats.approximateTranspositionWithoutExactRamDiffCounts, 12u);
 
             std::cout << budget << "," << static_cast<uint32_t>(threshold) << ","
                       << search.getProgress().searchedNodeCount << "," << search.getTrace().size()
@@ -2095,16 +2316,31 @@ TEST(SmbDfsSearchTest, DISABLED_ReportFirstPitTranspositionThresholdSweep)
                       << search.getPlan().frames.size() << "," << stats.expandedAliveCount << ","
                       << stats.prunedDeadCount << "," << stats.prunedBelowScreenCount << ","
                       << stats.prunedTranspositionCount << "," << stats.prunedVelocityStuckCount
-                      << "," << stats.backtrackedCount << ","
+                      << "," << stats.backtrackedCount << "," << stats.backtrackedClosedLossCount
+                      << "," << stats.backtrackedClosedLossFreshProgressCount << ","
+                      << stats.backtrackedNotClosedLossCount << ","
+                      << stats.backtrackedBlockedFreshProgressCount << ","
+                      << stats.backtrackedBlockedNonGameplayCount << ","
+                      << stats.backtrackedBlockedChildNotClosedLossCount << ","
+                      << stats.openExpandedAliveCount << "," << stats.openClosedLossCandidateCount
+                      << "," << stats.openClosedLossCandidateFreshProgressCount << ","
+                      << stats.openFreshProgressCount << ","
                       << stats.prunedBelowScreenAtBestFrontierCount << ","
                       << stats.prunedBelowScreenAtBestFrontierFreshProgressCount << ","
                       << stats.prunedBelowScreenFreshProgressCount << ","
                       << stats.prunedBelowScreenMaxFramesSinceProgress << ","
                       << stats.prunedTranspositionAtBestFrontierCount << ","
-                      << stats.maxGameplayFrame << "," << stats.maxFramesSinceProgress << ","
-                      << firstTranspositionFrame << "," << firstTranspositionFrontier << ","
-                      << firstTranspositionFramesSinceProgress << "," << firstBelowScreenFrame
-                      << "," << firstBelowScreenFrontier << "," << elapsedMs << "\n";
+                      << stats.prunedTranspositionFreshProgressCount << ","
+                      << stats.approximateTranspositionCount << ","
+                      << stats.approximateTranspositionWithoutExactCount << ","
+                      << stats.approximateTranspositionFreshProgressCount << ","
+                      << stats.approximateTranspositionAtBestFrontierCount << ","
+                      << stats.approximateTranspositionWithoutExactRamDiffTotal << ","
+                      << approximateRamDiffTop << "," << stats.maxGameplayFrame << ","
+                      << stats.maxFramesSinceProgress << "," << firstTranspositionFrame << ","
+                      << firstTranspositionFrontier << "," << firstTranspositionFramesSinceProgress
+                      << "," << firstBelowScreenFrame << "," << firstBelowScreenFrontier << ","
+                      << elapsedMs << "\n";
         }
     }
 }
@@ -2696,7 +2932,7 @@ TEST(SmbDfsSearchTest, BelowScreenPruningProducesDedicatedTraceEvent)
     }
 }
 
-TEST(SmbDfsSearchTest, FallingTranspositionPruningProducesDedicatedTraceEvent)
+TEST(SmbDfsSearchTest, ClosedLossTranspositionPruningProducesDedicatedTraceEvent)
 {
     REQUIRE_SMB_ROM_OR_SKIP();
 
@@ -2740,10 +2976,12 @@ TEST(SmbDfsSearchTest, FallingTranspositionPruningProducesDedicatedTraceEvent)
         DirtSim::Api::SearchProgressEvent::PrunedTransposition);
     EXPECT_GT(firstTranspositionPrune->nodeIndex, 0u);
     EXPECT_GT(firstTranspositionPrune->gameplayFrame, 0u);
-    EXPECT_GT(firstTranspositionPrune->framesSinceProgress, 0u);
-    std::cout << "First falling transposition prune at node " << firstTranspositionPrune->nodeIndex
-              << " frame " << firstTranspositionPrune->gameplayFrame << " frontier "
-              << firstTranspositionPrune->frontier << "\n";
+    EXPECT_TRUE(firstTranspositionPrune->closedLossApproximateTranspositionPruned);
+    std::cout << "First closed-loss transposition prune at node "
+              << firstTranspositionPrune->nodeIndex << " frame "
+              << firstTranspositionPrune->gameplayFrame << " frontier "
+              << firstTranspositionPrune->frontier << " framesSinceProgress "
+              << firstTranspositionPrune->framesSinceProgress << "\n";
 }
 
 TEST(SmbDfsSearchTest, LegalActionOrderRightRunFirst)
