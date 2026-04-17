@@ -224,6 +224,13 @@ UserSettings sanitizeUserSettings(
         recordUpdate("searchSettings.stallFrameLimit clamped to maximum");
     }
 
+    if (settings.searchSettings.planPlaybackFrameDelayMs
+        > SearchSettings::PlanPlaybackFrameDelayMsMax) {
+        settings.searchSettings.planPlaybackFrameDelayMs =
+            SearchSettings::PlanPlaybackFrameDelayMsMax;
+        recordUpdate("searchSettings.planPlaybackFrameDelayMs clamped to maximum");
+    }
+
     if (settings.volumePercent < 0) {
         settings.volumePercent = 0;
         recordUpdate("volumePercent clamped to 0");

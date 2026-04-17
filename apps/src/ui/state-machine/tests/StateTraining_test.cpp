@@ -829,6 +829,7 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
     };
     settingsOkay.settings.searchSettings.maxSearchedNodeCount = 12000u;
     settingsOkay.settings.searchSettings.stallFrameLimit = 45u;
+    settingsOkay.settings.searchSettings.planPlaybackFrameDelayMs = 17u;
     settingsOkay.settings.searchSettings.velocityPruningEnabled = false;
     settingsOkay.settings.searchSettings.belowScreenPruningEnabled = false;
     settingsOkay.settings.searchSettings.groundedVerticalJumpPrioritizationEnabled = false;
@@ -854,6 +855,9 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
     EXPECT_EQ(
         sentCommand.searchSettings->stallFrameLimit,
         settingsOkay.settings.searchSettings.stallFrameLimit);
+    EXPECT_EQ(
+        sentCommand.searchSettings->planPlaybackFrameDelayMs,
+        settingsOkay.settings.searchSettings.planPlaybackFrameDelayMs);
     EXPECT_FALSE(sentCommand.searchSettings->velocityPruningEnabled);
     EXPECT_FALSE(sentCommand.searchSettings->belowScreenPruningEnabled);
     EXPECT_FALSE(sentCommand.searchSettings->groundedVerticalJumpPrioritizationEnabled);
@@ -863,6 +867,9 @@ TEST(StateTrainingTest, SearchSettingsPanelPreservesPruningSwitchesWhenPersistin
         localSettings.maxSearchedNodeCount,
         settingsOkay.settings.searchSettings.maxSearchedNodeCount);
     EXPECT_EQ(localSettings.stallFrameLimit, settingsOkay.settings.searchSettings.stallFrameLimit);
+    EXPECT_EQ(
+        localSettings.planPlaybackFrameDelayMs,
+        settingsOkay.settings.searchSettings.planPlaybackFrameDelayMs);
     EXPECT_FALSE(localSettings.velocityPruningEnabled);
     EXPECT_FALSE(localSettings.belowScreenPruningEnabled);
     EXPECT_FALSE(localSettings.groundedVerticalJumpPrioritizationEnabled);

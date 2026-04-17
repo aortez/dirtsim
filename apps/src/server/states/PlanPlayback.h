@@ -4,6 +4,8 @@
 #include "core/UUID.h"
 #include "server/Event.h"
 #include "server/search/SmbPlanExecution.h"
+#include <chrono>
+#include <cstdint>
 #include <optional>
 
 namespace DirtSim {
@@ -24,6 +26,8 @@ struct PlanPlayback {
 
     UUID planId{};
     SearchSupport::SmbPlanExecution execution;
+    uint32_t planPlaybackFrameDelayMs = 0;
+    std::chrono::steady_clock::time_point lastPlaybackTickTime_{};
     bool renderBroadcasted_ = false;
 };
 

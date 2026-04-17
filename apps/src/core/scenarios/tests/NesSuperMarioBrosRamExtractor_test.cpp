@@ -99,7 +99,10 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameplayState)
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.gameMode, SmbGameMode::Normal);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
+    EXPECT_EQ(state.playerState, SmbPlayerState::Normal);
+    EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Fire);
     EXPECT_FALSE(state.airborne);
     EXPECT_NEAR(state.horizontalSpeedNormalized, 25.0 / 40.0, 1e-6);
@@ -132,7 +135,10 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractUsesFloatStateForAirborne)
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.gameMode, SmbGameMode::Normal);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
+    EXPECT_EQ(state.playerState, SmbPlayerState::Normal);
+    EXPECT_EQ(state.floatState, SmbFloatState::Jumping);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Big);
     EXPECT_TRUE(state.airborne);
     EXPECT_NEAR(state.horizontalSpeedNormalized, -5.0 / 40.0, 1e-6);
@@ -151,6 +157,31 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesFacingAndMovementDirection
 
     EXPECT_FLOAT_EQ(state.facingX, 1.0f);
     EXPECT_FLOAT_EQ(state.movementX, -1.0f);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractDecodesGameModes)
+{
+    NesSuperMarioBrosRamExtractor extractor;
+
+    const NesSuperMarioBrosState demo =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 0), true);
+    EXPECT_EQ(demo.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(demo.gameMode, SmbGameMode::StartDemo);
+
+    const NesSuperMarioBrosState levelEnd =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 2), true);
+    EXPECT_EQ(levelEnd.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(levelEnd.gameMode, SmbGameMode::EndCurrentWorld);
+
+    const NesSuperMarioBrosState endGame =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 3), true);
+    EXPECT_EQ(endGame.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(endGame.gameMode, SmbGameMode::EndGame);
+
+    const NesSuperMarioBrosState unknown = extractor.extract(
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x00, 3, 0xFE), true);
+    EXPECT_EQ(unknown.phase, SmbPhase::NonGameplay);
+    EXPECT_EQ(unknown.gameMode, SmbGameMode::Unknown);
 }
 
 TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
@@ -174,6 +205,8 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsDeathAnimationState)
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
     EXPECT_EQ(state.lifeState, SmbLifeState::Dying);
+    EXPECT_EQ(state.playerState, SmbPlayerState::Dying);
+    EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Big);
     EXPECT_FALSE(state.airborne);
     EXPECT_NEAR(state.horizontalSpeedNormalized, -5.0 / 40.0, 1e-6);
@@ -201,6 +234,8 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsPlayerDiesState)
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
     EXPECT_EQ(state.lifeState, SmbLifeState::Dying);
+    EXPECT_EQ(state.playerState, SmbPlayerState::PlayerDies);
+    EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
     EXPECT_FALSE(state.airborne);
 }
 
@@ -214,6 +249,8 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsReloadScreenStateAsDead)
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
     EXPECT_EQ(state.lifeState, SmbLifeState::Dead);
+    EXPECT_EQ(state.playerState, SmbPlayerState::LeftmostOfScreen);
+    EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
     EXPECT_EQ(state.powerupState, SmbPowerupState::Small);
     EXPECT_FALSE(state.airborne);
     EXPECT_DOUBLE_EQ(state.horizontalSpeedNormalized, 0.0);
@@ -229,6 +266,37 @@ TEST(NesSuperMarioBrosRamExtractorTest, ExtractTreatsNonDeathPlayerModesAsAlive)
     const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
 
     EXPECT_EQ(state.phase, SmbPhase::Gameplay);
+    EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
+    EXPECT_EQ(state.playerState, SmbPlayerState::Growing);
+    EXPECT_EQ(state.floatState, SmbFloatState::GroundedOrOther);
+    EXPECT_FALSE(state.airborne);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractPreservesKnownFloatStateDistinctions)
+{
+    NesSuperMarioBrosRamExtractor extractor;
+
+    const NesSuperMarioBrosState walkedOffLedge =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x02, 3, 1), true);
+    EXPECT_EQ(walkedOffLedge.floatState, SmbFloatState::WalkedOffLedge);
+    EXPECT_TRUE(walkedOffLedge.airborne);
+
+    const NesSuperMarioBrosState slidingFlagpole =
+        extractor.extract(makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0x08, 0x03, 3, 1), true);
+    EXPECT_EQ(slidingFlagpole.floatState, SmbFloatState::SlidingFlagpole);
+    EXPECT_FALSE(slidingFlagpole.airborne);
+}
+
+TEST(NesSuperMarioBrosRamExtractorTest, ExtractMapsUnknownRawPlayerModeFields)
+{
+    const SmolnesRuntime::MemorySnapshot snapshot =
+        makeSmbSnapshot(0, 0, 0x00, 0x20, 0, 0, 100, 0, 0xFE, 0xFE, 3, 1);
+
+    NesSuperMarioBrosRamExtractor extractor;
+    const NesSuperMarioBrosState state = extractor.extract(snapshot, true);
+
+    EXPECT_EQ(state.playerState, SmbPlayerState::Unknown);
+    EXPECT_EQ(state.floatState, SmbFloatState::Unknown);
     EXPECT_EQ(state.lifeState, SmbLifeState::Alive);
     EXPECT_FALSE(state.airborne);
 }

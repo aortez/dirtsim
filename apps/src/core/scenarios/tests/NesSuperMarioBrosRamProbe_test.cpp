@@ -36,7 +36,24 @@ constexpr size_t kPlayerStateAddr = 0x000E;
 constexpr size_t kPlayerXPageAddr = 0x006D;
 constexpr size_t kPlayerXScreenAddr = 0x0086;
 constexpr size_t kPlayerYScreenAddr = 0x00CE;
+constexpr size_t kPlayerVerticalScreenPageAddr = 0x00B5;
+constexpr size_t kPlayerRelativeXAddr = 0x03AD;
+constexpr size_t kPlayerRelativeYAddr = 0x03B8;
+constexpr size_t kPlayerObjectXMoveForceAddr = 0x0400;
+constexpr size_t kPlayerObjectYMoveForceDummyAddr = 0x0416;
+constexpr size_t kPlayerVerticalFractionalVelocityAddr = 0x0433;
+constexpr size_t kPlayerCollisionBitsAddr = 0x0490;
+constexpr size_t kPlayerHitboxAddr = 0x04AC;
 constexpr size_t kPlayerXSpeedAbsoluteAddr = 0x0700;
+constexpr size_t kSwimmingFlagAddr = 0x0704;
+constexpr size_t kPlayerXMoveForceAddr = 0x0705;
+constexpr size_t kCurrentGravityAddr = 0x0709;
+constexpr size_t kCurrentFallGravityAddr = 0x070A;
+constexpr size_t kScreenEdgeXPositionAddr = 0x071C;
+constexpr size_t kScrollPlayerXPositionAddr = 0x071D;
+constexpr size_t kPlayerHitDetectFlagAddr = 0x0722;
+constexpr size_t kScrollLockAddr = 0x0723;
+constexpr size_t kPlayerPositionForScrollAddr = 0x0755;
 constexpr size_t kVerticalSpeedAddr = 0x009F;
 constexpr size_t kP1ButtonsPressedAddr = 0x074A;
 constexpr size_t kP2ButtonsPressedAddr = 0x074B;
@@ -217,6 +234,24 @@ std::string controllerMaskToString(uint8_t controllerMask)
     }
 
     return label;
+}
+
+const char* probeScriptTypeLabel(ProbeScriptType probeScriptType)
+{
+    switch (probeScriptType) {
+        case ProbeScriptType::Baseline:
+            return "baseline";
+        case ProbeScriptType::EnemyValidation:
+            return "enemy_validation";
+        case ProbeScriptType::LeftMovement:
+            return "left_movement";
+        case ProbeScriptType::LifeLoss:
+            return "life_loss";
+        case ProbeScriptType::StandingJump:
+            return "standing_jump";
+    }
+
+    return "unknown";
 }
 
 const char* lifeStateToString(SmbLifeState lifeState)
@@ -1041,6 +1076,145 @@ TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesLeftMovementDirectionCsv)
         std::cout << " L" << static_cast<uint32_t>(value);
     }
     std::cout << "\n";
+}
+
+TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesMotionPhysicsValidationArtifacts)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesSmbFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Set DIRTSIM_NES_SMB_TEST_ROM_PATH or place "
+                        "smb.nes in testdata/roms/.";
+    }
+
+    const std::filesystem::path csvPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_smb_motion_physics_probe.csv";
+    std::ofstream csvStream(csvPath, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(csvStream.is_open())
+        << "Failed to open SMB motion physics probe trace: " << csvPath.string();
+
+    csvStream
+        << "script,frame,game_frame,controller_mask,controller_label,game_engine,player_state,"
+           "float_state,world,level,lives,absolute_x,player_x_page,player_x_screen,"
+           "player_y_screen,player_vertical_screen_page,player_relative_x,player_relative_y,"
+           "horizontal_speed_raw,horizontal_speed_signed,player_x_speed_absolute,"
+           "vertical_speed_raw,vertical_speed_signed,vertical_fraction_raw,"
+           "player_object_x_move_force,player_object_y_move_force_dummy,player_x_move_force,"
+           "current_gravity,current_fall_gravity,swimming_flag,collision_bits,hitbox_x1,hitbox_y1,"
+           "hitbox_x2,hitbox_y2,screen_edge_x,scroll_player_x,hit_detect,scroll_lock,"
+           "player_position_for_scroll,p1_buttons\n";
+
+    const std::array<ProbeScriptType, 3> scripts = {
+        ProbeScriptType::Baseline,
+        ProbeScriptType::LeftMovement,
+        ProbeScriptType::StandingJump,
+    };
+
+    for (const ProbeScriptType script : scripts) {
+        const std::vector<CapturedFrame> frames =
+            captureSmbProbeFrames(romPath.value(), false, script);
+        ASSERT_FALSE(frames.empty());
+        ASSERT_GT(frames.front().cpuRam.size(), kPlayerHitboxAddr + 3u);
+
+        const size_t analysisStartIndex = kSetupScriptEndFrame < frames.size()
+            ? static_cast<size_t>(kSetupScriptEndFrame)
+            : (frames.size() - 1u);
+
+        std::set<uint8_t> currentFallGravityValues;
+        std::set<uint8_t> currentGravityValues;
+        std::set<uint8_t> swimmingFlagValues;
+        std::set<uint8_t> xMoveForceValues;
+        size_t fallingGravityCopyFrameCount = 0u;
+        size_t fallingFrameCount = 0u;
+
+        for (size_t frameIndex = analysisStartIndex; frameIndex < frames.size(); ++frameIndex) {
+            const CapturedFrame& frame = frames[frameIndex];
+            const int8_t horizontalSpeedSigned =
+                static_cast<int8_t>(frame.cpuRam[kHorizontalSpeedAddr]);
+            const int8_t verticalSpeedSigned =
+                static_cast<int8_t>(frame.cpuRam[kVerticalSpeedAddr]);
+            const uint8_t currentGravity = frame.cpuRam[kCurrentGravityAddr];
+            const uint8_t currentFallGravity = frame.cpuRam[kCurrentFallGravityAddr];
+            const uint64_t gameFrame = frame.frameIndex - kSetupScriptEndFrame;
+
+            currentFallGravityValues.insert(currentFallGravity);
+            currentGravityValues.insert(currentGravity);
+            swimmingFlagValues.insert(frame.cpuRam[kSwimmingFlagAddr]);
+            xMoveForceValues.insert(frame.cpuRam[kPlayerXMoveForceAddr]);
+
+            if (verticalSpeedSigned > 0) {
+                ++fallingFrameCount;
+                if (currentGravity == currentFallGravity) {
+                    ++fallingGravityCopyFrameCount;
+                }
+            }
+
+            csvStream << probeScriptTypeLabel(script) << "," << frame.frameIndex << "," << gameFrame
+                      << "," << static_cast<uint32_t>(frame.controllerMask) << ","
+                      << controllerMaskToString(frame.controllerMask) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kGameEngineAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerStateAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerFloatStateAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kWorldAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kLevelAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kLivesAddr]) << ","
+                      << decodeAbsoluteX(frame.cpuRam) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerXPageAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerXScreenAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerYScreenAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerVerticalScreenPageAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerRelativeXAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerRelativeYAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kHorizontalSpeedAddr]) << ","
+                      << static_cast<int32_t>(horizontalSpeedSigned) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerXSpeedAbsoluteAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kVerticalSpeedAddr]) << ","
+                      << static_cast<int32_t>(verticalSpeedSigned) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerVerticalFractionalVelocityAddr])
+                      << "," << static_cast<uint32_t>(frame.cpuRam[kPlayerObjectXMoveForceAddr])
+                      << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerObjectYMoveForceDummyAddr])
+                      << "," << static_cast<uint32_t>(frame.cpuRam[kPlayerXMoveForceAddr]) << ","
+                      << static_cast<uint32_t>(currentGravity) << ","
+                      << static_cast<uint32_t>(currentFallGravity) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kSwimmingFlagAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerCollisionBitsAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerHitboxAddr + 0u]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerHitboxAddr + 1u]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerHitboxAddr + 2u]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerHitboxAddr + 3u]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kScreenEdgeXPositionAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kScrollPlayerXPositionAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerHitDetectFlagAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kScrollLockAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kPlayerPositionForScrollAddr]) << ","
+                      << static_cast<uint32_t>(frame.cpuRam[kP1ButtonsPressedAddr]) << "\n";
+        }
+
+        std::cout << "Motion probe " << probeScriptTypeLabel(script) << " current gravity:";
+        for (const uint8_t value : currentGravityValues) {
+            std::cout << " " << static_cast<uint32_t>(value);
+        }
+        std::cout << " fall gravity:";
+        for (const uint8_t value : currentFallGravityValues) {
+            std::cout << " " << static_cast<uint32_t>(value);
+        }
+        std::cout << " swim flags:";
+        for (const uint8_t value : swimmingFlagValues) {
+            std::cout << " " << static_cast<uint32_t>(value);
+        }
+        std::cout << " x move force:";
+        for (const uint8_t value : xMoveForceValues) {
+            std::cout << " " << static_cast<uint32_t>(value);
+        }
+        std::cout << " falling gravity copy frames=" << fallingGravityCopyFrameCount << "/"
+                  << fallingFrameCount << "\n";
+    }
+
+    csvStream.close();
+    ASSERT_TRUE(csvStream.good());
+    EXPECT_TRUE(std::filesystem::exists(csvPath));
+    EXPECT_GT(std::filesystem::file_size(csvPath), 0u);
+    std::cout << "Wrote SMB motion physics probe trace: " << csvPath.string() << "\n";
 }
 
 TEST(NesSuperMarioBrosRamProbeTest, ManualStep_WritesStandingJumpValidationArtifacts)

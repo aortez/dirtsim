@@ -47,11 +47,28 @@ bool isJumpButtonAction(SmbSearchLegalAction action)
     return false;
 }
 
+std::optional<SmbSearchLegalAction> makeDescendingRunJumpRescueAction(
+    SmbSearchHorizontalDirection horizontalDirection)
+{
+    switch (horizontalDirection) {
+        case SmbSearchHorizontalDirection::Left:
+            return SmbSearchLegalAction::LeftJumpRun;
+        case SmbSearchHorizontalDirection::Right:
+            return SmbSearchLegalAction::RightJumpRun;
+        case SmbSearchHorizontalDirection::None:
+            return std::nullopt;
+    }
+
+    DIRTSIM_ASSERT(false, "Unhandled SmbSearchHorizontalDirection");
+    return std::nullopt;
+}
+
 } // namespace
 
 SmbSearchActionOrdering buildDfsActionOrder(
     bool airborne,
     double verticalSpeedNormalized,
+    SmbSearchHorizontalDirection horizontalDirection,
     std::optional<SmbSearchLegalAction> actionFromParent,
     bool groundedVerticalJumpPrioritizationEnabled)
 {
@@ -72,14 +89,18 @@ SmbSearchActionOrdering buildDfsActionOrder(
         return false;
     };
 
+    auto placeAny = [&](SmbSearchLegalAction action) {
+        if (!isPlaced(action)) {
+            order[writePos++] = action;
+        }
+    };
+
     auto place = [&](SmbSearchLegalAction action) {
         if (descendingAirborne && isJumpButtonAction(action)) {
             return;
         }
 
-        if (!isPlaced(action)) {
-            order[writePos++] = action;
-        }
+        placeAny(action);
     };
 
     if (groundedMovingVertically) {
@@ -97,9 +118,16 @@ SmbSearchActionOrdering buildDfsActionOrder(
         place(actionFromParent.value());
     }
 
-    // While descending, A-button variants cannot recover height, so drop them entirely.
     for (const auto& action : defaultOrder) {
         place(action);
+    }
+
+    if (descendingAirborne) {
+        const std::optional<SmbSearchLegalAction> rescueAction =
+            makeDescendingRunJumpRescueAction(horizontalDirection);
+        if (rescueAction.has_value()) {
+            placeAny(rescueAction.value());
+        }
     }
 
     ordering.count = static_cast<uint8_t>(writePos);
@@ -165,6 +193,7 @@ SmbSearchEvaluatorSummary buildSmbSearchEvaluatorSummary(
 
     summary.bestFrontier = encodeSmbFrontier(*snapshot);
     summary.distanceRewardTotal = snapshot->distanceRewardTotal;
+    summary.endReason = snapshot->endReason;
     summary.evaluationScore = snapshot->totalReward;
     summary.gameplayFrames = snapshot->gameplayFrames;
     summary.gameplayFramesSinceProgress = snapshot->framesSinceProgress;

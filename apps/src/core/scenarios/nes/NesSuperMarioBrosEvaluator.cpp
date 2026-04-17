@@ -105,7 +105,10 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
         kSmbNoProgressTimeoutFrames,
         SmbEpisodeEndReason::None,
         false);
-    if (input.state.phase != SmbPhase::Gameplay) {
+    const bool concreteTerminalCandidate = hasBestProgress_
+        && (input.state.gameMode == SmbGameMode::EndGame
+            || input.state.lifeState != SmbLifeState::Alive);
+    if (input.state.phase != SmbPhase::Gameplay && !concreteTerminalCandidate) {
         return output;
     }
 
@@ -144,7 +147,8 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
         lastLives_ = input.state.lives;
     }
 
-    if (input.state.lifeState == SmbLifeState::Dead && input.state.lives == 0u) {
+    if (input.state.gameMode == SmbGameMode::EndGame
+        || input.state.lifeState != SmbLifeState::Alive) {
         output.done = true;
         output.endReason = SmbEpisodeEndReason::LifeLost;
         output.snapshot = makeSnapshot(
@@ -188,7 +192,11 @@ NesSuperMarioBrosEvaluatorOutput NesSuperMarioBrosEvaluator::evaluate(
         }
     }
 
-    if ((gameplayFrameCount_ - lastProgressFrame_) >= kNoProgressTimeoutFrames) {
+    if (input.state.playerYScreen >= kBelowScreenTerminalPlayerYScreenThreshold) {
+        output.done = true;
+        output.endReason = SmbEpisodeEndReason::FellBelowScreen;
+    }
+    else if ((gameplayFrameCount_ - lastProgressFrame_) >= kNoProgressTimeoutFrames) {
         output.done = true;
         output.endReason = SmbEpisodeEndReason::NoProgressTimeout;
     }

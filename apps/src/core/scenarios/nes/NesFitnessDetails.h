@@ -9,6 +9,7 @@ enum class SmbEpisodeEndReason : uint8_t {
     None = 0,
     LifeLost = 1,
     NoProgressTimeout = 2,
+    FellBelowScreen = 3,
 };
 
 struct NesSuperMarioBrosFitnessSnapshot {

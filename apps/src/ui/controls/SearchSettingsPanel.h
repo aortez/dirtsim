@@ -21,6 +21,7 @@ private:
     void patchCurrentSettings();
 
     static void onMaxSearchedNodeCountChanged(lv_event_t* e);
+    static void onPlanPlaybackFrameDelayChanged(lv_event_t* e);
     static void onStallFrameLimitChanged(lv_event_t* e);
     static void onVelocityPruningChanged(lv_event_t* e);
     static void onBelowScreenPruningChanged(lv_event_t* e);
@@ -28,6 +29,7 @@ private:
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* maxSearchedNodeCountStepper_ = nullptr;
+    lv_obj_t* planPlaybackFrameDelayStepper_ = nullptr;
     lv_obj_t* stallFrameLimitStepper_ = nullptr;
     lv_obj_t* velocityPruningSwitch_ = nullptr;
     lv_obj_t* belowScreenPruningSwitch_ = nullptr;

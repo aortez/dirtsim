@@ -24,6 +24,8 @@ enum class SearchProgressEvent : uint8_t {
     Stopped = 10,
     Error = 11,
     PrunedBelowScreen = 12,
+    PrunedTransposition = 13,
+    PrunedNonGameplay = 14,
 };
 
 struct SearchProgress {

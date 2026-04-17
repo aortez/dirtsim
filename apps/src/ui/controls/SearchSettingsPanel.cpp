@@ -30,6 +30,10 @@ SearchSettings clampSearchSettings(const SearchSettings& settings)
             static_cast<int32_t>(settings.stallFrameLimit),
             SearchSettings::StallFrameLimitMin,
             SearchSettings::StallFrameLimitMax),
+        .planPlaybackFrameDelayMs = clampStepperValue(
+            static_cast<int32_t>(settings.planPlaybackFrameDelayMs),
+            0u,
+            SearchSettings::PlanPlaybackFrameDelayMsMax),
         .velocityPruningEnabled = settings.velocityPruningEnabled,
         .belowScreenPruningEnabled = settings.belowScreenPruningEnabled,
         .groundedVerticalJumpPrioritizationEnabled =
@@ -65,6 +69,11 @@ void SearchSettingsPanel::applySettings(const DirtSim::UserSettings& settings)
         LVGLBuilder::ActionStepperBuilder::setValue(
             stallFrameLimitStepper_,
             static_cast<int32_t>(settings_.searchSettings.stallFrameLimit));
+    }
+    if (planPlaybackFrameDelayStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            planPlaybackFrameDelayStepper_,
+            static_cast<int32_t>(settings_.searchSettings.planPlaybackFrameDelayMs));
     }
     if (velocityPruningSwitch_) {
         if (settings_.searchSettings.velocityPruningEnabled) {
@@ -128,6 +137,16 @@ void SearchSettingsPanel::createControls()
             .value(static_cast<int32_t>(settings_.searchSettings.stallFrameLimit))
             .width(kPanelControlWidth)
             .callback(onStallFrameLimitChanged, this)
+            .buildOrLog();
+
+    planPlaybackFrameDelayStepper_ =
+        LVGLBuilder::actionStepper(container_)
+            .label("Plan Playback Delay (ms)")
+            .range(0, static_cast<int32_t>(SearchSettings::PlanPlaybackFrameDelayMsMax))
+            .step(1)
+            .value(static_cast<int32_t>(settings_.searchSettings.planPlaybackFrameDelayMs))
+            .width(kPanelControlWidth)
+            .callback(onPlanPlaybackFrameDelayChanged, this)
             .buildOrLog();
 
     velocityPruningSwitch_ = LVGLBuilder::labeledSwitch(container_)
@@ -196,6 +215,21 @@ void SearchSettingsPanel::onStallFrameLimitChanged(lv_event_t* e)
         LVGLBuilder::ActionStepperBuilder::getValue(self->stallFrameLimitStepper_),
         SearchSettings::StallFrameLimitMin,
         SearchSettings::StallFrameLimitMax);
+    self->patchCurrentSettings();
+}
+
+void SearchSettingsPanel::onPlanPlaybackFrameDelayChanged(lv_event_t* e)
+{
+    auto* self = static_cast<SearchSettingsPanel*>(lv_event_get_user_data(e));
+    DIRTSIM_ASSERT(self, "SearchSettingsPanel plan-playback-delay callback requires panel");
+    if (self->updatingUi_) {
+        return;
+    }
+
+    self->settings_.searchSettings.planPlaybackFrameDelayMs = clampStepperValue(
+        LVGLBuilder::ActionStepperBuilder::getValue(self->planPlaybackFrameDelayStepper_),
+        0u,
+        SearchSettings::PlanPlaybackFrameDelayMsMax);
     self->patchCurrentSettings();
 }
 

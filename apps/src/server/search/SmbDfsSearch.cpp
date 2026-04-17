@@ -11,16 +11,28 @@
 #include "server/search/SmbSearchHarness.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
 
 namespace DirtSim::Server::SearchSupport {
 
 namespace {
 
 constexpr uint32_t kLevelsPerWorld = 4u;
-constexpr uint8_t kBelowScreenPrunePlayerYScreenThreshold = 224u;
 constexpr uint8_t kVelocityPruneConsecutiveFrameThreshold = 2u;
 constexpr double kVelocityPruneHorizontalSpeedEpsilon = 0.05;
+
+int8_t encodeAxisSign(float value)
+{
+    if (value > 0.0f) {
+        return 1;
+    }
+    if (value < 0.0f) {
+        return -1;
+    }
+    return 0;
+}
 
 std::unique_ptr<NesGameAdapter> createSmbGameAdapter()
 {
@@ -33,6 +45,72 @@ uint64_t encodeCurrentFrontier(const NesSuperMarioBrosState& state)
     const uint32_t stageIndex =
         (static_cast<uint32_t>(state.world) * kLevelsPerWorld) + state.level;
     return encodeSmbFrontier(stageIndex, state.absoluteX);
+}
+
+void hashCombine(size_t& seed, size_t value)
+{
+    seed ^= value + 0x9E3779B97F4A7C15ull + (seed << 6u) + (seed >> 2u);
+}
+
+SmbSearchHorizontalDirection getHorizontalDirection(const NesSuperMarioBrosState& state)
+{
+    if (state.movementX > 0.0f) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.movementX < 0.0f) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    if (state.horizontalSpeedNormalized > 0.0) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.horizontalSpeedNormalized < 0.0) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    if (state.facingX > 0.0f) {
+        return SmbSearchHorizontalDirection::Right;
+    }
+    if (state.facingX < 0.0f) {
+        return SmbSearchHorizontalDirection::Left;
+    }
+    return SmbSearchHorizontalDirection::None;
+}
+
+int8_t quantizeHorizontalSpeed(double normalizedSpeed)
+{
+    const int roundedSpeed = static_cast<int>(std::lround(normalizedSpeed * 40.0));
+    return static_cast<int8_t>(std::clamp(roundedSpeed, -128, 127));
+}
+
+int16_t quantizeVerticalSpeed(double normalizedSpeed)
+{
+    const int roundedSpeed = static_cast<int>(std::lround(normalizedSpeed * 128.0));
+    return static_cast<int16_t>(std::clamp(roundedSpeed, -128, 128));
+}
+
+bool isClosedLossTranspositionInputMirrorRamAddr(size_t ramAddr)
+{
+    switch (ramAddr) {
+        case 0x000A:
+        case 0x000B:
+        case 0x06FC:
+        case 0x074A:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::array<uint8_t, kClosedLossTranspositionRamByteCount> buildClosedLossTranspositionRamBytes(
+    const SmolnesRuntime::MemorySnapshot& memorySnapshot)
+{
+    std::array<uint8_t, kClosedLossTranspositionRamByteCount> ramBytes{};
+    for (size_t i = 0u; i < kClosedLossTranspositionRamByteAddrs.size(); ++i) {
+        const size_t ramAddr = kClosedLossTranspositionRamByteAddrs[i];
+        ramBytes[i] = isClosedLossTranspositionInputMirrorRamAddr(ramAddr)
+            ? 0u
+            : memorySnapshot.cpuRam.at(ramAddr);
+    }
+    return ramBytes;
 }
 
 std::vector<PlayerControlFrame> makeRootPrefixFrames(uint64_t gameplayFrameCount)
@@ -65,6 +143,10 @@ Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventT
             return Api::SearchProgressEvent::PrunedVelocityStuck;
         case SmbDfsSearchTraceEventType::PrunedBelowScreen:
             return Api::SearchProgressEvent::PrunedBelowScreen;
+        case SmbDfsSearchTraceEventType::PrunedTransposition:
+            return Api::SearchProgressEvent::PrunedTransposition;
+        case SmbDfsSearchTraceEventType::PrunedNonGameplay:
+            return Api::SearchProgressEvent::PrunedNonGameplay;
         case SmbDfsSearchTraceEventType::RootInitialized:
             return Api::SearchProgressEvent::RootInitialized;
         case SmbDfsSearchTraceEventType::Stopped:
@@ -79,6 +161,81 @@ Api::SearchProgressEvent toSearchProgressEvent(SmbDfsSearchTraceEventType eventT
 
 SmbDfsSearch::SmbDfsSearch(SmbDfsSearchOptions options) : options_(options)
 {}
+
+bool SmbDfsSearch::ClosedLossTranspositionKey::operator==(
+    const ClosedLossTranspositionKey& other) const
+{
+    return nearestEnemyDx == other.nearestEnemyDx && nearestEnemyDy == other.nearestEnemyDy
+        && secondNearestEnemyDx == other.secondNearestEnemyDx
+        && secondNearestEnemyDy == other.secondNearestEnemyDy
+        && verticalSpeed == other.verticalSpeed && facingX == other.facingX
+        && horizontalSpeed == other.horizontalSpeed && movementX == other.movementX
+        && absoluteX == other.absoluteX && level == other.level
+        && playerYScreen == other.playerYScreen && powerupState == other.powerupState
+        && world == other.world && ramBytes == other.ramBytes && enemyPresent == other.enemyPresent
+        && secondEnemyPresent == other.secondEnemyPresent;
+}
+
+size_t SmbDfsSearch::ClosedLossTranspositionKeyHash::operator()(
+    const ClosedLossTranspositionKey& key) const
+{
+    size_t seed = 0u;
+    hashCombine(seed, std::hash<int16_t>{}(key.nearestEnemyDx));
+    hashCombine(seed, std::hash<int16_t>{}(key.nearestEnemyDy));
+    hashCombine(seed, std::hash<int16_t>{}(key.secondNearestEnemyDx));
+    hashCombine(seed, std::hash<int16_t>{}(key.secondNearestEnemyDy));
+    hashCombine(seed, std::hash<int16_t>{}(key.verticalSpeed));
+    hashCombine(seed, std::hash<int8_t>{}(key.facingX));
+    hashCombine(seed, std::hash<int8_t>{}(key.horizontalSpeed));
+    hashCombine(seed, std::hash<int8_t>{}(key.movementX));
+    hashCombine(seed, std::hash<uint16_t>{}(key.absoluteX));
+    hashCombine(seed, std::hash<uint8_t>{}(key.level));
+    hashCombine(seed, std::hash<uint8_t>{}(key.playerYScreen));
+    hashCombine(seed, std::hash<uint8_t>{}(key.powerupState));
+    hashCombine(seed, std::hash<uint8_t>{}(key.world));
+    for (const uint8_t byte : key.ramBytes) {
+        hashCombine(seed, std::hash<uint8_t>{}(byte));
+    }
+    hashCombine(seed, std::hash<bool>{}(key.enemyPresent));
+    hashCombine(seed, std::hash<bool>{}(key.secondEnemyPresent));
+    return seed;
+}
+
+bool SmbDfsSearch::ClosedLossTranspositionShapeKey::operator==(
+    const ClosedLossTranspositionShapeKey& other) const
+{
+    return nearestEnemyDx == other.nearestEnemyDx && nearestEnemyDy == other.nearestEnemyDy
+        && secondNearestEnemyDx == other.secondNearestEnemyDx
+        && secondNearestEnemyDy == other.secondNearestEnemyDy
+        && verticalSpeed == other.verticalSpeed && facingX == other.facingX
+        && horizontalSpeed == other.horizontalSpeed && movementX == other.movementX
+        && absoluteX == other.absoluteX && level == other.level
+        && playerYScreen == other.playerYScreen && powerupState == other.powerupState
+        && world == other.world && enemyPresent == other.enemyPresent
+        && secondEnemyPresent == other.secondEnemyPresent;
+}
+
+size_t SmbDfsSearch::ClosedLossTranspositionShapeKeyHash::operator()(
+    const ClosedLossTranspositionShapeKey& key) const
+{
+    size_t seed = 0u;
+    hashCombine(seed, std::hash<int16_t>{}(key.nearestEnemyDx));
+    hashCombine(seed, std::hash<int16_t>{}(key.nearestEnemyDy));
+    hashCombine(seed, std::hash<int16_t>{}(key.secondNearestEnemyDx));
+    hashCombine(seed, std::hash<int16_t>{}(key.secondNearestEnemyDy));
+    hashCombine(seed, std::hash<int16_t>{}(key.verticalSpeed));
+    hashCombine(seed, std::hash<int8_t>{}(key.facingX));
+    hashCombine(seed, std::hash<int8_t>{}(key.horizontalSpeed));
+    hashCombine(seed, std::hash<int8_t>{}(key.movementX));
+    hashCombine(seed, std::hash<uint16_t>{}(key.absoluteX));
+    hashCombine(seed, std::hash<uint8_t>{}(key.level));
+    hashCombine(seed, std::hash<uint8_t>{}(key.playerYScreen));
+    hashCombine(seed, std::hash<uint8_t>{}(key.powerupState));
+    hashCombine(seed, std::hash<uint8_t>{}(key.world));
+    hashCombine(seed, std::hash<bool>{}(key.enemyPresent));
+    hashCombine(seed, std::hash<bool>{}(key.secondEnemyPresent));
+    return seed;
+}
 
 Result<std::monostate, std::string> SmbDfsSearch::startDfs()
 {
@@ -218,6 +375,15 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         DfsFrame& dfsFrame = dfsStack_.back();
         if (dfsFrame.nextActionIndex >= dfsFrame.actionOrdering.count) {
             const SmbSearchNode& exhaustedNode = nodes_[dfsFrame.nodeIndex];
+            const SmbSearchNodeOutcome exhaustedOutcome = dfsFrame.closedLossCandidate
+                ? SmbSearchNodeOutcome::ClosedLoss
+                : SmbSearchNodeOutcome::NotClosedLoss;
+            const SmbDfsClosedLossBlockReason exhaustedBlockReason = dfsFrame.closedLossCandidate
+                ? SmbDfsClosedLossBlockReason::None
+                : dfsFrame.closedLossBlockReason;
+            nodeOutcomes_[dfsFrame.nodeIndex] = exhaustedOutcome;
+            closedLossBlockReasons_[dfsFrame.nodeIndex] = exhaustedBlockReason;
+            publishClosedLossTranspositionEntry(dfsFrame.nodeIndex);
             recordTrace(
                 SmbDfsSearchTraceEntry{
                     .eventType = SmbDfsSearchTraceEventType::Backtracked,
@@ -229,12 +395,16 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                     .evaluationScore = exhaustedNode.evaluatorSummary.evaluationScore,
                     .framesSinceProgress =
                         exhaustedNode.evaluatorSummary.gameplayFramesSinceProgress,
+                    .closedLossCandidate = dfsFrame.closedLossCandidate,
+                    .closedLossProven = exhaustedOutcome == SmbSearchNodeOutcome::ClosedLoss,
+                    .closedLossBlockReason = exhaustedBlockReason,
                 });
             const size_t poppedNodeIndex = dfsFrame.nodeIndex;
             dfsStack_.pop_back();
             releaseNodeHeavyData(poppedNodeIndex);
             progress_.lastSearchEvent = Api::SearchProgressEvent::Backtracked;
             if (!dfsStack_.empty()) {
+                noteChildOutcome(dfsStack_.back(), exhaustedOutcome, exhaustedBlockReason);
                 updateRenderableState(nodes_[dfsStack_.back().nodeIndex]);
                 return SmbDfsSearchTickResult{
                     .renderChanged = true,
@@ -331,6 +501,29 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
             scenarioVideoFrame = driver_->copyRuntimeFrameSnapshot();
         }
 
+        const bool belowScreen = evaluatorSummary.endReason == SmbEpisodeEndReason::FellBelowScreen;
+        const bool terminalLoss = evaluatorSummary.terminal && !belowScreen;
+        const bool nonGameplay =
+            !evaluatorSummary.terminal && state.gameMode != SmbGameMode::Normal;
+        const std::optional<ClosedLossTranspositionKey> closedLossTranspositionKey =
+            buildClosedLossTranspositionKey(state, stepResult.memorySnapshot.value());
+        const std::optional<ClosedLossTranspositionShapeKey> closedLossTranspositionShapeKey =
+            closedLossTranspositionKey.has_value()
+            ? std::optional<ClosedLossTranspositionShapeKey>(
+                  buildClosedLossTranspositionShapeKey(closedLossTranspositionKey.value()))
+            : std::nullopt;
+        const bool prunedTransposition = !evaluatorSummary.terminal && !nonGameplay
+            && closedLossTranspositionKey.has_value()
+            && isClosedLossTranspositionPruned(
+                closedLossTranspositionKey.value(), evaluatorSummary);
+        const ClosedLossTranspositionShapeProbeResult approximateTranspositionProbe =
+            !evaluatorSummary.terminal && !nonGameplay && closedLossTranspositionKey.has_value()
+                && closedLossTranspositionShapeKey.has_value()
+            ? probeClosedLossTranspositionShape(
+                  closedLossTranspositionShapeKey.value(),
+                  closedLossTranspositionKey.value(),
+                  evaluatorSummary)
+            : ClosedLossTranspositionShapeProbeResult{};
         const size_t childIndex = nodes_.size();
         nodes_.push_back(
             SmbSearchNode{
@@ -344,17 +537,17 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 .gameplayFrame = evaluatorSummary.gameplayFrames,
                 .playerYScreen = state.playerYScreen,
             });
+        closedLossTranspositionKeys_.push_back(closedLossTranspositionKey);
+        nodeOutcomes_.push_back(SmbSearchNodeOutcome::Open);
+        closedLossBlockReasons_.push_back(SmbDfsClosedLossBlockReason::None);
         progress_.searchedNodeCount++;
         if (groundedVerticalJumpPriorityAction) {
             progress_.groundedVerticalJumpPriorityActionCount++;
         }
         updateRenderableState(nodes_.back());
 
-        const bool dead = evaluatorSummary.terminal || state.phase != SmbPhase::Gameplay
-            || state.lifeState != SmbLifeState::Alive;
-        const bool belowScreen = options_.belowScreenPruningEnabled && !dead
-            && state.playerYScreen >= kBelowScreenPrunePlayerYScreenThreshold;
         const bool velocityStuckCandidate = options_.velocityPruningEnabled
+            && !evaluatorSummary.terminal && !nonGameplay
             && state.absoluteX == decodeSmbAbsoluteX(parentCurrentFrontier) && !state.airborne
             && state.playerYScreen >= parentPlayerYScreen
             && std::abs(state.horizontalSpeedNormalized) <= kVelocityPruneHorizontalSpeedEpsilon
@@ -366,13 +559,27 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
         nodes_.back().velocityStuckFrameCount = velocityStuckFrameCount;
         const bool velocityStuck =
             velocityStuckFrameCount >= kVelocityPruneConsecutiveFrameThreshold;
-        const bool stalled =
-            evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
-        const SmbDfsSearchTraceEventType traceEvent = dead ? SmbDfsSearchTraceEventType::PrunedDead
-            : belowScreen   ? SmbDfsSearchTraceEventType::PrunedBelowScreen
-            : velocityStuck ? SmbDfsSearchTraceEventType::PrunedVelocityStuck
-            : stalled       ? SmbDfsSearchTraceEventType::PrunedStalled
-                            : SmbDfsSearchTraceEventType::ExpandedAlive;
+        const bool stalled = !evaluatorSummary.terminal && !nonGameplay
+            && evaluatorSummary.gameplayFramesSinceProgress >= options_.stallFrameLimit;
+        const SmbDfsSearchTraceEventType traceEvent = belowScreen
+            ? SmbDfsSearchTraceEventType::PrunedBelowScreen
+            : terminalLoss        ? SmbDfsSearchTraceEventType::PrunedDead
+            : prunedTransposition ? SmbDfsSearchTraceEventType::PrunedTransposition
+            : nonGameplay         ? SmbDfsSearchTraceEventType::PrunedNonGameplay
+            : velocityStuck       ? SmbDfsSearchTraceEventType::PrunedVelocityStuck
+            : stalled             ? SmbDfsSearchTraceEventType::PrunedStalled
+                                  : SmbDfsSearchTraceEventType::ExpandedAlive;
+        const bool expandedAlive = traceEvent == SmbDfsSearchTraceEventType::ExpandedAlive;
+        const bool childClosedLossCandidate = expandedAlive && isClosedLossCandidate(childIndex);
+        const SmbDfsClosedLossBlockReason childInitialBlockReason = expandedAlive
+            ? getInitialClosedLossBlockReason(childIndex)
+            : SmbDfsClosedLossBlockReason::None;
+        const SmbSearchNodeOutcome childOutcome = expandedAlive ? SmbSearchNodeOutcome::Open
+            : nonGameplay ? SmbSearchNodeOutcome::NotClosedLoss
+                          : SmbSearchNodeOutcome::ClosedLoss;
+        const SmbDfsClosedLossBlockReason childBlockReason = expandedAlive ? childInitialBlockReason
+            : nonGameplay ? SmbDfsClosedLossBlockReason::NonGameplay
+                          : SmbDfsClosedLossBlockReason::None;
         recordTrace(
             SmbDfsSearchTraceEntry{
                 .eventType = traceEvent,
@@ -384,14 +591,26 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                 .evaluationScore = evaluatorSummary.evaluationScore,
                 .framesSinceProgress = evaluatorSummary.gameplayFramesSinceProgress,
                 .groundedVerticalJumpPriorityAction = groundedVerticalJumpPriorityAction,
+                .closedLossCandidate = expandedAlive
+                    ? childClosedLossCandidate
+                    : childOutcome == SmbSearchNodeOutcome::ClosedLoss,
+                .closedLossProven = childOutcome == SmbSearchNodeOutcome::ClosedLoss,
+                .closedLossApproximateTranspositionPruned = approximateTranspositionProbe.pruned,
+                .closedLossApproximateTranspositionRamDiffCount =
+                    approximateTranspositionProbe.ramDiffCount,
+                .closedLossApproximateTranspositionRamDiffs =
+                    approximateTranspositionProbe.ramDiffs,
+                .closedLossBlockReason = childBlockReason,
             });
         progress_.lastSearchEvent = toSearchProgressEvent(traceEvent);
 
-        if (!dead && !belowScreen && !velocityStuck && !stalled) {
+        if (!evaluatorSummary.terminal && !prunedTransposition && !nonGameplay && !velocityStuck
+            && !stalled) {
             updateBestLeaf(childIndex);
             const SmbSearchActionOrdering actionOrdering = buildDfsActionOrder(
                 state.airborne,
                 state.verticalSpeedNormalized,
+                getHorizontalDirection(state),
                 action,
                 options_.groundedVerticalJumpPrioritizationEnabled);
             dfsStack_.push_back(
@@ -399,9 +618,17 @@ SmbDfsSearchTickResult SmbDfsSearch::tick()
                     .nodeIndex = childIndex,
                     .nextActionIndex = 0,
                     .actionOrdering = actionOrdering,
+                    .closedLossCandidate = childClosedLossCandidate,
+                    .closedLossBlockReason = childInitialBlockReason,
                 });
         }
         else {
+            nodeOutcomes_[childIndex] = childOutcome;
+            closedLossBlockReasons_[childIndex] = childBlockReason;
+            noteChildOutcome(dfsFrame, childOutcome, childBlockReason);
+            if (childOutcome == SmbSearchNodeOutcome::ClosedLoss) {
+                publishClosedLossTranspositionEntry(childIndex);
+            }
             // Pruned node will never be loaded again. Release heavy data.
             releaseNodeHeavyData(childIndex);
         }
@@ -548,6 +775,11 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRuntime()
     rootPrefixFrames_.clear();
     nodes_.clear();
     dfsStack_.clear();
+    nodeOutcomes_.clear();
+    closedLossBlockReasons_.clear();
+    closedLossTranspositionKeys_.clear();
+    closedLossTranspositionTable_.clear();
+    closedLossTranspositionShapeTable_.clear();
     trace_.clear();
     bestLeafIndex_.reset();
     bestFrontier_ = 0;
@@ -577,12 +809,21 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
             .currentFrontier = evaluatorSummary.bestFrontier,
             .gameplayFrame = evaluatorSummary.gameplayFrames,
         });
+    closedLossTranspositionKeys_.push_back(std::nullopt);
+    nodeOutcomes_.push_back(SmbSearchNodeOutcome::Open);
+    closedLossBlockReasons_.push_back(getInitialClosedLossBlockReason(0u));
     dfsStack_.push_back(
         DfsFrame{
             .nodeIndex = 0u,
             .nextActionIndex = 0,
             .actionOrdering = buildDfsActionOrder(
-                false, 0.0, std::nullopt, options_.groundedVerticalJumpPrioritizationEnabled),
+                false,
+                0.0,
+                SmbSearchHorizontalDirection::None,
+                std::nullopt,
+                options_.groundedVerticalJumpPrioritizationEnabled),
+            .closedLossCandidate = isClosedLossCandidate(0u),
+            .closedLossBlockReason = getInitialClosedLossBlockReason(0u),
         });
 
     bestLeafIndex_ = 0u;
@@ -599,6 +840,8 @@ Result<std::monostate, std::string> SmbDfsSearch::initializeRootNode(
             .frontier = evaluatorSummary.bestFrontier,
             .evaluationScore = evaluatorSummary.evaluationScore,
             .framesSinceProgress = evaluatorSummary.gameplayFramesSinceProgress,
+            .closedLossCandidate = isClosedLossCandidate(0u),
+            .closedLossBlockReason = getInitialClosedLossBlockReason(0u),
         });
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
@@ -663,6 +906,202 @@ void SmbDfsSearch::completeWithTraceEvent(SmbDfsSearchTraceEventType eventType)
                 ? nodes_[nodeIndex].evaluatorSummary.gameplayFramesSinceProgress
                 : 0u,
         });
+}
+
+bool SmbDfsSearch::isClosedLossCandidate(size_t nodeIndex) const
+{
+    return nodeIndex < nodes_.size();
+}
+
+void SmbDfsSearch::noteChildOutcome(
+    DfsFrame& dfsFrame,
+    SmbSearchNodeOutcome childOutcome,
+    SmbDfsClosedLossBlockReason childBlockReason)
+{
+    if (childOutcome == SmbSearchNodeOutcome::ClosedLoss) {
+        return;
+    }
+
+    dfsFrame.closedLossCandidate = false;
+    if (dfsFrame.closedLossBlockReason != SmbDfsClosedLossBlockReason::None) {
+        return;
+    }
+
+    dfsFrame.closedLossBlockReason = childBlockReason == SmbDfsClosedLossBlockReason::NonGameplay
+        ? SmbDfsClosedLossBlockReason::NonGameplay
+        : SmbDfsClosedLossBlockReason::ChildNotClosedLoss;
+}
+
+SmbDfsClosedLossBlockReason SmbDfsSearch::getInitialClosedLossBlockReason(size_t nodeIndex) const
+{
+    return isClosedLossCandidate(nodeIndex) ? SmbDfsClosedLossBlockReason::None
+                                            : SmbDfsClosedLossBlockReason::FreshProgress;
+}
+
+std::optional<SmbDfsSearch::ClosedLossTranspositionKey> SmbDfsSearch::
+    buildClosedLossTranspositionKey(
+        const NesSuperMarioBrosState& state,
+        const SmolnesRuntime::MemorySnapshot& memorySnapshot) const
+{
+    if (!options_.fallingTranspositionPruningEnabled) {
+        return std::nullopt;
+    }
+    if (state.gameMode != SmbGameMode::Normal || state.lifeState != SmbLifeState::Alive) {
+        return std::nullopt;
+    }
+    if (state.playerYScreen < options_.fallingTranspositionPlayerYScreenThreshold) {
+        return std::nullopt;
+    }
+
+    return ClosedLossTranspositionKey{
+        .nearestEnemyDx = state.nearestEnemyDx,
+        .nearestEnemyDy = state.nearestEnemyDy,
+        .secondNearestEnemyDx = state.secondNearestEnemyDx,
+        .secondNearestEnemyDy = state.secondNearestEnemyDy,
+        .verticalSpeed = quantizeVerticalSpeed(state.verticalSpeedNormalized),
+        .facingX = encodeAxisSign(state.facingX),
+        .horizontalSpeed = quantizeHorizontalSpeed(state.horizontalSpeedNormalized),
+        .movementX = encodeAxisSign(state.movementX),
+        .absoluteX = state.absoluteX,
+        .level = state.level,
+        .playerYScreen = state.playerYScreen,
+        .powerupState = static_cast<uint8_t>(state.powerupState),
+        .world = state.world,
+        .ramBytes = buildClosedLossTranspositionRamBytes(memorySnapshot),
+        .enemyPresent = state.enemyPresent,
+        .secondEnemyPresent = state.secondEnemyPresent,
+    };
+}
+
+SmbDfsSearch::ClosedLossTranspositionShapeKey SmbDfsSearch::buildClosedLossTranspositionShapeKey(
+    const ClosedLossTranspositionKey& key) const
+{
+    return ClosedLossTranspositionShapeKey{
+        .nearestEnemyDx = key.nearestEnemyDx,
+        .nearestEnemyDy = key.nearestEnemyDy,
+        .secondNearestEnemyDx = key.secondNearestEnemyDx,
+        .secondNearestEnemyDy = key.secondNearestEnemyDy,
+        .verticalSpeed = key.verticalSpeed,
+        .facingX = key.facingX,
+        .horizontalSpeed = key.horizontalSpeed,
+        .movementX = key.movementX,
+        .absoluteX = key.absoluteX,
+        .level = key.level,
+        .playerYScreen = key.playerYScreen,
+        .powerupState = key.powerupState,
+        .world = key.world,
+        .enemyPresent = key.enemyPresent,
+        .secondEnemyPresent = key.secondEnemyPresent,
+    };
+}
+
+bool SmbDfsSearch::isClosedLossTranspositionPruned(
+    const ClosedLossTranspositionKey& key, const SmbSearchEvaluatorSummary& evaluatorSummary) const
+{
+    const auto entryIt = closedLossTranspositionTable_.find(key);
+    if (entryIt == closedLossTranspositionTable_.end()) {
+        return false;
+    }
+
+    const ClosedLossTranspositionEntry& entry = entryIt->second;
+    return entry.bestFrontier >= evaluatorSummary.bestFrontier
+        && entry.gameplayFrame <= evaluatorSummary.gameplayFrames
+        && entry.framesSinceProgress <= evaluatorSummary.gameplayFramesSinceProgress;
+}
+
+SmbDfsSearch::ClosedLossTranspositionShapeProbeResult SmbDfsSearch::
+    probeClosedLossTranspositionShape(
+        const ClosedLossTranspositionShapeKey& key,
+        const ClosedLossTranspositionKey& exactKey,
+        const SmbSearchEvaluatorSummary& evaluatorSummary) const
+{
+    const auto entryIt = closedLossTranspositionShapeTable_.find(key);
+    if (entryIt == closedLossTranspositionShapeTable_.end()) {
+        return {};
+    }
+
+    const ClosedLossTranspositionShapeEntry& shapeEntry = entryIt->second;
+    const ClosedLossTranspositionEntry& proof = shapeEntry.proof;
+    if (proof.bestFrontier < evaluatorSummary.bestFrontier
+        || proof.gameplayFrame > evaluatorSummary.gameplayFrames
+        || proof.framesSinceProgress > evaluatorSummary.gameplayFramesSinceProgress) {
+        return {};
+    }
+
+    ClosedLossTranspositionShapeProbeResult result{
+        .pruned = true,
+    };
+    for (size_t i = 0u; i < exactKey.ramBytes.size(); ++i) {
+        if (exactKey.ramBytes[i] == shapeEntry.ramBytes[i]) {
+            continue;
+        }
+
+        result.ramDiffs[i] = true;
+        result.ramDiffCount++;
+    }
+    return result;
+}
+
+void SmbDfsSearch::publishClosedLossTranspositionEntry(size_t nodeIndex)
+{
+    if (nodeIndex >= nodes_.size() || nodeIndex >= closedLossTranspositionKeys_.size()
+        || nodeIndex >= nodeOutcomes_.size()) {
+        return;
+    }
+
+    if (nodeOutcomes_[nodeIndex] != SmbSearchNodeOutcome::ClosedLoss) {
+        return;
+    }
+
+    const std::optional<ClosedLossTranspositionKey>& key = closedLossTranspositionKeys_[nodeIndex];
+    if (!key.has_value()) {
+        return;
+    }
+
+    const SmbSearchNode& node = nodes_[nodeIndex];
+    const ClosedLossTranspositionEntry entry{
+        .bestFrontier = node.evaluatorSummary.bestFrontier,
+        .framesSinceProgress = node.evaluatorSummary.gameplayFramesSinceProgress,
+        .gameplayFrame = node.evaluatorSummary.gameplayFrames,
+    };
+
+    const auto existingIt = closedLossTranspositionTable_.find(key.value());
+    if (existingIt == closedLossTranspositionTable_.end()) {
+        closedLossTranspositionTable_.emplace(key.value(), entry);
+    }
+    else {
+        ClosedLossTranspositionEntry& existing = existingIt->second;
+        if (entry.bestFrontier > existing.bestFrontier
+            || (entry.bestFrontier == existing.bestFrontier
+                && entry.gameplayFrame < existing.gameplayFrame)
+            || (entry.bestFrontier == existing.bestFrontier
+                && entry.gameplayFrame == existing.gameplayFrame
+                && entry.framesSinceProgress < existing.framesSinceProgress)) {
+            existing = entry;
+        }
+    }
+
+    const ClosedLossTranspositionShapeKey shapeKey =
+        buildClosedLossTranspositionShapeKey(key.value());
+    const ClosedLossTranspositionShapeEntry shapeEntry{
+        .proof = entry,
+        .ramBytes = key->ramBytes,
+    };
+    const auto existingShapeIt = closedLossTranspositionShapeTable_.find(shapeKey);
+    if (existingShapeIt == closedLossTranspositionShapeTable_.end()) {
+        closedLossTranspositionShapeTable_.emplace(shapeKey, shapeEntry);
+        return;
+    }
+
+    ClosedLossTranspositionShapeEntry& existingShape = existingShapeIt->second;
+    if (entry.bestFrontier > existingShape.proof.bestFrontier
+        || (entry.bestFrontier == existingShape.proof.bestFrontier
+            && entry.gameplayFrame < existingShape.proof.gameplayFrame)
+        || (entry.bestFrontier == existingShape.proof.bestFrontier
+            && entry.gameplayFrame == existingShape.proof.gameplayFrame
+            && entry.framesSinceProgress < existingShape.proof.framesSinceProgress)) {
+        existingShape = shapeEntry;
+    }
 }
 
 void SmbDfsSearch::rebuildBestPlan()

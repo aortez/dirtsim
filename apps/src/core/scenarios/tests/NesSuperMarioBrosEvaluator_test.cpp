@@ -11,6 +11,7 @@ NesSuperMarioBrosState makeGameplayState(
 {
     NesSuperMarioBrosState state;
     state.phase = SmbPhase::Gameplay;
+    state.gameMode = SmbGameMode::Normal;
     state.lifeState = SmbLifeState::Alive;
     state.world = world;
     state.level = level;
@@ -128,6 +129,102 @@ TEST(NesSuperMarioBrosEvaluatorTest, TerminatesOnFirstLifeLoss)
     EXPECT_TRUE(output.done);
     EXPECT_EQ(output.endReason, SmbEpisodeEndReason::LifeLost);
     EXPECT_TRUE(output.snapshot.done);
+}
+
+TEST(NesSuperMarioBrosEvaluatorTest, IgnoresPregameLifeRegistersBeforeGameplayStarts)
+{
+    NesSuperMarioBrosEvaluator evaluator;
+    evaluator.reset();
+
+    NesSuperMarioBrosState pregameState = makeGameplayState(0, 0, 0, 0);
+    pregameState.phase = SmbPhase::NonGameplay;
+    pregameState.gameMode = SmbGameMode::StartDemo;
+    pregameState.lifeState = SmbLifeState::Dead;
+
+    const NesSuperMarioBrosEvaluatorOutput output = evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = pregameState,
+        });
+    EXPECT_FALSE(output.done);
+    EXPECT_EQ(output.endReason, SmbEpisodeEndReason::None);
+    EXPECT_EQ(output.snapshot.gameplayFrames, 0u);
+    EXPECT_FALSE(output.snapshot.done);
+}
+
+TEST(NesSuperMarioBrosEvaluatorTest, TerminatesOnDyingStateBeforeLivesDecrease)
+{
+    NesSuperMarioBrosEvaluator evaluator;
+    evaluator.reset();
+
+    (void)evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = makeGameplayState(0, 0, 40, 3),
+        });
+
+    NesSuperMarioBrosState deathState = makeGameplayState(0, 0, 40, 3);
+    deathState.lifeState = SmbLifeState::Dying;
+
+    const NesSuperMarioBrosEvaluatorOutput output = evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = deathState,
+        });
+    EXPECT_DOUBLE_EQ(output.rewardDelta, 0.0);
+    EXPECT_TRUE(output.done);
+    EXPECT_EQ(output.endReason, SmbEpisodeEndReason::LifeLost);
+    EXPECT_TRUE(output.snapshot.done);
+}
+
+TEST(NesSuperMarioBrosEvaluatorTest, TerminatesWhenPlayerFallsBelowScreen)
+{
+    NesSuperMarioBrosEvaluator evaluator;
+    evaluator.reset();
+
+    (void)evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = makeGameplayState(0, 0, 40, 3),
+        });
+
+    NesSuperMarioBrosState fallState = makeGameplayState(0, 0, 40, 3);
+    fallState.playerYScreen = 224u;
+
+    const NesSuperMarioBrosEvaluatorOutput output = evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = fallState,
+        });
+    EXPECT_DOUBLE_EQ(output.rewardDelta, 0.0);
+    EXPECT_TRUE(output.done);
+    EXPECT_EQ(output.endReason, SmbEpisodeEndReason::FellBelowScreen);
+    EXPECT_TRUE(output.snapshot.done);
+}
+
+TEST(NesSuperMarioBrosEvaluatorTest, DoesNotTreatLevelEndModeAsLoss)
+{
+    NesSuperMarioBrosEvaluator evaluator;
+    evaluator.reset();
+
+    (void)evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = makeGameplayState(0, 0, 40, 3),
+        });
+
+    NesSuperMarioBrosState levelEndState = makeGameplayState(0, 0, 40, 3);
+    levelEndState.phase = SmbPhase::NonGameplay;
+    levelEndState.gameMode = SmbGameMode::EndCurrentWorld;
+
+    const NesSuperMarioBrosEvaluatorOutput output = evaluator.evaluate(
+        {
+            .advancedFrames = 1,
+            .state = levelEndState,
+        });
+    EXPECT_FALSE(output.done);
+    EXPECT_EQ(output.endReason, SmbEpisodeEndReason::None);
+    EXPECT_FALSE(output.snapshot.done);
 }
 
 TEST(NesSuperMarioBrosEvaluatorTest, TerminatesAfterNoProgressTimeout)

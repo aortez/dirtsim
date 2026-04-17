@@ -4,6 +4,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "server/StateMachine.h"
 #include "server/api/PlanPlaybackStopped.h"
+#include <thread>
 
 namespace DirtSim {
 namespace Server {
@@ -24,6 +25,18 @@ void broadcastPlanPlaybackStopped(
     dsm.broadcastEventData(Api::PlanPlaybackStopped::name(), Network::serialize_payload(stopped));
 }
 
+bool shouldWaitForPlaybackDelay(
+    uint32_t delayMs,
+    std::chrono::steady_clock::time_point lastTickTime,
+    std::chrono::steady_clock::time_point now)
+{
+    if (delayMs == 0u || lastTickTime == std::chrono::steady_clock::time_point{}) {
+        return false;
+    }
+
+    return now - lastTickTime < std::chrono::milliseconds(delayMs);
+}
+
 } // namespace
 
 void PlanPlayback::onEnter(StateMachine& dsm)
@@ -35,6 +48,7 @@ void PlanPlayback::onEnter(StateMachine& dsm)
         broadcastExecutionRender(dsm, execution);
         renderBroadcasted_ = true;
     }
+    lastPlaybackTickTime_ = {};
 }
 
 void PlanPlayback::onExit(StateMachine& /*dsm*/)
@@ -44,7 +58,15 @@ void PlanPlayback::onExit(StateMachine& /*dsm*/)
 
 std::optional<Any> PlanPlayback::tick(StateMachine& dsm)
 {
+    const auto now = std::chrono::steady_clock::now();
+    if (!execution.isCompleted()
+        && shouldWaitForPlaybackDelay(planPlaybackFrameDelayMs, lastPlaybackTickTime_, now)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return std::nullopt;
+    }
+
     const auto tickResult = execution.tick();
+    lastPlaybackTickTime_ = now;
     if (execution.hasRenderableFrame() && (!renderBroadcasted_ || tickResult.frameAdvanced)) {
         dsm.updateCachedWorldData(execution.getWorldData());
         broadcastExecutionRender(dsm, execution);

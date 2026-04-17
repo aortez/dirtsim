@@ -57,6 +57,7 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(inMemory.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(inMemory.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
@@ -69,6 +70,7 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(fromDisk.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
@@ -160,6 +162,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_DOUBLE_EQ(inMemory.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(inMemory.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(inMemory.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_TRUE(inMemory.searchSettings.belowScreenPruningEnabled);
     EXPECT_TRUE(inMemory.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(inMemory.searchSettings.velocityPruningEnabled);
@@ -177,6 +180,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(fromDisk.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_TRUE(fromDisk.searchSettings.belowScreenPruningEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.velocityPruningEnabled);
@@ -199,6 +203,7 @@ TEST(UserSettingsTest, LoadingLegacySettingsBackfillsDefaultsAndStripsUnknownFie
     EXPECT_TRUE(canonicalJson["searchSettings"].contains("belowScreenPruningEnabled"));
     EXPECT_TRUE(
         canonicalJson["searchSettings"].contains("groundedVerticalJumpPrioritizationEnabled"));
+    EXPECT_TRUE(canonicalJson["searchSettings"].contains("planPlaybackFrameDelayMs"));
     EXPECT_TRUE(canonicalJson.contains("trainingResumePolicy"));
     EXPECT_TRUE(canonicalJson.contains("treeGerminationScenarioConfig"));
     EXPECT_TRUE(canonicalJson["nesSessionSettings"].contains("frameDelayMs"));
@@ -233,6 +238,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     requestedSettings.searchSettings = SearchSettings{
         .maxSearchedNodeCount = 0u,
         .stallFrameLimit = 999u,
+        .planPlaybackFrameDelayMs = 999999u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
         .groundedVerticalJumpPrioritizationEnabled = false,
@@ -273,6 +279,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(
         response.value().settings.searchSettings.stallFrameLimit,
         SearchSettings::StallFrameLimitMax);
+    EXPECT_EQ(
+        response.value().settings.searchSettings.planPlaybackFrameDelayMs,
+        SearchSettings::PlanPlaybackFrameDelayMsMax);
     EXPECT_FALSE(response.value().settings.searchSettings.belowScreenPruningEnabled);
     EXPECT_FALSE(
         response.value().settings.searchSettings.groundedVerticalJumpPrioritizationEnabled);
@@ -298,6 +307,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(
         fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMin);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
+    EXPECT_EQ(
+        fromDisk.searchSettings.planPlaybackFrameDelayMs,
+        SearchSettings::PlanPlaybackFrameDelayMsMax);
     EXPECT_FALSE(fromDisk.searchSettings.belowScreenPruningEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.velocityPruningEnabled);
@@ -325,6 +337,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     changedSettings.searchSettings = SearchSettings{
         .maxSearchedNodeCount = 10000u,
         .stallFrameLimit = 60u,
+        .planPlaybackFrameDelayMs = 17u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
         .groundedVerticalJumpPrioritizationEnabled = false,
@@ -357,6 +370,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_DOUBLE_EQ(response.value().settings.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(response.value().settings.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(response.value().settings.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(response.value().settings.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_TRUE(response.value().settings.searchSettings.belowScreenPruningEnabled);
     EXPECT_TRUE(response.value().settings.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(response.value().settings.searchSettings.velocityPruningEnabled);
@@ -372,6 +386,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_DOUBLE_EQ(fromDisk.nesSessionSettings.frameDelayMs, 0.0);
     EXPECT_EQ(fromDisk.searchSettings.maxSearchedNodeCount, 5000u);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, 30u);
+    EXPECT_EQ(fromDisk.searchSettings.planPlaybackFrameDelayMs, 0u);
     EXPECT_TRUE(fromDisk.searchSettings.belowScreenPruningEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_TRUE(fromDisk.searchSettings.velocityPruningEnabled);
@@ -392,6 +407,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     baseSettings.searchSettings = SearchSettings{
         .maxSearchedNodeCount = 8000u,
         .stallFrameLimit = 50u,
+        .planPlaybackFrameDelayMs = 16u,
         .velocityPruningEnabled = true,
         .belowScreenPruningEnabled = true,
         .groundedVerticalJumpPrioritizationEnabled = true,
@@ -420,6 +436,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     patchCommand.searchSettings = SearchSettings{
         .maxSearchedNodeCount = 999999u,
         .stallFrameLimit = 999u,
+        .planPlaybackFrameDelayMs = 999999u,
         .velocityPruningEnabled = false,
         .belowScreenPruningEnabled = false,
         .groundedVerticalJumpPrioritizationEnabled = false,
@@ -444,6 +461,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(
         inMemory.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
     EXPECT_EQ(inMemory.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
+    EXPECT_EQ(
+        inMemory.searchSettings.planPlaybackFrameDelayMs,
+        SearchSettings::PlanPlaybackFrameDelayMsMax);
     EXPECT_FALSE(inMemory.searchSettings.belowScreenPruningEnabled);
     EXPECT_FALSE(inMemory.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(inMemory.searchSettings.velocityPruningEnabled);
@@ -463,6 +483,9 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(
         fromDisk.searchSettings.maxSearchedNodeCount, SearchSettings::MaxSearchedNodeCountMax);
     EXPECT_EQ(fromDisk.searchSettings.stallFrameLimit, SearchSettings::StallFrameLimitMax);
+    EXPECT_EQ(
+        fromDisk.searchSettings.planPlaybackFrameDelayMs,
+        SearchSettings::PlanPlaybackFrameDelayMsMax);
     EXPECT_FALSE(fromDisk.searchSettings.belowScreenPruningEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.groundedVerticalJumpPrioritizationEnabled);
     EXPECT_FALSE(fromDisk.searchSettings.velocityPruningEnabled);

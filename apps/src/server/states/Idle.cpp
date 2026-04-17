@@ -815,6 +815,8 @@ State::Any Idle::onEvent(const Api::PlanPlaybackStart::Cwc& cwc, StateMachine& d
 
     PlanPlayback nextState;
     nextState.planId = cwc.command.planId;
+    nextState.planPlaybackFrameDelayMs =
+        dsm.getUserSettings().searchSettings.planPlaybackFrameDelayMs;
     const auto startResult = nextState.execution.startPlayback(found.value());
     if (startResult.isError()) {
         cwc.sendResponse(
