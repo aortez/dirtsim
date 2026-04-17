@@ -40,16 +40,18 @@ struct NesSessionSettings {
 struct SearchSettings {
     static constexpr uint32_t MaxSearchedNodeCountMin = 100;
     static constexpr uint32_t MaxSearchedNodeCountMax = 500000;
+    static constexpr uint32_t PlanPlaybackFrameDelayMsMax = 1000;
     static constexpr uint32_t StallFrameLimitMin = 1;
     static constexpr uint32_t StallFrameLimitMax = 300;
 
     uint32_t maxSearchedNodeCount = 5000;
     uint32_t stallFrameLimit = 30;
+    uint32_t planPlaybackFrameDelayMs = 0;
     bool velocityPruningEnabled = true;
     bool belowScreenPruningEnabled = true;
     bool groundedVerticalJumpPrioritizationEnabled = true;
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 struct UserSettings {
