@@ -1,16 +1,35 @@
 ## Project Overview
 
-DirtSim is a grid/cell-based playground for experimenting with artificial life.
+DirtSim is a grid/cell-based playground for experimenting with various ideas.
 
 It attempts to simulate both fluid and rigid body dynamics.
+
+It has sensory and motor-based artificial life forms, injectable into most scenarios.
+The life forms have either hard coded or trainable neural networks for brains.
+
+It also has a very nice clock mode, just hacked in because why not make use of the weird grid physics.
+This is probably the most practical use of this application - as a clock with various strange effects and events (marquee effects, rain, melting digits, glowing digits, parkour duck, etc).
+
+In the below image you can see a "duck" lifeform, holding a flash light, jumping across the floor beneath the clock.
+
+![Dirt Simulation](dirt_sim.png)
+
+There is also a polyphonic digital synth.
+![Digital synth](synth.png)
+
+It also has a monitor-mode based wifi channel scanner.
+![Wifi Channel Scanner](scanner.png)
+
+It has an integrated NES emulator, allowing for training neural nets on whatever games you choose to supply.
+
+Plus more... dirtsim was my playground for a while, so there are various other full to half baked things in here, such as:
+* A web server, allowing remote access via h266-based streaming video.
+* A NES state space searcher, finding optimal input streams for games.
+* A fractal viewer.
 
 It runs on Linux X86 under X11, wayland, and framebuffer.
 
 It also designed as an embedded application, running great on Raspberry Pi 4 and 5.
-
-It also has a very nice clock mode, just hacked in because why not make use of the weird grid physics.
-
-![Dirt Simulation](dirt_sim.png)
 
 ## Target Hardware
 
@@ -43,12 +62,10 @@ make debug                           # Build
 
 | Document | Location | Description |
 |----------|----------|-------------|
-| Application docs | `CLAUDE.md` | Build, run, test, architecture |
+| Application docs | `README.md` | Build, run, test, architecture |
 | Architecture | `apps/design_docs/Architecture.md` | System overview and components |
 | Physics system | `apps/design_docs/GridMechanics.md` | Pressure, friction, cohesion, etc. |
-| Static load + sleeping | `apps/design_docs/static-load-and-region-sleeping.md` | Proposal for load-bearing dirt and region sleeping |
 | Coding conventions | `coding_convention.md` | Style guidelines |
-| Tree organisms | `apps/design_docs/plant.md` | A-life tree feature |
 | CLI reference | `apps/src/cli/README.md` | Command-line interface |
 | Yocto deployment | `yocto/` | Yocto layer for building Pi images |
 
@@ -72,8 +89,3 @@ ssh <dirtsim-hostname> "journalctl -u dirtsim-server -f"
 ssh <dirtsim-hostname> "dirtsim-cli server StatusGet"
 ssh <dirtsim-hostname> "dirtsim-cli ui StatusGet"
 ```
-
-## Git Workflow
-
-- Install hooks: `cd apps && ./hooks/install-hooks.sh`
-- Pre-commit runs formatting, linting, and tests.
